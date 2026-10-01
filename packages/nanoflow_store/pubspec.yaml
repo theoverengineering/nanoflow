@@ -1,0 +1,12 @@
+name: nanoflow_store
+description: The engine's filesystem store - writes a session and reads it back for --resume.
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.13.0
+dependencies:
+  nanoflow_model:
+    path: ../nanoflow_model
+  path: ^1.9.0
+dev_dependencies:
+  test: ^1.25.0
