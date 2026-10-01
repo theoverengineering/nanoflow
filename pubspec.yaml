@@ -6,5 +6,6 @@ workspace:
   - packages/nanoflow_model
   - packages/nanoflow_store
   - packages/nanoflow_reader
+  - packages/nanoflow
 dev_dependencies:
   lints: ^6.1.0
