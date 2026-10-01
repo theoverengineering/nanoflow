@@ -1,3 +1,5 @@
+import 'json_fields.dart';
+
 /// Where an exit of a node leads: one node, or a list of nodes.
 ///
 /// Every node of a list gets the same data. An empty list leads nowhere: the
@@ -289,13 +291,12 @@ final class GraphDescription {
   /// problem; problems inside the graph are placed under `graph.`.
   static GraphDescription fromJson(Object? json) {
     final fields = _parseObject(json, 'description');
-    final file = _parseString(fields['file'], 'file');
-    final graph = _parseObject(fields['graph'], 'graph');
-    try {
-      return GraphDescription._(file, Graph.fromJson(graph));
-    } on FormatException catch (e) {
-      throw FormatException('graph.${e.message}');
-    }
+    final file = readString(fields, 'file');
+    final graph = readObject(fields, 'graph');
+    return GraphDescription._(
+      file,
+      inside('graph', () => Graph.fromJson(graph)),
+    );
   }
 
   /// The path of the graph file that was run: YAML or source code.
@@ -306,20 +307,8 @@ final class GraphDescription {
   Map<String, Object?> toJson() => {'file': file, 'graph': graph.toJson()};
 }
 
-/// [json] as an object, or `null` when it is not a map with string keys.
-///
-/// Also takes a `Map<dynamic, dynamic>`, which is what an empty map literal
-/// inside another map literal is.
-Map<String, Object?>? _asObject(Object? json) {
-  if (json is Map<String, Object?>) return json;
-  if (json is Map && json.keys.every((key) => key is String)) {
-    return json.cast<String, Object?>();
-  }
-  return null;
-}
-
 Map<String, Object?> _parseObject(Object? json, String place) =>
-    _asObject(json) ?? (throw FormatException('$place: expected an object'));
+    asObject(json) ?? (throw FormatException('$place: expected an object'));
 
 String _parseString(Object? json, String place) {
   if (json is String) return json;
@@ -388,7 +377,7 @@ ForkNode _parseFork(String name, Map<String, Object?> fields, String place) {
     throw FormatException('$place.then: missing');
   }
   final then = fields['then'];
-  final thenCases = _asObject(then);
+  final thenCases = asObject(then);
   final Target? ifTrue;
   final Map<String, Target>? cases;
   if (thenCases != null) {

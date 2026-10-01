@@ -38,18 +38,22 @@ int readInt(Map<String, Object?> json, String key) {
   throw FormatException('$key: expected an integer');
 }
 
-/// The object at [key].
+/// [value] as an object, or `null` when it is not a map with string keys.
 ///
 /// Also takes a `Map<dynamic, dynamic>` with string keys, which is what an
 /// empty map literal inside another map literal is.
-Map<String, Object?> readObject(Map<String, Object?> json, String key) {
-  final value = readValue(json, key);
+Map<String, Object?>? asObject(Object? value) {
   if (value is Map<String, Object?>) return value;
   if (value is Map && value.keys.every((k) => k is String)) {
     return value.cast<String, Object?>();
   }
-  throw FormatException('$key: expected an object');
+  return null;
 }
+
+/// The object at [key].
+Map<String, Object?> readObject(Map<String, Object?> json, String key) =>
+    asObject(readValue(json, key)) ??
+    (throw FormatException('$key: expected an object'));
 
 /// The time at [key], written as `2026-09-20T14:03:11.470Z`.
 DateTime readTime(Map<String, Object?> json, String key) {

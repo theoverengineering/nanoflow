@@ -997,6 +997,29 @@ void main() {
       );
     });
 
+    test('reports a missing file or graph like any other model does', () {
+      expect(
+        () => GraphDescription.fromJson({'graph': _readme()}),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            'file: missing',
+          ),
+        ),
+      );
+      expect(
+        () => GraphDescription.fromJson({'file': 'g.yaml'}),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            'graph: missing',
+          ),
+        ),
+      );
+    });
+
     test('a malformed graph is reported under graph.', () {
       final graph = _readme();
       (graph['nodes']! as Map<String, Object?>)['verdict'] = {
