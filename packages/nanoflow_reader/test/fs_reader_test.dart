@@ -157,9 +157,7 @@ void main() {
       ]);
       final mark = feed.changes.length;
 
-      final open = File(journal).openSync(mode: FileMode.append);
-      open.truncateSync(line(started).length);
-      open.closeSync();
+      truncate(journal, line(started).length);
       final stepStarted = StepStarted(
         runId: run.id,
         time: at(5),

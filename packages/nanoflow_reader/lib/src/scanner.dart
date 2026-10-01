@@ -126,8 +126,8 @@ final class Scanner {
       await _scanStep(run, stepDir, out);
     }
     final lines = await _attempt(run.journal.path, out, run.journal.readLines);
-    for (final line in lines ?? const <Uint8List>[]) {
-      final change = _journalChange(run.run.id, ++run.lines, line);
+    for (final (:number, :bytes) in lines ?? const <Line>[]) {
+      final change = _journalChange(run.run.id, number, bytes);
       if (change case EventAdded(
         event: StepFinished(:final stepId, outputId: _?),
       )) {
@@ -294,9 +294,6 @@ final class _Run {
 
   /// Its journal, read up to the end of the last complete line.
   final Tail journal;
-
-  /// How many lines of the journal have been given.
-  int lines = 0;
 
   /// Its steps, by directory.
   final Map<String, _Step> steps = {};

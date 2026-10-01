@@ -39,18 +39,36 @@ void main() {
       appendBytes(path, [0xc3]);
       expect(await tail.read(), [0xc3]);
     });
+
+    test('reads on from the new end of a file that got shorter', () async {
+      File(path).writeAsStringSync('hello');
+      final tail = Tail(path);
+      expect(await tail.read(), utf8.encode('hello'));
+
+      truncate(path, 2);
+      expect(await tail.read(), isEmpty);
+      appendBytes(path, utf8.encode('y!'));
+
+      expect(await tail.read(), utf8.encode('y!'));
+    });
   });
 
   group('readLines', () {
-    test('gives complete lines without their \\n and leaves an incomplete '
-        'last line for later', () async {
+    /// The lines [tail] gives, as numbers and text.
+    Future<List<(int, String)>> lines(Tail tail) async => [
+      for (final (:number, :bytes) in await tail.readLines())
+        (number, utf8.decode(bytes)),
+    ];
+
+    test('gives complete lines without their \\n, numbered from 1, and '
+        'leaves an incomplete last line for later', () async {
       File(path).writeAsStringSync('one\ntwo\nthr');
       final tail = Tail(path);
 
-      expect(await tail.readLines(), [utf8.encode('one'), utf8.encode('two')]);
-      expect(await tail.readLines(), isEmpty);
+      expect(await lines(tail), [(1, 'one'), (2, 'two')]);
+      expect(await lines(tail), isEmpty);
       appendBytes(path, utf8.encode('ee\n\nfour'));
-      expect(await tail.readLines(), [utf8.encode('three'), <int>[]]);
+      expect(await lines(tail), [(3, 'three'), (4, '')]);
     });
 
     test('gives nothing while the file does not exist', () async {
@@ -61,14 +79,25 @@ void main() {
         'appended', () async {
       File(path).writeAsStringSync('one\ntw');
       final tail = Tail(path);
-      expect(await tail.readLines(), [utf8.encode('one')]);
+      expect(await lines(tail), [(1, 'one')]);
 
-      final open = File(path).openSync(mode: FileMode.append);
-      open.truncateSync(4);
-      open.closeSync();
+      truncate(path, 4);
       appendBytes(path, utf8.encode('two\n'));
 
-      expect(await tail.readLines(), [utf8.encode('two')]);
+      expect(await lines(tail), [(2, 'two')]);
+    });
+
+    test('reads on after the last complete line left in a file that got '
+        'shorter than the lines given', () async {
+      File(path).writeAsStringSync('one\ntwo\nthree\n');
+      final tail = Tail(path);
+      expect(await lines(tail), [(1, 'one'), (2, 'two'), (3, 'three')]);
+
+      truncate(path, 6);
+      expect(await lines(tail), isEmpty);
+      appendBytes(path, utf8.encode('o\nfour\n'));
+
+      expect(await lines(tail), [(2, 'two'), (3, 'four')]);
     });
   });
 

@@ -125,6 +125,16 @@ void append(String runDir, String text) =>
 void appendBytes(String path, List<int> bytes) =>
     File(path).writeAsBytesSync(bytes, mode: FileMode.append, flush: true);
 
+/// Cuts the file at [path] to [length] bytes.
+void truncate(String path, int length) {
+  final file = File(path).openSync(mode: FileMode.append);
+  try {
+    file.truncateSync(length);
+  } finally {
+    file.closeSync();
+  }
+}
+
 /// A step of [runId] that has not finished, with its log in `command.log`.
 Step newStep(String runId, {String? inputId}) => Step(
   id: newId(),

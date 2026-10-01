@@ -4,12 +4,15 @@ import 'dart:typed_data';
 
 const _newline = 0x0a;
 
+/// A complete line of a file, without its `\n`, and its number in the file,
+/// counted from 1.
+typedef Line = ({int number, Uint8List bytes});
+
 /// A file that is only ever appended to, read on from where the last read
 /// stopped.
 ///
-/// A file that does not exist yet reads as empty. Bytes before the offset are
-/// never read again: should the file get shorter than that, nothing is read
-/// until it is longer again.
+/// A file that does not exist yet reads as empty. A file that gets shorter
+/// than what has been given is not read from the start again.
 final class Tail {
   Tail(this.path);
 
@@ -18,27 +21,42 @@ final class Tail {
   /// How many bytes from the start have been given.
   int _offset = 0;
 
+  /// How many lines [readLines] has given.
+  int _lines = 0;
+
   /// The bytes appended since the last read.
+  ///
+  /// When the file has got shorter than what has been given, reading goes on
+  /// from its new end.
   Future<Uint8List> read() async {
-    final bytes = await _rest();
+    final bytes = await _rest((left) => left.length);
     _offset += bytes.length;
     return bytes;
   }
 
-  /// The complete lines appended since the last read, without their `\n`.
+  /// The complete lines appended since the last read.
   ///
   /// A last line without `\n` is not given: it is read again, whole, once it
   /// is complete. So a writer may cut it off and write other lines instead.
-  Future<List<Uint8List>> readLines() async {
-    final bytes = await _rest();
-    final lines = <Uint8List>[];
+  /// When the file has got shorter than the lines given, reading goes on
+  /// after the last complete line left, and so do the line numbers.
+  Future<List<Line>> readLines() async {
+    final bytes = await _rest((left) {
+      final end = left.lastIndexOf(_newline) + 1;
+      _lines = left.take(end).where((byte) => byte == _newline).length;
+      return end;
+    });
+    final lines = <Line>[];
     var start = 0;
     for (
       var end = bytes.indexOf(_newline);
       end != -1;
       end = bytes.indexOf(_newline, start)
     ) {
-      lines.add(Uint8List.sublistView(bytes, start, end));
+      lines.add((
+        number: ++_lines,
+        bytes: Uint8List.sublistView(bytes, start, end),
+      ));
       start = end + 1;
     }
     _offset += start;
@@ -46,7 +64,10 @@ final class Tail {
   }
 
   /// The bytes of the file after [_offset].
-  Future<Uint8List> _rest() async {
+  ///
+  /// When the file is shorter than [_offset], [goBack] gets what is left of
+  /// it and says where to read on from.
+  Future<Uint8List> _rest(int Function(Uint8List left) goBack) async {
     final RandomAccessFile file;
     try {
       file = await File(path).open();
@@ -55,7 +76,8 @@ final class Tail {
     }
     try {
       final length = await file.length();
-      if (length <= _offset) return Uint8List(0);
+      if (length < _offset) _offset = goBack(await file.read(length));
+      if (length == _offset) return Uint8List(0);
       await file.setPosition(_offset);
       return await file.read(length - _offset);
     } finally {
