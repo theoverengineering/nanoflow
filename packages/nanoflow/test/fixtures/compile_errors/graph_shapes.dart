@@ -11,12 +11,16 @@ final show = node((bool b) {});
 final word = fork((bool b) => b ? 'yes' : 'no');
 final zero = fork((int n) => n == 0);
 final grade = fork((bool b) => b ? Verdict.accepted : Verdict.returned);
+final number = node((String s) => num.parse(s));
+final whole = node((int i) async {});
 
-// The same nodes, written correctly; a set may hold workers and forks.
+// The same nodes, written correctly; a set may hold workers and forks, and a
+// node that takes Object? fits after any node.
 final ok1 = Graph.start(read).next(count).next({show, word});
 final ok2 = Graph.start(zero).then(count).otherwise({count});
 final ok3 = Graph.start(word).then({'yes': show, 'no': {}});
 final ok4 = Graph.part(grade).then({Verdict.accepted: show});
+final ok5 = Graph.start(number).next(node((Object? x) async {}));
 
 // A target node that does not take the data.
 final g1 = Graph.start(read).next(show); // error: argument_type_not_assignable
@@ -62,3 +66,7 @@ final g11 = Graph.start(zero).then(count).next(show); // error: undefined_method
 // A part as a target.
 final g12 = Graph.start(read)
     .next(Graph.part(count)); // error: argument_type_not_assignable
+
+// A target that takes a subtype of the data: an int node after a num.
+final g13 = Graph.start(number)
+    .next(whole); // error: argument_type_not_assignable
