@@ -152,6 +152,40 @@ void main() {
       },
     );
 
+    test('names the runs in the order they were created, even within one '
+        'millisecond', () async {
+      final runsDir = p.join(await tempDir(), 'runs');
+      final store = FsStore(runsDir, clock: () => start);
+
+      final handle = await store.createSession(
+        graphName: 'review',
+        graph: graph,
+        startNodes: [
+          (node: 'collect', takesInput: true),
+          (node: 'notify', takesInput: false),
+          (node: 'audit', takesInput: false),
+        ],
+        input: (value: {'branch': 'main'}),
+      );
+
+      final runIds = [
+        for (final millisecond in [470, 471, 472])
+          only(handle.dir, '2026-09-20T14-03-11-$millisecond-$anId').id,
+      ];
+      expect(
+        [for (final id in runIds) await firstNode(handle, id)],
+        ['collect', 'notify', 'audit'],
+      );
+      expect(await handle.events(runIds[1]), [
+        RunStarted(
+          runId: runIds[1],
+          time: DateTime.utc(2026, 9, 20, 14, 3, 11, 471),
+          node: 'notify',
+        ),
+      ]);
+      expect([for (final run in await handle.runs()) run.id], runIds);
+    });
+
     test('leaves no temporary entries behind', () async {
       final handle = await newSession(
         startNodes: [
@@ -273,6 +307,31 @@ void main() {
           .writeAsString(sessionJson(sessionId));
 
       expect(await FsStore(runsDir).openSession(sessionId), isNull);
+    });
+
+    test('leaves alone a run that was never finished being created', () async {
+      final created = await newSession();
+      final runs = await created.runs();
+      final runId = newId();
+      final leftover = await Directory(p.join(created.dir, '.tmp-$runId'))
+          .create();
+      await File(p.join(leftover.path, 'run.json')).writeAsString(
+        jsonEncode(
+          Run(
+            id: runId,
+            sessionId: created.session.id,
+            parentId: runs.single.id,
+          ).toJson(),
+        ),
+      );
+      final journal = p.join(leftover.path, 'log.jsonl');
+      await File(journal).writeAsString('{"runId":"$runId"');
+
+      final opened = (await FsStore(p.dirname(created.dir))
+          .openSession(created.session.id))!;
+
+      expect(await opened.runs(), runs);
+      expect(read(journal), '{"runId":"$runId"');
     });
 
     test('cuts an incomplete last line off each journal, so new events '

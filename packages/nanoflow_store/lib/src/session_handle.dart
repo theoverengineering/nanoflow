@@ -13,7 +13,17 @@ const _newline = 0x0a;
 ///
 /// Only one engine process works with a session at a time.
 final class SessionHandle {
-  SessionHandle._(this.session, this.dir, this._clock);
+  SessionHandle._(this.session, this.dir, this._clock)
+    : _runTimes = _IncreasingTimes(),
+      _stepTimes = {};
+
+  /// [from] after its directory was renamed to [dir]. The times it has given
+  /// its runs and steps stay taken.
+  SessionHandle._moved(SessionHandle from, this.dir)
+    : session = from.session,
+      _clock = from._clock,
+      _runTimes = from._runTimes,
+      _stepTimes = from._stepTimes;
 
   /// The session's fields, as in `session.json`.
   final Session session;
@@ -22,6 +32,11 @@ final class SessionHandle {
   final String dir;
 
   final Clock _clock;
+
+  /// Times of the session's runs, and of each run's steps by run id: a
+  /// directory's name must sort after its siblings created before it.
+  final _IncreasingTimes _runTimes;
+  final Map<String, _IncreasingTimes> _stepTimes;
 
   /// Directories of the runs and steps looked up so far, by id. A directory
   /// keeps its name once it is built.
@@ -77,14 +92,17 @@ final class SessionHandle {
   ///
   /// The run appears whole: its directory, `run.json`, `log.jsonl` and the
   /// step's directory are built under a temporary name and renamed into place.
-  /// The directory names and the `run-started` time come from the clock.
+  /// The run's time, in its directory's name and in `run-started`, comes from
+  /// the clock, but is at least a millisecond after the time of the run
+  /// created before it, so that runs sort by name in the order they were
+  /// created. The step's directory is named the same way.
   Future<(Run, Step)> createRun({
     required String? parentId,
     required String node,
     required String? inputId,
   }) async {
     final run = Run(id: newId(), sessionId: session.id, parentId: parentId);
-    final createdAt = _clock();
+    final createdAt = _runTimes.next(_clock);
     late final Step step;
     _runDirs[run.id] = await buildDirAtomically(
       dir,
@@ -109,8 +127,10 @@ final class SessionHandle {
 
   /// Creates a step of the run [runId] at [node], whose input is [inputId].
   ///
-  /// The step's directory appears whole, with `step.json`; its name holds the
-  /// time from the clock. No event is written.
+  /// The step's directory appears whole, with `step.json`. Its name holds the
+  /// time from the clock, but at least a millisecond after the time of the
+  /// run's step created before it, so that steps sort by name in the order
+  /// they were created. No event is written.
   Future<Step> createStep({
     required String runId,
     required String node,
@@ -177,7 +197,11 @@ final class SessionHandle {
     await buildDirAtomically(
       stepsDir,
       id: step.id,
-      name: stepDirName(_clock(), node, step.id),
+      name: stepDirName(
+        _stepTimes.putIfAbsent(runId, _IncreasingTimes.new).next(_clock),
+        node,
+        step.id,
+      ),
       build: (dir) =>
           writeJsonAtomically(p.join(dir, stepFileName), step.toJson()),
     );
@@ -232,10 +256,15 @@ final class StoreCorruptedException implements Exception {
       'StoreCorruptedException: line $line of $path is not a JSON object';
 }
 
-/// A handle of the session [session] in [dir], for the store that has just
-/// built it. Not exported.
+/// A handle of the session [session] in [dir], for the store that is building
+/// it. Not exported.
 SessionHandle sessionHandleAt(String dir, Session session, Clock clock) =>
     SessionHandle._(session, dir, clock);
+
+/// [handle] once its session's directory has been renamed to [dir], for the
+/// store that has built it. Not exported.
+SessionHandle movedSessionHandle(SessionHandle handle, String dir) =>
+    SessionHandle._moved(handle, dir);
 
 /// A handle of the session in [dir], for the store that is opening it.
 ///
@@ -251,6 +280,21 @@ Future<SessionHandle> loadSessionHandle(String dir, Clock clock) async {
     await _cutIncompleteLine(p.join(run.path, eventsFileName));
   }
   return SessionHandle._(session, dir, clock);
+}
+
+/// Times from a clock, to the millisecond, each at least a millisecond after
+/// the one before: names that hold them sort in the order they were taken,
+/// even when the clock has not moved on or has gone back.
+final class _IncreasingTimes {
+  int? _last;
+
+  DateTime next(Clock clock) {
+    final now = clock().millisecondsSinceEpoch;
+    final last = _last;
+    final time = last == null || now > last ? now : last + 1;
+    _last = time;
+    return DateTime.fromMillisecondsSinceEpoch(time, isUtc: true);
+  }
 }
 
 /// The built directories in [parent], ordered by name.

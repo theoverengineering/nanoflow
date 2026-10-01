@@ -137,6 +137,56 @@ void main() {
         [...before, p.basename(runDir(handle, run.id))]..sort(),
       );
     });
+
+    test('names runs in the order they were created, even within one '
+        'millisecond', () async {
+      // The session's first run takes 14:03:11.470.
+      final handle = await newSession(clock: () => start);
+      final root = (await handle.runs()).single;
+
+      final children = [
+        for (final node in ['publish', 'notify', 'fix'])
+          (await handle.createRun(
+            parentId: root.id,
+            node: node,
+            inputId: null,
+          )).$1,
+      ];
+
+      for (final (i, child) in children.indexed) {
+        final millisecond = 471 + i;
+        expect(
+          only(handle.dir, '2026-09-20T14-03-11-$millisecond-$anId').id,
+          child.id,
+        );
+        expect(
+          (await handle.events(child.id)).single,
+          isA<RunStarted>().having(
+            (e) => e.time,
+            'time',
+            DateTime.utc(2026, 9, 20, 14, 3, 11, millisecond),
+          ),
+        );
+      }
+      expect(await handle.runs(), [root, ...children]);
+    });
+
+    test('gives each run its own millisecond when the clock moves by less '
+        'than one', () async {
+      final handle = await newSession(
+        clock: tickingClock(tick: const Duration(microseconds: 100)),
+      );
+      final root = (await handle.runs()).single;
+
+      final (child, _) = await handle.createRun(
+        parentId: root.id,
+        node: 'publish',
+        inputId: null,
+      );
+
+      only(handle.dir, '2026-09-20T14-03-11-470-(${root.id})');
+      only(handle.dir, '2026-09-20T14-03-11-471-(${child.id})');
+    });
   });
 
   group('createStep', () {
@@ -205,6 +255,60 @@ void main() {
         expect(await handle.steps(run.id), [collect, verdict, fix]);
       },
     );
+
+    test('names the steps of a run in the order they were created, even '
+        'within one millisecond', () async {
+      final handle = await newSession(clock: () => start);
+      final run = (await handle.runs()).single;
+      final collect = (await handle.steps(run.id)).single;
+
+      final verdict = await handle.createStep(
+        runId: run.id,
+        node: 'verdict',
+        inputId: null,
+      );
+      final fix = await handle.createStep(
+        runId: run.id,
+        node: 'fix',
+        inputId: null,
+      );
+
+      final steps = p.join(runDir(handle, run.id), 'steps');
+      expect(
+        only(steps, '2026-09-20T14-03-11-470-collect-$anId').id,
+        collect.id,
+      );
+      expect(
+        only(steps, '2026-09-20T14-03-11-471-verdict-$anId').id,
+        verdict.id,
+      );
+      expect(only(steps, '2026-09-20T14-03-11-472-fix-$anId').id, fix.id);
+      expect(await handle.steps(run.id), [collect, verdict, fix]);
+    });
+
+    test('steps leaves out a step that was never finished being '
+        'created', () async {
+      final handle = await newSession();
+      final run = (await handle.runs()).single;
+      final steps = await handle.steps(run.id);
+      final stepId = newId();
+      final leftover = await Directory(
+        p.join(runDir(handle, run.id), 'steps', '.tmp-$stepId'),
+      ).create();
+      await File(p.join(leftover.path, 'step.json')).writeAsString(
+        jsonEncode(
+          Step(
+            id: stepId,
+            runId: run.id,
+            inputId: null,
+            outputId: null,
+            log: 'command.log',
+          ).toJson(),
+        ),
+      );
+
+      expect(await handle.steps(run.id), steps);
+    });
   });
 
   group('appendEvent and events', () {

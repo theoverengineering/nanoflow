@@ -35,6 +35,7 @@ final class FsStore {
   }) async {
     final session = Session(id: newId(), graph: graph);
     final createdAt = _clock();
+    late final SessionHandle built;
     final dir = await buildDirAtomically(
       runsDir,
       id: session.id,
@@ -56,9 +57,10 @@ final class FsStore {
             inputId: start.takesInput ? inputId : null,
           );
         }
+        built = handle;
       },
     );
-    return sessionHandleAt(dir, session, _clock);
+    return movedSessionHandle(built, dir);
   }
 
   /// The session [sessionId], or `null` when [runsDir] has none.
