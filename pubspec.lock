@@ -9,6 +9,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "108.0.0"
+  ack:
+    dependency: transitive
+    description:
+      name: ack
+      sha256: c3af28a09ee355884fedd3dd6acbccf9127d4c9d077346645dedc3d72b9f41fb
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.6.2"
   analyzer:
     dependency: transitive
     description:
