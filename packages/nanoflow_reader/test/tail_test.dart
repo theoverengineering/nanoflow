@@ -134,9 +134,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(passes, 1);
       firstDone.complete();
-      while (given.length < 3) {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await eventually(() => given.length >= 3);
 
       expect(mostRunning, 1);
       expect(given.take(3), [1, 2, 3]);
@@ -155,6 +153,21 @@ void main() {
       );
 
       await expectLater(followed, emitsInOrder([emitsError(isStateError), 2]));
+    });
+
+    test('runs no pass once cancelled before the first one began', () async {
+      var passes = 0;
+      final followed = follow<void>(
+        missing,
+        recursive: false,
+        interval: const Duration(milliseconds: 5),
+        pass: (out) async => passes++,
+      );
+
+      // Cancelled while the first pass looks for the directory to watch.
+      await followed.listen((_) {}).cancel();
+
+      expect(passes, 0);
     });
 
     test('once cancelled, ends the pass under way and runs no other', () async {

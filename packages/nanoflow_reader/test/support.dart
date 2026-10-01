@@ -28,6 +28,23 @@ const graph = <String, Object?>{
 /// How long a test waits for the feed before it fails.
 const _patience = Duration(seconds: 10);
 
+/// Why a test of a file that cannot be read is skipped, or `null`: root reads
+/// any file, whatever its mode.
+final String? skipAsRoot =
+    (Process.runSync('id', ['-u']).stdout as String).trim() == '0'
+    ? 'root can read a file with mode 000'
+    : null;
+
+/// Waits until [done] holds, looking every few milliseconds; fails the test
+/// after a while.
+Future<void> eventually(bool Function() done) async {
+  final deadline = DateTime.now().add(_patience);
+  while (!done()) {
+    if (DateTime.now().isAfter(deadline)) fail('waited too long');
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+}
+
 /// A fresh temporary directory, deleted after the test.
 Future<String> tempDir() async {
   final dir = await Directory.systemTemp.createTemp('nanoflow_reader_test');

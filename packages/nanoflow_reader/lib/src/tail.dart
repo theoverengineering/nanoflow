@@ -88,27 +88,35 @@ final class Tail {
 
 /// A stream of what [pass] gives. [pass] runs when the stream is listened to,
 /// then again on every file system event under [dir] (watched once it exists)
-/// and every [interval].
+/// that [ignore] does not take, and every [interval].
 ///
 /// Passes never overlap: a trigger during a pass makes one more pass after
 /// it. An error a pass throws goes to the stream, and the passes go on.
-/// Cancelling stops the timer and the watching, and completes once a pass
-/// under way has ended.
+/// Cancelling stops the timer and the watching, so that no pass begins after
+/// it, and completes once a pass under way has ended.
 Stream<T> follow<T>(
   String dir, {
   required bool recursive,
   required Duration interval,
+  bool Function(FileSystemEvent event)? ignore,
   required Future<void> Function(EventSink<T> out) pass,
-}) => _Follower<T>(dir, recursive, interval, pass)._controller.stream;
+}) => _Follower<T>(dir, recursive, interval, ignore, pass)._controller.stream;
 
 final class _Follower<T> {
-  _Follower(this._dir, this._recursive, this._interval, this._pass) {
+  _Follower(
+    this._dir,
+    this._recursive,
+    this._interval,
+    this._ignore,
+    this._pass,
+  ) {
     _controller = StreamController<T>(onListen: _start, onCancel: _stop);
   }
 
   final String _dir;
   final bool _recursive;
   final Duration _interval;
+  final bool Function(FileSystemEvent event)? _ignore;
   final Future<void> Function(EventSink<T> out) _pass;
 
   late final StreamController<T> _controller;
@@ -149,6 +157,7 @@ final class _Follower<T> {
       _again = false;
       try {
         await _watchDir();
+        if (_stopped) break;
         await _pass(_controller);
       } catch (error, stack) {
         _controller.addError(error, stack);
@@ -166,7 +175,9 @@ final class _Follower<T> {
     _watch = Directory(_dir)
         .watch(recursive: _recursive)
         .listen(
-          (_) => _trigger(),
+          (event) {
+            if (_ignore?.call(event) != true) _trigger();
+          },
           onError: (Object _) => _unwatch(),
           onDone: _unwatch,
         );

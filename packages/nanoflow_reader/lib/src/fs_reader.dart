@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -32,11 +33,10 @@ final class FsReader {
 
   final Scanner _scanner;
 
-  late final Stream<Change> _changes = follow(
+  late final Stream<Change> _changes = followRuns(
     runsDir,
-    recursive: true,
-    interval: pollInterval,
-    pass: _scanner.scan,
+    pollInterval,
+    _scanner.scan,
   );
 
   /// Everything already on disk, then new changes as they appear. Single
@@ -169,6 +169,24 @@ final class FsReader {
         'no such step in run $runId',
       ));
 }
+
+/// What [scan] gives, run as the feed of [runsDir] runs it: when listened
+/// to, on every file system event under [runsDir] but those of a step's
+/// `command.log`, and every [interval].
+///
+/// A running command writes its log all the time, and a scan does not read
+/// logs: [FsReader.stepLog] follows a log by itself.
+Stream<T> followRuns<T>(
+  String runsDir,
+  Duration interval,
+  Future<void> Function(EventSink<T> out) scan,
+) => follow(
+  runsDir,
+  recursive: true,
+  interval: interval,
+  ignore: (event) => p.basename(event.path) == logFileName,
+  pass: scan,
+);
 
 /// The directory in [parent] whose name ends with [id] and that [accepts]
 /// takes, or `null`.

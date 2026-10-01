@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_reader/nanoflow_reader.dart';
+import 'package:nanoflow_reader/src/fs_reader.dart' show followRuns;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -331,8 +332,8 @@ void main() {
       await feed.next<EventAdded>((change) => change.event == finished);
     });
 
-    test('gives a file that is not its model, or cannot be read, as an '
-        'error, once, and reads the rest', () async {
+    test('gives a file that is not its model as an error, once, and reads '
+        'the rest', () async {
       final runsDir = await newRunsDir();
       final session = Session(id: newId(), graph: graph);
       final sessionDir = writeSession(runsDir, session);
@@ -344,12 +345,6 @@ void main() {
         runFileName,
       );
       writeJson(brokenFile, {'id': broken.id});
-      final locked = Run(id: newId(), sessionId: session.id, parentId: null);
-      final lockedFile = p.join(
-        writeRun(sessionDir, locked, createdAt: at(3)),
-        runFileName,
-      );
-      Process.runSync('chmod', ['000', lockedFile]);
 
       final feed = Feed(runsDir);
       await feed.settle();
@@ -362,14 +357,74 @@ void main() {
           'message',
           '$brokenFile: sessionId: missing',
         ),
-        isA<FileSystemException>().having((e) => e.path, 'path', lockedFile),
       ]);
 
       writeJson(brokenFile, broken.toJson());
-      Process.runSync('chmod', ['644', lockedFile]);
       await feed.settle();
-      expect(feed.changes.skip(2), [RunAdded(broken), RunAdded(locked)]);
-      expect(feed.errors, hasLength(2));
+      expect(feed.changes.last, RunAdded(broken));
+      expect(feed.errors, hasLength(1));
+    });
+
+    test(
+      'gives a file it cannot read as an error, once, and reads the rest',
+      () async {
+        final runsDir = await newRunsDir();
+        final session = Session(id: newId(), graph: graph);
+        final sessionDir = writeSession(runsDir, session);
+        final good = Run(id: newId(), sessionId: session.id, parentId: null);
+        writeRun(sessionDir, good, createdAt: at(1));
+        final locked = Run(id: newId(), sessionId: session.id, parentId: null);
+        final lockedFile = p.join(
+          writeRun(sessionDir, locked, createdAt: at(2)),
+          runFileName,
+        );
+        Process.runSync('chmod', ['000', lockedFile]);
+
+        final feed = Feed(runsDir);
+        await feed.settle();
+        await feed.settle();
+
+        expect(feed.changes, [SessionAdded(session), RunAdded(good)]);
+        expect(feed.errors, [
+          isA<FileSystemException>().having((e) => e.path, 'path', lockedFile),
+        ]);
+
+        Process.runSync('chmod', ['644', lockedFile]);
+        await feed.settle();
+        expect(feed.changes.last, RunAdded(locked));
+        expect(feed.errors, hasLength(1));
+      },
+      skip: skipAsRoot,
+    );
+
+    test('does not scan when a command writes its log', () async {
+      final runsDir = await newRunsDir();
+      final fixture = ReadmeSession.write(runsDir);
+      final logFile = p.join(fixture.publishDir, logFileName);
+      final marker = p.join(runsDir, 'marker');
+      // The watcher also reports what changed just before it started: let
+      // that be long enough ago.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      // For each scan, whether the marker was there.
+      final found = <bool>[];
+      final scans = followRuns<void>(
+        runsDir,
+        const Duration(hours: 1),
+        (out) async => found.add(File(marker).existsSync()),
+      );
+      final subscription = scans.listen((_) {});
+      addTearDown(subscription.cancel);
+      await eventually(() => found.isNotEmpty);
+
+      for (var i = 0; i < 50; i++) {
+        appendBytes(logFile, utf8.encode('line $i\n'));
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      File(marker).writeAsStringSync('');
+      await eventually(() => found.contains(true));
+
+      // Only the first scan, then the one the marker made.
+      expect(found.takeWhile((there) => !there), [false]);
     });
 
     test('is a single-subscription stream', () async {
