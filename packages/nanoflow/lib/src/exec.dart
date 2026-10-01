@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 /// A program that [exec] ran exited with a code other than 0.
 final class ExecException implements Exception {
@@ -22,11 +23,13 @@ final class ExecException implements Exception {
 /// program's stderr goes to the stderr of this process as it arrives: for a
 /// step, that is the step's log.
 ///
-/// [executable] is looked up on `PATH` unless it holds a `/`; a relative
-/// path is taken from [workingDirectory], the current directory by default.
+/// [executable] is a program, never a shell builtin: it is looked up on
+/// `PATH` unless it holds a `/`; a relative path is taken from
+/// [workingDirectory], the current directory by default.
 ///
 /// Throws an [ExecException] when the program exits with a code other than
-/// 0, and a [StateError] once the step is stopping.
+/// 0, a [FormatException] when its stdout is not UTF-8, and a [StateError]
+/// once the step is stopping.
 Future<String> exec(
   String executable,
   List<String> arguments, {
@@ -51,16 +54,19 @@ Future<String> exec(
     if (stdin != null) process.stdin.add(utf8.encode(stdin));
     // A program that exits without reading its stdin breaks the pipe.
     process.stdin.close().ignore();
-    final out = utf8.decodeStream(process.stdout);
+    // Bytes, decoded only once the exit code is known: stdout that is not
+    // UTF-8 must not fail before the caller awaits.
+    final out = process.stdout.fold(
+      BytesBuilder(copy: false),
+      (bytes, chunk) => bytes..add(chunk),
+    );
     final log = stderr;
     final logged = process.stderr.listen(log.add).asFuture<void>();
     final exitCode = await process.exitCode;
+    final printed = await out;
     await logged;
-    if (exitCode != 0) {
-      out.ignore();
-      throw ExecException(executable, exitCode);
-    }
-    return await out;
+    if (exitCode != 0) throw ExecException(executable, exitCode);
+    return utf8.decode(printed.takeBytes());
   } finally {
     _running.remove(process);
   }
@@ -92,7 +98,10 @@ Future<void> stopRunning() async {
 ///
 /// The shell exits with the program's code. With job control (`set -m`) the
 /// program, started in the background, leads a new process group, and its
-/// stdin is not redirected from /dev/null. The shell's own stderr — job
+/// stdin is not redirected from /dev/null. This needs a `/bin/sh` that keeps
+/// job control on without a terminal, as bash — `/bin/sh` on macOS — does;
+/// dash turns it off. `exec` makes the job the program itself, found on
+/// `PATH`, rather than a builtin or a function of this script. The shell's own stderr — job
 /// notices such as `Done` — goes to /dev/null; the program gets the real one
 /// through fd 3. The `while` loop waits again if `wait` returned while the
 /// program is only stopped.
@@ -109,7 +118,7 @@ stop() {
 exec 3>&2 2>/dev/null
 set -m
 trap stop TERM INT HUP
-"$@" 2>&3 3>&- &
+exec "$@" 2>&3 3>&- &
 while :; do
   wait $!
   code=$?

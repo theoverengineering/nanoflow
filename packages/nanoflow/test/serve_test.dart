@@ -302,6 +302,11 @@ void main() {
 
       group('stops the command with its process group', () {
         void expectStopped(Stopped stopped, int exitCode) {
+          addTearDown(() {
+            for (final pid in stopped.pids.where(isRunning)) {
+              Process.killPid(pid, ProcessSignal.sigkill);
+            }
+          });
           expect(stopped.exitCode, exitCode);
           expect(stopped.stdout, isEmpty);
           for (final pid in stopped.pids) {
@@ -383,13 +388,20 @@ void main() {
     );
     await stderr.until((text) => text.contains('same graph'));
 
-    // A new node: the next line is the new description.
+    // A new node, whose initializer prints before serve runs, so that the
+    // program prints a line before the description: only the description
+    // is the next line.
     file.writeAsStringSync(
       '${edited({'Graph.start(length)': 'Graph.start(length).next(half)'})}\n'
-      'final half = node((int n) async => n ~/ 2);\n',
+      'final half = () {\n'
+      "  print('stray');\n"
+      '  return node((int n) async => n ~/ 2);\n'
+      '}();\n',
     );
-    await stdout.until((text) => lines().length == 2);
+    await stdout.until((text) => lines().length >= 2);
+    expect(lines(), hasLength(2));
     expect(lines().first, first);
     expect(nodesOf(lines().last), ['length', 'half']);
+    await stderr.until((text) => text.contains('stray\n'));
   }, timeout: const Timeout(Duration(minutes: 1)));
 }

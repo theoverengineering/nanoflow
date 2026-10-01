@@ -10,9 +10,11 @@ import 'package:path/path.dart' as p;
 ///
 /// A change is a change of a `.dart` file under the directory of [file],
 /// the program file. Once changes settle for 200 ms, the program is run again
-/// with `--graph`; its stderr goes to stderr, and its description is printed
-/// when it succeeds and differs from the last one printed. While it fails —
-/// it does not compile, or the graph does not build — nothing is printed.
+/// with `--graph`; its stderr goes to stderr, and its description — the
+/// last line of its stdout, a JSON object — is printed when it succeeds and
+/// differs from the last one printed. Other lines of its stdout go to
+/// stderr. While it fails — it does not compile, or the graph does not
+/// build — nothing is printed.
 Future<Never> watchGraph(String file, String? description) {
   var last = description;
   var running = false;
@@ -30,12 +32,19 @@ Future<Never> watchGraph(String file, String? description) {
       final result = await Process.run(
         Platform.resolvedExecutable,
         [...Platform.executableArguments, file, '--graph'],
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
+        stdoutEncoding: _lenientUtf8,
+        stderrEncoding: _lenientUtf8,
       );
       stderr.write(result.stderr);
-      final printed = (result.stdout as String).trim();
-      if (result.exitCode == 0 && printed.isNotEmpty && printed != last) {
+      final lines = const LineSplitter().convert(result.stdout as String);
+      final printed = result.exitCode == 0 && lines.isNotEmpty
+          ? _description(lines.last)
+          : null;
+      // A print that ran before serve — in a top-level initializer — went
+      // to stdout ahead of the description: it is log.
+      final log = printed == null ? lines : lines.take(lines.length - 1);
+      log.forEach(stderr.writeln);
+      if (printed != null && printed != last) {
         last = printed;
         stdout.writeln(printed);
       }
@@ -52,6 +61,18 @@ Future<Never> watchGraph(String file, String? description) {
   });
   if (description != null) stdout.writeln(description);
   return Completer<Never>().future;
+}
+
+/// Output of the program run again is shown even when it is not UTF-8.
+const _lenientUtf8 = Utf8Codec(allowMalformed: true);
+
+/// [line] if it is a JSON object, as a description is.
+String? _description(String line) {
+  try {
+    return jsonDecode(line) is Map<String, Object?> ? line : null;
+  } on FormatException {
+    return null;
+  }
 }
 
 bool _isDart(FileSystemEvent event) =>

@@ -37,7 +37,9 @@ import 'watch.dart';
 /// - Any other arguments print the usage on stderr; the exit code is 2.
 ///
 /// stdout carries data only, and only the library writes it, once, at the
-/// end: `print` goes to stderr.
+/// end. `print` while `serve` runs — in node functions and in [input] — goes
+/// to stderr; a `print` that runs before, such as in a top-level initializer
+/// that [graph] refers to, still goes to stdout.
 Future<Never> serve<I>(
   List<String> args,
   Graph<void Function(I)> graph, {

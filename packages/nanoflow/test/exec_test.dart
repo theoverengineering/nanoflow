@@ -44,15 +44,21 @@ void main() {
     expect(await exec('/bin/sh', ['-c', 'echo one; echo two']), 'one\ntwo\n');
   });
 
-  test(
-    'finds the program on PATH and passes the arguments as they are',
-    () async {
-      expect(
-        await exec('printf', ['%s|', 'a b', r'$HOME', '"q"', '']),
-        'a b|\$HOME|"q"||',
-      );
-    },
-  );
+  test('finds the program on PATH', () async {
+    expect(await exec('basename', ['/dir/file name']), 'file name\n');
+  });
+
+  test('runs the program, not a shell builtin of the same name', () async {
+    // The builtin echo of /bin/sh prints `-n hi`.
+    expect(await exec('echo', ['-n', 'hi']), 'hi');
+  });
+
+  test('passes the arguments as they are', () async {
+    expect(
+      await exec('/usr/bin/printf', ['%s|', 'a b', r'$HOME', '"q"', '']),
+      'a b|\$HOME|"q"||',
+    );
+  });
 
   test('writes stdin to the program and closes it', () async {
     expect(await exec('cat', [], stdin: 'données'), 'données');
@@ -94,6 +100,21 @@ void main() {
     File(go).createSync();
     expect(await out, 'data\n');
     expect(stderr.text, 'to the log\n');
+  });
+
+  test('throws a FormatException when stdout is not UTF-8', () async {
+    await expectLater(
+      exec('/bin/sh', ['-c', r'printf "\377\376"']),
+      throwsFormatException,
+    );
+  });
+
+  test('throws an ExecException for a non-zero exit even when stdout is not '
+      'UTF-8', () async {
+    await expectLater(
+      exec('/bin/sh', ['-c', r'printf "\377\376"; exit 3']),
+      throwsA(isA<ExecException>().having((e) => e.exitCode, 'exitCode', 3)),
+    );
   });
 
   test(
