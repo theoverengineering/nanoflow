@@ -17,6 +17,14 @@
   документа; `idOfDirName` достаёт идентификатор из имени каталога,
   `isSessionDirOf` отличает сессии графа `review` от сессий графа `review-x`;
   `graphNameOf` и `runsDirOf` — имя графа и каталог `runs` по файлу графа.
+- **Граф.** `Graph.fromJson` разбирает [граф](../../README.md#граф) из JSON:
+  рабочие узлы (`WorkerNode`) и развилки (`ForkNode`), цели (`Target`) и
+  выходы узлов (`Exit`) в порядке объявления. `ForkNode.route` решает, куда
+  идти по исходу развилки (`RouteTo`, `RouteEnd`, `RouteMissing`): так
+  движок выбирает следующий шаг, а UI знает выходы узла. Структура
+  проверяется только по форме, любая ошибка — `FormatException` с местом
+  (`nodes.verdict.then`); ссылки на узлы и схемы проверяет `nanoflow check`.
+  `GraphDescription` — описание графа, которое печатает программа графа.
 
 ## Тесты
 
