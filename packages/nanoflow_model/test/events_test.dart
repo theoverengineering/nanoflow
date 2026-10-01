@@ -25,6 +25,19 @@ String _kind(Event event) => switch (event) {
   UnknownEvent() => 'unknown',
 };
 
+/// What a consumer that only needs the run an event belongs to can do without
+/// a six-way switch: a known event has its `runId`, an unknown one may not.
+String? _runIdOf(Event event) => switch (event) {
+  KnownEvent(:final runId) => runId,
+  UnknownEvent(:final runId) => runId,
+};
+
+/// Likewise for the time: only a known event is sure to have one.
+DateTime? _timeOf(Event event) => switch (event) {
+  KnownEvent(:final time) => time,
+  UnknownEvent() => null,
+};
+
 void main() {
   /// Every event with the exact text it must be written as.
   final cases = <(Event, String)>[
@@ -353,6 +366,25 @@ void main() {
         ],
       );
       expect(_kind(Event.fromJson({'event': 'future'})), 'unknown');
+    });
+
+    test('is exhaustively switchable by KnownEvent and UnknownEvent', () {
+      expect([
+        for (final (event, _) in cases) _runIdOf(event),
+      ], everyElement(_runId));
+      expect([
+        for (final (event, _) in cases) _timeOf(event),
+      ], everyElement(_time));
+      expect(_runIdOf(Event.fromJson({'event': 'future'})), isNull);
+      expect(_runIdOf(Event.fromJson({'event': 'x', 'runId': _runId})), _runId);
+      expect(_timeOf(Event.fromJson({'event': 'future'})), isNull);
+    });
+
+    test('every known event is a KnownEvent and an unknown one is not', () {
+      for (final (event, _) in cases) {
+        expect(event, isA<KnownEvent>(), reason: event.name);
+      }
+      expect(Event.fromJson({'event': 'future'}), isNot(isA<KnownEvent>()));
     });
   });
 }

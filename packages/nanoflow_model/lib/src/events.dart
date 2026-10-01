@@ -8,9 +8,10 @@ const DeepCollectionEquality _deep = DeepCollectionEquality();
 /// One fact in a run's journal.
 ///
 /// The engine only ever appends events, and a run's state is what replaying
-/// them gives. Every event of a known kind is a [RunStarted], [StepStarted],
-/// [StepFinished], [RunSplit], [RunFinished] or [RunFailed]; anything else is
-/// an [UnknownEvent], so a switch over an event covers every case.
+/// them gives. Every event of a known kind is a [KnownEvent]: a [RunStarted],
+/// [StepStarted], [StepFinished], [RunSplit], [RunFinished] or [RunFailed];
+/// anything else is an [UnknownEvent], so a switch over an event covers every
+/// case.
 sealed class Event {
   const Event();
 
@@ -36,10 +37,13 @@ sealed class Event {
 }
 
 /// A known event: one with a run and a time.
-sealed class _KnownEvent extends Event {
+///
+/// Reading the [runId] or the [time] of any known event takes no switch over
+/// its kind.
+sealed class KnownEvent extends Event {
   /// The time is kept in UTC with milliseconds, as it is written, so that an
   /// event equals the one read back from its JSON form.
-  _KnownEvent({required this.runId, required DateTime time})
+  KnownEvent({required this.runId, required DateTime time})
     : time = DateTime.fromMillisecondsSinceEpoch(
         time.millisecondsSinceEpoch,
         isUtc: true,
@@ -64,7 +68,7 @@ sealed class _KnownEvent extends Event {
 
   @override
   bool operator ==(Object other) =>
-      other is _KnownEvent && _deep.equals(other.toJson(), toJson());
+      other is KnownEvent && _deep.equals(other.toJson(), toJson());
 
   @override
   int get hashCode => _deep.hash(toJson());
@@ -80,7 +84,7 @@ sealed class _KnownEvent extends Event {
 }
 
 /// The run was created. The first event of a run.
-final class RunStarted extends _KnownEvent {
+final class RunStarted extends KnownEvent {
   RunStarted({required super.runId, required super.time, required this.node});
 
   /// The node the run starts at.
@@ -95,7 +99,7 @@ final class RunStarted extends _KnownEvent {
 
 /// A step's command is about to run. Written again each time the engine
 /// restarts the command of an unfinished step.
-final class StepStarted extends _KnownEvent {
+final class StepStarted extends KnownEvent {
   StepStarted({
     required super.runId,
     required super.time,
@@ -117,7 +121,7 @@ final class StepStarted extends _KnownEvent {
 
 /// A step's command ended. This event, and nothing else, records the outcome
 /// of a step.
-final class StepFinished extends _KnownEvent {
+final class StepFinished extends KnownEvent {
   StepFinished({
     required super.runId,
     required super.time,
@@ -147,7 +151,7 @@ final class StepFinished extends _KnownEvent {
 }
 
 /// The run goes on as several new runs. The last event of the run.
-final class RunSplit extends _KnownEvent {
+final class RunSplit extends KnownEvent {
   RunSplit({required super.runId, required super.time});
 
   @override
@@ -158,7 +162,7 @@ final class RunSplit extends _KnownEvent {
 }
 
 /// The run has nowhere to go. The last event of the run.
-final class RunFinished extends _KnownEvent {
+final class RunFinished extends KnownEvent {
   RunFinished({required super.runId, required super.time});
 
   @override
@@ -169,7 +173,7 @@ final class RunFinished extends _KnownEvent {
 }
 
 /// A command failed or a route could not be found. The last event of the run.
-final class RunFailed extends _KnownEvent {
+final class RunFailed extends KnownEvent {
   RunFailed({
     required super.runId,
     required super.time,
