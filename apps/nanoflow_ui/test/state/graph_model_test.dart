@@ -11,21 +11,6 @@ import 'package:nanoflow_ui/state/session_feed.dart';
 
 import 'support.dart';
 
-/// The changes that give [journals] of the session [sessionId].
-List<Change> _changesOf(
-  List<Journal> journals, {
-  String sessionId = 'a1b2-session',
-}) => [
-  SessionAdded(Session(id: sessionId, graph: reviewGraph)),
-  for (final journal in journals) ...[
-    RunAdded(
-      Run(id: journal.id, sessionId: sessionId, parentId: journal.parent),
-    ),
-    for (final step in journal.steps) StepAdded(step),
-    for (final event in journal.events) EventAdded(event),
-  ],
-];
-
 void main() {
   late StreamController<Change> changes;
   late List<String> read;
@@ -72,14 +57,14 @@ void main() {
   test('selects the newest session started before the graph was opened', () {
     run((async) {
       final mockup = Mockup();
-      give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+      give(async, changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
       expect(model.selection.sessionId, 'a1b2-session');
       expect(model.selection.runId, 'e5f6-run');
       expect(model.selectedSession!.id, 'a1b2-session');
 
       give(
         async,
-        _changesOf([
+        changesOf([
           Journal(
             'newe-run',
             node: 'collect',
@@ -110,10 +95,10 @@ void main() {
         startedAt: -600,
         sessionId: 'olde-session',
       )..step('verdict', -600, end: -599, output: 'old-outcome');
-      give(async, _changesOf([old], sessionId: 'olde-session'));
+      give(async, changesOf([old], sessionId: 'olde-session'));
       expect(model.selection.sessionId, 'olde-session');
       final mockup = Mockup();
-      give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+      give(async, changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
       expect(read, isEmpty);
 
       model.sessionView(Mockup.now);
@@ -140,7 +125,7 @@ void main() {
     run((async) {
       final mockup = Mockup();
       unreadable.add('verdict-outcome-1');
-      give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+      give(async, changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
       model.sessionView(Mockup.now);
       async.elapse(const Duration(milliseconds: 100));
       final k7f2 = model.sessionView(Mockup.now)!.runs.first;
@@ -163,7 +148,7 @@ void main() {
   test('computes what it shows once per change and second', () {
     run((async) {
       final mockup = Mockup();
-      give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+      give(async, changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
       final now = Mockup.now;
       final view = model.sessionView(now);
       final sessions = model.sessions(now);
@@ -184,7 +169,7 @@ void main() {
   test('follows a running run as its new steps come', () {
     run((async) {
       final mockup = Mockup();
-      give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+      give(async, changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
       final next = mockup.e5f6.step('notify', 700);
       give(async, [
         StepAdded(mockup.e5f6.steps.last),
@@ -196,7 +181,7 @@ void main() {
 
   test('tells its listeners of changes of the feed and the selection', () {
     run((async) {
-      give(async, _changesOf([Mockup().k7f2]));
+      give(async, changesOf([Mockup().k7f2]));
       expect(notified, greaterThan(0));
       notified = 0;
       model.selection.showCurrentGraph();

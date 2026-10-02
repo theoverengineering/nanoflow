@@ -125,6 +125,23 @@ SessionData sessionOf(
   runs: [for (final run in runs) run.data],
 );
 
+/// The changes a reader gives for the session [sessionId] holding [graph]
+/// and its runs [journals].
+List<Change> changesOf(
+  List<Journal> journals, {
+  String sessionId = 'a1b2-session',
+  Map<String, Object?> graph = reviewGraph,
+}) => [
+  SessionAdded(Session(id: sessionId, graph: graph)),
+  for (final journal in journals) ...[
+    RunAdded(
+      Run(id: journal.id, sessionId: sessionId, parentId: journal.parent),
+    ),
+    for (final step in journal.steps) StepAdded(step),
+    for (final event in journal.events) EventAdded(event),
+  ],
+];
+
 /// Outcomes known by document id, and documents that could not be read.
 KnownOutcomes outcomesOf(
   Map<String, Object?> values, {
