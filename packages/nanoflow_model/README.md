@@ -1,8 +1,8 @@
 # nanoflow_model
 
 Договор между движком и UI: то, что они должны понимать одинаково. Единственный
-пакет, общий для всех частей репозитория; зависит только от `path` и
-`collection`.
+пакет, общий для всех частей репозитория; зависит только от `path`,
+`collection` и `crypto`.
 Подробнее — в [Хранении](../../README.md#хранение) и
 [адаптере файловой системы](../../README.md#адаптер-файловой-системы).
 
@@ -40,6 +40,17 @@
   пишется обратно как был. Время события хранится в UTC с точностью до
   миллисекунд. У известных событий общий предок `KnownEvent` с `runId` и
   `time`: `switch` по `Event` исчерпывается им и `UnknownEvent`.
+- **Файл графа.** `GraphFile.fromJson` разбирает `nanoflow.graph.json`
+  (`graphFileName`, формат `graphFileFormat`): функции с шагами
+  (`GraphFunction`), их тела (`GraphBody`) из узлов `StepNode`,
+  `ConditionNode`, `CallNode` и `CopiesNode` и рёбер `GraphEdge`, а также
+  `GraphWarning`. `toJson` пишет ключи в порядке спецификации; `fromJson`
+  бросает `FormatException`, начинающийся с пути в JSON
+  (`functions.lib/a.dart#f.body.nodes[2].kind`), и отвергает формат, не равный
+  1. `workflowNamed(name)` находит workflow-функцию по имени.
+- **Исходники и отпечаток.** `packageSourcePaths`, `sourceHash` (`\r\n` читается
+  как `\n`), `bytesHash`, `hashSources` и `fingerprintOf` считают `sources` и
+  `fingerprint` файла графа одним кодом для `describe`, библиотеки и UI.
 - **Состояние прогона.** `replay(runId, events)` проигрывает журнал прогона и
   возвращает `RunState` — [состояние прогона](../../README.md#состояние-прогона):
   `status` (`RunStatus`), `steps` (`StepState`) в порядке первых `step-started`,
