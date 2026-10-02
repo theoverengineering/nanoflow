@@ -216,6 +216,44 @@ void main() {
       );
     });
 
+    testWidgets('ends a run that split into more runs than fit with links '
+        'that scroll sideways', (tester) async {
+      final mockup = Mockup();
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(
+          changes: changesOf([
+            mockup.k7f2,
+            mockup.c3d4,
+            mockup.e5f6,
+            for (var i = 0; i < 30; i++)
+              Journal(
+                'm${i.toString().padLeft(3, '0')}-run',
+                parent: 'k7f2-run',
+                node: 'publish',
+                startedAt: 611.6 + i / 100,
+              ),
+          ]),
+          outcomes: reviewOutcomes,
+        ),
+      );
+      model.selectRun('k7f2-run');
+      await tester.pump();
+
+      final end = find.byKey(StepList.endKey);
+      final last = find.byKey(StepList.childKey('m029-run'));
+      expect(tester.getRect(last).left, greaterThan(tester.getRect(end).right));
+      await tester.ensureVisible(last);
+      await tester.pump();
+      expect(
+        tester.getRect(last).right,
+        lessThanOrEqualTo(tester.getRect(end).right),
+      );
+      await tester.tap(last);
+      await tester.pump();
+      expect(model.selection.runId, 'm029-run');
+    });
+
     testWidgets('highlights the selected step', (tester) async {
       await pumpGraphScreen(tester);
 

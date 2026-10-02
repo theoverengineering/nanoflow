@@ -458,7 +458,8 @@ class _SplitRowView extends StatelessWidget {
 }
 
 /// How the run ended: `Run finished`, `Run failed: exited with code 1`,
-/// `Run split into` and links to its children; and when.
+/// `Run split into` and links to its children, which scroll sideways when
+/// there are more than fit; and when.
 class _EndRowView extends StatelessWidget {
   const _EndRowView(
     this.row, {
@@ -486,23 +487,37 @@ class _EndRowView extends StatelessWidget {
         step: Row(
           spacing: 8,
           children: [
-            Flexible(
-              child: row.error == null
-                  ? text
-                  : Tooltip(message: row.text, child: text),
-            ),
-            for (final child in row.children)
-              Tooltip(
-                message: child,
-                child: Clickable(
-                  onTap: () => onSelectRun(child),
-                  child: Text(
-                    shortId(child),
-                    key: StepList.childKey(child),
-                    style: AppText.runLink,
+            if (row.children.isEmpty)
+              Flexible(
+                child: row.error == null
+                    ? text
+                    : Tooltip(message: row.text, child: text),
+              )
+            else ...[
+              text,
+              Flexible(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    spacing: 8,
+                    children: [
+                      for (final child in row.children)
+                        Tooltip(
+                          message: child,
+                          child: Clickable(
+                            onTap: () => onSelectRun(child),
+                            child: Text(
+                              shortId(child),
+                              key: StepList.childKey(child),
+                              style: AppText.runLink,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
+            ],
           ],
         ),
         started: Text(row.atText, style: AppText.stepTime),
