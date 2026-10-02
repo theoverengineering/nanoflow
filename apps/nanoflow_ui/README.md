@@ -79,7 +79,7 @@
 | `header.dart`          | шапка: `Graphs`, файл и каталог; метка `Live` (или что не так с файлом и программой графа), `Reveal in Finder`, `Open in editor` |
 | `sessions_column.dart` | `Current graph`, карточки сессий с полосой статуса, `1 failed`, `No runs yet`                                                    |
 | `session_bar.dart`     | строка сессии поверх холста; при `Current graph` её нет                                                                          |
-| `run_switcher.dart`    | переключатель прогонов: знак состояния, `split`, `Log read incompletely`                                                         |
+| `run_switcher.dart`    | переключатель прогонов: знак состояния, `split`, `Log read incompletely`; лишние прокручиваются, выбранный всегда виден          |
 | `graph_errors.dart`    | поверх холста при `Current graph`: файл недоступен, программа графа не найдена или вышла, ошибки `nanoflow check`                |
 | `split_view.dart`      | две панели с границей, которую тянут; панель можно свернуть до заголовка                                                         |
 
