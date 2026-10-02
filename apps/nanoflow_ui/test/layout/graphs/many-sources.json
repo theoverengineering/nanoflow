@@ -1,0 +1,17 @@
+{
+  "start": "split",
+  "nodes": {
+    "split": {
+      "decide": "nodes/split/run.sh",
+      "then": {"a": "check-a", "b": "check-b", "c": "check-c", "d": "check-d", "e": "check-e"},
+      "else": "collect"
+    },
+    "check-a": {"command": "nodes/check-a/run.sh", "then": "collect"},
+    "check-b": {"command": "nodes/check-b/run.sh", "then": "collect"},
+    "check-c": {"command": "nodes/check-c/run.sh", "then": "collect"},
+    "check-d": {"command": "nodes/check-d/run.sh", "then": "collect"},
+    "check-e": {"command": "nodes/check-e/run.sh", "then": "collect"},
+    "collect": {"decide": "nodes/collect/run.sh", "then": "report", "else": "split"},
+    "report": {"command": "nodes/report/run.sh"}
+  }
+}

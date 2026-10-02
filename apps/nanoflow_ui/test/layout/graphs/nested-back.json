@@ -1,0 +1,22 @@
+{
+  "start": "draft",
+  "nodes": {
+    "draft": {"command": "nodes/draft/run.sh", "then": "spell"},
+    "spell": {
+      "decide": "nodes/spell/run.sh",
+      "then": {"ok": "style"},
+      "else": "draft"
+    },
+    "style": {
+      "decide": "nodes/style/run.sh",
+      "then": {"ok": "facts", "rewrite": "spell"},
+      "else": "draft"
+    },
+    "facts": {
+      "decide": "nodes/facts/run.sh",
+      "then": {"ok": "approve", "recheck": "style", "redo": "spell"},
+      "else": "draft"
+    },
+    "approve": {"command": "nodes/approve/run.sh"}
+  }
+}

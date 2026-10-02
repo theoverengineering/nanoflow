@@ -1,0 +1,17 @@
+{
+  "start": "fetch",
+  "nodes": {
+    "fetch": {"command": "nodes/fetch/run.sh", "then": "fetch-check"},
+    "fetch-check": {
+      "decide": "nodes/fetch-check/run.sh",
+      "then": {"retry": "fetch-check", "wait": "fetch-check", "skip": "report", "ok": "build"}
+    },
+    "build": {"command": "nodes/build/run.sh", "then": ["build-check", "build"]},
+    "build-check": {
+      "decide": "nodes/build-check/run.sh",
+      "then": "build-check",
+      "else": "report"
+    },
+    "report": {"command": "nodes/report/run.sh"}
+  }
+}

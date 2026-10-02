@@ -1,0 +1,17 @@
+name: nanoflow_ui
+description: The nanoflow macOS app - watches a graph's runs live.
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.13.0
+dependencies:
+  flutter:
+    sdk: flutter
+  nanoflow_model:
+    path: ../../packages/nanoflow_model
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  test: ^1.25.0
+flutter:
+  uses-material-design: true

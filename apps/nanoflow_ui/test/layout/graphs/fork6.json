@@ -1,0 +1,25 @@
+{
+  "start": "triage",
+  "nodes": {
+    "triage": {
+      "decide": "nodes/triage/run.sh",
+      "then": {
+        "bug": "fix-bug",
+        "feature": "build-feature",
+        "docs": "write-docs",
+        "question": "answer",
+        "security": "escalate",
+        "duplicate": "close",
+        "spam": []
+      },
+      "else": "answer"
+    },
+    "fix-bug": {"command": "nodes/fix-bug/run.sh", "then": "review"},
+    "build-feature": {"command": "nodes/build-feature/run.sh", "then": "review"},
+    "write-docs": {"command": "nodes/write-docs/run.sh", "then": "review"},
+    "answer": {"command": "nodes/answer/run.sh", "then": "close"},
+    "escalate": {"command": "nodes/escalate/run.sh"},
+    "review": {"command": "nodes/review/run.sh", "then": "close"},
+    "close": {"command": "nodes/close/run.sh"}
+  }
+}

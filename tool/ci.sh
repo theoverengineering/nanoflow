@@ -30,8 +30,19 @@ fi
 
 dart format --output=none --set-exit-if-changed .
 
-dart analyze --fatal-infos "${dart_members[@]}"
+# With the Flutter app in the workspace the analyzer would check every member
+# against Flutter's dart: libraries, which lack dart:mirrors: the Dart members
+# are analyzed with a package config without package:sky_engine.
 if has_ui; then
+  config=.dart_tool/package_config.json
+  saved=$(mktemp)
+  cp "$config" "$saved"
+  trap 'cp "$saved" "$config"; rm -f "$saved"' EXIT
+  dart tool/without_sky_engine.dart "$config"
+fi
+dart analyze --fatal-infos "${dart_members[@]}" tool
+if has_ui; then
+  cp "$saved" "$config"
   (cd "$ui" && flutter analyze)
 fi
 

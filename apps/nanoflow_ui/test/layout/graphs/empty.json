@@ -1,0 +1,13 @@
+{
+  "start": "receive",
+  "nodes": {
+    "receive": {"command": "nodes/receive/run.sh", "then": "valid"},
+    "valid": {"decide": "nodes/valid/run.sh", "then": "route", "else": []},
+    "route": {
+      "decide": "nodes/route/run.sh",
+      "then": {"store": "store", "drop": [], "ignore": []},
+      "else": []
+    },
+    "store": {"command": "nodes/store/run.sh", "then": []}
+  }
+}

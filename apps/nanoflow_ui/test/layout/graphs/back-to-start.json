@@ -1,0 +1,13 @@
+{
+  "start": "poll",
+  "nodes": {
+    "poll": {"command": "nodes/poll/run.sh", "then": "changed"},
+    "changed": {"decide": "nodes/changed/run.sh", "then": "sync", "else": "poll"},
+    "sync": {"command": "nodes/sync/run.sh", "then": "verify"},
+    "verify": {
+      "decide": "nodes/verify/run.sh",
+      "then": {"ok": "poll", "broken": "sync", "fatal": "alert"}
+    },
+    "alert": {"command": "nodes/alert/run.sh"}
+  }
+}
