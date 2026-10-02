@@ -350,7 +350,7 @@ void main() {
 
       expect(
         textOf(tester, InputColumn),
-        'INPUT — This node declares no in: its command gets an empty stdin',
+        'INPUT — This node declares no in: it gets no data',
       );
       expect(textOf(tester, NodeColumn), contains('IN — none'));
     });
@@ -377,8 +377,8 @@ void main() {
       await tap(tester, find.byKey(StepDetailsPane.openKey));
       expect(
         textOf(tester, OutputColumn),
-        'OUTPUT Output — Log — This node declares no out: what its command '
-        'prints goes to its log',
+        'OUTPUT Output — Log — This node declares no out: what it prints '
+        'goes to its log',
       );
 
       await tap(tester, find.byKey(OutputColumn.tabKey(OutputTab.log)));
@@ -458,6 +458,36 @@ void main() {
       expect(
         textIn(tester, find.byKey(NodeColumn.pathKey)),
         allOf(startsWith('…'), endsWith(p.basename(inspectStepPath))),
+      );
+    });
+
+    testWidgets('of a graph in code calls a node a function, declared at a '
+        'place, which does not run through sh -c', (tester) async {
+      const graph = <String, Object?>{
+        'start': 'collect',
+        'nodes': {
+          'collect': {'command': 'graph.dart:12', 'then': 'pick'},
+          'pick': {'decide': 'graph.dart:20', 'then': 'collect'},
+        },
+      };
+      final run = Journal('code-run', node: 'collect', startedAt: 0)
+        ..step('collect', 0, end: 1);
+      await pumpGraphScreen(
+        tester,
+        model: ownedModel(changes: changesOf([run], graph: graph)),
+      );
+
+      await doubleClick(tester, 'collect');
+      expect(
+        textIn(tester, find.byKey(NodeColumn.descriptionKey)),
+        startsWith('FUNCTION graph.dart:12 IN — none OUT — none THEN → pick '),
+      );
+      await tap(tester, find.text('Back to canvas'));
+
+      await doubleClick(tester, 'pick');
+      expect(
+        textIn(tester, find.byKey(NodeColumn.descriptionKey)),
+        startsWith('DECIDE FUNCTION graph.dart:20 IN — none OUTCOMES '),
       );
     });
 

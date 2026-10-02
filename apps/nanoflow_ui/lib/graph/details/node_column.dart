@@ -139,19 +139,22 @@ class NodeColumn extends StatelessWidget {
       ),
       child: SelectionArea(child: Text(node.run, style: AppText.commandBox)),
     ),
-    const SizedBox(height: 6),
     // The YAML program runs commands through `sh -c` in the graph file's
-    // directory (README «Программа графа»).
-    Text.rich(
-      TextSpan(
-        children: [
-          const TextSpan(text: 'Runs through '),
-          TextSpan(text: 'sh -c', style: AppText.commandNoteCode),
-          const TextSpan(text: " in the graph's directory."),
-        ],
+    // directory (README «Программа графа»); a function runs in the graph
+    // program itself.
+    if (!node.function) ...[
+      const SizedBox(height: 6),
+      Text.rich(
+        TextSpan(
+          children: [
+            const TextSpan(text: 'Runs through '),
+            TextSpan(text: 'sh -c', style: AppText.commandNoteCode),
+            const TextSpan(text: " in the graph's directory."),
+          ],
+        ),
+        style: AppText.commandNote,
       ),
-      style: AppText.commandNote,
-    ),
+    ],
     const SizedBox(height: 22),
     Row(
       crossAxisAlignment: CrossAxisAlignment.start,

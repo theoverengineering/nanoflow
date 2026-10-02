@@ -44,9 +44,7 @@ class InputColumn extends StatefulWidget {
   static const fromKey = ValueKey('input from');
 
   /// What the column says for a node that declares no `in`.
-  static const noInput =
-      'This node declares no in: its command gets an '
-      'empty stdin';
+  static const noInput = 'This node declares no in: it gets no data';
 
   @override
   State<InputColumn> createState() => _InputColumnState();

@@ -166,6 +166,7 @@ void main() {
     test('of a worker: its command, its in and out, where it goes', () {
       final inspect = describe('inspect');
       expect(inspect.fork, isFalse);
+      expect(inspect.function, isFalse);
       expect(inspect.runTitle, 'Command');
       expect(inspect.run, 'nodes/inspect/run.sh');
       expect(
@@ -191,6 +192,7 @@ void main() {
         'targets', () {
       final verdict = describe('verdict');
       expect(verdict.fork, isTrue);
+      expect(verdict.function, isFalse);
       expect(verdict.runTitle, 'Decide');
       expect(verdict.run, 'nodes/verdict/run.sh');
       expect(verdict.output, isNull);
@@ -254,6 +256,27 @@ void main() {
       final pick = details('pick', session: session).description!;
       expect(pick.input, isNull);
       expect(waysOf(pick), ['a → pick', 'else →']);
+    });
+
+    test('of a graph in code: its function, by the place it is declared '
+        'at', () {
+      final run = Journal('code-run', node: 'collect', startedAt: null);
+      final session = sessionOf(
+        [run],
+        graph: const {
+          'start': 'collect',
+          'nodes': {
+            'collect': {'command': 'graph.dart:12', 'then': 'pick'},
+            'pick': {'decide': '../lib/nodes.dart:40', 'then': 'collect'},
+          },
+        },
+      );
+      final collect = details('collect', session: session).description!;
+      expect((collect.function, collect.runTitle), (true, 'Function'));
+      expect(collect.run, 'graph.dart:12');
+      final pick = details('pick', session: session).description!;
+      expect((pick.function, pick.runTitle), (true, 'Decide function'));
+      expect(pick.run, '../lib/nodes.dart:40');
     });
 
     test('of a node the graph does not have: none', () {

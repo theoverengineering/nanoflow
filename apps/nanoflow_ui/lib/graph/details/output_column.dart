@@ -45,8 +45,7 @@ class OutputColumn extends StatefulWidget {
 
   /// What the column says for a node that declares no `out`.
   static const noOutput =
-      'This node declares no out: what its command '
-      'prints goes to its log';
+      'This node declares no out: what it prints goes to its log';
 
   @override
   State<OutputColumn> createState() => _OutputColumnState();

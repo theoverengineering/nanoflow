@@ -75,11 +75,21 @@ final class NodeDescription {
 
   final bool fork;
 
-  /// What the node runs: its `command`, or a fork's `decide`.
+  /// What the node runs: its `command`, or a fork's `decide`. A graph in
+  /// code holds there the place of the node's function: `graph.dart:12`.
   final String run;
 
+  /// Whether [run] is the place of a function, `<path>.dart:<line>`, rather
+  /// than a command (README «Рабочий узел», D12).
+  bool get function => _functionPlace.hasMatch(run);
+
   /// The title over [run].
-  String get runTitle => fork ? 'Decide' : 'Command';
+  String get runTitle => switch ((fork, function)) {
+    (false, false) => 'Command',
+    (false, true) => 'Function',
+    (true, false) => 'Decide',
+    (true, true) => 'Decide function',
+  };
 
   /// `null` when the node declares no `in`.
   final TypeCard? input;
@@ -91,6 +101,9 @@ final class NodeDescription {
   /// `else` too, leading nowhere, as it does.
   final List<Way> ways;
 }
+
+/// The place a graph in code declares a node's function at: `graph.dart:12`.
+final _functionPlace = RegExp(r'\.dart:\d+$');
 
 /// How the step went, at the top of the window: `exit 0 · 4m 02s`,
 /// `running · 2m 14s`, `failed · 0.1s`.
