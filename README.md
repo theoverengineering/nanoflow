@@ -80,7 +80,7 @@ apps/nanoflow_cli/
 apps/nanoflow_yaml/
 apps/nanoflow_ui/
 
-examples/review/   граф из «Формата» со скриптами узлов
+examples/review/   граф из «Формата» на Dart
 tests/e2e/         nanoflow run на примерах
 tool/              скрипты для CI
 docs/              ТЗ интерфейса, раскладка графа, макеты
