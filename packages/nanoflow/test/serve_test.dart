@@ -118,6 +118,24 @@ Future<Stopped> stopMidStep(String node, void Function(Process) stop) async {
   );
 }
 
+/// How `--call` of a node that ends while a `sleep` it started with `exec`
+/// runs ended, and the pid of that `sleep`.
+typedef EndedWithSleep = ({Ended ended, int sleep});
+
+/// Runs `--call [node]` with a fresh file for the pid of the node's `sleep`
+/// as its input. The `sleep` is killed after the tests, if it still runs.
+Future<EndedWithSleep> endsWhileExecRuns(String node) async {
+  final dir = Directory.systemTemp.createTempSync('nanoflow_sleep_');
+  final pidFile = p.join(dir.path, 'sleep.pid');
+  final ended = await call(node, jsonEncode(pidFile));
+  final sleep = int.parse(File(pidFile).readAsStringSync().trim());
+  addTearDown(() {
+    if (isRunning(sleep)) Process.killPid(sleep, ProcessSignal.sigkill);
+    dir.deleteSync(recursive: true);
+  });
+  return (ended: ended, sleep: sleep);
+}
+
 /// Whether process [pid] is still running: it exists and is not a zombie.
 bool isRunning(int pid) {
   final ps = Process.runSync('ps', ['-o', 'stat=', '-p', '$pid']);
@@ -149,6 +167,7 @@ void main() {
         unknownNode,
         badLine;
     late Future<Stopped> closedStdin, terminated, interrupted, ignoresTerm;
+    late Future<EndedWithSleep> timedOut, returned, uncaught;
 
     setUpAll(() {
       graph = run(programFile, ['--graph']);
@@ -184,6 +203,9 @@ void main() {
       terminated = stopMidStep('hang', (p) => p.kill(ProcessSignal.sigterm));
       interrupted = stopMidStep('hang', (p) => p.kill(ProcessSignal.sigint));
       ignoresTerm = stopMidStep('hangHard', (p) => p.stdin.close().ignore());
+      timedOut = endsWhileExecRuns('timesOut');
+      returned = endsWhileExecRuns('returnsEarly');
+      uncaught = endsWhileExecRuns('failsUncaught');
     });
 
     group('--graph', () {
@@ -330,6 +352,31 @@ void main() {
           final stopped = await ignoresTerm;
           expectStopped(stopped, 1);
           expect(stopped.exitedIn, greaterThan(const Duration(seconds: 5)));
+        });
+      });
+
+      group('stops what exec still runs once the step has ended', () {
+        test('by an exception: exits with 1', () async {
+          final (:ended, :sleep) = await timedOut;
+          expect(ended.exitCode, 1);
+          expect(ended.stdout, isEmpty);
+          expect(ended.stderr, startsWith('TimeoutException'));
+          expect(isRunning(sleep), isFalse);
+        });
+
+        test('by returning: exits with 0', () async {
+          final (:ended, :sleep) = await returned;
+          expect(ended, (exitCode: 0, stdout: '', stderr: ''));
+          expect(isRunning(sleep), isFalse);
+        });
+
+        test('by an error nobody awaits, a failure like an exception: exits '
+            'with 1', () async {
+          final (:ended, :sleep) = await uncaught;
+          expect(ended.exitCode, 1);
+          expect(ended.stdout, isEmpty);
+          expect(ended.stderr, startsWith('Bad state: nobody awaits this\n'));
+          expect(isRunning(sleep), isFalse);
         });
       });
     });

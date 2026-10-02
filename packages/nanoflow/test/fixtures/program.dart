@@ -1,6 +1,8 @@
 // A graph program that test/serve_test.dart runs with `dart run`: it answers
 // --graph, --input and --call for the nodes below.
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 
@@ -77,6 +79,45 @@ final hangHard = node((Object? _) async {
   ]);
 });
 
+/// Starts a `sleep` with [exec] that first writes its pid to [pidFile];
+/// gives what [exec] gives.
+Future<String> sleepWritingPid(String pidFile) => exec('/bin/sh', [
+  '-c',
+  r'echo $$ > "$1.tmp" && mv "$1.tmp" "$1" && exec sleep 1000',
+  'sh',
+  pidFile,
+]);
+
+/// Completes once [pidFile] is there.
+Future<void> pidWritten(String pidFile) async {
+  while (!File(pidFile).existsSync()) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
+/// Steps that end while a program [exec] started still runs: a `sleep`,
+/// whose pid goes to the file the input names. This one stops waiting for
+/// it and fails.
+final timesOut = node((String pidFile) async {
+  final sleeping = sleepWritingPid(pidFile);
+  await pidWritten(pidFile);
+  await sleeping.timeout(const Duration(milliseconds: 1));
+});
+
+/// Returns without waiting for its `sleep`.
+final returnsEarly = node((String pidFile) async {
+  unawaited(sleepWritingPid(pidFile));
+  await pidWritten(pidFile);
+});
+
+/// Waits for its `sleep`, but an error nobody awaits ends the step.
+final failsUncaught = node((String pidFile) async {
+  final sleeping = sleepWritingPid(pidFile);
+  await pidWritten(pidFile);
+  unawaited(Future<void>(() => throw StateError('nobody awaits this')));
+  await sleeping;
+});
+
 final graph = Graph([
   Graph.start(collect).next(isEmpty).otherwise(inspect),
   Graph.part(inspect)
@@ -84,6 +125,9 @@ final graph = Graph([
       .then({Verdict.accepted: notify, Verdict.returned: fix}),
   Graph.part(hang),
   Graph.part(hangHard),
+  Graph.part(timesOut),
+  Graph.part(returnsEarly),
+  Graph.part(failsUncaught),
 ]);
 
 void main(List<String> args) => serve(

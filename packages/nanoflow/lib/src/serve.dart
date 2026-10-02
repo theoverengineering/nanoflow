@@ -33,7 +33,9 @@ import 'watch.dart';
 ///   `out` prints its result as JSON and a fork its outcome — `true` or
 ///   `false` for an if, the key as a JSON string for a switch; the exit code
 ///   is 0. An input that does not fit the node, or an exception of the
-///   function, goes to stderr, and the exit code is 1.
+///   function — also one that nothing awaits — goes to stderr, and the exit
+///   code is 1. However the step ends, the programs `exec` started that
+///   still run end with their process groups before `--call` exits.
 /// - Any other arguments print the usage on stderr; the exit code is 2.
 ///
 /// stdout carries data only, and only the library writes it, once, at the

@@ -21,8 +21,12 @@ import 'vertex.dart';
 /// as one line of JSON; a fork prints its outcome: `true` or `false` for an
 /// if, the key as a JSON string for a switch; a worker without `out` prints
 /// nothing. That gives 0. An input that does not fit the node, or an
-/// exception of the function, goes to stderr — the exception with its stack
-/// trace — and gives 1.
+/// exception of the function — also one that nothing awaits — goes to
+/// stderr, the exception with its stack trace, and gives 1.
+///
+/// However the step ends, programs [exec] started that still run are
+/// stopped, with their process groups, before anything is printed: none
+/// outlives the step.
 Future<int> callNode(BuiltGraph graph, String name) async {
   final vertex = graph.nodes[name];
   if (vertex == null) {
@@ -51,11 +55,15 @@ Future<int> callNode(BuiltGraph graph, String name) async {
     onError: (Object _) => end(const _Stop(1)),
     onDone: () => end(const _Stop(1)),
   );
-  unawaited(_step(vertex, node, line.future).then(end));
+  runZonedGuarded(
+    () => unawaited(_step(vertex, node, line.future).then(end)),
+    (error, stack) => end(_Failed(_failure(error, stack))),
+  );
 
-  switch (await ended.future) {
+  final how = await ended.future;
+  await stopRunning();
+  switch (how) {
     case _Stop(:final exitCode):
-      await stopRunning();
       return exitCode;
     case _Done(:final output):
       if (output != null) stdout.writeln(output);
@@ -92,9 +100,13 @@ Future<_End> _step(
       ),
     });
   } catch (e, stack) {
-    return _Failed('$e\n${'$stack'.trimRight()}');
+    return _Failed(_failure(e, stack));
   }
 }
+
+/// What a failure of the function writes to stderr: [error] and [stack].
+String _failure(Object error, StackTrace stack) =>
+    '$error\n${'$stack'.trimRight()}';
 
 /// How a step ends.
 sealed class _End {
