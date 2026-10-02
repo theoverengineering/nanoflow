@@ -56,8 +56,8 @@ BuiltGraph buildGraph(Graph<Object?> graph) => _Build(chainsOf(graph)).run();
 /// prints it: empty when the graph builds.
 ///
 /// A test that imports the graph checks it with
-/// `expect(graphErrors(review.graph), isEmpty)`, without running the
-/// program. The graph's library is imported with a prefix, `as review`: a
+/// `expect(graphErrors(reviewer.graph), isEmpty)`, without running the
+/// program. The graph's library is imported with a prefix, `as reviewer`: a
 /// node named as a matcher, such as `isEmpty`, would clash with it.
 List<String> graphErrors(Graph<Object?> graph) {
   try {
