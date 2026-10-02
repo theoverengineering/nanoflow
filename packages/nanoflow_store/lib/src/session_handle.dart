@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
@@ -278,10 +279,13 @@ final class SessionHandle {
 
 /// The log of one step's command, open for appending.
 ///
-/// Its file is written in the background, in the order the bytes were added.
-/// No error of the file is thrown, now or later: when the file cannot be
-/// opened, written or closed — its directory is gone, the disk is full —
-/// [failed] completes with why, and the log writes nothing more.
+/// Its file is written in the background, in the order the bytes were added:
+/// what is added while a write is under way waits, and goes in one write
+/// after it, so the writes keep up with bytes that come in many small
+/// chunks. [unwritten] tells how much waits. No error of the file is thrown,
+/// now or later: when the file cannot be opened, written or closed — its
+/// directory is gone, the disk is full — [failed] completes with why, and
+/// the log writes nothing more.
 final class StepLog {
   StepLog._(File file) {
     _writing = _guarded(() async {
@@ -291,8 +295,17 @@ final class StepLog {
 
   RandomAccessFile? _file;
 
-  /// Every write so far, one after another: completes after the last.
+  /// The open, then each write, one after another: completes after the
+  /// last.
   late Future<void> _writing;
+
+  /// What was added and is not being written yet.
+  final _waiting = BytesBuilder(copy: false);
+
+  /// Whether a write of [_waiting] is to come.
+  bool _writeScheduled = false;
+
+  int _unwritten = 0;
 
   final _failed = Completer<FileSystemException>();
 
@@ -302,13 +315,34 @@ final class StepLog {
   /// that failed.
   Future<FileSystemException> get failed => _failed.future;
 
-  /// Adds [bytes] to the end of the log.
+  /// How many of the bytes added so far are not written yet: 0 once the log
+  /// has failed, as it drops them.
+  int get unwritten => _unwritten;
+
+  /// Adds [bytes] to the end of the log. They are not copied: [bytes] must
+  /// not change afterwards.
   void add(List<int> bytes) {
     if (_closed) throw StateError('the log is closed');
-    _writing = _writing.then(
-      (_) =>
-          _failed.isCompleted ? null : _guarded(() => _file!.writeFrom(bytes)),
-    );
+    if (_failed.isCompleted || bytes.isEmpty) return;
+    _waiting.add(bytes);
+    _unwritten += bytes.length;
+    if (_writeScheduled) return;
+    _writeScheduled = true;
+    _writing = _writing.then((_) => _writeWaiting());
+  }
+
+  /// Writes what waits, in one write, until nothing does.
+  Future<void> _writeWaiting() async {
+    while (_waiting.isNotEmpty && !_failed.isCompleted) {
+      final bytes = _waiting.takeBytes();
+      await _guarded(() => _file!.writeFrom(bytes));
+      _unwritten -= bytes.length;
+    }
+    if (_failed.isCompleted) {
+      _waiting.clear();
+      _unwritten = 0;
+    }
+    _writeScheduled = false;
   }
 
   /// Completes once everything added so far is written to the file, or the

@@ -8,6 +8,7 @@ import 'package:nanoflow_store/nanoflow_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import '../support/compiled.dart';
 import '../support/fake_program.dart';
 import '../support/helpers.dart';
 import '../support/sessions.dart';
@@ -119,23 +120,7 @@ Future<int> pidOf(FakeProgram fake, String name) async {
 bool isAlive(int pid) => Process.runSync('kill', ['-0', '$pid']).exitCode == 0;
 
 void main() {
-  setUpAll(() async {
-    final dir = Directory.systemTemp.createTempSync('nanoflow_exe_');
-    addTearDown(() => dir.deleteSync(recursive: true));
-    nanoflowExe = p.join(dir.path, 'nanoflow');
-    // Far longer than a compile takes, and far shorter than the 12 minutes
-    // the test package gives a setUpAll.
-    final compiled = await Process.run(Platform.resolvedExecutable, [
-      'compile',
-      'exe',
-      'bin/nanoflow.dart',
-      '-o',
-      nanoflowExe,
-    ]).timeout(const Duration(minutes: 3));
-    if (compiled.exitCode != 0) {
-      throw StateError('cannot compile nanoflow: ${compiled.stderr}');
-    }
-  });
+  setUpAll(() async => nanoflowExe = await compileNanoflow());
 
   test('SIGINT: exit 130, the step stops without step-finished, and '
       '--resume runs the same step again', () async {

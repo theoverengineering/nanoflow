@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -578,6 +579,38 @@ void main() {
         isA<FileSystemException>().having((e) => e.path, 'path', logFile),
       );
     });
+
+    test('writes what is added while a write is under way in one write, and '
+        'tells how much is not written yet', () async {
+      final handle = await newSession();
+      final run = (await handle.runs()).single;
+      final step = (await handle.steps(run.id)).single;
+      final file = _HeldWrites();
+      final log = IOOverrides.runZoned(
+        () => handle.openLog(run.id, step.id),
+        createFile: (_) => _OpensTo(file),
+      );
+
+      log.add([1]);
+      await pumpEventQueue();
+      expect(file.writes, [
+        [1],
+      ], reason: 'the first write is under way');
+      log
+        ..add([2])
+        ..add([3, 4])
+        ..add([5]);
+      expect(log.unwritten, 5);
+      file.release();
+      await log.flush();
+
+      expect(file.writes, [
+        [1],
+        [2, 3, 4, 5],
+      ]);
+      expect(log.unwritten, 0);
+      await log.close();
+    });
   });
 
   group('a file that does not hold its model', () {
@@ -725,4 +758,44 @@ void main() {
       expect(await log.failed, isA<PathNotFoundException>());
     });
   });
+}
+
+/// A file that opens to [file], whatever its path.
+final class _OpensTo implements File {
+  _OpensTo(this.file);
+
+  final RandomAccessFile file;
+
+  @override
+  Future<RandomAccessFile> open({FileMode mode = FileMode.read}) async => file;
+
+  @override
+  Object? noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// An open file that keeps what each write gave it, and holds every write
+/// until [release].
+final class _HeldWrites implements RandomAccessFile {
+  final writes = <List<int>>[];
+  final _released = Completer<void>();
+
+  /// Lets the writes, held and to come, complete.
+  void release() => _released.complete();
+
+  @override
+  Future<RandomAccessFile> writeFrom(
+    List<int> buffer, [
+    int start = 0,
+    int? end,
+  ]) async {
+    writes.add(buffer.sublist(start, end));
+    await _released.future;
+    return this;
+  }
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Object? noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
