@@ -10,10 +10,17 @@ import 'tail.dart';
 
 /// The `runs` directory of one graph as far as the feed has given it.
 ///
-/// Each [scan] goes through the whole tree once and gives what has appeared
-/// since the scan before. Names that start with `.` are never looked at: the
-/// store builds files and directories under such names and renames them into
-/// place once they are complete.
+/// Each [scan] goes through the tree once and gives what has appeared since
+/// the scan before. Names that start with `.` are never looked at: the store
+/// builds files and directories under such names and renames them into place
+/// once they are complete.
+///
+/// What has ended is not looked at again: nothing is written to a run after
+/// its last event (`run-split`, `run-finished`, `run-failed`), nor to a
+/// session all of whose runs have ended. A run is read once more after the
+/// scan that read its last event, and its session once more after that: the
+/// scan may have listed the run's steps, or the session's runs, before the
+/// engine put in place the last step or the runs its split made.
 final class Scanner {
   Scanner({required this.runsDir, required this.graphName});
 
@@ -32,11 +39,14 @@ final class Scanner {
   /// Paths whose problem has been given as an error: it is given once.
   final Set<String> _reported = {};
 
-  /// Gives to [out] what has appeared since the scan before: for each session
-  /// in name order `session-added` (once), then for each of its runs in name
+  /// Gives to [out] what has appeared since the scan before: for each session,
+  /// newest first, `session-added` (once), then for each of its runs in name
   /// order `run-added` (once), its new steps, its journal's new complete lines
   /// and a `step-changed` for a step that got its `outputId`, then the
   /// session's new documents.
+  ///
+  /// Newest first: a feed of a long history gives first the sessions that
+  /// are likely to be looked at.
   ///
   /// A file that is not there yet is looked for again by the next scan. A
   /// file or directory that cannot be read, or a file that is not its model,
@@ -48,7 +58,7 @@ final class Scanner {
       out,
       () => builtDirs(runsDir, (name) => isSessionDirOf(name, graphName)),
     );
-    for (final dir in sessions ?? const <String>[]) {
+    for (final dir in (sessions ?? const <String>[]).reversed) {
       await _scanSession(dir, out);
     }
   }
@@ -74,6 +84,7 @@ final class Scanner {
 
   Future<void> _scanSession(String dir, EventSink<Change> out) async {
     var session = _sessions[dir];
+    if (session != null && session.ended) return;
     if (session == null) {
       final model = await _readModel(
         p.join(dir, sessionFileName),
@@ -84,7 +95,13 @@ final class Scanner {
       session = _sessions[dir] = _sessionsById[model.id] = _Session(model, dir);
       out.add(SessionAdded(model));
     }
+    // Whether every run had ended before this scan listed them: then the
+    // listing has every run their splits made.
+    final known = session.runs;
+    final runsEnded =
+        known.isNotEmpty && known.values.every((run) => run.ended);
     final runs = await _attempt(dir, out, () => builtDirs(dir));
+    final ended = runsEnded && runs != null && runs.every(known.containsKey);
     for (final runDir in runs ?? const <String>[]) {
       await _scanRun(session, runDir, out);
     }
@@ -102,6 +119,8 @@ final class Scanner {
         );
       }
     }
+    // Documents are written before the events that refer to them.
+    session.ended = ended && documents != null;
   }
 
   Future<void> _scanRun(
@@ -110,6 +129,7 @@ final class Scanner {
     EventSink<Change> out,
   ) async {
     var run = session.runs[dir];
+    if (run != null && run.ended) return;
     if (run == null) {
       final model = await _readModel(
         p.join(dir, runFileName),
@@ -120,6 +140,9 @@ final class Scanner {
       run = session.runs[dir] = _runsById[model.id] = _Run(model, dir);
       out.add(RunAdded(model));
     }
+    // Whether its last event was read before this scan listed its steps:
+    // then the listing has every step it has.
+    final lastRead = run.lastRead;
     final stepsDir = p.join(dir, stepsDirName);
     final steps = await _attempt(stepsDir, out, () => builtDirs(stepsDir));
     for (final stepDir in steps ?? const <String>[]) {
@@ -128,13 +151,20 @@ final class Scanner {
     final lines = await _attempt(run.journal.path, out, run.journal.readLines);
     for (final (:number, :bytes) in lines ?? const <Line>[]) {
       final change = _journalChange(run.run.id, number, bytes);
-      if (change case EventAdded(
-        event: StepFinished(:final stepId, outputId: _?),
-      )) {
-        run.finishedWithOutput.add(stepId);
+      switch (change) {
+        case EventAdded(event: StepFinished(:final stepId, outputId: _?)):
+          run.finishedWithOutput.add(stepId);
+        case EventAdded(event: RunSplit() || RunFinished() || RunFailed()):
+          run.lastRead = true;
+        default:
       }
       out.add(change);
     }
+    run.ended =
+        lastRead &&
+        steps != null &&
+        steps.every(run.steps.containsKey) &&
+        !run.awaitsAnyOutput;
   }
 
   /// Gives a step that is new, or a step given without `outputId` whose
@@ -142,11 +172,7 @@ final class Scanner {
   /// `outputId` after that event is written.
   Future<void> _scanStep(_Run run, String dir, EventSink<Change> out) async {
     final known = run.steps[dir];
-    if (known != null &&
-        (known.step.outputId != null ||
-            !run.finishedWithOutput.contains(known.step.id))) {
-      return;
-    }
+    if (known != null && !run.awaitsOutput(known.step)) return;
     final step = await _readModel(
       p.join(dir, stepFileName),
       Step.fromJson,
@@ -282,6 +308,10 @@ final class _Session {
 
   /// Ids of its documents.
   final Set<String> documents = {};
+
+  /// Whether every run of it has ended, and it has been read since: nothing
+  /// more is written to it.
+  bool ended = false;
 }
 
 /// A run given, with what of it has been given.
@@ -300,6 +330,22 @@ final class _Run {
 
   /// Ids of its steps whose `step-finished` has an `outputId`.
   final Set<String> finishedWithOutput = {};
+
+  /// Whether its last event has been read.
+  bool lastRead = false;
+
+  /// Whether it has been read in full since its last event was: nothing
+  /// more is written to it.
+  bool ended = false;
+
+  /// Whether [step] was given without the `outputId` its `step-finished`
+  /// has: its `step.json` is rewritten with it.
+  bool awaitsOutput(Step step) =>
+      step.outputId == null && finishedWithOutput.contains(step.id);
+
+  /// Whether a step of it [awaitsOutput].
+  bool get awaitsAnyOutput =>
+      steps.values.any((given) => awaitsOutput(given.step));
 }
 
 /// A step given, as it was last given.

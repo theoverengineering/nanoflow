@@ -427,6 +427,127 @@ void main() {
       expect(found.takeWhile((there) => !there), [false]);
     });
 
+    test('gives the newest session first', () async {
+      final runsDir = await newRunsDir();
+      final older = Session(id: newId(), graph: graph);
+      final newer = Session(id: newId(), graph: graph);
+      writeSession(runsDir, older, createdAt: at(0));
+      writeSession(runsDir, newer, createdAt: at(60));
+
+      final feed = Feed(runsDir);
+      await feed.settle();
+
+      expect(feed.changes, [SessionAdded(newer), SessionAdded(older)]);
+    });
+
+    test('reads a run that has ended once more, then no more: nothing is '
+        'written to it after its last event', () async {
+      final runsDir = await newRunsDir();
+      final session = Session(id: newId(), graph: graph);
+      final sessionDir = writeSession(runsDir, session);
+      final run = Run(id: newId(), sessionId: session.id, parentId: null);
+      final step = newStep(run.id);
+      final runDir = writeRun(
+        sessionDir,
+        run,
+        createdAt: at(0),
+        events: [
+          RunStarted(runId: run.id, time: at(0), node: 'collect'),
+          StepStarted(
+            runId: run.id,
+            time: at(1),
+            stepId: step.id,
+            node: 'collect',
+          ),
+          StepFinished(
+            runId: run.id,
+            time: at(2),
+            stepId: step.id,
+            exitCode: 0,
+            outputId: null,
+          ),
+          RunFinished(runId: run.id, time: at(3)),
+        ],
+      );
+      final feed = Feed(runsDir);
+      await feed.next<EventAdded>((change) => change.event is RunFinished);
+
+      // As if the pass that read the last event had listed the steps just
+      // before the engine put the step in place.
+      writeStep(runDir, step, node: 'collect', startedAt: at(1));
+      await feed.next<StepAdded>();
+      await feed.settle();
+      await feed.settle();
+      final mark = feed.changes.length;
+
+      append(runDir, line(RunFinished(runId: run.id, time: at(4))));
+      writeStep(runDir, newStep(run.id), node: 'collect', startedAt: at(4));
+      await feed.settle();
+      await feed.settle();
+
+      expect(feed.since(mark), isEmpty);
+    });
+
+    test('reads a session whose runs have all ended until it has found what '
+        'their split made, then no more', () async {
+      final runsDir = await newRunsDir();
+      final session = Session(id: newId(), graph: graph);
+      final sessionDir = writeSession(runsDir, session);
+      final parent = Run(id: newId(), sessionId: session.id, parentId: null);
+      writeRun(
+        sessionDir,
+        parent,
+        createdAt: at(0),
+        events: [
+          RunStarted(runId: parent.id, time: at(0), node: 'collect'),
+          RunSplit(runId: parent.id, time: at(1)),
+        ],
+      );
+      final feed = Feed(runsDir);
+      await feed.next<EventAdded>((change) => change.event is RunSplit);
+
+      // As if the pass that read run-split had listed the runs just before
+      // the engine put the child in place.
+      final child = Run(
+        id: newId(),
+        sessionId: session.id,
+        parentId: parent.id,
+      );
+      writeRun(
+        sessionDir,
+        child,
+        createdAt: at(1),
+        events: [
+          RunStarted(runId: child.id, time: at(1), node: 'publish'),
+          RunFailed(
+            runId: child.id,
+            time: at(2),
+            stepId: newId(),
+            error: 'exited with code 1',
+          ),
+        ],
+      );
+      await feed.next<EventAdded>((change) => change.event is RunFailed);
+      for (var i = 0; i < 4; i++) {
+        await feed.settle();
+      }
+      final mark = feed.changes.length;
+
+      writeRun(
+        sessionDir,
+        Run(id: newId(), sessionId: session.id, parentId: parent.id),
+        createdAt: at(3),
+      );
+      writeDocument(
+        sessionDir,
+        Document(id: newId(), sessionId: session.id, value: 1),
+      );
+      await feed.settle();
+      await feed.settle();
+
+      expect(feed.since(mark), isEmpty);
+    });
+
     test('is a single-subscription stream', () async {
       final reader = FsReader(runsDir: await newRunsDir(), graphName: 'review');
       final subscription = reader.changes().listen((_) {});

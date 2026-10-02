@@ -239,12 +239,12 @@ final class Feed {
   /// Waits until the feed has given everything the sessions of the graph on
   /// disk hold now.
   ///
-  /// Writes a marker session of the graph created in 2099 and waits for it:
+  /// Writes a marker session of the graph created in 1970 and waits for it:
   /// the scan that finds it has listed the sessions after this call, and went
-  /// through those that sort before the marker first. A second call waits for
-  /// a scan that began after the one that gave the first marker had ended, so
-  /// by then anything a scan gives again, or gives for a directory that sorts
-  /// after the marker, has come too.
+  /// through those that are newer — every other — first. A second call waits
+  /// for a scan that began after the one that gave the first marker had
+  /// ended, so by then anything a scan gives again, or gives for a directory
+  /// older than the marker, has come too.
   Future<void> settle() async {
     final id = newId();
     _markers[id] = false;
@@ -252,7 +252,7 @@ final class Feed {
       reader.runsDir,
       Session(id: id, graph: const {}),
       graphName: reader.graphName,
-      createdAt: DateTime.utc(2099),
+      createdAt: DateTime.utc(1970),
       documents: false,
     );
     await until(() => _markers[id]!);
