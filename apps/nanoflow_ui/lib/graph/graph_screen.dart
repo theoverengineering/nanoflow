@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
@@ -77,6 +78,12 @@ class _GraphScreenState extends State<GraphScreen> {
 
   /// Whether the `Logs` panel is folded to its title.
   bool _logsFolded = false;
+
+  /// How tall the problems over the canvas are; 0 without any.
+  double _problemsHeight = 0;
+
+  /// Where the problems and the session bar float over the canvas.
+  static const _overCanvas = EdgeInsets.fromLTRB(16, 12, 16, 60);
 
   /// What the step details window shows, while it is open: a node, at the
   /// visit of a step or without one.
@@ -195,21 +202,31 @@ class _GraphScreenState extends State<GraphScreen> {
                     now: _clock.now,
                     controller: _canvas,
                     onOpenStep: _openNode,
+                    // The graph is fitted clear of the problems too.
+                    topInset: math.max(
+                      GraphCanvas.sessionBarRoom,
+                      _problemsHeight == 0
+                          ? 0
+                          : _overCanvas.top * 2 + _problemsHeight,
+                    ),
                   ),
                 ),
                 Positioned(
-                  left: 16,
-                  top: 12,
-                  right: 16,
+                  left: _overCanvas.left,
+                  top: _overCanvas.top,
+                  right: _overCanvas.right,
                   child: SessionBar(model: _model, clock: _clock),
                 ),
                 // Clear of the zoom buttons.
-                Positioned(
-                  left: 16,
-                  top: 12,
-                  right: 16,
-                  bottom: 60,
-                  child: GraphProblems(model: _model),
+                Positioned.fill(
+                  child: Padding(
+                    padding: _overCanvas,
+                    child: GraphProblems(
+                      model: _model,
+                      onHeight: (height) =>
+                          setState(() => _problemsHeight = height),
+                    ),
+                  ),
                 ),
               ],
             ),

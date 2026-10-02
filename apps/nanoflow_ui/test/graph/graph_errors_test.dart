@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
@@ -135,6 +138,43 @@ void main() {
       inProblems(find.text('nanoflow not found on PATH — graph not checked')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('the graph is fitted clear of the problems over it, and back '
+      'up once they are gone', (tester) async {
+    final source = await pumpCurrentGraph(
+      tester,
+      current: Graph.fromJson(reviewGraph),
+    );
+    double top() => [
+      for (final node
+          in (reviewGraph['nodes']! as Map<String, Object?>).entries)
+        tester.getRect(find.byKey(NodeTile.keyOf(node.key))).top,
+    ].reduce(math.min);
+    final clear = top();
+
+    source
+      ..errors = errors
+      ..fileMissing = true
+      ..programProblem = const SourceProblem(
+        'nanoflow-yaml exited with code 255',
+        'Unhandled exception:\nFileSystemException: Cannot open file',
+      );
+    await settle(tester);
+    final problems = tester.getRect(
+      find.descendant(
+        of: find.byType(GraphProblems),
+        matching: find.byType(IntrinsicWidth),
+      ),
+    );
+    expect(top(), greaterThan(problems.bottom));
+
+    source
+      ..errors = const []
+      ..fileMissing = false
+      ..programProblem = null;
+    await settle(tester);
+    expect(top(), moreOrLessEquals(clear));
   });
 
   testWidgets('over a session the canvas shows its own graph: the current '

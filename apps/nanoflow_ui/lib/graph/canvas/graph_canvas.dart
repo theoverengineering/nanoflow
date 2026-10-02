@@ -70,7 +70,9 @@ class GraphCanvas extends StatefulWidget {
   /// Opens the details of the step of a node: on a double click on it.
   final ValueChanged<String>? onOpenStep;
 
-  /// The room over the graph that fitting keeps free.
+  /// The room over the graph that fitting keeps free, for what floats over
+  /// the top of the canvas; at most half the canvas. When it changes, the
+  /// graph is fitted again, unless the view has been moved.
   final double topInset;
 
   @override
@@ -144,6 +146,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
       widget.model.addListener(_changed);
       _read();
     }
+    if (old.topInset != widget.topInset && _fitted) _needsFit = true;
   }
 
   @override
@@ -183,7 +186,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
   /// for what floats over it.
   Rect _room(Size size) => Rect.fromLTRB(
     _sideRoom,
-    widget.topInset,
+    math.min(widget.topInset, size.height / 2),
     size.width - _sideRoom,
     size.height - _bottomRoom,
   );

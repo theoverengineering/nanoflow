@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:path/path.dart' as p;
 
 import '../state/graph_model.dart';
@@ -26,10 +28,15 @@ String fileUnavailableDetail(String fileName) =>
 /// session the canvas shows the session's own graph, and nothing is here.
 ///
 /// The text can be selected and copied.
+///
+/// [onHeight] hears how tall they are, 0 when there are none: the canvas
+/// keeps the graph clear of them.
 class GraphProblems extends StatelessWidget {
-  const GraphProblems({super.key, required this.model});
+  const GraphProblems({super.key, required this.model, this.onHeight});
 
   final GraphModel model;
+
+  final ValueChanged<double>? onHeight;
 
   /// How wide the problems get.
   static const _width = 640.0;
@@ -37,55 +44,96 @@ class GraphProblems extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: model,
-    builder: (context, _) {
-      if (!model.selection.currentGraph) return const SizedBox.shrink();
-      final source = model.source;
-      final canvas = model.canvas;
-      final problem = source.programProblem;
-      final checkProblem = source.checkProblem;
-      final banners = [
-        if (source.fileMissing)
-          _Banner(
-            danger: true,
-            title: fileUnavailable,
-            text: fileUnavailableDetail(p.basename(source.file)),
-          ),
-        if (problem != null)
-          _Banner(
-            title: problem.message,
-            code: [if (problem.details.isNotEmpty) problem.details],
-          ),
-        if (checkProblem != null) _Banner(title: checkProblem),
-        if (canvas.errors.isNotEmpty)
-          _Banner(
-            danger: true,
-            title: checkFailed(canvas.errors.length),
-            code: canvas.errors,
-            text: canvas.graph == null ? null : lastValidGraphShown,
-          ),
-      ];
-      if (banners.isEmpty) return const SizedBox.shrink();
-      return Align(
-        alignment: Alignment.topLeft,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: _width),
-          child: SelectionArea(
-            child: SingleChildScrollView(
-              // One width for all, the widest one's.
-              child: IntrinsicWidth(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  spacing: 8,
-                  children: banners,
-                ),
-              ),
+    builder: (context, _) => Align(
+      alignment: Alignment.topLeft,
+      child: _Measured(
+        onHeight: onHeight,
+        child: _problems() ?? const SizedBox.shrink(),
+      ),
+    ),
+  );
+
+  /// The banners, one width for all, the widest one's; `null` when there are
+  /// none.
+  Widget? _problems() {
+    if (!model.selection.currentGraph) return null;
+    final source = model.source;
+    final canvas = model.canvas;
+    final problem = source.programProblem;
+    final checkProblem = source.checkProblem;
+    final banners = [
+      if (source.fileMissing)
+        _Banner(
+          danger: true,
+          title: fileUnavailable,
+          text: fileUnavailableDetail(p.basename(source.file)),
+        ),
+      if (problem != null)
+        _Banner(
+          title: problem.message,
+          code: [if (problem.details.isNotEmpty) problem.details],
+        ),
+      if (checkProblem != null) _Banner(title: checkProblem),
+      if (canvas.errors.isNotEmpty)
+        _Banner(
+          danger: true,
+          title: checkFailed(canvas.errors.length),
+          code: canvas.errors,
+          text: canvas.graph == null ? null : lastValidGraphShown,
+        ),
+    ];
+    if (banners.isEmpty) return null;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: _width),
+      child: SelectionArea(
+        child: SingleChildScrollView(
+          child: IntrinsicWidth(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 8,
+              children: banners,
             ),
           ),
         ),
-      );
-    },
-  );
+      ),
+    );
+  }
+}
+
+/// [child], whose height [onHeight] hears after each layout that changes it.
+class _Measured extends SingleChildRenderObjectWidget {
+  const _Measured({required this.onHeight, required super.child});
+
+  final ValueChanged<double>? onHeight;
+
+  @override
+  _RenderMeasured createRenderObject(BuildContext context) =>
+      _RenderMeasured(onHeight);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderMeasured renderObject) {
+    renderObject.onHeight = onHeight;
+  }
+}
+
+class _RenderMeasured extends RenderProxyBox {
+  _RenderMeasured(this.onHeight);
+
+  ValueChanged<double>? onHeight;
+  double? _told;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final height = child?.size.height ?? 0;
+    if (height == _told) return;
+    _told = height;
+    // Told after the frame: a layout may not change what is being built.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (attached && _told == height) onHeight?.call(height);
+    });
+  }
 }
 
 /// One thing wrong: a dot and a [title] in red when [danger], else amber;

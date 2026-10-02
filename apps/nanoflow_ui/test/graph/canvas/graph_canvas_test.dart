@@ -238,6 +238,47 @@ void main() {
       expect(controller.scale, zoomed);
     });
 
+    testWidgets('fits again under a new top inset, until the view is moved', (
+      tester,
+    ) async {
+      final model = reviewModel();
+      Future<void> pumpInset(double inset) async {
+        await pumpScreen(
+          tester,
+          GraphCanvas(
+            model: model,
+            now: () => Mockup.now,
+            controller: controller,
+            topInset: inset,
+          ),
+          size: reviewCanvas,
+        );
+        await settle(tester);
+      }
+
+      await pumpInset(GraphCanvas.sessionBarRoom);
+      final canvas = tester.getRect(find.byType(GraphCanvas));
+      await pumpInset(200);
+      expect(
+        tester.getRect(tile('publish')).top,
+        greaterThanOrEqualTo(canvas.top + 200),
+      );
+
+      // No more than half the canvas is kept free.
+      await pumpInset(5000);
+      expect(
+        tester.getRect(tile('publish')).top,
+        moreOrLessEquals(canvas.top + canvas.height / 2, epsilon: 20),
+      );
+      expect(tester.getRect(tile('fix')).bottom, lessThan(canvas.bottom));
+
+      await tester.tap(find.byTooltip('Zoom out'));
+      await tester.pump();
+      final view = (controller.scale, controller.offset);
+      await pumpInset(GraphCanvas.sessionBarRoom);
+      expect((controller.scale, controller.offset), view);
+    });
+
     testWidgets('does not make a small graph bigger than drawn', (
       tester,
     ) async {
