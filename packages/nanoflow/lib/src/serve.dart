@@ -53,6 +53,8 @@ import 'watch.dart';
 /// callback registered before `serve`, which runs where it was registered
 /// even when a node function sets it off, such as a `package:logging`
 /// listener set up in `main`: it breaks the data, so have it write to stderr.
+/// So does a `print` in another isolate, as `Isolate.run` runs code: only
+/// the step's own isolate has its `print` caught, so write to stderr there.
 Future<Never> serve<I>(
   List<String> args,
   Graph<void Function(I)> graph, {

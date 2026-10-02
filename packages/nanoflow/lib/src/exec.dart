@@ -24,6 +24,10 @@ final class ExecException implements Exception {
 /// program's stderr goes to the stderr of this process as it arrives: for a
 /// step, that is the step's log.
 ///
+/// Only a program started in the step's own isolate is stopped with the
+/// step: one started in another isolate, as `Isolate.run` runs code,
+/// outlives it. Start programs from the node function itself.
+///
 /// [executable] is a program, never a shell builtin: it is looked up on
 /// `PATH` unless it holds a `/`; a relative path is taken from
 /// [workingDirectory], the current directory by default.
