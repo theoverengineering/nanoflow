@@ -215,6 +215,8 @@ void main() {
       graph: twoSteps,
       startNodes: [(node: 'a', takesInput: false)],
     );
+    // The engine in its own process must get the session's lock.
+    await session.release();
     final id = session.session.id;
     final engine = await EngineProcess.start([
       'run',

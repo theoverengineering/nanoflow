@@ -116,11 +116,14 @@ Future<Outcome> nanoflow(
   return (code: code, out: await engine.out, err: await engine.err);
 }
 
-/// The session [id] that `nanoflow run` made of the graph program in [dir].
+/// The session [id] that `nanoflow run` made of the graph program in [dir],
+/// to read: the handle gives the session's lock up at once, so that an
+/// engine can still drive the session.
 Future<SessionHandle> sessionIn(String dir, String id) async {
   final session = await FsStore(p.join(dir, runsDirName)).openSession(id);
   expect(session, isNotNull, reason: 'no session $id in $dir');
-  return session!;
+  await session!.release();
+  return session;
 }
 
 /// The journal of the run [runId], an event a line: `step-started a`,

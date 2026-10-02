@@ -26,6 +26,8 @@ void main() {
       expect(handle.session, Session(id: sessionId, graph: graph));
       expect(handle.dir, session.path);
       expect(names(session.path), [
+        // The lock the engine that drives the session holds.
+        '.engine.lock',
         matches('^2026-09-20T14-03-11-470-$anId\$'),
         'documents',
         'session.json',
@@ -332,6 +334,49 @@ void main() {
 
       expect(await opened.runs(), runs);
       expect(read(journal), '{"runId":"$runId"');
+    });
+
+    test('refuses a session another process drives, without touching it, '
+        'and opens it once that process is gone', () async {
+      final runsDir = p.join(await tempDir(), 'runs');
+      final engine = await Process.start(Platform.resolvedExecutable, [
+        'run',
+        p.join('test', 'fixtures', 'drive_session.dart'),
+        runsDir,
+      ]);
+      addTearDown(() => engine.kill(ProcessSignal.sigkill));
+      engine.stderr.drain<void>().ignore();
+      final id = await engine.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .first;
+      final session = only(runsDir, 'review-[0-9T-]{19}-($id)');
+      final run = only(session.path, '[0-9T-]{23}-$anId');
+      final journal = p.join(run.path, 'log.jsonl');
+      // The engine is writing an event.
+      File(journal).writeAsStringSync('{"runId":', mode: FileMode.append);
+      final written = read(journal);
+
+      await expectLater(
+        FsStore(runsDir).openSession(id),
+        throwsA(
+          isA<SessionBusyException>()
+              .having((e) => e.sessionId, 'sessionId', id)
+              .having(
+                (e) => '$e',
+                'toString',
+                contains('session $id is being run by another engine'),
+              ),
+        ),
+      );
+      expect(read(journal), written);
+
+      // The system drops the lock of a process that dies.
+      engine.kill(ProcessSignal.sigkill);
+      await engine.exitCode;
+      final opened = await FsStore(runsDir).openSession(id);
+      expect(opened?.session.id, id);
+      expect(read(journal), endsWith('"node":"collect"}\n'));
     });
 
     test('cuts an incomplete last line off each journal, so new events '

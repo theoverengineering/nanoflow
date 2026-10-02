@@ -33,10 +33,13 @@ List<String> names(String dir) =>
     [for (final entity in Directory(dir).listSync()) p.basename(entity.path)]
       ..sort();
 
-/// Every path under [dir] whose name starts with `.`.
+/// Every path under [dir] whose name starts with `.`, but the lock file of
+/// the engine that drives a session: what is left of writes.
 List<String> dotEntries(String dir) => [
   for (final entity in Directory(dir).listSync(recursive: true))
-    if (p.basename(entity.path).startsWith('.')) entity.path,
+    if (p.basename(entity.path) case final name
+        when name.startsWith('.') && name != '.engine.lock')
+      entity.path,
 ];
 
 /// The one entry in [dir] whose name matches [pattern]: its path, and the id

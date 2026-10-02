@@ -24,8 +24,63 @@ Future<int> pidIn(String dir, String name) async {
   return pid;
 }
 
+/// Every file under [dir], by its path relative to [dir], with what it
+/// holds.
+Map<String, String> filesIn(String dir) => {
+  for (final file in Directory(dir).listSync(recursive: true).whereType<File>())
+    p.relative(file.path, from: dir): file.readAsStringSync(),
+};
+
 void main() {
   setUpAll(compileEngine);
+
+  test('a second engine cannot drive a session that an engine still drives: '
+      'its --resume exits with 2 and writes nothing', () async {
+    final dir = copyToTemp([p.join('test', 'fixtures', 'held.dart')]);
+    final program = dartRun('held.dart');
+    final engine = await EngineProcess.start([
+      'run',
+      '--',
+      ...program,
+    ], dir: dir);
+    await pidIn(dir, 'command.pid');
+    final runs = p.join(dir, runsDirName);
+    final id = idOfDirName(p.basename(Directory(runs).listSync().single.path))!;
+    await waitFor(
+      'the held step to write its log',
+      () => filesIn(runs).entries.any(
+        (file) => file.key.endsWith(logFileName) && file.value == 'holding\n',
+      ),
+    );
+    final before = filesIn(runs);
+
+    final second = await nanoflow([
+      'run',
+      '--resume',
+      id,
+      '--',
+      ...program,
+    ], dir: dir);
+    expect(second, (
+      code: 2,
+      out: '',
+      err: 'session $id is being run by another engine\n',
+    ));
+    expect(filesIn(runs), before);
+
+    File(p.join(dir, 'release')).createSync();
+    expect(await engine.exitCode, 0, reason: await engine.err);
+    final session = await sessionIn(dir, id);
+    final [run] = await session.runs();
+    expect(await journal(session, run.id), [
+      'run-started hold',
+      'step-started hold',
+      'step-finished 0',
+      'step-started done',
+      'step-finished 0',
+      'run-finished',
+    ]);
+  });
 
   test('the engine killed with SIGKILL during a step of a Dart graph program: '
       'the step stops with it, and --resume runs the same step again and '

@@ -5,23 +5,26 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
 import 'atomic.dart';
+import 'engine_lock.dart';
 
 const _newline = 0x0a;
 
 /// One session on disk: what the engine writes while it drives the session,
 /// and what it reads back to continue it after a crash (`--resume`).
 ///
-/// Only one engine process works with a session at a time.
+/// Only one engine process works with a session at a time: the handle holds
+/// the session's lock until [release] or the end of the process.
 final class SessionHandle {
-  SessionHandle._(this.session, this.dir, this._clock)
+  SessionHandle._(this.session, this.dir, this._clock, this._lock)
     : _runTimes = _IncreasingTimes(),
       _stepTimes = {};
 
   /// [from] after its directory was renamed to [dir]. The times it has given
-  /// its runs and steps stay taken.
+  /// its runs and steps stay taken, and it keeps its lock.
   SessionHandle._moved(SessionHandle from, this.dir)
     : session = from.session,
       _clock = from._clock,
+      _lock = from._lock,
       _runTimes = from._runTimes,
       _stepTimes = from._stepTimes;
 
@@ -32,6 +35,10 @@ final class SessionHandle {
   final String dir;
 
   final Clock _clock;
+
+  /// The open lock file that keeps other engine processes off the session;
+  /// `null` once released.
+  RandomAccessFile? _lock;
 
   /// Times of the session's runs, and of each run's steps by run id: a
   /// directory's name must sort after its siblings created before it.
@@ -173,6 +180,15 @@ final class SessionHandle {
     return changed;
   }
 
+  /// Gives up the session's lock: another engine process may drive the
+  /// session from now on. Reading through the handle still works; writing
+  /// through it must not be done any more.
+  Future<void> release() async {
+    final lock = _lock;
+    _lock = null;
+    await lock?.close();
+  }
+
   /// Opens the command log of the step [stepId] of the run [runId] for
   /// appending: a step that runs again adds to the log it has.
   StepLog openLog(String runId, String stepId) => StepLog._(
@@ -257,29 +273,46 @@ final class StoreCorruptedException implements Exception {
 }
 
 /// A handle of the session [session] in [dir], for the store that is building
-/// it. Not exported.
-SessionHandle sessionHandleAt(String dir, Session session, Clock clock) =>
-    SessionHandle._(session, dir, clock);
+/// it and holds its [lock]. Not exported.
+SessionHandle sessionHandleAt(
+  String dir,
+  Session session,
+  Clock clock,
+  RandomAccessFile lock,
+) => SessionHandle._(session, dir, clock, lock);
 
 /// [handle] once its session's directory has been renamed to [dir], for the
 /// store that has built it. Not exported.
 SessionHandle movedSessionHandle(SessionHandle handle, String dir) =>
     SessionHandle._moved(handle, dir);
 
-/// A handle of the session in [dir], for the store that is opening it.
+/// A handle of the session [sessionId] in [dir], for the store that is
+/// opening it.
 ///
-/// Cuts an incomplete last line off the journal of each run: the engine died
-/// while writing it, and the next event must start on a line of its own. Not
+/// Takes the session's lock first: throws a [SessionBusyException] when
+/// another engine process holds it, and changes nothing. Then cuts an
+/// incomplete last line off the journal of each run: the engine died while
+/// writing it, and the next event must start on a line of its own. Not
 /// exported.
-Future<SessionHandle> loadSessionHandle(String dir, Clock clock) async {
-  final session = await _readModel(
-    p.join(dir, sessionFileName),
-    Session.fromJson,
-  );
-  for (final run in _builtDirs(dir)) {
-    await _cutIncompleteLine(p.join(run.path, eventsFileName));
+Future<SessionHandle> loadSessionHandle(
+  String dir,
+  String sessionId,
+  Clock clock,
+) async {
+  final lock = await lockSession(dir, sessionId);
+  try {
+    final session = await _readModel(
+      p.join(dir, sessionFileName),
+      Session.fromJson,
+    );
+    for (final run in _builtDirs(dir)) {
+      await _cutIncompleteLine(p.join(run.path, eventsFileName));
+    }
+    return SessionHandle._(session, dir, clock, lock);
+  } catch (_) {
+    await lock.close();
+    rethrow;
   }
-  return SessionHandle._(session, dir, clock);
 }
 
 /// Times from a clock, to the millisecond, each at least a millisecond after

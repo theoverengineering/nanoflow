@@ -18,18 +18,20 @@ import 'engine.dart';
 /// The launch input is read from [stdin] only when a start node takes input,
 /// and is checked by the program's `--input` before the session is created.
 /// A session to resume is found next to the program's graph file; it goes
-/// by the graph it holds, and [stdin] is not read. [stdout] gets the session
-/// id and a newline before the session is driven, and nothing else; [stderr]
-/// gets a line for each event the engine writes, and the `run-started` line
-/// of each run it starts at the run's first step. On resume that line may
-/// come again: the engine that created the run may have printed it.
+/// by the graph it holds, and [stdin] is not read. While the engine drives a
+/// session it holds the session's lock, so that no second engine drives it
+/// too. [stdout] gets the session id and a newline before the session is
+/// driven, and nothing else; [stderr] gets a line for each event the engine
+/// writes, and the `run-started` line of each run it starts at the run's
+/// first step. On resume that line may come again: the engine that created
+/// the run may have printed it.
 ///
 /// Returns 0 when every run ended and none failed, 1 when one failed, and 2
 /// when there was no session to drive: the program gave no graph, the graph
 /// did not pass check (its errors go to [stderr], one per line), there was
-/// no input or `--input` rejected it, or there is no session [resume]. SIGINT
-/// or SIGTERM stops the engine (the session can be resumed): `128 + N` for
-/// signal `N`.
+/// no input or `--input` rejected it, there is no session [resume], or
+/// another engine drives it. SIGINT or SIGTERM stops the engine (the
+/// session can be resumed): `128 + N` for signal `N`.
 Future<int> runRun(
   List<String> program, {
   String? resume,
@@ -42,16 +44,20 @@ Future<int> runRun(
       ? await _createSession(graphProgram, stdin: stdin, stderr: stderr)
       : await _openSession(graphProgram, resume, stderr: stderr);
   if (session == null) return 2;
-  stdout.writeln(session.session.id);
-  await stdout.flush();
-  return _drive(
-    Engine(
-      store: session,
-      graph: Graph.fromJson(session.session.graph),
-      program: graphProgram,
-      progress: stderr,
-    ),
-  );
+  try {
+    stdout.writeln(session.session.id);
+    await stdout.flush();
+    return await _drive(
+      Engine(
+        store: session,
+        graph: Graph.fromJson(session.session.graph),
+        program: graphProgram,
+        progress: stderr,
+      ),
+    );
+  } finally {
+    await session.release();
+  }
 }
 
 /// Creates a session of the graph [program] describes, with the launch input
@@ -107,7 +113,8 @@ Future<SessionHandle?> _createSession(
 }
 
 /// The session [id] in the `runs` next to the graph file of [program]; or
-/// `null`, when there is none, with why on [stderr].
+/// `null`, with why on [stderr], when there is none or another engine drives
+/// it.
 ///
 /// The graph [program] describes now is not read, only its file: the session
 /// goes by the graph it holds.
@@ -124,7 +131,13 @@ Future<SessionHandle?> _openSession(
     return null;
   }
   final runsDir = runsDirOf(p.absolute(file));
-  final session = await FsStore(runsDir).openSession(id);
+  final SessionHandle? session;
+  try {
+    session = await FsStore(runsDir).openSession(id);
+  } on SessionBusyException {
+    stderr.writeln('session $id is being run by another engine');
+    return null;
+  }
   if (session == null) stderr.writeln('no session $id in $runsDir');
   return session;
 }
