@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'terminal.dart';
+
 /// Runs [executable] with [arguments] to the end.
 typedef RunProcess = Future<ProcessResult> Function(
   String executable,
@@ -26,14 +28,15 @@ typedef StartProcess = Future<Process> Function(
 class Shell {
   /// [environment] defaults to the app's own; [run] to [Process.run];
   /// [start] to [Process.start]; [terminal] to whether the app's stdin or
-  /// stdout is a terminal. [timeout] bounds each shell asked for `PATH`.
+  /// stdout is a terminal ([attachedToTerminal]). [timeout] bounds each
+  /// shell asked for `PATH`.
   Shell({
     Map<String, String>? environment,
     RunProcess? run,
     StartProcess? start,
     bool? terminal,
     this.timeout = const Duration(seconds: 5),
-  }) : _terminal = terminal ?? (stdin.hasTerminal || stdout.hasTerminal),
+  }) : _terminal = terminal ?? attachedToTerminal(),
        _environment = environment ?? Platform.environment,
        _run = run ?? Process.run,
        _start = start ?? Process.start;
