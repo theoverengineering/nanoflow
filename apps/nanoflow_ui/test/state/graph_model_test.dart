@@ -180,6 +180,42 @@ void main() {
     });
   });
 
+  group('the step details window', () {
+    test('opens on a node\'s visit and selects the visit shown', () {
+      run((async) {
+        final mockup = Mockup();
+        give(async, changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+        expect(model.visitToOpen('inspect')?.stepId, 'k7f2-inspect-5');
+        expect(model.visitToOpen('publish')?.stepId, 'c3d4-publish-0');
+        expect(model.visitToOpen('discard'), isNull);
+
+        model.showVisit('c3d4-publish-0');
+        expect(
+          (model.selection.runId, model.selection.stepId),
+          ('c3d4-run', 'c3d4-publish-0'),
+        );
+        model.showVisit('nope');
+        expect(model.selection.stepId, 'c3d4-publish-0');
+      });
+    });
+
+    test('shows the selected session\'s visits, or for Current graph the '
+        'node alone', () {
+      run((async) {
+        final mockup = Mockup();
+        give(async, changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+        final shown = model.detailsOf('inspect', 'k7f2-inspect-5', Mockup.now);
+        expect(shown.visitText, 'Visit 2 of 2');
+        expect(shown.description?.run, 'nodes/inspect/run.sh');
+
+        model.selection.showCurrentGraph();
+        expect(model.visitToOpen('inspect'), isNull);
+        final alone = model.detailsOf('inspect', null, Mockup.now);
+        expect(alone.visits, isEmpty);
+      });
+    });
+  });
+
   test('tells its listeners of changes of the feed and the selection', () {
     run((async) {
       give(async, changesOf([Mockup().k7f2]));

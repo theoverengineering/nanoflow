@@ -67,6 +67,17 @@ void main() {
     expect(clockTime(DateTime(2026, 9, 21, 9, 5, 3).toUtc()), '09:05:03');
   });
 
+  test('a time of day to the millisecond is local HH:MM:SS.mmm', () {
+    expect(
+      clockTimeMillis(DateTime(2026, 9, 21, 14, 9, 20, 118).toUtc()),
+      '14:09:20.118',
+    );
+    expect(
+      clockTimeMillis(DateTime(2026, 9, 21, 9, 5, 3, 7).toUtc()),
+      '09:05:03.007',
+    );
+  });
+
   group('a day and time', () {
     final now = DateTime(2026, 9, 21, 16);
 

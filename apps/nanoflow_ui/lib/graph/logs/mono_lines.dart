@@ -21,8 +21,11 @@ typedef TextCut = ({String text, VoidCallback showAll});
 /// built, so a text of a million lines scrolls as one of ten does. Lines do
 /// not wrap: the text is as wide as its [widest] line and scrolls sideways.
 /// It can be selected and copied.
+///
+/// The lines are in [style] on [background], [padding] round them; with
+/// [spanOf], each line in its parts' own colors.
 class MonoLines extends StatefulWidget {
-  const MonoLines({
+  MonoLines({
     super.key,
     required this.count,
     required this.lineAt,
@@ -30,7 +33,11 @@ class MonoLines extends StatefulWidget {
     this.controller,
     this.cursor = false,
     this.cut,
-  });
+    TextStyle? style,
+    this.spanOf,
+    this.background = AppColors.textArea,
+    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+  }) : style = style ?? AppText.textLine;
 
   /// The key of the scrolling list of lines.
   static const linesKey = ValueKey('mono lines');
@@ -57,6 +64,14 @@ class MonoLines extends StatefulWidget {
   /// What is not shown; `null` when all is.
   final TextCut? cut;
 
+  final TextStyle style;
+
+  /// A line as styled parts.
+  final InlineSpan Function(String line)? spanOf;
+
+  final Color background;
+  final EdgeInsets padding;
+
   @override
   State<MonoLines> createState() => _MonoLinesState();
 }
@@ -81,7 +96,7 @@ class _MonoLinesState extends State<MonoLines> {
   double _widthOf(String line, TextScaler scaler) {
     if (line != _measured) {
       final painter = TextPainter(
-        text: TextSpan(text: line, style: AppText.textLine),
+        text: TextSpan(text: line, style: widget.style),
         textDirection: TextDirection.ltr,
         textScaler: scaler,
         maxLines: 1,
@@ -93,6 +108,17 @@ class _MonoLinesState extends State<MonoLines> {
     return _width;
   }
 
+  /// A line, in its parts' colors when there is [MonoLines.spanOf].
+  Widget _line(String line) => switch (widget.spanOf) {
+    final spanOf? => Text.rich(
+      spanOf(line),
+      style: widget.style,
+      maxLines: 1,
+      softWrap: false,
+    ),
+    null => Text(line, style: widget.style, maxLines: 1, softWrap: false),
+  };
+
   @override
   Widget build(BuildContext context) {
     final cut = widget.cut;
@@ -100,10 +126,10 @@ class _MonoLinesState extends State<MonoLines> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (cut != null) _CutNote(cut),
+        if (cut != null) _CutNote(cut, background: widget.background),
         Expanded(
           child: ColoredBox(
-            color: AppColors.textArea,
+            color: widget.background,
             child: LayoutBuilder(
               builder: (context, constraints) => Scrollbar(
                 controller: _lines,
@@ -116,7 +142,10 @@ class _MonoLinesState extends State<MonoLines> {
                     controller: _sideways,
                     scrollDirection: Axis.horizontal,
                     child: SizedBox(
-                      width: math.max(constraints.maxWidth, textWidth + 33),
+                      width: math.max(
+                        constraints.maxWidth,
+                        textWidth + widget.padding.horizontal + 1,
+                      ),
                       height: constraints.maxHeight,
                       child: SelectionArea(
                         child: CustomScrollView(
@@ -124,21 +153,15 @@ class _MonoLinesState extends State<MonoLines> {
                           controller: _lines,
                           slivers: [
                             SliverPadding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
+                              padding: widget.padding,
                               sliver: _Lines(
-                                itemExtent: MonoLines.lineHeight,
+                                itemExtent:
+                                    widget.style.fontSize! *
+                                    widget.style.height!,
                                 delegate: SliverChildBuilderDelegate(
                                   (context, i) => i == widget.count
                                       ? const _Cursor()
-                                      : Text(
-                                          widget.lineAt(i),
-                                          style: AppText.textLine,
-                                          maxLines: 1,
-                                          softWrap: false,
-                                        ),
+                                      : _line(widget.lineAt(i)),
                                   childCount:
                                       widget.count + (widget.cursor ? 1 : 0),
                                 ),
@@ -177,17 +200,18 @@ class _Lines extends SliverFixedExtentList {
 
 /// `Showing the last 1,000 of 52,340 lines` and `Show all`.
 class _CutNote extends StatelessWidget {
-  const _CutNote(this.cut);
+  const _CutNote(this.cut, {required this.background});
 
   final TextCut cut;
+  final Color background;
 
   @override
   Widget build(BuildContext context) => Container(
     key: MonoLines.cutKey,
     height: 26,
     padding: const EdgeInsets.symmetric(horizontal: 16),
-    decoration: const BoxDecoration(
-      color: AppColors.textArea,
+    decoration: BoxDecoration(
+      color: background,
       border: Border(bottom: BorderSide(color: AppColors.divider)),
     ),
     child: Row(
@@ -227,10 +251,6 @@ class _Cursor extends StatelessWidget {
     ),
   );
 }
-
-/// [n] with its thousands apart: `1,500`.
-String thousands(int n) =>
-    n.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+$)'), (_) => ',');
 
 /// [line] as shown: tabs to the next multiple of 8 columns, a carriage
 /// return before the end dropped, and cut at [previewLineLength] unless

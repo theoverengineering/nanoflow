@@ -301,11 +301,13 @@ final class FakeFiles implements StepFiles {
   FakeFiles({
     Map<String, String> logs = const {},
     Map<String, Object?> documents = const {},
+    Map<String, String> stepPaths = const {},
     Map<String, String> logPaths = const {},
     Map<String, String> documentPaths = const {},
     Map<String, Object> logErrors = const {},
   }) : logs = {...logs},
        documents = {...documents},
+       stepPaths = {...stepPaths},
        logPaths = {...logPaths},
        documentPaths = {...documentPaths},
        logErrors = {...logErrors};
@@ -313,6 +315,7 @@ final class FakeFiles implements StepFiles {
   /// What each step's command has written to its log so far.
   final Map<String, String> logs;
   final Map<String, Object?> documents;
+  final Map<String, String> stepPaths;
   final Map<String, String> logPaths;
   final Map<String, String> documentPaths;
   final Map<String, Object> logErrors;
@@ -370,6 +373,9 @@ final class FakeFiles implements StepFiles {
     }
     return documents[documentId];
   }
+
+  @override
+  String? stepPath(String stepId) => stepPaths[stepId];
 
   @override
   String? logPath(String stepId) => logPaths[stepId];

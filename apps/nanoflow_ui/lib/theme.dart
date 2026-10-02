@@ -84,6 +84,28 @@ abstract final class AppColors {
   /// A log or a document: the area it is shown in, its text.
   static const textArea = Color(0xFF1A1B1E);
   static const textAreaText = Color(0xFFC9CACF);
+
+  // The step details window (docs/design/step-details.html).
+
+  /// Round the window, and its `Input` and `Output` columns.
+  static const backdrop = Color(0xFF1C1D20);
+  static const backdropDot = Color(0xFF2C2D32);
+
+  /// Under the window's top bar.
+  static const topBarBorder = Color(0xFF2E2F34);
+
+  /// A node's command, a duration after a time, a note.
+  static const textSubtle = Color(0xFF9A9BA2);
+
+  /// `from fix · 14:08:54`; the keys of JSON.
+  static const link = Color(0xFFB7ABFF);
+
+  /// The `in` and `out` cards.
+  static const typeCard = Color(0xFF232428);
+
+  /// Numbers, and `true`, `false` and `null`, in data.
+  static const jsonNumber = Color(0xFF8FDDB0);
+  static const jsonLiteral = Color(0xFF8CC4F0);
 }
 
 /// The colors a session's status is shown in.
@@ -296,6 +318,69 @@ abstract final class AppText {
   static final textAreaNote = _style(sans, 12, color: AppColors.textMuted);
   static final filePath = _style(mono, 10.5, color: AppColors.textFaint);
   static final fileButton = _style(sans, 11, color: AppColors.textSecondary);
+
+  // The step details window.
+  static final windowNode = _style(
+    sans,
+    15,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
+  static final windowCommand = _style(mono, 11, color: AppColors.textSubtle);
+  static final visitText = _style(sans, 12, color: AppColors.textPrimary);
+  static final windowRun = _style(sans, 12, color: AppColors.textMuted);
+  static final windowRunId = _style(mono, 12, color: AppColors.textPrimary);
+  static final resultChip = _style(sans, 11.5);
+
+  /// `INPUT`, `COMMAND`, `THIS STEP`: 0.09 em apart.
+  static final sectionLabel = _style(
+    sans,
+    11,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 11 * 0.09,
+    color: AppColors.textMuted,
+  );
+  static final toggle = _style(sans, 11.5, color: AppColors.textMuted);
+  static final fromText = _style(sans, 12, color: AppColors.textMuted);
+  static final fromLink = _style(
+    mono,
+    12,
+    fontWeight: FontWeight.w500,
+    color: AppColors.link,
+  );
+  static final typePill = _style(mono, 10.5, color: AppColors.accentText);
+  static final dataName = _style(mono, 12, color: AppColors.textPrimary);
+  static final dataType = _style(mono, 10, color: AppColors.textMuted);
+  static final dataValue = _style(mono, 12, color: AppColors.noteText);
+
+  /// A line of JSON: 12 px at 1.8.
+  static final jsonLine = _style(
+    mono,
+    12,
+    color: AppColors.textAreaText,
+  ).copyWith(height: 1.8);
+  static final commandBox = _style(mono, 12, color: AppColors.textPrimary);
+  static final commandNote = _style(sans, 11.5, color: AppColors.textSubtle);
+  static final commandNoteCode = _style(
+    mono,
+    11.5,
+    color: AppColors.textAreaText,
+  );
+  static final cardType = _style(mono, 11.5, color: AppColors.accentText);
+
+  /// `{ id, path }`: 11 px at 1.6.
+  static final cardFields = _style(
+    mono,
+    11,
+    color: AppColors.textAreaText,
+  ).copyWith(height: 1.6);
+  static final target = _style(sans, 12, color: AppColors.textPrimary);
+  static final outcomeKey = _style(mono, 11.5, color: AppColors.textSecondary);
+  static final factLabel = _style(sans, 12, color: AppColors.textMuted);
+  static final factValue = _style(mono, 12, color: AppColors.textPrimary);
+  static final factNote = _style(sans, 11.5, color: AppColors.textSubtle);
+  static final stepPath = _style(mono, 10.5, color: AppColors.textSubtle);
+  static final outputTab = _style(sans, 12, color: AppColors.textMuted);
 }
 
 /// The app's dark theme.

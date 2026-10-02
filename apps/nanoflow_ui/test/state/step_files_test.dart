@@ -81,6 +81,7 @@ void main() {
     });
     expect(await files.stepLog(sessionId, runId, stepId).first, 'collecting\n');
     expect(files.logPath(stepId), isNull);
+    expect(files.stepPath(stepId), isNull);
 
     final changes = reader.changes().listen(null);
     addTearDown(changes.cancel);
@@ -88,6 +89,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     expect(files.logPath(stepId), p.join(stepDir, logFileName));
+    expect(files.stepPath(stepId), stepDir);
     expect(
       files.documentPath(sessionId, documentId),
       p.join(sessionDir, documentsDirName, documentFileName(documentId)),

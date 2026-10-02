@@ -147,13 +147,13 @@ void main() {
           collapsed: false,
           onToggle: () {},
           onRevealNode: (_) {},
-          onOpenStep: opened.add,
+          onOpenStep: (step) => opened.add(step.stepId),
         ),
       ),
     );
     await settle(tester);
 
     await tester.tap(find.byKey(StepDetailsPane.openKey));
-    expect(opened, ['notify']);
+    expect(opened, ['e5f6-notify-0']);
   });
 }

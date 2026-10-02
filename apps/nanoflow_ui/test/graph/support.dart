@@ -195,11 +195,21 @@ const mockupDocuments = <String, Object?>{
   'verdict-outcome-2': 'accepted',
 };
 
+/// The directory of the second step on `inspect` of [Mockup].
+final inspectStepPath = mockupStepDir(
+  'k7f2-run',
+  0,
+  'inspect',
+  'k7f2-inspect-5',
+  369,
+);
+
 /// The logs and documents of [Mockup] and their files: the step on `notify`
 /// has written [notifyLog] so far.
 FakeFiles mockupFiles() => FakeFiles(
   logs: const {'e5f6-notify-0': notifyLog},
   documents: mockupDocuments,
+  stepPaths: {'k7f2-inspect-5': inspectStepPath},
   logPaths: {'e5f6-notify-0': notifyLogPath},
   documentPaths: {
     for (final id in mockupDocuments.keys) id: mockupDocumentPath(id),

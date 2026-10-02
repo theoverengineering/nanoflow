@@ -264,6 +264,32 @@ void main() {
       expect(selection.following, isTrue);
     });
 
+    test('a visit in the step details window selects its step in the '
+        'selected run when that run shows it', () {
+      final mockup = Mockup();
+      selection.showSession(mockup.session);
+      selection.selectVisit(mockup.session, 'k7f2-run', 'k7f2-inspect-2');
+      expect(
+        (selection.runId, selection.stepId, selection.following),
+        ('e5f6-run', 'k7f2-inspect-2', false),
+      );
+    });
+
+    test('a visit the selected run does not show selects its own run', () {
+      final mockup = Mockup();
+      selection.showSession(mockup.session);
+      notified = 0;
+      selection.selectVisit(mockup.session, 'c3d4-run', 'c3d4-publish-0');
+      expect(notified, 1);
+      expect(
+        (selection.runId, selection.stepId, selection.following),
+        ('c3d4-run', 'c3d4-publish-0', true),
+      );
+      // The choice of the run stays as new data comes.
+      selection.update([mockup.session]);
+      expect(selection.runId, 'c3d4-run');
+    });
+
     test('without steps of the run on it does nothing', () {
       final mockup = Mockup();
       selection.showSession(mockup.session);

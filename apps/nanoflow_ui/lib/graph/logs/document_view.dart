@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../state/step_files.dart';
+import '../../state/texts.dart' show thousands;
 import '../../theme.dart';
 import 'mono_lines.dart';
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../state/step_details.dart';
 import '../../state/step_files.dart';
+import '../../state/texts.dart' show thousands;
 import '../../theme.dart';
 import 'document_view.dart' show TabNote;
 import 'mono_lines.dart';

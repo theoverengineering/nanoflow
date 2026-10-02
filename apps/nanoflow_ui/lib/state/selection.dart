@@ -96,15 +96,24 @@ class Selection extends ChangeNotifier {
 
   /// Selects the step [stepId] of the selected run; following goes on only
   /// when it is the run's last step.
-  void selectStep(SessionData session, String stepId) => _change(() {
-    _sessionChosen = true;
-    _runChosen = true;
-    _stepId = stepId;
-    final runId = _runId;
-    _following =
-        runId != null &&
-        stepsOfRun(session, runId).lastOrNull?.stepId == stepId;
-  });
+  void selectStep(SessionData session, String stepId) =>
+      _change(() => _selectStep(session, stepId));
+
+  /// Selects the step [stepId] of the run [runId], a visit the step details
+  /// window shows: among the selected run's steps when that run shows it,
+  /// else in its own run [runId].
+  void selectVisit(SessionData session, String runId, String stepId) =>
+      _change(() {
+        final selected = _runId;
+        if (selected == null ||
+            stepsOfRun(
+              session,
+              selected,
+            ).every((step) => step.stepId != stepId)) {
+          _runId = runId;
+        }
+        _selectStep(session, stepId);
+      });
 
   /// Selects the last step on [node] among the selected run's steps,
   /// inherited ones too; nothing happens when there is none.
@@ -116,6 +125,16 @@ class Selection extends ChangeNotifier {
       runId,
     ).where((step) => step.node == node).lastOrNull;
     if (step != null) selectStep(session, step.stepId);
+  }
+
+  void _selectStep(SessionData session, String stepId) {
+    _sessionChosen = true;
+    _runChosen = true;
+    _stepId = stepId;
+    final runId = _runId;
+    _following =
+        runId != null &&
+        stepsOfRun(session, runId).lastOrNull?.stepId == stepId;
   }
 
   void _showCurrentGraph() {

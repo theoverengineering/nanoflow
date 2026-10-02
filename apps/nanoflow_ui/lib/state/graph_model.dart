@@ -11,6 +11,9 @@ import 'selection.dart';
 import 'session_feed.dart';
 import 'session_view.dart';
 import 'step_files.dart';
+import 'visit_details.dart';
+import 'visits.dart' as visits show visitToOpen;
+import 'visits.dart' show Visit, visitOf;
 
 /// The graph the canvas shows (docs/ui-spec.md «Что это»: «Граф двух
 /// видов»).
@@ -203,6 +206,38 @@ class GraphModel extends ChangeNotifier {
     final session = selectedSession;
     if (session != null) selection.clickNode(session, node);
   }
+
+  /// The visit the step details window opens on for a double click on
+  /// [node]: the node's last step among the selected run's steps, else its
+  /// latest visit in the selected session; `null` when it has none, and for
+  /// `Current graph`.
+  Visit? visitToOpen(String node) {
+    final session = selectedSession;
+    return session == null
+        ? null
+        : visits.visitToOpen(session, selection.runId, node);
+  }
+
+  /// Selects the step [stepId] of the selected session, a visit the step
+  /// details window shows: closed, the window leaves the canvas and `Logs`
+  /// on it.
+  void showVisit(String stepId) {
+    final session = selectedSession;
+    if (session == null) return;
+    final visit = visitOf(session, stepId);
+    if (visit != null) selection.selectVisit(session, visit.runId, stepId);
+  }
+
+  /// The step details window on [node] of the graph on the canvas, at the
+  /// visit of the step [stepId] of the selected session, at [now].
+  VisitDetails detailsOf(String node, String? stepId, DateTime now) =>
+      visitDetails(
+        session: selectedSession,
+        graph: canvas.graph,
+        node: node,
+        stepId: stepId,
+        now: now,
+      );
 
   void _fed() {
     _feeding = true;

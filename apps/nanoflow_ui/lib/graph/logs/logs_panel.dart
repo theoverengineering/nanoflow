@@ -48,8 +48,8 @@ class LogsPanel extends StatelessWidget {
   /// Brings the node of a clicked step into view on the canvas.
   final ValueChanged<String> onRevealNode;
 
-  /// Opens the step details window for a node: `Open`.
-  final ValueChanged<String>? onOpenStep;
+  /// Opens the step details window on the selected step: `Open`.
+  final ValueChanged<StepDetails>? onOpenStep;
 
   static const titleKey = ValueKey('logs title');
   static const toggleKey = ValueKey('logs toggle');

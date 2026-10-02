@@ -35,6 +35,10 @@ String clockTime(DateTime t) {
   return '${_two(local.hour)}:${_two(local.minute)}:${_two(local.second)}';
 }
 
+/// The local time of day of [t] to the millisecond: `14:09:20.118`.
+String clockTimeMillis(DateTime t) =>
+    '${clockTime(t)}.${t.millisecond.toString().padLeft(3, '0')}';
+
 /// The local day and time of [t] as seen at [now]: `Today · 14:03:11`,
 /// `Yesterday · 19:12:55`, `Sep 18 · 16:05:33`, and for another year
 /// `Sep 18, 2025 · 16:05:33`.
@@ -58,6 +62,10 @@ String dayAndTime(DateTime t, DateTime now) {
   }
   return '$date · ${clockTime(local)}';
 }
+
+/// [n] with its thousands apart: `1,500`.
+String thousands(int n) =>
+    n.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+$)'), (_) => ',');
 
 /// [n] [noun]s: `1 run`, `3 runs`.
 String count(int n, String noun) => n == 1 ? '1 $noun' : '$n ${noun}s';

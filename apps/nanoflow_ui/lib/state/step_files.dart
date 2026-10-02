@@ -2,7 +2,7 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 
 /// What the details of a step read from the storage, on request: the step's
 /// log as it grows, the values of its documents, and the files they are in
-/// (docs/ui-spec.md «Logs»).
+/// (docs/ui-spec.md «Logs», «Окно деталей шага»).
 abstract interface class StepFiles {
   /// The log of the step [stepId] of the run [runId]: the text written so
   /// far, then what is appended, until cancelled.
@@ -10,6 +10,10 @@ abstract interface class StepFiles {
 
   /// The value of the document [documentId].
   Future<Object?> documentValue(String sessionId, String documentId);
+
+  /// The directory of the step [stepId]; `null` while it is not known, and
+  /// for a storage without files.
+  String? stepPath(String stepId);
 
   /// The file of the step [stepId]'s log; `null` while it is not known, and
   /// for a storage without files.
@@ -33,6 +37,9 @@ final class ReaderFiles implements StepFiles {
   @override
   Future<Object?> documentValue(String sessionId, String documentId) =>
       _reader.documentValue(sessionId, documentId);
+
+  @override
+  String? stepPath(String stepId) => _reader.stepPath(stepId);
 
   @override
   String? logPath(String stepId) => _reader.logPath(stepId);

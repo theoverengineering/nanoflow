@@ -39,8 +39,8 @@ class StepDetailsPane extends StatefulWidget {
   /// The graph file: the paths of files are shown from its directory.
   final String graphFile;
 
-  /// Opens the step details window for the node of the step.
-  final ValueChanged<String>? onOpenStep;
+  /// Opens the step details window on the step.
+  final ValueChanged<StepDetails>? onOpenStep;
 
   static Key tabKey(StepTab tab) => ValueKey(('step tab', tab));
   static const headerKey = ValueKey('step details header');
@@ -141,7 +141,7 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
           tab: _tab,
           following: _following,
           onTab: _open,
-          onOpen: () => widget.onOpenStep?.call(step.node),
+          onOpen: () => widget.onOpenStep?.call(step),
         ),
         Expanded(child: _body()),
         if (path != null)

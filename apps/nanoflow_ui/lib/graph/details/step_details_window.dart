@@ -1,0 +1,546 @@
+import 'dart:math' as math;
+import 'dart:ui' show PointMode;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' show StepStatus;
+
+import '../../platform/shell.dart';
+import '../../state/clock.dart';
+import '../../state/graph_model.dart';
+import '../../state/texts.dart' show shortId;
+import '../../state/visit_details.dart';
+import '../../state/visits.dart';
+import '../../theme.dart';
+import '../../widgets/clickable.dart';
+import '../../widgets/icons.dart';
+import '../../widgets/spinner.dart';
+import 'input_column.dart';
+import 'node_column.dart';
+import 'output_column.dart';
+
+/// The step details window (docs/ui-spec.md «Окно деталей шага»), over the
+/// whole graph screen, the dotted backdrop round it: one visit to the node
+/// [node] — the step [stepId] — or, without one, the node's description
+/// alone.
+///
+/// The top bar has `Back to canvas`, the node's icon, name and command, the
+/// switcher `Visit 2 of 2` through every visit to the node in the selected
+/// session, the visit's run, how the step went, and close; Esc closes too.
+/// Under it, the columns `Input`, the node, `Output`. Showing another visit
+/// is [onVisit]: the graph screen selects it, so the canvas and `Logs` are
+/// on it once the window closes.
+class StepDetailsWindow extends StatefulWidget {
+  const StepDetailsWindow({
+    super.key,
+    required this.model,
+    required this.clock,
+    required this.shell,
+    required this.graphFile,
+    required this.node,
+    required this.stepId,
+    required this.onVisit,
+    required this.onClose,
+  });
+
+  final GraphModel model;
+  final LiveClock clock;
+  final Shell shell;
+
+  /// The graph file: paths are shown from its directory.
+  final String graphFile;
+
+  final String node;
+
+  /// The step of the visit shown; `null` for the node's description alone.
+  final String? stepId;
+
+  final ValueChanged<Visit> onVisit;
+  final VoidCallback onClose;
+
+  static const topBarKey = ValueKey('details top bar');
+  static const backKey = ValueKey('details back');
+  static const closeKey = ValueKey('details close');
+  static const previousKey = ValueKey('previous visit');
+  static const nextKey = ValueKey('next visit');
+
+  /// Round the window, the graph screen's dots show: 40 px at the sides, 36
+  /// at the top and the bottom.
+  static const margin = EdgeInsets.symmetric(horizontal: 40, vertical: 36);
+
+  @override
+  State<StepDetailsWindow> createState() => _StepDetailsWindowState();
+}
+
+class _StepDetailsWindowState extends State<StepDetailsWindow> {
+  final _focus = FocusNode(debugLabel: 'step details window');
+
+  @override
+  void initState() {
+    super.initState();
+    // Whatever had the keyboard, Esc is the window's now.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _key(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
+      widget.onClose();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    focusNode: _focus,
+    autofocus: true,
+    onKeyEvent: _key,
+    child: CustomPaint(
+      painter: const _BackdropPainter(),
+      child: Padding(
+        padding: StepDetailsWindow.margin,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.panel,
+            border: Border.all(color: AppColors.controlBorder),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x8C000000),
+                offset: Offset(0, 24),
+                blurRadius: 60,
+              ),
+            ],
+          ),
+          // Inside the border, as CSS lays out a box's content.
+          child: Padding(
+            padding: const EdgeInsets.all(1),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: ListenableBuilder(
+                listenable: Listenable.merge([widget.model, widget.clock]),
+                builder: (context, _) => _window(
+                  widget.model.detailsOf(
+                    widget.node,
+                    widget.stepId,
+                    widget.clock.now(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _window(VisitDetails details) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _TopBar(
+        details: details,
+        onVisit: widget.onVisit,
+        onClose: widget.onClose,
+      ),
+      Expanded(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // The mockup's 420, 520 and 418 in its 1358 inside the border:
+            // the node column no wider, the others sharing the rest so.
+            final width = constraints.maxWidth;
+            final node = (width * 520 / 1358).clamp(0.0, 520.0);
+            final side = (width - node) * 420 / 838;
+            final files = widget.model.files;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: side,
+                  child: ColoredBox(
+                    color: AppColors.backdrop,
+                    child: InputColumn(
+                      details: details,
+                      files: files,
+                      shell: widget.shell,
+                      graphFile: widget.graphFile,
+                      onVisit: widget.onVisit,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: node,
+                  child: NodeColumn(
+                    details: details,
+                    files: files,
+                    shell: widget.shell,
+                    graphFile: widget.graphFile,
+                  ),
+                ),
+                Expanded(
+                  child: ColoredBox(
+                    color: AppColors.backdrop,
+                    child: OutputColumn(
+                      details: details,
+                      files: files,
+                      shell: widget.shell,
+                      graphFile: widget.graphFile,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    ],
+  );
+}
+
+/// `Back to canvas`, the node, the visit switcher and the run, how the step
+/// went, close.
+class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.details,
+    required this.onVisit,
+    required this.onClose,
+  });
+
+  final VisitDetails details;
+  final ValueChanged<Visit> onVisit;
+  final VoidCallback onClose;
+
+  /// The widest the node's name and command get before they are cut: a
+  /// quarter of the bar, and no more than this.
+  static const _nameWidth = 320.0;
+
+  /// Shows [visit] on a click; nothing without one.
+  VoidCallback? _show(Visit? visit) =>
+      visit == null ? null : () => onVisit(visit);
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: StepDetailsWindow.topBarKey,
+    height: 56,
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: const BoxDecoration(
+      border: Border(bottom: BorderSide(color: AppColors.topBarBorder)),
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) => _row(
+        context,
+        nameWidth: math.min(constraints.maxWidth / 4, _nameWidth),
+      ),
+    ),
+  );
+
+  Widget _row(BuildContext context, {required double nameWidth}) {
+    final visit = details.visit;
+    final description = details.description;
+    final result = details.result;
+    return Row(
+      spacing: 14,
+      children: [
+        Clickable(
+          key: StepDetailsWindow.backKey,
+          onTap: onClose,
+          child: _Button(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 7,
+              children: [
+                const ChevronIcon(size: 12, color: AppColors.textSecondary),
+                Text('Back to canvas', style: AppText.button),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(
+          width: 1,
+          height: 24,
+          child: ColoredBox(color: AppColors.panelBorder),
+        ),
+        _NodeBadge(fork: description?.fork ?? false, status: result?.status),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: nameWidth),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 1,
+            children: [
+              Text(
+                details.node,
+                style: AppText.windowNode,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (description != null)
+                Text(
+                  description.run,
+                  style: AppText.windowCommand,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
+          ),
+        ),
+        const Spacer(),
+        if (visit != null) ...[
+          _VisitSwitcher(
+            number: details.index! + 1,
+            count: details.visits.length,
+            onPrevious: _show(details.previous),
+            onNext: _show(details.next),
+          ),
+          Tooltip(
+            message: visit.runId,
+            child: Text.rich(
+              TextSpan(
+                text: 'run ',
+                children: [
+                  TextSpan(
+                    text: shortId(visit.runId),
+                    style: AppText.windowRunId,
+                  ),
+                ],
+              ),
+              style: AppText.windowRun,
+            ),
+          ),
+        ],
+        const Spacer(),
+        if (result != null) _ResultChip(result),
+        Clickable(
+          key: StepDetailsWindow.closeKey,
+          onTap: onClose,
+          child: const _Button(
+            width: 30,
+            height: 30,
+            radius: 7,
+            child: CloseIcon(size: 11, color: AppColors.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A button's box: `Back to canvas`, close.
+class _Button extends StatelessWidget {
+  const _Button({
+    required this.child,
+    this.padding,
+    this.width,
+    this.height,
+    this.radius = 7,
+  });
+
+  final Widget child;
+  final EdgeInsets? padding;
+  final double? width;
+  final double? height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: width,
+    height: height,
+    padding: padding,
+    alignment: width == null ? null : Alignment.center,
+    decoration: BoxDecoration(
+      color: AppColors.control,
+      border: Border.all(color: AppColors.controlBorder),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+    child: child,
+  );
+}
+
+/// The node's icon in a tile framed in the color of how the step went.
+class _NodeBadge extends StatelessWidget {
+  const _NodeBadge({required this.fork, required this.status});
+
+  final bool fork;
+
+  /// `null` for the node's description alone.
+  final StepStatus? status;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 32,
+    height: 32,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: AppColors.tile,
+      border: Border.all(
+        color: status?.color ?? AppColors.tileBorder,
+        width: 1.5,
+      ),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: NodeIcon(
+      fork: fork,
+      size: 18,
+      color: AppColors.textAreaText,
+      strokeWidth: 2,
+    ),
+  );
+}
+
+/// `‹ Visit 2 of 2 ›`: a chevron without a visit that way is dim and does
+/// nothing.
+class _VisitSwitcher extends StatelessWidget {
+  const _VisitSwitcher({
+    required this.number,
+    required this.count,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final int number;
+  final int count;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  Widget _arrow(Key key, VoidCallback? onTap, {required bool right}) {
+    final icon = SizedBox(
+      key: key,
+      width: 26,
+      height: 26,
+      child: Center(
+        child: ChevronIcon(
+          size: 12,
+          right: right,
+          color: onTap == null ? AppColors.separator : AppColors.textSecondary,
+        ),
+      ),
+    );
+    return onTap == null ? icon : Clickable(onTap: onTap, child: icon);
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(3),
+    decoration: BoxDecoration(
+      color: AppColors.card,
+      border: Border.all(color: AppColors.panelBorder),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 2,
+      children: [
+        _arrow(StepDetailsWindow.previousKey, onPrevious, right: false),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text.rich(
+            TextSpan(
+              text: 'Visit ',
+              children: [
+                TextSpan(
+                  text: '$number',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                TextSpan(text: ' of $count'),
+              ],
+            ),
+            style: AppText.visitText,
+          ),
+        ),
+        _arrow(StepDetailsWindow.nextKey, onNext, right: true),
+      ],
+    ),
+  );
+}
+
+/// `exit 0 · 4m 02s` in green; failed in red, running in amber.
+class _ResultChip extends StatelessWidget {
+  const _ResultChip(this.result);
+
+  final StepResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final (surface, border, text) = switch (result.status) {
+      StepStatus.finished => (
+        AppColors.finishedSurface,
+        AppColors.finishedBorder,
+        AppColors.finishedText,
+      ),
+      StepStatus.running => (
+        AppColors.runningSurface,
+        AppColors.runningBorder,
+        AppColors.running,
+      ),
+      StepStatus.failed => (
+        AppColors.dangerSurface,
+        AppColors.dangerBorder,
+        AppColors.dangerText,
+      ),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 7,
+        children: [
+          switch (result.status) {
+            StepStatus.finished => const CheckIcon(
+              size: 10,
+              color: AppColors.finished,
+              strokeWidth: 1.9,
+            ),
+            StepStatus.running => const Spinner(size: 10, strokeWidth: 2.6),
+            StepStatus.failed => const CloseIcon(
+              size: 9,
+              color: AppColors.failed,
+            ),
+          },
+          Text(result.text, style: AppText.resultChip.copyWith(color: text)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The window's backdrop: the canvas's dots, dimmed, 22 px apart.
+class _BackdropPainter extends CustomPainter {
+  const _BackdropPainter();
+
+  static const _cell = 22.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = AppColors.backdrop);
+    // A dot in the middle of each cell, as the mockup's CSS grid has them.
+    final dots = [
+      for (var x = _cell / 2; x < size.width; x += _cell)
+        for (var y = _cell / 2; y < size.height; y += _cell) Offset(x, y),
+    ];
+    canvas.drawPoints(
+      PointMode.points,
+      dots,
+      Paint()
+        ..color = AppColors.backdropDot
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BackdropPainter old) => false;
+}
