@@ -11,12 +11,14 @@ typedef RunProcess = Future<ProcessResult> Function(
   List<String> arguments,
 );
 
-/// Starts [executable] with [arguments] and leaves it running.
+/// Starts [executable] with [arguments] and leaves it running, as
+/// [Process.start] does; [mode] is [ProcessStartMode.normal] when not given.
 typedef StartProcess = Future<Process> Function(
   String executable,
   List<String> arguments, {
   String? workingDirectory,
   Map<String, String>? environment,
+  ProcessStartMode mode,
 });
 
 /// What the app asks of macOS: the user's `PATH`, Finder, the text editor and
@@ -52,8 +54,8 @@ class Shell {
   /// `~/.pub-cache/bin` usually goes; when that fails, as a login shell only,
   /// `$SHELL -l -c …`; when that fails too, the app's own `PATH`. The shell
   /// prints `PATH` on a line after [_marker], so whatever the profile prints
-  /// around it does not matter. An app attached to a terminal uses its own
-  /// `PATH` at once: it is the user's.
+  /// around it does not matter. An app whose stdin or stdout is a terminal
+  /// uses its own `PATH` at once: it was started from the user's shell.
   Future<String> path() => _path ??= _userPath();
 
   /// What the shell prints in front of `PATH`.
@@ -62,8 +64,8 @@ class Shell {
   Future<String> _userPath() async {
     final fallback = _environment['PATH'] ?? '';
     final shell = _environment['SHELL'] ?? '';
-    // Started from a terminal (`flutter run`), the app has the user's PATH
-    // already, and an interactive shell could take the terminal over.
+    // An app whose stdin or stdout is a terminal was started from the
+    // user's shell and has its PATH already.
     if (_terminal || shell.isEmpty) return fallback;
     for (final flags in const [
       ['-i', '-l'],
@@ -79,6 +81,11 @@ class Shell {
   ///
   /// Waits at most [timeout] in all: a profile may hang, or leave a program
   /// running that holds the shell's output open after the shell has exited.
+  ///
+  /// The shell runs in a session of its own, without a controlling terminal:
+  /// an app started by `flutter run` has the terminal it was run from, even
+  /// with its stdio piped, and an interactive zsh would make itself the
+  /// terminal's foreground and leave it to a group that is gone.
   Future<String?> _askShell(String shell, List<String> flags) async {
     final Process process;
     try {
@@ -86,7 +93,7 @@ class Shell {
         ...flags,
         '-c',
         'printf "\\n$_marker%s\\n" "\$PATH"',
-      ]);
+      ], mode: ProcessStartMode.detachedWithStdio);
     } on ProcessException {
       return null;
     }

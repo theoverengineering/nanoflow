@@ -104,6 +104,40 @@ eval "\$3"''');
       expect(calls.existsSync(), isFalse);
     });
 
+    test('asks the shells in a session of their own, so that an interactive '
+        'shell cannot take over the terminal the app runs in', () async {
+      final modes = <ProcessStartMode>[];
+      final shell = Shell(
+        terminal: false,
+        environment: {
+          'SHELL': loginShell('/login/bin', interactive: false),
+          'PATH': '/usr/bin',
+        },
+        start:
+            (
+              executable,
+              arguments, {
+              workingDirectory,
+              environment,
+              mode = ProcessStartMode.normal,
+            }) {
+              modes.add(mode);
+              return Process.start(
+                executable,
+                arguments,
+                workingDirectory: workingDirectory,
+                environment: environment,
+                mode: mode,
+              );
+            },
+      );
+      expect(await shell.path(), '/login/bin');
+      expect(modes, [
+        ProcessStartMode.detachedWithStdio,
+        ProcessStartMode.detachedWithStdio,
+      ]);
+    });
+
     test('is resolved once', () async {
       final calls = File('${tmp.path}/calls');
       final shell = Shell(
@@ -264,15 +298,23 @@ eval "\$3"''');
       final started = <Object?>[];
       final shell = Shell(
         environment: {'PATH': '/login/bin'},
-        start: (executable, arguments, {workingDirectory, environment}) {
-          started.addAll([
-            executable,
-            arguments.skip(2).toList(),
-            workingDirectory,
-            environment,
-          ]);
-          return Process.start('/bin/echo', const []);
-        },
+        start:
+            (
+              executable,
+              arguments, {
+              workingDirectory,
+              environment,
+              mode = ProcessStartMode.normal,
+            }) {
+              started.addAll([
+                executable,
+                arguments.skip(2).toList(),
+                workingDirectory,
+                environment,
+                mode,
+              ]);
+              return Process.start('/bin/echo', const []);
+            },
       );
       final process = await shell.start('/opt/bin/nanoflow-yaml', [
         'review.yaml',
@@ -285,6 +327,7 @@ eval "\$3"''');
         ['sh', '/opt/bin/nanoflow-yaml', 'review.yaml', '--graph', '--watch'],
         '/Users/me/review',
         {'PATH': '/login/bin'},
+        ProcessStartMode.normal,
       ]);
     });
 
