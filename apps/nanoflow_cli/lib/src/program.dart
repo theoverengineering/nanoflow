@@ -18,6 +18,15 @@ final class GraphProgramException implements Exception {
   String toString() => 'GraphProgramException: $message';
 }
 
+/// A graph program could not be started at all.
+final class GraphProgramStartException extends GraphProgramException {
+  GraphProgramStartException(String executable, this.reason)
+    : super('failed to start $executable: $reason');
+
+  /// Why, in the words of the system: `No such file or directory`.
+  final String reason;
+}
+
 /// A graph program: the command that `run` and `check` get after `--`.
 ///
 /// It runs in the current directory with the environment of this process.
@@ -101,16 +110,14 @@ final class GraphProgram {
   /// Starts `--call <node>`: one step of [node]. Its stdin, stdout and
   /// stderr are the caller's to handle.
   ///
-  /// Throws a [GraphProgramException] when the program does not start.
+  /// Throws a [GraphProgramStartException] when the program does not start.
   Future<Process> startCall(String node) => _start(['--call', node]);
 
   Future<Process> _start(List<String> call) async {
     try {
       return await Process.start(command.first, [...command.skip(1), ...call]);
     } on ProcessException catch (e) {
-      throw GraphProgramException(
-        'failed to start ${command.first}: ${e.message}',
-      );
+      throw GraphProgramStartException(command.first, e.message);
     }
   }
 }

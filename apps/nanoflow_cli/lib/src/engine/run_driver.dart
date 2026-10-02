@@ -76,23 +76,28 @@ final class RunDriver {
     required String? carried,
   }) async {
     var step = first;
-    var name = node;
+    var stepNode = _session.graph[node]!;
     var data = carried;
     while (true) {
-      final node = _session.graph[name]!;
       if (!await _session.record(
         StepStarted(
           runId: _runId,
           time: _session.clock(),
           stepId: step.id,
-          node: name,
+          node: stepNode.name,
         ),
       )) {
         return;
       }
-      final end = await _call(step, node);
+      final CallEnd? end;
+      try {
+        end = await _call(step, stepNode);
+      } on GraphProgramStartException catch (e) {
+        // The step never ran: no `step-finished`.
+        return _fail(step, 'cannot start the graph program: ${e.reason}');
+      }
       if (end == null) return;
-      final (:error, :printed) = _judge(node, end);
+      final (:error, :printed) = _judge(stepNode, end);
       // The output first, then the event that refers to it, then the step.
       final outputId = printed == null
           ? null
@@ -105,15 +110,15 @@ final class RunDriver {
           exitCode: end.exitCode,
           outputId: outputId,
         ),
-        node: name,
+        node: stepNode.name,
       )) {
         return;
       }
       if (outputId != null) step = await _store.setStepOutput(step, outputId);
       if (error != null) return _fail(step, error);
 
-      data = carriedAfter(node, carried: data, outputId: outputId);
-      switch (_route(node, printed)) {
+      data = carriedAfter(stepNode, carried: data, outputId: outputId);
+      switch (_route(stepNode, printed)) {
         case RouteMissing(:final outcome):
           return _fail(step, 'no target for outcome ${jsonEncode(outcome)}');
         case RouteEnd():
@@ -125,19 +130,21 @@ final class RunDriver {
         case RouteTo(:final target) when target.isList:
           return _split(target.names, data);
         case RouteTo(:final target):
-          name = target.names.single;
+          stepNode = _session.graph[target.names.single]!;
       }
       if (_session.stopping) return;
       step = await _store.createStep(
         runId: _runId,
-        node: name,
-        inputId: inputIdOf(_session.graph[name]!, data),
+        node: stepNode.name,
+        inputId: inputIdOf(stepNode, data),
       );
     }
   }
 
   /// Runs the `--call` of [step], a step of [node], with the step's log open;
   /// gives how it ended, or `null` when the engine is stopping.
+  ///
+  /// Throws a [GraphProgramStartException] when the program does not start.
   Future<CallEnd?> _call(Step step, Node node) async {
     final input = await inputLine(_store, step);
     final log = _store.openLog(_runId, step.id);

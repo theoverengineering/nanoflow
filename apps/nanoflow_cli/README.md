@@ -32,7 +32,8 @@ nanoflow check < описание.json          # описание графа и
 - **Программа графа** (`src/program.dart`). `GraphProgram` запускает её:
   `describe()` — `--graph`, описание с графом, прошедшим проверку;
   `graphFile()` — `--graph`, только путь к файлу графа, без проверки графа;
-  `validateInput()` — `--input`; `startCall()` — `--call <узел>`.
+  `validateInput()` — `--input`; `startCall()` — `--call <узел>`. Программа
+  не запустилась — `GraphProgramStartException` с причиной от системы.
 - **Движок** (`src/engine/`). `Engine` ведёт все прогоны сессии разом, пока
   каждый не закончится; `stop()` закрывает stdin всех `--call` и больше
   ничего не пишет.
@@ -40,6 +41,9 @@ nanoflow check < описание.json          # описание графа и
     записи: `step-started` → `--call` → документ выхода → `step-finished` →
     `outputId` в `step.json`; следующий шаг — каталог шага, потом его
     `step-started`; разветвление — все прогоны-потомки, потом `run-split`.
+    Программа графа не запускается для шага — сразу за его `step-started`
+    `run-failed` с `cannot start the graph program: <причина>`, без
+    `step-finished`; остальные прогоны идут дальше.
   - `step_process.dart` — один `--call`: строка входа в stdin, который
     остаётся открытым; stderr (и stdout рабочего узла без `out`) — в лог
     шага по мере поступления, stdout с данными копится до завершения.
@@ -66,4 +70,6 @@ dart test
 общие помощники — в `test/support/`. Тесты движка идут через
 `FakeProgram` (`test/support/fake_program.dart`): программа графа на `sh`,
 у которой каждый узел — скрипт `nodes/<узел>.sh`; конец stdin `--call`
-убивает скрипт с его группой процессов.
+убивает скрипт с его группой процессов. Помощники для сессий на диске
+(журнал прогона, шаги, логи, строки stderr) — в
+`test/support/sessions.dart`.
