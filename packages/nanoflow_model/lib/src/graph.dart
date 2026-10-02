@@ -232,7 +232,9 @@ final class Graph {
   ///
   /// Checks the shape only: that each field has the right kind of value, and
   /// that a node is a worker or a fork and nothing else. Whether targets name
-  /// existing nodes and whether schemas are valid is for `nanoflow check`.
+  /// existing nodes, and whether `in`, `out` and the types are schemas at all
+  /// (objects or booleans), is for `nanoflow check`; whether the schemas are
+  /// valid and fit together is for the graph program.
   ///
   /// Throws a [FormatException] whose message starts with the place of the
   /// problem, such as `nodes.verdict.then`.

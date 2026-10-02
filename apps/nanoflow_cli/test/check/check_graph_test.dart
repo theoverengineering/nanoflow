@@ -112,6 +112,22 @@ void main() {
     expect(checkGraph(readmeGraph()), isEmpty);
   });
 
+  test('types are not checked: that is for the graph program', () {
+    final graph = readmeGraph();
+    // A reference to a type there is not.
+    nodeOf(graph, 'collect')['out'] = {r'$ref': '#/Nope'};
+    // An in that what comes to the node does not fit.
+    nodeOf(graph, 'inspect')['in'] = {'type': 'integer'};
+    final types = graph['types']! as Map<String, Object?>;
+    // An array as a named type, and a schema that is not a valid one.
+    types['Changes'] = {
+      'type': 'array',
+      'items': {r'$ref': '#/Change'},
+    };
+    types['Broken'] = {'type': 'objekt', 'required': 'id'};
+    expect(checkGraph(graph), isEmpty);
+  });
+
   group('structure', () {
     test('a typo in a key is an unknown key of its node', () {
       final graph = readmeGraph();
