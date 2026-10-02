@@ -1,4 +1,8 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../state/runs.dart';
 import '../theme.dart';
@@ -10,8 +14,11 @@ import '../widgets/dot.dart';
 /// each by its short id with the sign of its state, a run that split with
 /// `split` too; the selected run is filled with the accent. A run whose log
 /// was read incompletely is marked [logReadIncompletely], why in a tooltip.
-/// A click on a run selects it. Too many runs to fit scroll sideways.
-class RunSwitcher extends StatelessWidget {
+/// A click on a run selects it.
+///
+/// Too many runs to fit scroll sideways, by the mouse wheel too; the
+/// selected run is scrolled into view whenever another is selected.
+class RunSwitcher extends StatefulWidget {
   const RunSwitcher({
     super.key,
     required this.runs,
@@ -31,6 +38,76 @@ class RunSwitcher extends StatelessWidget {
   static Key pillKey(String runId) => ValueKey(('run', runId));
 
   @override
+  State<RunSwitcher> createState() => _RunSwitcherState();
+}
+
+class _RunSwitcherState extends State<RunSwitcher> {
+  final _scroll = ScrollController();
+  final _selectedPill = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _revealSelected(animate: false);
+  }
+
+  @override
+  void didUpdateWidget(RunSwitcher old) {
+    super.didUpdateWidget(old);
+    if (old.selected != widget.selected) _revealSelected(animate: true);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Scrolls the runs, once they are laid out, just enough that the
+  /// selected one is in view.
+  void _revealSelected({required bool animate}) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pill = _selectedPill.currentContext?.findRenderObject();
+        if (!mounted || pill is! RenderBox || !_scroll.hasClients) return;
+        final viewport = RenderAbstractViewport.of(pill);
+        final position = _scroll.position;
+        // The least and the most the runs can be scrolled to show it whole.
+        final least = viewport.getOffsetToReveal(pill, 1).offset;
+        final most = viewport.getOffsetToReveal(pill, 0).offset;
+        final target = position.pixels
+            .clamp(least, most)
+            .clamp(position.minScrollExtent, position.maxScrollExtent);
+        if (target == position.pixels) return;
+        if (animate) {
+          unawaited(
+            position.animateTo(
+              target,
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+            ),
+          );
+        } else {
+          position.jumpTo(target);
+        }
+      });
+
+  /// The mouse wheel turned over the runs scrolls them sideways.
+  void _wheel(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_scroll.hasClients) return;
+    final position = _scroll.position;
+    final delta = event.scrollDelta.dy;
+    if (delta == 0 || position.maxScrollExtent == 0) return;
+    GestureBinding.instance.pointerSignalResolver.register(event, (_) {
+      position.jumpTo(
+        (position.pixels + delta).clamp(
+          position.minScrollExtent,
+          position.maxScrollExtent,
+        ),
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) => Container(
     height: 34,
     padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
@@ -45,18 +122,23 @@ class RunSwitcher extends StatelessWidget {
         Text('Run', style: AppText.barLabel),
         const SizedBox(width: 8),
         Flexible(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              spacing: 4,
-              children: [
-                for (final run in runs)
-                  _RunPill(
-                    run,
-                    selected: run.runId == selected,
-                    onTap: () => onSelect(run.runId),
-                  ),
-              ],
+          child: Listener(
+            onPointerSignal: _wheel,
+            child: SingleChildScrollView(
+              controller: _scroll,
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                spacing: 4,
+                children: [
+                  for (final run in widget.runs)
+                    _RunPill(
+                      run,
+                      key: run.runId == widget.selected ? _selectedPill : null,
+                      selected: run.runId == widget.selected,
+                      onTap: () => widget.onSelect(run.runId),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -68,7 +150,12 @@ class RunSwitcher extends StatelessWidget {
 /// A run on the switcher: its sign, short id (the full one in a tooltip),
 /// `split`, the [logReadIncompletely] mark.
 class _RunPill extends StatelessWidget {
-  const _RunPill(this.run, {required this.selected, required this.onTap});
+  const _RunPill(
+    this.run, {
+    super.key,
+    required this.selected,
+    required this.onTap,
+  });
 
   final RunChip run;
   final bool selected;

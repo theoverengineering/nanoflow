@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
@@ -5,6 +6,7 @@ import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/run_switcher.dart';
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
+import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/state/runs.dart';
 import 'package:nanoflow_ui/theme.dart';
 
@@ -181,6 +183,83 @@ void main() {
       expect(model.selection.runId, 'c3d4-run');
       expect(fillOf(tester, 'c3d4-run'), AppColors.accent);
       expect(fillOf(tester, 'e5f6-run'), isNot(AppColors.accent));
+    });
+
+    group('with more runs than fit', () {
+      /// The mockup's session with 30 more runs of the split, each finished.
+      Future<GraphModel> pumpManyRuns(WidgetTester tester) {
+        final mockup = Mockup();
+        return pumpGraphScreen(
+          tester,
+          model: ownedModel(
+            changes: changesOf([
+              mockup.k7f2,
+              mockup.c3d4,
+              mockup.e5f6,
+              for (var i = 0; i < 30; i++)
+                Journal(
+                    'm${i.toString().padLeft(3, '0')}-run',
+                    parent: 'k7f2-run',
+                    node: 'publish',
+                    startedAt: 611.6 + i / 100,
+                  )
+                  ..step('publish', 612 + i, end: 613 + i)
+                  ..finish(613 + i),
+            ]),
+            outcomes: reviewOutcomes,
+          ),
+        );
+      }
+
+      Rect switcher(WidgetTester tester) => tester.getRect(
+        find.descendant(
+          of: find.byType(RunSwitcher),
+          matching: find.byType(Scrollable),
+        ),
+      );
+
+      bool shown(WidgetTester tester, String runId) {
+        final runs = switcher(tester);
+        final run = tester.getRect(pill(runId));
+        return run.left >= runs.left - 0.5 && run.right <= runs.right + 0.5;
+      }
+
+      testWidgets('scrolls the selected run into view', (tester) async {
+        final model = await pumpManyRuns(tester);
+        expect(shown(tester, 'e5f6-run'), isTrue);
+        expect(shown(tester, 'm029-run'), isFalse);
+
+        model.selectRun('m029-run');
+        // The runs scroll there in a short animation.
+        await settle(tester);
+        await settle(tester);
+        expect(shown(tester, 'm029-run'), isTrue);
+
+        model.selectRun('k7f2-run');
+        await settle(tester);
+        await settle(tester);
+        expect(shown(tester, 'k7f2-run'), isTrue);
+      });
+
+      testWidgets('scrolls the runs with the mouse wheel, and the canvas '
+          'stays', (tester) async {
+        await pumpManyRuns(tester);
+        final node = tester.getRect(find.byKey(NodeTile.tileKeyOf('collect')));
+        final first = tester.getRect(pill('k7f2-run'));
+
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: switcher(tester).center);
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            position: switcher(tester).center,
+            scrollDelta: const Offset(0, 200),
+          ),
+        );
+        await tester.pump();
+
+        expect(tester.getRect(pill('k7f2-run')).left, lessThan(first.left));
+        expect(tester.getRect(find.byKey(NodeTile.tileKeyOf('collect'))), node);
+      });
     });
 
     testWidgets('marks a run whose log was read incompletely, and says why', (
