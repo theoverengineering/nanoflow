@@ -9,7 +9,9 @@ typedef RecentGraph = ({String path, DateTime openedAt});
 /// The start screen's `Recently opened` list: newest first, each path once.
 ///
 /// Kept in the app's preferences as a JSON list of `{path, openedAt}`, the
-/// time in UTC ISO-8601. Changes show at once; saving them finishes later.
+/// time in UTC ISO-8601. Changes show at once; saving them finishes later,
+/// and a save that fails is reported to [FlutterError.reportError] rather
+/// than to the caller: the list on screen stays right either way.
 class RecentGraphs extends ChangeNotifier {
   RecentGraphs(this._prefs) : _graphs = _read(_prefs.getString(_key));
 
@@ -32,13 +34,24 @@ class RecentGraphs extends ChangeNotifier {
   Future<void> _change(List<RecentGraph> graphs) async {
     _graphs = graphs;
     notifyListeners();
-    await _prefs.setString(
-      _key,
-      json.encode([
-        for (final g in graphs)
-          {'path': g.path, 'openedAt': g.openedAt.toUtc().toIso8601String()},
-      ]),
-    );
+    try {
+      await _prefs.setString(
+        _key,
+        json.encode([
+          for (final g in graphs)
+            {'path': g.path, 'openedAt': g.openedAt.toUtc().toIso8601String()},
+        ]),
+      );
+    } on Object catch (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'nanoflow',
+          context: ErrorDescription('while saving the recently opened graphs'),
+        ),
+      );
+    }
   }
 
   /// The stored list; one that cannot be read is dropped rather than keep

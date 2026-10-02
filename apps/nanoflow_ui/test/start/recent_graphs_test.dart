@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/start/recent_graphs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -97,4 +98,37 @@ void main() {
       expect(recent.graphs, [(path: index, openedAt: monday)]);
     }
   });
+
+  test('a list that cannot be saved is reported and still shown', () async {
+    final reported = <FlutterErrorDetails>[];
+    final onError = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = onError);
+    final recent = RecentGraphs(_UnwritablePreferences());
+
+    await recent.opened(index, monday);
+    await recent.remove(index);
+    await recent.opened(review, tuesday);
+
+    expect(recent.graphs, [(path: review, openedAt: tuesday)]);
+    expect(reported, hasLength(3));
+    expect(reported.first.exception, isA<StateError>());
+    expect(
+      reported.first.context.toString(),
+      contains('saving the recently opened graphs'),
+    );
+  });
+}
+
+/// Preferences whose writes fail, as a full disk would make them.
+class _UnwritablePreferences implements SharedPreferences {
+  @override
+  String? getString(String key) => null;
+
+  @override
+  Future<bool> setString(String key, String value) async =>
+      throw StateError('disk full');
+
+  @override
+  Object? noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
