@@ -240,6 +240,16 @@ flutter test integration_test/live_test.dart -d macos
 `graph.yaml` — плашка `File unavailable`. Снимки окна в эти моменты — в
 `build/live_screenshots/`; смотреть их рядом с `docs/design/*.png`.
 
+`integration_test/history_test.dart` — длинная история: 200 сессий по 30
+шагов, записанных файлами, как их пишет движок. Печатает, через сколько
+видна самая новая сессия и вся история и самый долгий кадр при загрузке и
+после; новая сессия должна быть видна быстрее 3 секунд, кадр — короче
+секунды при загрузке и полсекунды после.
+
+```bash
+flutter test integration_test/history_test.dart -d macos
+```
+
 Нарисовать раскладку (SVG, с `--png` — ещё PNG через Google Chrome):
 
 ```bash
