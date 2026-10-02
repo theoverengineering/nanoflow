@@ -145,6 +145,10 @@ final failsUncaught = node((String pidFile) async {
   await sleeping;
 });
 
+/// Returns a result of 4 MB, far more than a pipe holds: printing it blocks
+/// until it is read.
+final returnsBig = node((Object? _) => 'x' * (4 << 20));
+
 /// Leads to the steps that take the path of a pid file, which no other node
 /// gives: the tests call each of them on its own.
 final givesPidFile = node((Object? _) => 'sleep.pid');
@@ -160,6 +164,7 @@ final graph = Graph([
   Graph.start(hangHard),
   Graph.start(logsWhenStopped),
   Graph.start(leavesChild),
+  Graph.start(returnsBig),
   Graph.start(givesPidFile).next({timesOut, returnsEarly, failsUncaught}),
 ]);
 

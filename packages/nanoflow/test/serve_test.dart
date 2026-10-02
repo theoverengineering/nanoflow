@@ -539,6 +539,36 @@ void main() {
           expect(isRunning(sleep), isFalse);
         });
       });
+
+      test('once the step has ended, SIGTERM ends the process at once, also '
+          'while its result waits to be read', () async {
+        final process = await start(programFile, ['--call', 'returnsBig']);
+        Output(process.stderr);
+        process.stdin.writeln();
+        // The result is printed once the step has ended: its first bytes
+        // tell that it has. Left unread, the rest blocks the process.
+        final printing = Completer<void>();
+        final reading = process.stdout.listen(null);
+        reading.onData((_) {
+          if (printing.isCompleted) return;
+          reading.pause();
+          printing.complete();
+        });
+        await printing.future;
+
+        process.kill(ProcessSignal.sigterm);
+        final exitCode = await process.exitCode.timeout(
+          const Duration(seconds: 5),
+          // SIGTERM was ignored: once the result is read, the process exits.
+          onTimeout: () {
+            reading.resume();
+            return process.exitCode;
+          },
+        );
+        process.stdin.close().ignore();
+
+        expect(exitCode, -ProcessSignal.sigterm.signalNumber);
+      });
     });
   });
 
