@@ -65,13 +65,21 @@ void main() {
     },
   );
 
+  test('a counter reads its count up to 999, then 1k+', () {
+    expect(counterText(1), '1×');
+    expect(counterText(999), '999×');
+    expect(counterText(1000), '1k+×');
+  });
+
   test('a stub is as long as its key with room for a counter, and arrows of '
       'its node turn only past it', () {
     final layout = layoutGraph(loadGraph('task'));
     final stub = exitOf(layout, 'coder-status', 3);
     expect(stub.shape, ExitShape.stub);
     final o = layout.options;
-    final counter = o.measure('99×', LabelKind.counter) + 2 * o.chipPadding;
+    // Room for three digits, or the counter of a thousand passes and more.
+    final counter =
+        o.measure(counterText(999), LabelKind.counter) + 2 * o.chipPadding;
     expect(stub.stubEnd! - stub.counterAt.x, greaterThanOrEqualTo(counter));
     for (final exit in [1, 2]) {
       final down = verticals(edgeOf(layout, 'coder-status', exit)).first;

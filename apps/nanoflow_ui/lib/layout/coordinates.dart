@@ -110,6 +110,11 @@ double inY(Seg seg, Map<GNode, Ports> ports) {
   return seg.to.y + (node == null ? 0 : ports[node]!.inputAt[seg.edge]!);
 }
 
+/// The smallest change of height an arrow makes with full corners: a 45°
+/// slant whose two corners just meet.
+double smallestJog(LayoutOptions options) =>
+    2 * options.cornerRadius * math.tan(math.pi / 8) / math.sqrt2;
+
 /// Step 6, heights: places the items of every layer, left to right.
 ///
 /// An item moves so that the input of the arrow from the longest path into it
@@ -118,7 +123,8 @@ double inY(Seg seg, Map<GNode, Ports> ports) {
 /// further back than a node of the layer before. Items take their places by
 /// priority — those on longer paths through the graph first, nodes before
 /// pass points, then from the middle of the layer out — each at the free
-/// place nearest to where it wants to be, keeping the layer's order.
+/// place nearest to where it wants to be, keeping the layer's order, but
+/// never less than [smallestJog] off it.
 void placeLayers(
   LayoutGraph graph,
   List<List<Item>> layers,
@@ -126,6 +132,7 @@ void placeLayers(
   LayoutOptions options,
 ) {
   final (:before, :after) = _pathLengths(graph);
+  final smallest = smallestJog(options);
   for (final layer in layers) {
     final wanted = <Item, double?>{
       for (final item in layer) item: _wantedY(item, ports),
@@ -182,7 +189,15 @@ void placeLayers(
           : layer[below].y - distance(i, below);
       final want =
           wanted[item] ?? (above != null ? low : (below != null ? high : 0.0));
-      item.y = low > high ? low : want.clamp(low, high);
+      var y = low > high ? low : want.clamp(low, high);
+      // A place a hair off where the item wants to be would leave its arrow
+      // a jog too small for full corners: it moves on to a clear slant.
+      final off = y - want;
+      if (wanted[item] != null && off != 0 && off.abs() < smallest) {
+        final further = want + off.sign * smallest;
+        if (further >= low && further <= high) y = further;
+      }
+      item.y = y;
       placed[i] = true;
       // A place found only by overlapping pushes the items under it down.
       var previous = i;
@@ -418,7 +433,7 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       ? Rect.fromLTWH(
           tile.left,
           tile.top - startGap - startHeight,
-          _startWidth,
+          o.measure(startCaption, LabelKind.startCaption),
           startHeight,
         )
       : null;
@@ -443,7 +458,11 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
           y + port.barHalf,
         );
   final counterWidth =
-      o.measure(counterReserve, LabelKind.counter) + 2 * o.chipPadding;
+      math.max(
+        o.measure(counterText(999), LabelKind.counter),
+        o.measure(counterText(1000), LabelKind.counter),
+      ) +
+      2 * o.chipPadding;
   final exits = <GExit, ExitFrame>{};
   for (final exit in port.slots) {
     final middle = y + port.slotAt[exit]!;
@@ -485,12 +504,6 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   }
   return NodeFrame._(tile, name, command, start, marks, status, bar, exits);
 }
-
-/// The text a counter's room is measured for: two digits.
-const String counterReserve = '99×';
-
-/// The width of the `start` caption: 9.5 px capitals, spaced.
-const double _startWidth = 40;
 
 /// Where chips start right of the exit, how far apart they are, and how high
 /// over the arrow their bottom is.

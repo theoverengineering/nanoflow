@@ -7,15 +7,31 @@ void main() {
   test('a ladder down turns further right the higher it starts; a ladder up '
       'the lower it starts', () {
     final layout = layoutGraph(loadGraph('fork6'));
-    // triage's exits: bug, feature go up; question, else, security,
-    // duplicate go down.
-    double turn(int exit) => verticals(edgeOf(layout, 'triage', exit)).first.$1;
-    double start(int exit) => edgeOf(layout, 'triage', exit).points.first.y;
-    final up = [0, 1]..sort((a, b) => start(a).compareTo(start(b)));
-    expect(turn(up[0]), lessThan(turn(up[1])));
-    final down = [3, 4, 5, 7]..sort((a, b) => start(a).compareTo(start(b)));
+    // triage's arrows that turn in the first gap: (start, turn x, going down).
+    final turns = [
+      for (final edge in layout.edges)
+        if (edge.from == 'triage' && verticals(edge).isNotEmpty)
+          (
+            edge.points.first.y,
+            verticals(edge).first.$1,
+            edge.points[2].y > edge.points[1].y,
+          ),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    final up = [
+      for (final t in turns)
+        if (!t.$3) t,
+    ];
+    final down = [
+      for (final t in turns)
+        if (t.$3) t,
+    ];
+    expect(up.length, greaterThanOrEqualTo(2));
+    expect(down.length, greaterThanOrEqualTo(2));
+    for (var i = 1; i < up.length; i++) {
+      expect(up[i - 1].$2, lessThan(up[i].$2));
+    }
     for (var i = 1; i < down.length; i++) {
-      expect(turn(down[i - 1]), greaterThan(turn(down[i])));
+      expect(down[i - 1].$2, greaterThan(down[i].$2));
     }
   });
 

@@ -4,16 +4,20 @@
 //
 // Each graph file (the README graph format as JSON) becomes <dir>/<name>.svg,
 // the default <dir> being the current directory; the layout's crossings and
-// any broken rules are printed. With --png, headless Google Chrome also
-// renders <dir>/<name>.png at twice the size. (`qlmanage -t` renders SVG too,
-// but into a square of about 800 px, cutting off wider graphs.)
+// any broken rules are printed. With --png, headless Google Chrome ($CHROME,
+// or its usual place on macOS) also renders <dir>/<name>.png at twice the
+// size. (`qlmanage -t` renders SVG too, but into a square of about 800 px,
+// cutting off wider graphs.)
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/layout/layout.dart';
 
-const _chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+/// Where headless Chrome is: `$CHROME`, or the usual place on macOS.
+String get _chrome =>
+    Platform.environment['CHROME'] ??
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 Future<void> main(List<String> args) async {
   var out = '.';
@@ -34,6 +38,14 @@ Future<void> main(List<String> args) async {
       '<graph.json>...',
     );
     exitCode = 2;
+    return;
+  }
+  if (png && !File(_chrome).existsSync()) {
+    stderr.writeln(
+      'cannot render PNG: no Google Chrome at $_chrome; '
+      'set CHROME to its executable',
+    );
+    exitCode = 1;
     return;
   }
   Directory(out).createSync(recursive: true);
@@ -204,7 +216,8 @@ String renderSvg(GraphLayout layout, String caption) {
       svg.writeln(
         '<text x="${_n(start.left)}" y="${_n(start.bottom - 2)}" '
         'font-family="Geist, Helvetica, sans-serif" font-size="9.5" '
-        'font-weight="600" letter-spacing="0.76" fill="$_caption">START</text>',
+        'font-weight="600" letter-spacing="0.76" fill="$_caption">'
+        '$startCaption</text>',
       );
     }
     final n = node.nameRect;

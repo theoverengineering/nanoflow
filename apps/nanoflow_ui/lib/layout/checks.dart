@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
-import 'layout.dart';
+import 'geometry.dart';
+import 'graph_layout.dart';
+import 'layout_graph.dart';
 
 /// Step 9: what a layout breaks of the rules every layout must keep, one
 /// line each; empty when it keeps them all.
@@ -14,7 +16,9 @@ import 'layout.dart';
 /// - The arrowhead's tip points at the bar, an arrow gap before it.
 /// - A bar is in the middle of its tile's side, off the rounded corners;
 ///   inputs on it are at least a port gap apart.
-/// - Loops cross nothing.
+/// - Loops cross nothing. (A loop in a list target with other targets
+///   leaves its capsule off the edge and may cross its neighbours: the one
+///   rule a layout cannot always keep.)
 /// - Chips do not cover tiles, arrowheads or each other; nodes do not
 ///   overlap.
 List<String> checkLayout(GraphLayout layout) {

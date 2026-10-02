@@ -42,7 +42,8 @@ Graph randomGraph(int seed) {
 }
 
 void main() {
-  test('any graph lays out, the same way every time', () {
+  test('any graph lays out, the same way every time, keeping step 9 but for '
+      'loops in lists', () {
     for (var seed = 0; seed < 150; seed++) {
       final graph = randomGraph(seed);
       final layout = layoutGraph(graph);
@@ -50,6 +51,13 @@ void main() {
       expect(
         describe(layoutGraph(graph)),
         describe(layout),
+        reason: 'seed $seed',
+      );
+      // A loop in a list target with other arrows can cross them
+      // (docs/graph-layout.md, step 9); every other rule holds.
+      expect(
+        checkLayout(layout).where((p) => !p.contains('loop crosses')),
+        isEmpty,
         reason: 'seed $seed',
       );
     }

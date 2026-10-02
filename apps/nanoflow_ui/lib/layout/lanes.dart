@@ -456,11 +456,33 @@ void _slant(List<Turn> order, double width, LayoutOptions options) {
 /// Gives each turn its x, left to right: the least it may take, and a lane
 /// gap right of the turn before. Turns never share an x, even at heights far
 /// apart: two verticals in line read as one arrow.
+///
+/// A piece going off right of a turn at nearly the height of a piece coming
+/// in left of an earlier turn would seem to go on from it: such turns keep
+/// three lane gaps apart, so that the break between the pieces shows.
 void _placeTurns(List<Turn> order, double laneGap) {
   for (var i = 0; i < order.length; i++) {
     final turn = order[i];
-    turn.x = i == 0
+    var x = i == 0
         ? turn.least
         : math.max(turn.least, order[i - 1].end + laneGap);
+    for (var j = 0; j < i; j++) {
+      if (_continues(order[j], turn, laneGap)) {
+        x = math.max(x, order[j].end + 3 * laneGap);
+      }
+    }
+    turn.x = x;
   }
+}
+
+/// Whether a piece going off right of [b] is nearly level with a piece
+/// coming in left of [a].
+bool _continues(Turn a, Turn b, double near) {
+  for (final (y, onLeft) in a.ends) {
+    if (!onLeft) continue;
+    for (final (other, otherOnLeft) in b.ends) {
+      if (!otherOnLeft && (other - y).abs() < near) return true;
+    }
+  }
+  return false;
 }

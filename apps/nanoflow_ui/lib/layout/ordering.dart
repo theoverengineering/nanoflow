@@ -5,6 +5,10 @@ import 'ports.dart';
 /// The most sweeps step 4 makes; each goes left to right and back.
 const int maxSweeps = 24;
 
+/// How far under the packed layers step 4 takes back arrows to run when it
+/// sorts by medians: below everything, as their lanes will be.
+const double backLaneDepth = 200;
+
 /// Step 4: orders the items of every layer for fewer crossings.
 ///
 /// Starts from the order of step 1's walk. A sweep left to right sorts each
@@ -12,9 +16,10 @@ const int maxSweeps = 24;
 /// left, by the median height of the inputs they go to. Heights are of ports,
 /// not of item middles, with the layers packed tight. A back arrow comes from
 /// and goes to the graph's bottom, where its lane is, so nodes with back
-/// arrows sink. Sweeps go on while the count of crossings falls, at most
-/// [maxSweeps]; the order with the fewest crossings stays. Ties keep the
-/// graph's declaration order. Sets [Item.order].
+/// arrows sink. Sweeps go on while the count of crossings does not grow and
+/// the order is new, at most [maxSweeps]; the order with the fewest
+/// crossings stays. Ties keep the graph's declaration order. Sets
+/// [Item.order].
 void orderLayers(
   LayoutGraph graph,
   List<List<Item>> layers,
@@ -29,7 +34,7 @@ void orderLayers(
     for (final layer in layers) {
       if (layer.isNotEmpty && layer.last.y > bottom) bottom = layer.last.y;
     }
-    bottom += 200;
+    bottom += backLaneDepth;
   }
 
   final declared = graph.nodes.length;
@@ -80,8 +85,12 @@ void orderLayers(
     return countLayerCrossings(graph, layers, ports, bottom);
   }
 
+  String signature() =>
+      [for (final layer in layers) layer.map(declaration).join(',')].join(';');
   var best = _snapshot(layers);
   var fewest = crossings();
+  var previous = fewest;
+  final seen = {signature()};
   for (var sweep = 0; sweep < maxSweeps; sweep++) {
     for (var i = 1; i < layers.length; i++) {
       estimate();
@@ -92,9 +101,15 @@ void orderLayers(
       sortLayer(layers[i], byInputs);
     }
     final count = crossings();
-    if (count >= fewest) break;
-    fewest = count;
-    best = _snapshot(layers);
+    if (count < fewest) {
+      fewest = count;
+      best = _snapshot(layers);
+    }
+    // A sweep that crosses as much may still have moved towards a better
+    // order; a sweep that crosses more, or comes back to an order seen
+    // before, ends the sweeps.
+    if (count > previous || !seen.add(signature())) break;
+    previous = count;
   }
   _restore(layers, best);
 }

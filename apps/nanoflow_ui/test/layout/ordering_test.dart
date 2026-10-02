@@ -1,7 +1,10 @@
+import 'package:nanoflow_ui/layout/coordinates.dart';
 import 'package:nanoflow_ui/layout/cycles.dart';
 import 'package:nanoflow_ui/layout/layers.dart';
 import 'package:nanoflow_ui/layout/layout.dart';
 import 'package:nanoflow_ui/layout/layout_graph.dart';
+import 'package:nanoflow_ui/layout/ordering.dart';
+import 'package:nanoflow_ui/layout/ports.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
@@ -33,14 +36,29 @@ void main() {
   });
 
   test('sweeps by medians reorder the layers so that nothing crosses', () {
+    const options = LayoutOptions();
+    final graph = LayoutGraph.of(crossed);
+    findBackEdges(graph);
+    assignLayers(graph);
+    final layers = buildLayers(graph);
+    int crossings() {
+      final ports = assignPorts(graph, options, below: {}, backLevels: {});
+      stackLayers(layers, ports, options);
+      return countLayerCrossings(graph, layers, ports, 1e6);
+    }
+
+    expect(crossings(), greaterThan(0));
+    orderLayers(graph, layers, options);
+    expect(crossings(), 0);
+    String name(Item item) => item.node?.name ?? 'pass';
+    expect(layers[1].map(name), ['x', 'y', 'pass']);
+    expect(layers[2].map(name), ['w', 'v']);
+  });
+
+  test('the whole layout keeps the reordered layers free of crossings', () {
     final layout = layoutGraph(crossed);
     expect(countCrossings(layout), 0);
     expect(checkLayout(layout), isEmpty);
-    final w = layout.nodes['w']!.tile.top;
-    final v = layout.nodes['v']!.tile.top;
-    final x = layout.nodes['x']!.tile.top;
-    final y = layout.nodes['y']!.tile.top;
-    expect(x < y, w < v);
   });
 
   test('nodes with back arrows sink: long arrows pass over them', () {

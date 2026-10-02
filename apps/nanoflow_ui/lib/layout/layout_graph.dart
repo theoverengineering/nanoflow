@@ -13,6 +13,9 @@ enum LabelKind {
 
   /// A node's command under its name.
   command,
+
+  /// The `start` caption over a `start` node's tile.
+  startCaption,
 }
 
 /// Measures the width of [text] drawn as [kind], in logical pixels.
@@ -23,14 +26,25 @@ typedef MeasureText = double Function(String text, LabelKind kind);
 /// Exit labels and counters are Geist Mono 10 px (6 px a character, as the
 /// mockup's label chips are), commands Geist Mono 10.5 px. Names are a
 /// proportional 12.5 px semibold face; 7.2 px is a generous average so that
-/// names are not narrower than drawn. The canvas passes a real measurer.
+/// names are not narrower than drawn. The `start` caption is 9.5 px
+/// semibold capitals spaced 0.08 em. The canvas passes a real measurer.
 double monospaceMeasure(String text, LabelKind kind) =>
     text.runes.length *
     switch (kind) {
       LabelKind.exitLabel || LabelKind.counter => 6.0,
       LabelKind.command => 6.3,
       LabelKind.nodeName => 7.2,
+      LabelKind.startCaption => 7.0,
     };
+
+/// The text of the `start` caption.
+const String startCaption = 'START';
+
+/// The text of an arrow's counter for [count] passes: `2×`.
+///
+/// The layout keeps room for three digits whether or not there is a
+/// counter; from a thousand passes on the counter reads `1k+×`.
+String counterText(int count) => count < 1000 ? '$count×' : '1k+×';
 
 /// Sizes and gaps of the layout. The defaults are taken from the mockups
 /// (`docs/design/graph.html`, `task-graph.html`) and `docs/ui-spec.md`.
