@@ -23,11 +23,13 @@ Future<int> runCheck(
         BytesBuilder(copy: false),
         (all, chunk) => all..add(chunk),
       );
+      final Map<String, Object?> description;
       try {
-        checkDescription(bytes.takeBytes());
+        description = readDescription(bytes.takeBytes());
       } on FormatException catch (e) {
         return _unreadable(stdout, 'stdin: ${e.message}');
       }
+      checkDescription(description);
     } else {
       try {
         await GraphProgram(program, stderr: stderr).describe();

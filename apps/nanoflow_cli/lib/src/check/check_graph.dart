@@ -23,28 +23,30 @@ final class GraphCheckException implements Exception {
 /// graph — `start`, `nodes.verdict.then.accepted`, `nodes.inspect` — with
 /// `[i]` for an item of a list, and `graph` for the graph itself.
 ///
-/// The structure is checked first, by [graphSchema]; the check stops at its
-/// first problem. Only a graph whose structure passes is checked for
-/// meaning: that every target — in `start`, `then` and `else` — names
-/// existing nodes, that no list of targets names a node twice or only one
-/// node, that `start` is not empty, and that every node is reachable from
-/// `start`. Those lines come in the order of their places in the graph.
+/// The structure is checked first, by [graphSchema], which stops at its first
+/// problem. The graph's own keys are checked with its nodes set aside, and a
+/// problem there is the only line. Then each node is checked on its own:
+/// every broken node gets a line, in the order of the nodes.
+///
+/// Only a graph whose structure passes is checked for meaning: that every
+/// target — in `start`, `then` and `else` — names existing nodes, that no
+/// list of targets names a node twice or only one node, that `start` is not
+/// empty, and that every node is reachable from `start`. Those lines come in
+/// the order of their places in the graph.
 List<String> checkGraph(Object? graphJson) {
-  final structure = _explain(_graphSchema, graphJson, graphJson, const []);
-  if (structure != null) return [structure];
-  return _meaningErrors(
-    Graph.fromJson(Map<String, Object?>.from(graphJson as Map)),
-  );
+  // ack rejects a `null` before the schema runs, in words of its own.
+  if (graphJson is! Map) return const ['graph: expected an object'];
+  final structure = _structureErrors(graphJson);
+  if (structure.isNotEmpty) return structure;
+  return _meaningErrors(Graph.fromJson(Map<String, Object?>.from(graphJson)));
 }
 
-/// Reads [bytes], a description of a graph as `--graph` prints it, and
-/// checks its graph.
+/// Reads [bytes] as a description of a graph, as `--graph` prints it: one
+/// JSON object with a string `file` and a `graph`. The graph is not checked.
 ///
 /// Throws a [FormatException] whose message is the reason when [bytes] are
-/// not a description: one JSON object with a string `file` and a `graph`.
-/// Throws a [GraphCheckException] when the graph does not pass
-/// [checkGraph].
-GraphDescription checkDescription(List<int> bytes) {
+/// not a description.
+Map<String, Object?> readDescription(List<int> bytes) {
   final Object? json;
   try {
     json = jsonDecode(utf8.decode(bytes));
@@ -56,12 +58,41 @@ GraphDescription checkDescription(List<int> bytes) {
       !json.containsKey('graph')) {
     throw const FormatException('expected {"file": <path>, "graph": <graph>}');
   }
-  final errors = checkGraph(json['graph']);
+  return json;
+}
+
+/// Checks the graph of [description], read by [readDescription], and parses
+/// the description.
+///
+/// Throws a [GraphCheckException] when the graph does not pass
+/// [checkGraph].
+GraphDescription checkDescription(Map<String, Object?> description) {
+  final errors = checkGraph(description['graph']);
   if (errors.isNotEmpty) throw GraphCheckException(errors);
-  return GraphDescription.fromJson(json);
+  return GraphDescription.fromJson(description);
 }
 
 final _graphSchema = Ack.fromJsonSchema(graphSchema);
+
+/// The structural problems of [graph]: one line for a problem of the graph's
+/// own keys, or else a line for each broken node.
+List<String> _structureErrors(Map<Object?, Object?> graph) {
+  String? explain(Map<Object?, Object?> part) =>
+      _explain(_graphSchema, part, graph, const []);
+  final nodes = graph['nodes'];
+  if (nodes is! Map) return [?explain(graph)];
+  // The graph's own keys, with its nodes set aside.
+  final own = explain({...graph, 'nodes': const <String, Object?>{}});
+  if (own != null) return [own];
+  // A graph with a single node fails only in that node.
+  return [
+    for (final MapEntry(:key, :value) in nodes.entries)
+      ?explain({
+        ...graph,
+        'nodes': {key: value},
+      }),
+  ];
+}
 
 /// The definitions of a worker and of a fork, to find out why a node that
 /// says which it is — by its `command` or `decide` — is not one.
@@ -86,7 +117,9 @@ String? _explain(
   final error = result.getError();
   final path = [...at, ..._segments(error.context)];
   final place = _place(graph, path);
-  final (keyword, pointer) = _violated(error);
+  final violated = _violated(error);
+  if (violated == null) return '$place: ${error.message}';
+  final (keyword, pointer) = violated;
   return switch (keyword) {
     // `additionalProperties: false` fails at the key it does not allow.
     'false' =>
@@ -119,13 +152,12 @@ String _explainNode(
 }
 
 /// The keyword that failed and the JSON Pointer of the schema it is in,
-/// from ack's message `JSON Schema "<keyword>" failed at <uri>#<pointer>.`.
-///
-/// ack rejects `null` before the schema runs, with a message of its own: that
-/// is the root's `type` failing.
-(String, String) _violated(SchemaError error) {
+/// from ack's message `JSON Schema "<keyword>" failed at <uri>#<pointer>.`;
+/// `null` for a message of another kind, such as the one for a value that is
+/// not JSON.
+(String, String)? _violated(SchemaError error) {
   final match = _violation.firstMatch(error.message);
-  if (match == null) return ('type', '');
+  if (match == null) return null;
   return (match[1]!, match[2]!);
 }
 

@@ -1,22 +1,10 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:nanoflow_cli/nanoflow_cli.dart';
-import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// Writes an executable POSIX shell script with [body] and gives its path.
-String script(String body) {
-  final dir = Directory.systemTemp.createTempSync('nanoflow_program_');
-  addTearDown(() => dir.deleteSync(recursive: true));
-  final file = File(p.join(dir.path, 'graph.sh'))
-    ..writeAsStringSync('#!/bin/sh\n$body');
-  final chmod = Process.runSync('chmod', ['+x', file.path]);
-  if (chmod.exitCode != 0) throw StateError('chmod failed: ${chmod.stderr}');
-  return file.path;
-}
+import 'support/helpers.dart';
 
 /// A graph program that answers `--graph` with a description of [graph].
 String describer(Map<String, Object?> graph) => script('''
@@ -25,19 +13,6 @@ cat <<'JSON'
 ${jsonEncode({'file': 'graph.yaml', 'graph': graph})}
 JSON
 ''');
-
-final class _Capture implements StreamConsumer<List<int>> {
-  final _bytes = BytesBuilder();
-
-  String get text => utf8.decode(_bytes.toBytes());
-
-  @override
-  Future<void> addStream(Stream<List<int>> stream) =>
-      stream.forEach(_bytes.add);
-
-  @override
-  Future<void> close() async {}
-}
 
 void main() {
   test('a program is a command, not nothing', () {
@@ -90,7 +65,7 @@ echo '{"file": "graph.yaml", "graph": {"start": "a", "nodes": {"a": {"command": 
     });
 
     test('a program that fails: its stderr goes to stderr', () async {
-      final err = _Capture();
+      final err = Capture();
       final sink = IOSink(err);
       final program = GraphProgram([
         script('echo oops >&2\nexit 4\n'),
@@ -133,6 +108,89 @@ printf '{"checked": %s}\\n' "\$line"
             (e) => e.message,
             'message',
             'branch: missing',
+          ),
+        ),
+      );
+    });
+
+    test('a rejection without a reason throws the exit code', () {
+      final program = GraphProgram([script('exit 5\n')]);
+      expect(
+        program.validateInput('{}'),
+        throwsA(
+          isA<GraphProgramException>().having(
+            (e) => e.message,
+            'message',
+            '--input exited with code 5',
+          ),
+        ),
+      );
+    });
+
+    test('a program that prints no JSON throws', () {
+      final program = GraphProgram([script('echo "Checking..."\n')]);
+      expect(
+        program.validateInput('{}'),
+        throwsA(
+          isA<GraphProgramException>().having(
+            (e) => e.message,
+            'message',
+            '--input output: not JSON',
+          ),
+        ),
+      );
+    });
+
+    test('a program that exits without reading its stdin is no '
+        'failure', () async {
+      final program = GraphProgram([script('echo null\n')]);
+      // More than a pipe holds: writing it fails once the program is gone.
+      final raw = jsonEncode({'text': 'x' * (1 << 20)});
+      expect(await program.validateInput(raw), 'null');
+      // The broken pipe is found out after the program has exited.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+  });
+
+  group('graphFile', () {
+    test('gives the file of the description without checking the '
+        'graph', () async {
+      final program = GraphProgram([
+        describer({
+          'start': 'a',
+          'nodes': {
+            'a': {'command': 'a.sh', 'then': 'b'},
+          },
+        }),
+      ]);
+      expect(await program.graphFile(), 'graph.yaml');
+    });
+
+    test('a program that fails throws', () {
+      final program = GraphProgram([
+        script('exit 4\n'),
+      ], stderr: IOSink(Capture()));
+      expect(
+        program.graphFile(),
+        throwsA(
+          isA<GraphProgramException>().having(
+            (e) => e.message,
+            'message',
+            '--graph exited with code 4',
+          ),
+        ),
+      );
+    });
+
+    test('a program that prints no description throws', () {
+      final program = GraphProgram([script('echo \'{"graph": {}}\'\n')]);
+      expect(
+        program.graphFile(),
+        throwsA(
+          isA<GraphProgramException>().having(
+            (e) => e.message,
+            'message',
+            '--graph output: expected {"file": <path>, "graph": <graph>}',
           ),
         ),
       );

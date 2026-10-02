@@ -44,7 +44,19 @@ final class GraphProgram {
   /// Throws a [GraphProgramException] when the program does not start, exits
   /// with a code other than 0, or prints no description, and a
   /// [GraphCheckException] when the graph does not pass.
-  Future<GraphDescription> describe() async {
+  Future<GraphDescription> describe() async =>
+      checkDescription(await _description());
+
+  /// Runs `--graph` and gives the `file` of the description it prints: the
+  /// path of the graph file. The graph is not checked.
+  ///
+  /// Throws a [GraphProgramException] when the program does not start, exits
+  /// with a code other than 0, or prints no description.
+  Future<String> graphFile() async => (await _description())['file']! as String;
+
+  /// Runs `--graph` and gives the description it prints, read by
+  /// [readDescription].
+  Future<Map<String, Object?>> _description() async {
     final process = await _start(['--graph']);
     process.stdin.close().ignore();
     final (:code, :out, err: _) = await _finish(process, stderr: _stderr);
@@ -52,7 +64,7 @@ final class GraphProgram {
       throw GraphProgramException('--graph exited with code $code');
     }
     try {
-      return checkDescription(out);
+      return readDescription(out);
     } on FormatException catch (e) {
       throw GraphProgramException('--graph output: ${e.message}');
     }

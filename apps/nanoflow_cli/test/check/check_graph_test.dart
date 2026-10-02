@@ -163,8 +163,23 @@ void main() {
     });
 
     test('the graph is an object', () {
-      expect(checkGraph(null), ['graph: expected an object']);
-      expect(checkGraph(['collect']), ['graph: expected an object']);
+      for (final graph in <Object?>[
+        null,
+        ['collect'],
+        'collect',
+        5,
+      ]) {
+        expect(checkGraph(graph), [
+          'graph: expected an object',
+        ], reason: '$graph');
+      }
+    });
+
+    test('a problem ack names in its own words is passed on in them', () {
+      final graph = readmeGraph()..['types'] = {'Score': double.infinity};
+      expect(checkGraph(graph), [
+        'graph: Expected an acyclic JSON value with finite numbers.',
+      ]);
     });
 
     test('a value of the wrong type is placed at its key', () {
@@ -233,11 +248,33 @@ void main() {
       ]);
     });
 
-    test('stops at the first structural problem, in graph order', () {
+    test('every broken node has a line of its own, in graph order', () {
       final graph = readmeGraph();
-      nodeOf(graph, 'collect')['thn'] = 'is-empty';
       nodeOf(graph, 'notify')['command'] = 5;
-      expect(checkGraph(graph), ['nodes.collect: unknown key "thn"']);
+      nodeOf(graph, 'collect')['thn'] = 'is-empty';
+      (graph['nodes'] as Map<String, Object?>)['fix'] = null;
+      expect(checkGraph(graph), [
+        'nodes.collect: unknown key "thn"',
+        'nodes.fix: expected an object',
+        'nodes.notify.command: expected a string',
+      ]);
+    });
+
+    test('a problem outside the nodes stops the check at it', () {
+      // ack meets the broken node first: the graph's keys come in this order.
+      final broken = readmeGraph()..['extra'] = true;
+      nodeOf(broken, 'collect')['thn'] = 'is-empty';
+      expect(checkGraph(broken), ['graph: unknown key "extra"']);
+      final badTypes = json({
+        'start': 'a',
+        'nodes': {
+          'a': {'command': 5},
+        },
+        'types': {'Change': 'object'},
+      });
+      expect(checkGraph(badTypes), [
+        'types.Change: expected a schema (an object or a boolean)',
+      ]);
     });
 
     test('a structural problem hides the problems of meaning', () {

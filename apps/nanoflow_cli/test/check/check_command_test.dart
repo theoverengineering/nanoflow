@@ -1,44 +1,10 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:nanoflow_cli/nanoflow_cli.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// What `nanoflow` did: its exit code, stdout and stderr.
-typedef Outcome = ({int code, String out, String err});
-
-/// Runs `nanoflow` with [args] and [stdin].
-Future<Outcome> nanoflow(List<String> args, {String stdin = ''}) async {
-  final out = _Capture();
-  final err = _Capture();
-  final outSink = IOSink(out);
-  final errSink = IOSink(err);
-  final code = await runCli(
-    args,
-    stdin: Stream.value(utf8.encode(stdin)),
-    stdout: outSink,
-    stderr: errSink,
-  );
-  await outSink.close();
-  await errSink.close();
-  return (code: code, out: out.text, err: err.text);
-}
-
-final class _Capture implements StreamConsumer<List<int>> {
-  final _bytes = BytesBuilder();
-
-  String get text => utf8.decode(_bytes.toBytes());
-
-  @override
-  Future<void> addStream(Stream<List<int>> stream) =>
-      stream.forEach(_bytes.add);
-
-  @override
-  Future<void> close() async {}
-}
+import '../support/helpers.dart';
 
 /// A graph that passes check.
 const validGraph = {
@@ -73,17 +39,6 @@ const unknownTargetsGraph = {
 
 String describe(Map<String, Object?> graph) =>
     jsonEncode({'file': 'graph.yaml', 'graph': graph});
-
-/// Writes an executable POSIX shell script with [body] and gives its path.
-String script(String body) {
-  final dir = Directory.systemTemp.createTempSync('nanoflow_check_');
-  addTearDown(() => dir.deleteSync(recursive: true));
-  final file = File(p.join(dir.path, 'graph.sh'))
-    ..writeAsStringSync('#!/bin/sh\n$body');
-  final chmod = Process.runSync('chmod', ['+x', file.path]);
-  if (chmod.exitCode != 0) throw StateError('chmod failed: ${chmod.stderr}');
-  return file.path;
-}
 
 /// A graph program that prints [description] for `--graph` after the
 /// arguments [args], and fails with code 9 for anything else.
