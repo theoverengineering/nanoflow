@@ -42,6 +42,13 @@ final twoStarts = Graph([
   Graph.start(collect),
 ]);
 
+/// A start fork whose outcomes are spread over two parts, each begun with
+/// `Graph.start`.
+final startTwice = Graph([
+  Graph.start(grade).then({Verdict.accepted: publish}),
+  Graph.start(grade).then({Verdict.returned: notify}),
+]);
+
 /// A start node with no `in`.
 final noInput = Graph.start(anything);
 

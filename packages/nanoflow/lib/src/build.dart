@@ -115,10 +115,12 @@ final class _Build {
     _describeData();
     if (errors.isNotEmpty) throw GraphBuildException(errors);
 
-    final starts = [
-      for (final chain in chains)
-        if (chain.isStart) chain.head,
-    ];
+    // A node that begins several parts with Graph.start is one start node.
+    final starts = LinkedHashSet<_Vertex>.identity()
+      ..addAll([
+        for (final chain in chains)
+          if (chain.isStart) chain.head,
+      ]);
     return BuiltGraph._(
       nodes: Map.unmodifiable({
         for (final vertex in ordered) _nameOf(vertex): vertex,

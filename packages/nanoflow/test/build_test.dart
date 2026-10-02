@@ -235,6 +235,21 @@ void main() {
       ]);
     });
 
+    test('a start node that begins two parts as one start node', () {
+      final graph = graphOf(shapes.startTwice);
+      expect(graph['start'], 'grade');
+      expect(graph['nodes']! as Map<String, Object?>, {
+        'notify': {'command': rg('notify'), 'in': ref('Report')},
+        'publish': {'command': rg('publish'), 'in': ref('Report')},
+        'grade': {
+          'decide': sh('grade'),
+          'in': ref('Report'),
+          'then': {'accepted': 'publish', 'returned': 'notify'},
+        },
+      });
+      expect(graphErrors(shapes.startTwice), isEmpty);
+    });
+
     test('a start node without in, which needs no launch input', () {
       expectJson(graphOf(shapes.noInput), {
         'start': 'anything',
