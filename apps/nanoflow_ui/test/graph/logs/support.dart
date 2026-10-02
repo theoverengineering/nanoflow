@@ -1,6 +1,7 @@
 // What the tests of the Logs panel look at.
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,4 +30,28 @@ Future<void> wheel(WidgetTester tester, Finder finder, double dy) async {
   await tester.sendEventToBinding(pointer.hover(tester.getCenter(finder)));
   await tester.sendEventToBinding(pointer.scroll(Offset(0, dy)));
   await tester.pump();
+}
+
+/// The clipboard: what is copied goes to [copied]; copying fails with
+/// [error] when given.
+void mockClipboard(
+  WidgetTester tester,
+  List<Object?> copied, {
+  PlatformException? error,
+}) {
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method != 'Clipboard.setData') return null;
+      if (error != null) throw error;
+      copied.add(call.arguments);
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
 }

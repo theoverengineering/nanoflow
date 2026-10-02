@@ -484,6 +484,13 @@ void main() {
         inColumn(NodeColumn, find.byTooltip(inspectStepPath)),
         findsOneWidget,
       );
+
+      final copied = <Object?>[];
+      mockClipboard(tester, copied);
+      await tap(tester, inColumn(NodeColumn, find.byTooltip('Copy path')));
+      expect(copied, [
+        {'text': inspectStepPath},
+      ]);
     });
   });
 

@@ -149,6 +149,29 @@ void main() {
     },
   );
 
+  test('changes nothing while the graph file does not parse, when '
+      'nanoflow-yaml describes nothing', () async {
+    // Describes the graph, then only complains on stderr, as nanoflow-yaml
+    // does while the file does not parse (README «Программа графа»).
+    program('nanoflow-yaml', '''
+echo '${_description(graphFile, ['collect'])}'
+echo 'review.yaml:3: mapping values are not allowed here' >&2
+exec tail -f /dev/null
+''');
+    program('nanoflow', _nanoflowCheck);
+    final graph = source();
+    await graph.start();
+    await until(graph, () => graph.graph != null);
+    var notified = 0;
+    graph.addListener(() => notified++);
+
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(notified, 0);
+    expect(graph.graph!.nodes.keys, ['collect']);
+    expect(graph.errors, isEmpty);
+    expect(graph.programProblem, isNull);
+  });
+
   test('ignores a line that is not a description', () async {
     program('nanoflow-yaml', _yamlWatch);
     program('nanoflow', _nanoflowCheck);

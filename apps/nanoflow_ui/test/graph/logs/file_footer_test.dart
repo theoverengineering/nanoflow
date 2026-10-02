@@ -101,30 +101,6 @@ void main() {
     });
   }
 
-  /// The clipboard: what is copied goes to [copied]; copying fails with
-  /// [error] when given.
-  void mockClipboard(
-    WidgetTester tester,
-    List<Object?> copied, {
-    PlatformException? error,
-  }) {
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method != 'Clipboard.setData') return null;
-        if (error != null) throw error;
-        copied.add(call.arguments);
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-  }
-
   testWidgets('copies the path, and says so for a moment', (tester) async {
     final copied = <Object?>[];
     mockClipboard(tester, copied);
