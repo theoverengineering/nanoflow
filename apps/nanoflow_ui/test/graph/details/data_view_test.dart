@@ -137,6 +137,22 @@ void main() {
       await tester.pump();
       expect(find.byKey(MonoLines.cutKey), findsNothing);
     });
+
+    testWidgets('of a line too long to show whole cuts it until Show all', (
+      tester,
+    ) async {
+      final long = 'z' * (previewLineLength + 10);
+      await pumpData(tester, JsonView(value: {'diff': long}));
+      expect(
+        textIn(tester, find.byKey(MonoLines.cutKey)),
+        'Lines cut at 2,000 characters Show all',
+      );
+
+      await tester.tap(find.text('Show all'));
+      await tester.pump();
+      expect(find.byKey(MonoLines.cutKey), findsNothing);
+      expect(find.textContaining(long), findsOneWidget);
+    });
   });
 
   testWidgets('the toggle tells which view is shown and switches it', (

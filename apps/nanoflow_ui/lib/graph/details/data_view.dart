@@ -353,31 +353,35 @@ class _JsonViewState extends State<JsonView> {
   @override
   Widget build(BuildContext context) {
     final lines = _lines;
-    final cut = !_all && lines.length > previewLines;
-    final shown = cut ? previewLines : lines.length;
-    final widest = _widest ??= shownLine(
-      widestLine(lines, 0, shown),
-      whole: _all,
-    );
+    final linesCut = !_all && lines.length > previewLines;
+    final shown = linesCut ? previewLines : lines.length;
+    final widest = _widest ??= widestLine(lines, 0, shown);
+    final cut = _all
+        ? null
+        : cutText(
+            lines: linesCut
+                ? 'Showing the first ${thousands(previewLines)} of '
+                      '${thousands(lines.length)} lines'
+                : null,
+            widest: widest,
+          );
     return MonoLines(
       count: shown,
       lineAt: (i) => shownLine(lines[i], whole: _all),
-      widest: widest,
+      widest: shownLine(widest, whole: _all),
       style: AppText.jsonLine,
       spanOf: _spanOf,
       background: AppColors.backdrop,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      cut: cut
-          ? (
-              text:
-                  'Showing the first ${thousands(previewLines)} of '
-                  '${thousands(lines.length)} lines',
+      cut: cut == null
+          ? null
+          : (
+              text: cut,
               showAll: () => setState(() {
                 _all = true;
                 _widest = null;
               }),
-            )
-          : null,
+            ),
     );
   }
 }

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderSliverFixedExtentList;
 
+import '../../state/texts.dart' show thousands;
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
 
@@ -13,6 +14,18 @@ const previewLines = 1000;
 
 /// How many characters of a line are shown until `Show all`.
 const previewLineLength = 2000;
+
+/// What the note over a text not shown whole says: which [lines] of it are
+/// shown, when not all, and whether lines are cut because the [widest] line
+/// shown is longer than [previewLineLength]; `null` when nothing is cut.
+String? cutText({String? lines, required String widest}) {
+  final cutAt = 'cut at ${thousands(previewLineLength)} characters';
+  final long = widest.length > previewLineLength;
+  return switch (lines) {
+    null => long ? 'Lines $cutAt' : null,
+    final lines => long ? '$lines, $cutAt' : lines,
+  };
+}
 
 /// What is cut from a long text, and how to show all of it.
 typedef TextCut = ({String text, VoidCallback showAll});

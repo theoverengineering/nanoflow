@@ -146,26 +146,26 @@ class _LogViewState extends State<LogView> {
       return _quiet ? const TabNote(LogView.nothing) : const TabNote('');
     }
     final shown = _count - _start;
-    final widest = _start == 0
+    final longest = _start == 0
         ? _longest
         : widestLine(_lines, _start, _lines.length);
+    final widest = _partial.length > longest.length ? _partial : longest;
+    final cut = _all
+        ? null
+        : cutText(
+            lines: _start == 0
+                ? null
+                : 'Showing the last ${thousands(shown)} of '
+                      '${thousands(_count)} lines',
+            widest: widest,
+          );
     return MonoLines(
       count: shown,
       lineAt: _lineAt,
-      widest: shownLine(
-        _partial.length > widest.length ? _partial : widest,
-        whole: _all,
-      ),
+      widest: shownLine(widest, whole: _all),
       controller: _scroll,
       cursor: running,
-      cut: _start == 0
-          ? null
-          : (
-              text:
-                  'Showing the last ${thousands(shown)} of '
-                  '${thousands(_count)} lines',
-              showAll: _showAll,
-            ),
+      cut: cut == null ? null : (text: cut, showAll: _showAll),
     );
   }
 }

@@ -220,6 +220,48 @@ void main() {
     expect(shown(tester, '  "f1500"'), isTrue);
   });
 
+  testWidgets('a line too long to show whole is cut, and Show all shows it '
+      'whole', (tester) async {
+    final long = 'x' * (previewLineLength + 500);
+    await pumpLog(tester, 'short\n$long\n');
+
+    final cut = find.byKey(MonoLines.cutKey);
+    expect(textIn(tester, cut), 'Lines cut at 2,000 characters Show all');
+    expect(line('${'x' * previewLineLength} …'), findsOneWidget);
+
+    await tester.tap(find.descendant(of: cut, matching: find.text('Show all')));
+    await tester.pump();
+    expect(cut, findsNothing);
+    expect(line(long), findsOneWidget);
+  });
+
+  testWidgets('a big log with long lines says both are cut', (tester) async {
+    await pumpLog(tester, '${numbered(1, 1500)}${'x' * 3000}\n');
+
+    expect(
+      textIn(tester, find.byKey(MonoLines.cutKey)),
+      'Showing the last 1,000 of 1,501 lines, cut at 2,000 characters '
+      'Show all',
+    );
+  });
+
+  testWidgets('a document with a line too long to show whole is cut, and '
+      'Show all shows it whole', (tester) async {
+    final long = 'y' * (previewLineLength + 10);
+    final files = mockupFiles()..documents['report-2'] = {'diff': long};
+    await pumpGraphScreen(tester, model: mockupModel(files: files));
+    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.input)));
+    await tester.pump();
+    await tester.pump();
+
+    final cut = find.byKey(MonoLines.cutKey);
+    expect(textIn(tester, cut), 'Lines cut at 2,000 characters Show all');
+    await tester.tap(find.descendant(of: cut, matching: find.text('Show all')));
+    await tester.pump();
+    expect(cut, findsNothing);
+    expect(line('  "diff": "$long"'), findsOneWidget);
+  });
+
   testWidgets('a long line does not wrap: it scrolls sideways', (tester) async {
     final long = List.filled(400, 'x').join();
     await pumpLog(tester, '$long\n');
