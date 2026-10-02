@@ -51,6 +51,20 @@ final class BuiltGraph {
 /// `Object?` makes a node without data.
 BuiltGraph buildGraph(Graph<Object?> graph) => _Build(chainsOf(graph)).run();
 
+/// What keeps [graph] from building, one line per problem, as `--graph`
+/// prints it: empty when the graph builds.
+///
+/// A test that imports the graph checks it with
+/// `expect(graphErrors(graph), isEmpty)`, without running the program.
+List<String> graphErrors(Graph<Object?> graph) {
+  try {
+    buildGraph(graph);
+  } on GraphBuildException catch (e) {
+    return e.errors;
+  }
+  return const [];
+}
+
 typedef _Vertex = Vertex<Object?, Object?>;
 
 /// One build of a graph: its checks in order, then its JSON.

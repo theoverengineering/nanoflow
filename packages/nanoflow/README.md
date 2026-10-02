@@ -34,7 +34,9 @@
   объявлен дважды (в том числе в разных кусках), узел не в переменной
   верхнего уровня или в двух, два узла с одним именем, тип данных без
   JSON-формы. Данные не бывают `null`: тип данных с `?` (`Report?`,
-  `List<String?>`) и `Object` без `?` — тоже ошибки.
+  `List<String?>`) и `Object` без `?` — тоже ошибки. `graphErrors` даёт те
+  же строки списком, пустым, если граф собирается, — для
+  [тестов графа](#как-тестировать-граф).
 - **Программа графа** (`src/serve.dart`). `main` отдаёт аргументы `serve`:
   `--graph` печатает описание, `--graph --watch` — его же и новое после
   каждой правки `.dart`-файлов в пакете программы: в ближайшем каталоге
@@ -80,7 +82,28 @@
   попадает, — чтобы остановка догнала группу и после выхода shell.
 
 Публичная точка `lib/nanoflow.dart` отдаёт только то, чем пишут граф, и
-`serve`, `exec`, `ExecException`.
+`serve`, `exec`, `ExecException`, `graphErrors`.
+
+## Как тестировать граф
+
+Граф — значение, поэтому тест его импортирует. Что граф собирается, тест
+проверяет через `graphErrors` — с теми же проверками, что у `--graph`, но без
+запуска программы:
+
+```dart
+import 'package:nanoflow/nanoflow.dart';
+import 'package:reviewer/graph.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('the graph builds', () => expect(graphErrors(graph), isEmpty));
+}
+```
+
+Методов у узла нет, поэтому работу узла тест вызывает через её функцию.
+Работу, которую стоит проверить, удобно объявить именованной функцией —
+`final collect = node(collectChange);` — и вызвать в тесте
+`collectChange(request)`.
 
 ## Тесты
 
@@ -94,6 +117,9 @@ dart test
 `test/exec_test.dart` запускает dash, если он есть, и
 `test/fixtures/exec_through.dart` без управляющего терминала: так dash
 выключает управление заданиями.
+
+`test/graph_errors_test.dart` проверяет граф, как его проверяет тест
+пользователя: только через публичную точку.
 
 `test/compile_errors_test.dart` запускает `dart analyze` на программах из
 `test/fixtures/compile_errors/` и сверяет ошибки по строкам; из анализа
