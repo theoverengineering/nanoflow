@@ -238,7 +238,7 @@ eval "\$3"''');
         start: (executable, arguments, {workingDirectory, environment}) {
           started.addAll([
             executable,
-            arguments,
+            arguments.skip(2).toList(),
             workingDirectory,
             environment,
           ]);
@@ -252,24 +252,50 @@ eval "\$3"''');
       ], workingDirectory: '/Users/me/review');
       await process.exitCode;
       expect(started, [
-        '/opt/bin/nanoflow-yaml',
-        ['review.yaml', '--graph', '--watch'],
+        '/bin/sh',
+        ['sh', '/opt/bin/nanoflow-yaml', 'review.yaml', '--graph', '--watch'],
         '/Users/me/review',
         {'PATH': '/login/bin'},
       ]);
     });
 
-    test('runs a real program', () async {
+    test('gives the program its stdin, its output and its exit code', () async {
       final shell = Shell(environment: {'PATH': '/usr/bin:/bin'});
       final process = await shell.start('/bin/sh', [
         '-c',
-        r'printf %s "$PATH"',
+        r'read line; printf "%s|%s" "$line" "$PATH"; echo oops >&2; exit 3',
       ]);
+      process.stdin.writeln('hello');
+      await process.stdin.close();
       expect(
         await process.stdout.transform(const SystemEncoding().decoder).join(),
-        '/usr/bin:/bin',
+        'hello|/usr/bin:/bin',
       );
-      expect(await process.exitCode, 0);
+      expect(
+        await process.stderr.transform(const SystemEncoding().decoder).join(),
+        'oops\n',
+      );
+      expect(await process.exitCode, 3);
+    });
+
+    test('kill stops the program with every process it started', () async {
+      final pids = File('${tmp.path}/pids');
+      final shell = Shell(environment: {'PATH': '/usr/bin:/bin'});
+      final process = await shell.start(
+        script('watcher', 'sleep 3 & echo \$! > ${pids.path}; wait'),
+        const [],
+      );
+      while (!pids.existsSync() || pids.readAsStringSync().isEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final child = pids.readAsStringSync().trim();
+      process.kill();
+      expect(await process.exitCode, isNot(0));
+      final deadline = DateTime.now().add(const Duration(seconds: 2));
+      while (Process.runSync('kill', ['-0', child]).exitCode == 0) {
+        if (DateTime.now().isAfter(deadline)) fail('$child still runs');
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
     });
   });
 

@@ -137,16 +137,39 @@ class Shell {
 
   /// Starts [executable] with the user's [path] as its `PATH` and leaves it
   /// running: programs the app starts find what the user's terminal finds.
+  ///
+  /// The program runs in a process group of its own, so that [Process.kill]
+  /// stops it with every process it started: a `nanoflow-yaml` installed by
+  /// `dart pub global activate` is a script that starts `dart`, which would
+  /// otherwise go on running. Its stdin, stdout, stderr and exit code are the
+  /// program's.
   Future<Process> start(
     String executable,
     List<String> arguments, {
     String? workingDirectory,
   }) async => _start(
-    executable,
-    arguments,
+    '/bin/sh',
+    ['-c', _inGroup, 'sh', executable, ...arguments],
     workingDirectory: workingDirectory,
     environment: {'PATH': await path()},
   );
+
+  /// The `/bin/sh -c` script that runs a program — `"$@"` — in a process
+  /// group of its own and sends SIGTERM to the group when the shell gets
+  /// SIGTERM, SIGINT or SIGHUP; otherwise it exits with the program's code.
+  ///
+  /// With job control (`set -m`) the program, started in the background,
+  /// leads a new process group and keeps the shell's stdin; bash — `/bin/sh`
+  /// on macOS — keeps job control on without a terminal. The shell's own
+  /// stderr (job notices) goes to /dev/null; the program gets the real one
+  /// through fd 3.
+  static const _inGroup = r'''
+exec 3>&2 2>/dev/null
+set -m
+trap 'kill -TERM -$!; exit 143' TERM INT HUP
+exec "$@" 2>&3 3>&- &
+wait $!
+''';
 
   /// Shows [path] selected in a Finder window; false when `open` fails.
   Future<bool> revealInFinder(String path) => _open(['-R', path]);
