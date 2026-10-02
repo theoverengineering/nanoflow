@@ -49,7 +49,10 @@ import 'watch.dart';
 /// stdout carries data only, and only the library writes it, once, at the
 /// end. `print` while `serve` runs — in node functions and in [input] — goes
 /// to stderr; a `print` that runs before, such as in a top-level initializer
-/// that [graph] refers to, still goes to stdout.
+/// that [graph] refers to, still goes to stdout. So does a `print` in a
+/// callback registered before `serve`, which runs where it was registered
+/// even when a node function sets it off, such as a `package:logging`
+/// listener set up in `main`: it breaks the data, so have it write to stderr.
 Future<Never> serve<I>(
   List<String> args,
   Graph<void Function(I)> graph, {
