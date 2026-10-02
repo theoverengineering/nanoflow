@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow/src/exec.dart' show inGroupScript;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -33,6 +34,28 @@ final class Captured implements Stdout {
 /// Runs [body] with the process stderr replaced by [stderr].
 Future<T> withStderr<T>(Captured stderr, Future<T> Function() body) =>
     IOOverrides.runZoned(body, stderr: () => stderr);
+
+/// Starts [executable] with [arguments] without a controlling terminal, as a
+/// daemon or an app started from the Dock runs: a shell like dash then turns
+/// job control off. Gives what it prints on stdout once it has exited.
+Future<String> withoutTerminal(
+  String executable,
+  List<String> arguments, {
+  String stdin = '',
+}) async {
+  final process = await Process.start(
+    executable,
+    arguments,
+    mode: ProcessStartMode.detachedWithStdio,
+  );
+  process.stdin.write(stdin);
+  await process.stdin.close();
+  process.stderr.drain<void>().ignore();
+  return utf8.decodeStream(process.stdout);
+}
+
+/// Why a test that needs dash is skipped, or `null` when there is one.
+final String? noDash = File('/bin/dash').existsSync() ? null : 'no /bin/dash';
 
 void main() {
   late Directory temp;
@@ -138,6 +161,44 @@ void main() {
         ),
       );
       expect(stderr.text, 'why\n');
+    },
+  );
+
+  test('runs programs through bash when there is one', () async {
+    expect(
+      (await exec('/bin/sh', ['-c', r'ps -o comm= -p $PPID'])).trim(),
+      '/bin/bash',
+    );
+  }, skip: File('/bin/bash').existsSync() ? null : 'no /bin/bash');
+
+  group(
+    'through a shell without job control, as dash is without a terminal',
+    () {
+      test('hands the program its stdin', () async {
+        expect(
+          await withoutTerminal('/bin/dash', [
+            '-c',
+            inGroupScript,
+            'sh',
+            'cat',
+          ], stdin: 'piped'),
+          'piped',
+        );
+      }, skip: noDash);
+
+      test('throws instead of running a program it could not stop', () async {
+        Future<String> through(String shell) => withoutTerminal(
+          Platform.resolvedExecutable,
+          ['run', p.join('test', 'fixtures', 'exec_through.dart'), shell],
+        );
+        expect(await through('/bin/bash'), 'piped\n');
+        expect(
+          await through('/bin/dash'),
+          'exec cannot run cat in a process group of its own, so a stop '
+          'of the step could not end it: /bin/dash turns job control off '
+          'without a terminal; install bash\n',
+        );
+      }, skip: noDash);
     },
   );
 }

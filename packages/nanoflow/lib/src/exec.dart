@@ -27,21 +27,48 @@ final class ExecException implements Exception {
 /// `PATH` unless it holds a `/`; a relative path is taken from
 /// [workingDirectory], the current directory by default.
 ///
+/// The program runs through `/bin/bash` when there is one, else through
+/// `/bin/sh`: a shell that keeps job control on without a terminal, as bash
+/// does, gives it its group. One that does not, as dash, is found out before
+/// the first program starts.
+///
 /// Throws an [ExecException] when the program exits with a code other than
 /// 0, a [FormatException] when its stdout is not UTF-8, and a [StateError]
-/// once the step is stopping.
+/// once the step is stopping, or when the shell cannot run the program in a
+/// group of its own.
 Future<String> exec(
   String executable,
   List<String> arguments, {
   String? workingDirectory,
   String? stdin,
+}) => execIn(
+  _shell,
+  executable,
+  arguments,
+  workingDirectory: workingDirectory,
+  stdin: stdin,
+);
+
+/// [exec] through [shell].
+Future<String> execIn(
+  String shell,
+  String executable,
+  List<String> arguments, {
+  String? workingDirectory,
+  String? stdin,
 }) async {
-  if (_stopping) {
-    throw StateError('the step is stopping; $executable is not started');
+  _refuseWhileStopping(executable);
+  if (!await (_groups[shell] ??= _givesGroups(shell))) {
+    throw StateError(
+      'exec cannot run $executable in a process group of its own, so a '
+      'stop of the step could not end it: $shell turns job control off '
+      'without a terminal; install bash',
+    );
   }
-  final process = await Process.start('/bin/sh', [
+  _refuseWhileStopping(executable);
+  final process = await Process.start(shell, [
     '-c',
-    _inGroup,
+    inGroupScript,
     'sh',
     executable,
     ...arguments,
@@ -72,6 +99,26 @@ Future<String> exec(
   }
 }
 
+void _refuseWhileStopping(String executable) {
+  if (_stopping) {
+    throw StateError('the step is stopping; $executable is not started');
+  }
+}
+
+/// Whether [shell] runs the program of [inGroupScript] in a process group of
+/// its own: a program it runs that way tells whether it leads its group.
+Future<bool> _givesGroups(String shell) async {
+  final probe = await Process.run(shell, [
+    '-c',
+    inGroupScript,
+    'sh',
+    '/bin/sh',
+    '-c',
+    r'kill -0 -$$ 2>/dev/null',
+  ]);
+  return probe.exitCode == 0;
+}
+
 /// Stops every program [exec] is running, with every process each one
 /// started, and refuses to start new ones.
 ///
@@ -91,21 +138,22 @@ Future<void> stopRunning() async {
   }
 }
 
-/// The `/bin/sh -c` script that runs a program — `"$@"` — in a process group
-/// of its own and ends the group when the shell gets SIGTERM, SIGINT or
+/// The `sh -c` script that runs a program — `"$@"` — in a process group of
+/// its own and ends the group when the shell gets SIGTERM, SIGINT or
 /// SIGHUP: SIGTERM to the group, then SIGKILL after 5 s if any of it is still
 /// running.
 ///
 /// The shell exits with the program's code. With job control (`set -m`) the
-/// program, started in the background, leads a new process group, and its
-/// stdin is not redirected from /dev/null. This needs a `/bin/sh` that keeps
-/// job control on without a terminal, as bash — `/bin/sh` on macOS — does;
-/// dash turns it off. `exec` makes the job the program itself, found on
-/// `PATH`, rather than a builtin or a function of this script. The shell's own stderr — job
-/// notices such as `Done` — goes to /dev/null; the program gets the real one
-/// through fd 3. The `while` loop waits again if `wait` returned while the
-/// program is only stopped.
-const _inGroup = r'''
+/// program, started in the background, leads a new process group. That needs
+/// a shell that keeps job control on without a terminal, as bash does; dash
+/// turns it off. The program gets the shell's stdin through fd 4: without
+/// job control, a background job's stdin would be /dev/null. `exec` makes
+/// the job the program itself, found on `PATH`, rather than a builtin or a
+/// function of this script. The shell's own stderr — job notices such as
+/// `Done` — goes to /dev/null; the program gets the real one through fd 3.
+/// The `while` loop waits again if `wait` returned while the program is only
+/// stopped.
+const inGroupScript = r'''
 stop() {
   trap '' TERM INT HUP
   set +m
@@ -115,16 +163,22 @@ stop() {
   kill -KILL -$!
   exit 143
 }
-exec 3>&2 2>/dev/null
+exec 3>&2 2>/dev/null 4<&0
 set -m
 trap stop TERM INT HUP
-exec "$@" 2>&3 3>&- &
+exec "$@" <&4 4<&- 2>&3 3>&- &
 while :; do
   wait $!
   code=$?
   kill -0 $! || exit $code
 done
 ''';
+
+/// The shell [exec] runs programs through.
+final String _shell = File('/bin/bash').existsSync() ? '/bin/bash' : '/bin/sh';
+
+/// Whether each shell asked runs programs in process groups of their own.
+final _groups = <String, Future<bool>>{};
 
 /// The shells [exec] has started that have not ended yet.
 final _running = <Process>{};
