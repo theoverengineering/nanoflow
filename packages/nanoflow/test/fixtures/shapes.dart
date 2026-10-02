@@ -45,6 +45,16 @@ final sets = Graph([
   Graph.part(publish).next(<Vertex<void Function(Null), Object?>>{}),
 ]);
 
+/// Sets of one node: as a worker's next, as an if's then and else, and as a
+/// switch's target.
+final oneNodeSets = Graph([
+  Graph.start(collect).next({isEmpty}),
+  Graph.part(isEmpty).then({discard}).otherwise({inspect}),
+  Graph.part(inspect).next(grade).then({
+    Verdict.accepted: {publish},
+  }),
+]);
+
 /// A switch on numbers, with an `else`.
 final numbers = Graph.start(size).then({0: publish, 2: notify}).otherwise(fix);
 

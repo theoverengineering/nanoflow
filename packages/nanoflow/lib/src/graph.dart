@@ -102,7 +102,6 @@ final class Chain {
     Arrow(
       from: from,
       exit: exit,
-      single: target is Vertex<Object?, Object?> ? target : null,
       targets: List.unmodifiable(target.map(asVertex)),
     ),
   );
@@ -110,18 +109,10 @@ final class Chain {
 
 /// An exit of a node declared in a part, and where it leads.
 final class Arrow {
-  Arrow({
-    required this.from,
-    required this.exit,
-    required this.single,
-    required this.targets,
-  });
+  Arrow({required this.from, required this.exit, required this.targets});
 
   final Vertex<Object?, Object?> from;
   final Exit exit;
-
-  /// The target when it is one node rather than a set.
-  final Vertex<Object?, Object?>? single;
 
   /// The target's nodes: the one node, or the set's nodes in set order.
   final List<Vertex<Object?, Object?>> targets;

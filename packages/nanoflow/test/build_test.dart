@@ -279,6 +279,53 @@ void main() {
       });
     });
 
+    test('a set of one node as the node, not as a list of one node', () {
+      final description = graphOf(shapes.oneNodeSets);
+      expectJson(description, {
+        'start': 'collect',
+        'types': {
+          'Request': {'title': 'Request'},
+          'Change': {'title': 'Change'},
+          'Report': {'title': 'Report'},
+        },
+        'nodes': {
+          'collect': {
+            'command': rg('collect'),
+            'in': ref('Request'),
+            'out': ref('Change'),
+            'then': 'isEmpty',
+          },
+          'isEmpty': {
+            'decide': rg('isEmpty'),
+            'in': ref('Change'),
+            'then': 'discard',
+            'else': 'inspect',
+          },
+          'inspect': {
+            'command': rg('inspect'),
+            'in': ref('Change'),
+            'out': ref('Report'),
+            'then': 'grade',
+          },
+          'publish': {'command': rg('publish'), 'in': ref('Report')},
+          'discard': {'command': rg('discard'), 'in': ref('Change')},
+          'grade': {
+            'decide': sh('grade'),
+            'in': ref('Report'),
+            'then': {'accepted': 'publish'},
+          },
+        },
+      });
+      final graph = model.Graph.fromJson(
+        jsonDecode(jsonEncode(description)) as Map<String, Object?>,
+      );
+      for (final node in graph.nodes.values) {
+        for (final exit in node.exits) {
+          expect(exit.target.isList, isFalse, reason: node.name);
+        }
+      }
+    });
+
     test('switch keys that are not strings by their toString()', () {
       expectJson(graphOf(shapes.numbers), {
         'start': 'size',

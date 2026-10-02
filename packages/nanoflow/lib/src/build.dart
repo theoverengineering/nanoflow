@@ -214,9 +214,11 @@ final class _Build {
 
   String _nameOf(_Vertex vertex) => named[vertex]!.name;
 
-  Object _target(Arrow arrow) => switch (arrow.single) {
-    final single? => _nameOf(single),
-    null => [for (final vertex in arrow.targets) _nameOf(vertex)],
+  /// Where [arrow] leads: a node's name, also for a set of one node, which
+  /// means the same; a list of names for a set of any other size.
+  Object _target(Arrow arrow) => switch (arrow.targets) {
+    [final single] => _nameOf(single),
+    final targets => [for (final vertex in targets) _nameOf(vertex)],
   };
 
   Map<String, Object?> _nodeJson(_Vertex vertex) {
