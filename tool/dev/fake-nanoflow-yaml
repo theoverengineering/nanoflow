@@ -1,0 +1,48 @@
+#!/bin/sh
+# A test stand-in for nanoflow-yaml, the YAML graph program, which this
+# repository does not have: given <dir>/<name>.yaml and its arguments, it
+# runs the Dart graph program <dir>/<name>.dart with the same arguments, so
+# `--graph --watch` prints that program's descriptions and edits to the .dart
+# file show up live. It reads no YAML: the .yaml file only names the .dart
+# one. See tool/dev/README.md.
+set -eu
+
+if [ $# -lt 1 ]; then
+  echo "usage: ${0##*/} <dir>/<name>.yaml [--graph [--watch] | --input | --call <node>]" >&2
+  exit 2
+fi
+
+yaml=$1
+shift
+case $yaml in
+  *.yaml) program=${yaml%.yaml}.dart ;;
+  *.yml) program=${yaml%.yml}.dart ;;
+  *)
+    echo "${0##*/}: not a .yaml or .yml file: $yaml" >&2
+    exit 2
+    ;;
+esac
+if [ ! -f "$program" ]; then
+  echo "${0##*/}: no Dart graph program next to $yaml: $program" >&2
+  exit 1
+fi
+
+# This script's own directory, through any symlinks to it (it is put on PATH
+# as a symlink named nanoflow-yaml).
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+root=$(cd "$(dirname "$self")/../.." && pwd)
+
+# A program outside the workspace imports package:nanoflow through the
+# workspace's package config; one inside it finds that config itself.
+dir=$(cd "$(dirname "$program")" && pwd)
+case $dir/ in
+  "$root"/*) exec dart run "$program" "$@" ;;
+  *) exec dart run --packages="$root/.dart_tool/package_config.json" "$program" "$@" ;;
+esac

@@ -216,6 +216,30 @@ flutter test --update-goldens # заново снять эталонные ка�
 Картинки эталонных раскладок — `test/layout/rendered/`; счётчики `1×` на
 них показывают место, которое под счётчик отведено.
 
+### Живой тест
+
+`integration_test/live_test.dart` гоняет настоящее приложение против
+настоящего движка. Нужен macOS и Dart SDK в `PATH`; в `tool/ci.sh` его нет.
+
+```bash
+dart pub get                       # в корне: пакеты для программы графа
+cd apps/nanoflow_ui
+flutter test integration_test/live_test.dart -d macos
+```
+
+Тест собирает `nanoflow` из `apps/nanoflow_cli`, кладёт рядом
+`tool/dev/fake-nanoflow-yaml` под именем `nanoflow-yaml` (подмена программы
+для YAML, `tool/dev/README.md`) и отдаёт приложению `PATH` с ними первыми.
+`examples/review` копируется во временный каталог как `graph.dart` с
+`graph.yaml` рядом; `notify` в копии ждёт файла `release`, чтобы сессия шла,
+пока тест на неё смотрит. Тест открывает `graph.yaml` кнопкой `Open graph`
+(диалог подменён), запускает `nanoflow run` и проверяет, что всё приходит
+само: сессия, `running` → `finished`, шаги и лог в `Logs`, счётчики,
+прогоны разветвления в переключателе, окно деталей шага; правка
+`graph.dart` — в `Current graph`, ошибки `nanoflow check`, удалённый
+`graph.yaml` — плашка `File unavailable`. Снимки окна в эти моменты — в
+`build/live_screenshots/`; смотреть их рядом с `docs/design/*.png`.
+
 Нарисовать раскладку (SVG, с `--png` — ещё PNG через Google Chrome):
 
 ```bash
