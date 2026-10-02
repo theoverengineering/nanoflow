@@ -83,9 +83,20 @@ Future<Ended> run(
   return (exitCode: exitCode, stdout: await stdout, stderr: await stderr);
 }
 
-/// Runs `--call [node]` of the program fixture with the input [line].
-Future<Ended> call(String node, String line) =>
-    run(programFile, ['--call', node], stdin: '$line\n', close: false);
+/// Runs `--call [node]` of the program [file] — the program fixture unless
+/// given — with the input [line].
+Future<Ended> call(String node, String line, [String? file]) =>
+    run(file ?? programFile, ['--call', node], stdin: '$line\n', close: false);
+
+/// Calls the nodes of the program whose data classes declare toJson
+/// abstract one after another, each with what the one before printed.
+Future<List<Ended>> callAbstractToJson() async {
+  final file = fixture('program_with_abstract_to_json.dart');
+  final judged = await call('judge', '3', file);
+  final summarized = await call('summarize', judged.stdout.trim(), file);
+  final shouted = await call('shout', summarized.stdout.trim(), file);
+  return [judged, summarized, shouted];
+}
 
 /// How `--call` of a node that waits on its command ended after a stop, and
 /// how long it took to exit after the stop.
@@ -166,6 +177,7 @@ void main() {
         throwing,
         unknownNode,
         badLine;
+    late Future<List<Ended>> abstractToJson;
     late Future<Stopped> closedStdin, terminated, interrupted, ignoresTerm;
     late Future<EndedWithSleep> timedOut, returned, uncaught;
 
@@ -199,6 +211,7 @@ void main() {
       );
       unknownNode = call('nope', '');
       badLine = call('collect', '{"branch":3}');
+      abstractToJson = callAbstractToJson();
       closedStdin = stopMidStep('hang', (p) => p.stdin.close().ignore());
       terminated = stopMidStep('hang', (p) => p.kill(ProcessSignal.sigterm));
       interrupted = stopMidStep('hang', (p) => p.kill(ProcessSignal.sigint));
@@ -320,6 +333,15 @@ void main() {
         expect(ended.exitCode, 1);
         expect(ended.stdout, isEmpty);
         expect(ended.stderr, startsWith('invalid input: Request.fromJson'));
+      });
+
+      test('data classes whose toJson is abstract, a sealed base and a '
+          'freezed 3 model, go from step to step as JSON', () async {
+        expect(await abstractToJson, [
+          (exitCode: 0, stdout: '{"kind":"passed","count":3}\n', stderr: ''),
+          (exitCode: 0, stdout: '{"text":"3 passed"}\n', stderr: ''),
+          (exitCode: 0, stdout: '"3 PASSED"\n', stderr: ''),
+        ]);
       });
 
       group('stops the command with its process group', () {

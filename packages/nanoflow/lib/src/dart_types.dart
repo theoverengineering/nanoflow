@@ -159,14 +159,32 @@ _Kind _kindOf(TypeMirror type) {
     (d) =>
         d is MethodMirror && d.isConstructor && d.constructorName == #fromJson,
   );
-  final hasToJson = type.instanceMembers[#toJson]?.isRegularMethod ?? false;
-  if (!hasFromJson || !hasToJson) {
+  if (!hasFromJson || !_hasToJson(type)) {
     throw UnsupportedTypeException._(
       type,
       '${_nameOf(type)} needs a fromJson constructor and a toJson method',
     );
   }
   return _Kind.object;
+}
+
+/// Whether [type] has a `toJson()` method, abstract or not: declared by the
+/// class itself or by a class it extends, mixes in or implements.
+///
+/// `instanceMembers` leaves abstract methods out, such as the `toJson()` a
+/// sealed base declares for its subclasses to implement, or the one freezed
+/// declares in the mixin it generates. Encoding calls the `toJson()` of the
+/// value's own class.
+bool _hasToJson(ClassMirror type) {
+  final declared = type.declarations[#toJson];
+  if (declared != null) {
+    return declared is MethodMirror && declared.isRegularMethod;
+  }
+  return [
+    ?type.superclass,
+    if (type.mixin != type) type.mixin,
+    ...type.superinterfaces,
+  ].any(_hasToJson);
 }
 
 /// The schema of [type], which is [schemaOf]'s type or a part of it: there,

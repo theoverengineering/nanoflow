@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'fixtures/build_errors.dart' as errors;
+import 'fixtures/program_with_abstract_to_json.dart' as abstract_to_json;
 import 'fixtures/review_graph.dart' as review;
 import 'fixtures/shapes.dart' as shapes;
 
@@ -364,6 +365,39 @@ void main() {
             'then': 'announce',
           },
           'announce': {'command': sh('announce'), 'in': ref('Verdict')},
+        },
+      });
+    });
+
+    test('classes whose toJson is abstract: a sealed base, a freezed 3 '
+        'model', () {
+      final file = p.join(fixtures, 'program_with_abstract_to_json.dart');
+      String at(String name) =>
+          'program_with_abstract_to_json.dart:${lineOf(file, name)}';
+      expectJson(graphOf(abstract_to_json.graph), {
+        'start': 'judge',
+        'types': {
+          'Outcome': {'title': 'Outcome'},
+          'Summary': {'title': 'Summary'},
+        },
+        'nodes': {
+          'judge': {
+            'command': at('judge'),
+            'in': {'type': 'integer'},
+            'out': ref('Outcome'),
+            'then': 'summarize',
+          },
+          'summarize': {
+            'command': at('summarize'),
+            'in': ref('Outcome'),
+            'out': ref('Summary'),
+            'then': 'shout',
+          },
+          'shout': {
+            'command': at('shout'),
+            'in': ref('Summary'),
+            'out': {'type': 'string'},
+          },
         },
       });
     });
