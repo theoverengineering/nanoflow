@@ -5,8 +5,9 @@
 //   cd apps/nanoflow_ui
 //   flutter test integration_test/history_test.dart -d macos
 //
-// Prints how long the newest session and the whole history take to show,
-// and the longest frame while they load and after.
+// Measures how long the newest session and the whole history take to show,
+// and the longest frame while they load and after: in the binding's
+// reportData (written out by `flutter drive`) and in a failure's reason.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -28,7 +29,7 @@ const _sessions = 200;
 const _steps = 30;
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   late final Directory temp;
   late final String graphFile;
@@ -84,16 +85,18 @@ void main() {
     final allAt = opened.elapsed;
     final after = [for (var i = 0; i < 120; i++) await _frame(tester)];
 
-    // ignore: avoid_print
-    print(
-      'newest session shown after ${newestAt?.inMilliseconds} ms, '
-      'all $_sessions after ${allAt.inMilliseconds} ms; longest frame '
-      '${loading.reduce(math.max)} ms while loading, '
-      '${after.reduce(math.max)} ms after',
-    );
-    expect(newestAt, lessThan(const Duration(seconds: 3)));
-    expect(loading.reduce(math.max), lessThan(1000));
-    expect(after.reduce(math.max), lessThan(500));
+    final measured = {
+      'newestSessionMs': newestAt?.inMilliseconds,
+      'allSessionsMs': allAt.inMilliseconds,
+      'longestFrameLoadingMs': loading.reduce(math.max),
+      'longestFrameAfterMs': after.reduce(math.max),
+    };
+    // What `flutter drive` writes out; a failure says it too.
+    binding.reportData = {'history': measured};
+    final reason = '$measured';
+    expect(newestAt, lessThan(const Duration(seconds: 3)), reason: reason);
+    expect(loading.reduce(math.max), lessThan(1000), reason: reason);
+    expect(after.reduce(math.max), lessThan(500), reason: reason);
   });
 }
 

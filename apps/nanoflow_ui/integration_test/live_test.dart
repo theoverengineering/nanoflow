@@ -134,6 +134,8 @@ void main() {
 
     // The run splits into publish and notify; notify waits, logging.
     await _until(tester, find.text('split'));
+    // A scan may give run-split before it lists the runs the split made.
+    await _until(tester, _runPills(), atLeast: 3);
     expect(_runPills(), findsNWidgets(3));
     await tester.tap(
       find.byKey(RunSwitcher.pillKey(_runStartedAt(dir, 'notify'))),
@@ -344,14 +346,15 @@ final class _Engine {
   void kill() => _process.kill();
 }
 
-/// Pumps until [finder] finds something, for at most [timeout].
+/// Pumps until [finder] finds [atLeast] widgets, for at most [timeout].
 Future<void> _until(
   WidgetTester tester,
   Finder finder, {
+  int atLeast = 1,
   Duration timeout = const Duration(seconds: 60),
 }) async {
   final end = DateTime.now().add(timeout);
-  while (finder.evaluate().isEmpty) {
+  while (finder.evaluate().length < atLeast) {
     if (DateTime.now().isAfter(end)) fail('gave up waiting for $finder');
     await tester.pump(const Duration(milliseconds: 100));
   }
