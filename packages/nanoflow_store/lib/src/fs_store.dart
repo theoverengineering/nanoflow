@@ -78,15 +78,20 @@ final class FsStore {
   ///
   /// Throws a [SessionBusyException], having changed nothing, when another
   /// engine process holds the lock: one that created or opened the session
-  /// and still runs. The system drops the lock of a process that dies.
+  /// and still runs. The system drops the lock of a process that dies. A
+  /// session it cannot read is a [FileSystemException].
   Future<SessionHandle?> openSession(String sessionId) async {
     final runs = Directory(runsDir);
     if (!await runs.exists()) return null;
+    String? dir;
     await for (final entity in runs.list()) {
       if (idOfBuiltDir(entity) == sessionId) {
-        return loadSessionHandle(entity.path, sessionId, _clock);
+        dir = entity.path;
+        break;
       }
     }
-    return null;
+    // Loaded once the listing is closed: a load that failed while the
+    // listing was being closed would be an error no one awaits.
+    return dir == null ? null : loadSessionHandle(dir, sessionId, _clock);
   }
 }

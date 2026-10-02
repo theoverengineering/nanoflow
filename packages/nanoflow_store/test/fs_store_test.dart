@@ -311,6 +311,21 @@ void main() {
       expect(await FsStore(runsDir).openSession(sessionId), isNull);
     });
 
+    test(
+      'throws the FileSystemException of a session it cannot read',
+      () async {
+        final created = await newSession();
+        await created.release();
+        Process.runSync('chmod', ['000', created.dir]);
+        addTearDown(() => Process.runSync('chmod', ['700', created.dir]));
+
+        await expectLater(
+          FsStore(p.dirname(created.dir)).openSession(created.session.id),
+          throwsA(isA<FileSystemException>()),
+        );
+      },
+    );
+
     test('leaves alone a run that was never finished being created', () async {
       final created = await newSession();
       final runs = await created.runs();
