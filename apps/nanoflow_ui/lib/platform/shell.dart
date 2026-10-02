@@ -10,20 +10,32 @@ typedef RunProcess = Future<ProcessResult> Function(
   List<String> arguments,
 );
 
+/// Starts [executable] with [arguments] and leaves it running.
+typedef StartProcess = Future<Process> Function(
+  String executable,
+  List<String> arguments, {
+  String? workingDirectory,
+  Map<String, String>? environment,
+});
+
 /// What the app asks of macOS: the user's `PATH`, Finder, the text editor and
 /// the clipboard.
 class Shell {
-  /// [environment] defaults to the app's own; [run] to [Process.run].
-  /// [timeout] bounds the login shell asked for `PATH`.
+  /// [environment] defaults to the app's own; [run] to [Process.run];
+  /// [start] to [Process.start]. [timeout] bounds each shell asked for
+  /// `PATH`.
   Shell({
     Map<String, String>? environment,
     RunProcess? run,
+    StartProcess? start,
     this.timeout = const Duration(seconds: 5),
   }) : _environment = environment ?? Platform.environment,
-       _run = run ?? Process.run;
+       _run = run ?? Process.run,
+       _start = start ?? Process.start;
 
   final Map<String, String> _environment;
   final RunProcess _run;
+  final StartProcess _start;
   final Duration timeout;
   Future<String>? _path;
 
@@ -31,39 +43,83 @@ class Shell {
   /// gets only the system's, without what the shell profile adds (Homebrew,
   /// ~/.pub-cache/bin).
   ///
-  /// Asked once from the login shell, `$SHELL -l -c 'printf %s "$PATH"'`;
-  /// when that fails, the app's own `PATH`.
-  Future<String> path() => _path ??= _loginShellPath();
+  /// Asked once from the user's shell as an interactive login shell,
+  /// `$SHELL -i -l -c …`, so that zsh reads `~/.zshrc` too, where
+  /// `~/.pub-cache/bin` usually goes; when that fails, as a login shell only,
+  /// `$SHELL -l -c …`; when that fails too, the app's own `PATH`. The shell
+  /// prints `PATH` on a line after [_marker], so whatever the profile prints
+  /// around it does not matter.
+  Future<String> path() => _path ??= _userPath();
 
-  Future<String> _loginShellPath() async {
+  /// What the shell prints in front of `PATH`.
+  static const _marker = '__NANOFLOW_PATH__=';
+
+  Future<String> _userPath() async {
     final fallback = _environment['PATH'] ?? '';
     final shell = _environment['SHELL'] ?? '';
     if (shell.isEmpty) return fallback;
-    try {
-      final process = await Process.start(shell, [
-        '-l',
-        '-c',
-        r'printf %s "$PATH"',
-      ]);
-      unawaited(process.stdin.close());
-      unawaited(process.stderr.drain<void>());
-      final output = process.stdout
-          .transform(const Utf8Decoder(allowMalformed: true))
-          .join();
-      final exitCode = await process.exitCode.timeout(
-        timeout,
-        onTimeout: () {
-          process.kill(ProcessSignal.sigkill);
-          return -1;
-        },
-      );
-      if (exitCode != 0) return fallback;
-      // A profile may print lines of its own before the command runs.
-      final path = (await output).split('\n').last;
-      return path.isEmpty ? fallback : path;
-    } on ProcessException {
-      return fallback;
+    for (final flags in const [
+      ['-i', '-l'],
+      ['-l'],
+    ]) {
+      final path = await _askShell(shell, flags);
+      if (path != null && path.isNotEmpty) return path;
     }
+    return fallback;
+  }
+
+  /// The `PATH` [shell] started with [flags] prints, or `null`.
+  ///
+  /// Waits at most [timeout] in all: a profile may hang, or leave a program
+  /// running that holds the shell's output open after the shell has exited.
+  Future<String?> _askShell(String shell, List<String> flags) async {
+    final Process process;
+    try {
+      process = await _start(shell, [
+        ...flags,
+        '-c',
+        'printf "\\n$_marker%s\\n" "\$PATH"',
+      ]);
+    } on ProcessException {
+      return null;
+    }
+    // A profile that asks something reads an end of input instead.
+    process.stdin.close().ignore();
+    final output = StringBuffer();
+    final printed = Completer<void>();
+    void finish() {
+      if (!printed.isCompleted) printed.complete();
+    }
+
+    final out = process.stdout
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .listen(
+          (chunk) {
+            output.write(chunk);
+            if (_pathIn(output.toString()) != null) finish();
+          },
+          onError: (Object _) => finish(),
+          onDone: finish,
+        );
+    final err = process.stderr.listen(null, onError: (Object _) {});
+    try {
+      await printed.future.timeout(timeout, onTimeout: () {});
+    } finally {
+      process.kill(ProcessSignal.sigkill);
+      unawaited(out.cancel());
+      unawaited(err.cancel());
+    }
+    return _pathIn(output.toString());
+  }
+
+  /// The `PATH` on the last complete line that starts with [_marker].
+  static String? _pathIn(String output) {
+    final lines = output.split('\n');
+    // The last piece has no newline yet.
+    for (final line in lines.take(lines.length - 1).toList().reversed) {
+      if (line.startsWith(_marker)) return line.substring(_marker.length);
+    }
+    return null;
   }
 
   /// The first executable file [name] in the directories of [path].
@@ -79,12 +135,33 @@ class Shell {
     return null;
   }
 
-  /// Shows [path] selected in a Finder window.
-  Future<void> revealInFinder(String path) =>
-      _run('/usr/bin/open', ['-R', path]);
+  /// Starts [executable] with the user's [path] as its `PATH` and leaves it
+  /// running: programs the app starts find what the user's terminal finds.
+  Future<Process> start(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+  }) async => _start(
+    executable,
+    arguments,
+    workingDirectory: workingDirectory,
+    environment: {'PATH': await path()},
+  );
 
-  /// Opens [path] in the user's default text editor.
-  Future<void> openInEditor(String path) => _run('/usr/bin/open', ['-t', path]);
+  /// Shows [path] selected in a Finder window; false when `open` fails.
+  Future<bool> revealInFinder(String path) => _open(['-R', path]);
+
+  /// Opens [path] in the user's default text editor; false when `open`
+  /// fails.
+  Future<bool> openInEditor(String path) => _open(['-t', path]);
+
+  Future<bool> _open(List<String> arguments) async {
+    try {
+      return (await _run('/usr/bin/open', arguments)).exitCode == 0;
+    } on ProcessException {
+      return false;
+    }
+  }
 
   Future<void> copyToClipboard(String text) =>
       Clipboard.setData(ClipboardData(text: text));
