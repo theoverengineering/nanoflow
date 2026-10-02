@@ -816,6 +816,43 @@ IFS= read -r line
         expect(Directory(fake.runsDir).existsSync(), isFalse);
       },
     );
+
+    test('read to its end leaves the engine its fd 0 open, so that no '
+        'program the engine starts next can come up with a closed stdin, '
+        'as --input did when fd 0 was closed while it started', () async {
+      final fake = FakeProgram(takesInput, nodes: {'a': 'true'});
+      final result = await nanoflowProcess(
+        ['run', '--', fake.path],
+        stdin: '{"branch": "main"}',
+        script: 'test/support/fd0_after_cli.dart',
+      );
+      expect(result.code, 0, reason: result.err);
+      expect(const LineSplitter().convert(result.err).last, 'fd 0 open');
+    });
+
+    test('an engine started with its stdin closed has none: exit 2 and no '
+        'session', () async {
+      final fake = FakeProgram(takesInput, nodes: {'a': 'true'});
+      final result = await nanoflowProcess(['run', '--', fake.path]);
+      expect(result, (code: 2, out: '', err: 'no input on stdin\n'));
+      expect(Directory(fake.runsDir).existsSync(), isFalse);
+    });
+
+    test('a stdin that cannot be read: exit 2, one line says why, and no '
+        'session', () async {
+      final fake = FakeProgram(takesInput, nodes: {'a': 'true'});
+      final result = await nanoflow([
+        'run',
+        '--',
+        fake.path,
+      ], stdinStream: Stream.error(unreadableStdin));
+      expect(result, (
+        code: 2,
+        out: '',
+        err: 'cannot read stdin: Resource temporarily unavailable\n',
+      ));
+      expect(Directory(fake.runsDir).existsSync(), isFalse);
+    });
   });
 
   group('no graph to run', () {

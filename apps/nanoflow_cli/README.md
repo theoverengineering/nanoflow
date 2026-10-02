@@ -95,6 +95,16 @@ nanoflow check < описание.json          # описание графа и
   ошибки — в stdout по одной в строке, код 0, если граф прошёл, иначе 1. Нет
   описания — одна строка `cannot read the graph: <причина>`; stderr
   программы графа идёт в stderr. Не те аргументы — usage в stderr, код 2.
+- **stdin процесса** (`src/stdin.dart`) — вход `run` и описание для `check`
+  — читается через свой дескриптор, `/dev/stdin`, а fd 0 остаётся открытым.
+  `stdin` из `dart:io`, дочитав, закрывает fd 0 в другом потоке: программа,
+  которую движок запускает в этот момент (`--input`), могла получить
+  закрытый stdin и не завершиться никогда. Процесс запущен с закрытым stdin
+  (`<&-`) — fd 0 тогда занимает сама VM Dart (у него, в отличие от
+  унаследованного, стоит close-on-exec), его не читают: stdin пуст, у `run`
+  это `no input on stdin`. stdin не читается — `cannot read stdin:
+  <причина>` и код 2 (у `check` — `cannot read the graph: stdin:
+  <причина>`).
 
 ## Тесты
 
@@ -113,4 +123,8 @@ dart test
 `nanoflow` (`dart compile exe`, `test/support/compiled.dart`) и шлют сигнал
 его процессу или, как Ctrl+C, всей его группе процессов. Так же
 `test/engine/step_log_test.dart` меряет память процесса движка, пока шаг
-пишет в лог около 200 МБ.
+пишет в лог около 200 МБ. Тесты stdin процесса запускают `nanoflow` из
+исходника отдельным процессом (`nanoflowProcess` в
+`test/support/helpers.dart`): с закрытым stdin или через
+`test/support/fd0_after_cli.dart`, который после команды говорит, открыт ли
+ещё fd 0.

@@ -29,12 +29,13 @@ import 'engine.dart';
 /// Returns 0 when every run ended and none failed, 1 when one failed, and 2
 /// when there was no session to drive: the program gave no graph, the graph
 /// did not pass check (its errors go to [stderr], one per line), there was
-/// no input or `--input` rejected it, there is no session [resume], another
-/// engine drives it, or the session could not be created or opened. SIGINT
-/// or SIGTERM stops the engine (the session can be resumed): `128 + N` for
-/// signal `N`. When the session cannot be written or read while the engine
-/// drives it, the engine stops the same way and returns 3. A session that
-/// cannot be stored ends with the line [storeFailure] on [stderr].
+/// no input, stdin could not be read or `--input` rejected the input, there
+/// is no session [resume], another engine drives it, or the session could
+/// not be created or opened. SIGINT or SIGTERM stops the engine (the session
+/// can be resumed): `128 + N` for signal `N`. When the session cannot be
+/// written or read while the engine drives it, the engine stops the same way
+/// and returns 3. A session that cannot be stored ends with the line
+/// [storeFailure] on [stderr].
 Future<int> runRun(
   List<String> program, {
   String? resume,
@@ -103,10 +104,16 @@ Future<SessionHandle?> _createSession(
   ];
   ({Object? value})? input;
   if (startNodes.any((start) => start.takesInput)) {
-    final bytes = await stdin.fold(
-      BytesBuilder(copy: false),
-      (all, chunk) => all..add(chunk),
-    );
+    final BytesBuilder bytes;
+    try {
+      bytes = await stdin.fold(
+        BytesBuilder(copy: false),
+        (all, chunk) => all..add(chunk),
+      );
+    } on FileSystemException catch (e) {
+      stderr.writeln('cannot read stdin: ${e.osError?.message ?? e.message}');
+      return null;
+    }
     final raw = utf8.decode(bytes.takeBytes(), allowMalformed: true);
     if (raw.trim().isEmpty) {
       stderr.writeln('no input on stdin');

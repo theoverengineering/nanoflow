@@ -19,10 +19,15 @@ Future<int> runCheck(
 }) async {
   try {
     if (program == null) {
-      final bytes = await stdin.fold(
-        BytesBuilder(copy: false),
-        (all, chunk) => all..add(chunk),
-      );
+      final BytesBuilder bytes;
+      try {
+        bytes = await stdin.fold(
+          BytesBuilder(copy: false),
+          (all, chunk) => all..add(chunk),
+        );
+      } on FileSystemException catch (e) {
+        return _unreadable(stdout, 'stdin: ${e.osError?.message ?? e.message}');
+      }
       final Map<String, Object?> description;
       try {
         description = readDescription(bytes.takeBytes());

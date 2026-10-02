@@ -44,6 +44,39 @@ Future<Outcome> nanoflow(
   return (code: code, out: out.text, err: err.text);
 }
 
+/// Runs `nanoflow` with [args] as a process of its own, from its source
+/// [script]: [stdin] is written to its stdin, which is then closed; without
+/// [stdin] it starts with its stdin closed, as a shell's `<&-` starts it, so
+/// that its fd 0 is not open. A process that has not exited after 20 seconds
+/// fails the test, and is killed.
+Future<Outcome> nanoflowProcess(
+  List<String> args, {
+  String? stdin,
+  String script = 'bin/nanoflow.dart',
+}) async {
+  final dart = [Platform.resolvedExecutable, script, ...args];
+  final process = stdin == null
+      ? await Process.start('/bin/sh', ['-c', r'exec "$0" "$@" <&-', ...dart])
+      : await Process.start(dart.first, dart.sublist(1));
+  addTearDown(() => process.kill(ProcessSignal.sigkill));
+  final out = process.stdout.transform(utf8.decoder).join();
+  final err = process.stderr.transform(utf8.decoder).join();
+  // A process that exits without reading its stdin breaks the pipe.
+  process.stdin.done.ignore();
+  process.stdin.write(stdin ?? '');
+  process.stdin.close().ignore();
+  final code = await process.exitCode.timeout(const Duration(seconds: 20));
+  return (code: code, out: await out, err: await err);
+}
+
+/// The error of a read of stdin when nothing has come yet and its file is
+/// non-blocking, as a parent that shares it may leave it.
+const unreadableStdin = FileSystemException(
+  'read failed',
+  '/dev/stdin',
+  OSError('Resource temporarily unavailable', 35),
+);
+
 /// The bytes written to an [IOSink] built on it.
 final class Capture implements StreamConsumer<List<int>> {
   final _bytes = BytesBuilder();

@@ -2,6 +2,7 @@ import 'dart:io' as io;
 
 import 'check/check_command.dart';
 import 'engine/run_command.dart';
+import 'stdin.dart';
 
 const _usage = '''
 usage: nanoflow run [--resume <session id>] -- <graph program> [args...]
@@ -9,7 +10,8 @@ usage: nanoflow run [--resume <session id>] -- <graph program> [args...]
 
 /// Runs the `nanoflow` command with [args] and gives its exit code.
 ///
-/// [stdin], [stdout] and [stderr] are those of this process unless given.
+/// [stdin], [stdout] and [stderr] are those of this process unless given;
+/// this process's stdin is read as [processStdin] reads it.
 /// Arguments that are not a command print the usage on [stderr]; the exit
 /// code is 2.
 Future<int> runCli(
@@ -18,7 +20,7 @@ Future<int> runCli(
   io.IOSink? stdout,
   io.IOSink? stderr,
 }) async {
-  final input = stdin ?? io.stdin;
+  final input = stdin ?? processStdin();
   final output = stdout ?? io.stdout;
   final errors = stderr ?? io.stderr;
   switch (args) {
