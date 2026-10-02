@@ -23,6 +23,7 @@ import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/details/step_details_window.dart';
 import 'package:nanoflow_ui/graph/graph_screen.dart';
 import 'package:nanoflow_ui/graph/logs/step_details_pane.dart';
+import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/graph/run_switcher.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
@@ -113,6 +114,7 @@ void main() {
     expect(find.text('Live · watching runs/'), findsOneWidget);
     expect(find.text('No runs yet'), findsOneWidget);
     expect(find.text('graph.yaml'), findsOneWidget);
+    expect(find.text('2×'), findsNothing);
     await shots.take('02-current-graph-no-runs');
 
     // A session of the real engine appears and runs.
@@ -146,6 +148,20 @@ void main() {
     );
     expect(find.text('following tail'), findsOneWidget);
     expect(find.textContaining('Running for'), findsOneWidget);
+    // Logs has the run's steps, the inherited ones and its own.
+    expect(find.textContaining('8 steps, 7 inherited from'), findsOneWidget);
+    for (final row in [
+      find.text('collect'),
+      find.textContaining('isEmpty else → inspect'),
+      find.text('fix'),
+      find.text('notify'),
+    ]) {
+      expect(
+        find.descendant(of: find.byType(StepList), matching: row),
+        findsOneWidget,
+        reason: '$row',
+      );
+    }
     final logged = _lastWait(tester);
     await _until(
       tester,
