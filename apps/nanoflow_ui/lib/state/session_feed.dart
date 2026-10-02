@@ -132,46 +132,28 @@ final class SessionData {
 class SessionFeed extends ChangeNotifier with BatchedNotifier {
   /// [runPath] gives a run's directory: errors of the feed about files under
   /// it mark that run [RunData.incomplete].
-  ///
-  /// The feed is [loading] at first, until it has been quiet for [settle], or
-  /// for [maxLoading] at most: a reader gives what is on disk all at once,
-  /// then new changes as they come.
   SessionFeed(
     Stream<Change> changes, {
     String? Function(String runId)? runPath,
     this.batch = const Duration(milliseconds: 50),
-    this.settle = const Duration(milliseconds: 300),
-    Duration maxLoading = const Duration(seconds: 5),
   }) : _runPath = runPath ?? ((_) => null) {
     _subscription = changes.listen(_apply, onError: _error);
-    _settling = Timer(settle, _loaded);
-    _loadingCap = Timer(maxLoading, _loaded);
   }
 
   /// The changes of [reader], with its run directories.
   SessionFeed.read(
     FsReader reader, {
     Duration batch = const Duration(milliseconds: 50),
-    Duration settle = const Duration(milliseconds: 300),
-    Duration maxLoading = const Duration(seconds: 5),
-  }) : this(
-         reader.changes(),
-         runPath: reader.runPath,
-         batch: batch,
-         settle: settle,
-         maxLoading: maxLoading,
-       );
+  }) : this(reader.changes(), runPath: reader.runPath, batch: batch);
 
   @override
   final Duration batch;
-
-  final Duration settle;
   final String? Function(String runId) _runPath;
 
+  final StreamController<DocumentAdded> _documentsAdded =
+      StreamController.broadcast();
+
   late final StreamSubscription<Change> _subscription;
-  late Timer _settling;
-  late final Timer _loadingCap;
-  bool _loading = true;
 
   final Map<String, SessionData> _sessions = {};
   final Map<String, RunData> _runs = {};
@@ -191,8 +173,9 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
 
   SessionData? session(String id) => _sessions[id];
 
-  /// Whether the feed is still giving what was on disk when it started.
-  bool get loading => _loading;
+  /// Each document as the feed gives it: a document that could not be read
+  /// before may be readable now.
+  Stream<DocumentAdded> get documentsAdded => _documentsAdded.stream;
 
   /// Files the feed could not read that belong to no run it has given: a
   /// session or a run that is not there for that reason.
@@ -243,6 +226,7 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
           (_waitingEvents[runId] ??= []).add(event);
         }
       case DocumentAdded(:final sessionId, :final documentId):
+        _documentsAdded.add(change);
         final session = _sessions[sessionId];
         if (session != null) {
           session._documents.add(documentId);
@@ -295,27 +279,12 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
     }
   }
 
-  void _changed() {
-    if (_loading) {
-      _settling.cancel();
-      _settling = Timer(settle, _loaded);
-    }
-    notifyLater();
-  }
-
-  void _loaded() {
-    if (!_loading) return;
-    _loading = false;
-    _settling.cancel();
-    _loadingCap.cancel();
-    notifyNow();
-  }
+  void _changed() => notifyLater();
 
   @override
   void dispose() {
     unawaited(_subscription.cancel());
-    _settling.cancel();
-    _loadingCap.cancel();
+    unawaited(_documentsAdded.close());
     super.dispose();
   }
 }

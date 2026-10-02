@@ -51,7 +51,7 @@ final class GraphMarks {
 
   /// The marks of every run of [session]. A fork step counts once its
   /// outcome is known through [outcomes].
-  factory GraphMarks.of(SessionData session, OutcomeOf outcomes) {
+  factory GraphMarks.of(SessionData session, KnownOutcomes outcomes) {
     final graph = session.graph;
     final states = <String, NodeState>{};
     final visits = <String, int>{};
@@ -128,7 +128,7 @@ ExitKey? _exitTaken(
   Graph? graph,
   RunData run,
   StepState step,
-  OutcomeOf outcomes,
+  KnownOutcomes outcomes,
 ) {
   if (step.status != StepStatus.finished || step.exitCode != 0) return null;
   switch (graph?.nodes[step.node]) {
@@ -147,27 +147,6 @@ ExitKey? _exitTaken(
     case null:
       return null;
   }
-}
-
-/// The outcome of the fork [step] of [run]: the value of its output document,
-/// once known.
-Outcome? stepOutcome(RunData run, StepState step, OutcomeOf outcomes) {
-  final outputId = run.finishOf(step.stepId)?.outputId;
-  return outputId == null ? null : outcomes(outputId);
-}
-
-/// The output documents of [session]'s fork steps that have finished: their
-/// outcomes say where the runs went.
-Set<String> forkOutputs(SessionData session) {
-  final graph = session.graph;
-  if (graph == null) return const {};
-  return {
-    for (final run in session.runs.values)
-      for (final step in run.state.steps)
-        if (graph.nodes[step.node] is ForkNode &&
-            step.status == StepStatus.finished)
-          ?run.finishOf(step.stepId)?.outputId,
-  };
 }
 
 /// The way a run went: drawn in the accent color.
@@ -190,7 +169,7 @@ final class RunPath {
 RunPath pathOf(
   SessionData session,
   String runId,
-  OutcomeOf outcomes, {
+  KnownOutcomes outcomes, {
   List<RunStep>? steps,
 }) {
   steps ??= stepsOfRun(session, runId);

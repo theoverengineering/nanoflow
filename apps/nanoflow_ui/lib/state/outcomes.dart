@@ -6,9 +6,16 @@ import 'batched_notifier.dart';
 /// A fork's outcome, once read: any JSON value, `null` included.
 typedef Outcome = ({Object? value});
 
-/// The outcome in the document with the given id, or `null` while it is not
-/// known.
-typedef OutcomeOf = Outcome? Function(String documentId);
+/// What is known of the outcomes of forks: read, failed to read, or not yet.
+abstract interface class KnownOutcomes {
+  /// The outcome in the document [documentId], or `null` while it is not
+  /// known.
+  Outcome? operator [](String documentId);
+
+  /// Why the document [documentId] could not be read; `null` when it was, or
+  /// has not been tried.
+  String? problemOf(String documentId);
+}
 
 /// Reads the value of the document [documentId] of the session [sessionId].
 typedef ReadDocument = Future<Object?> Function(
@@ -20,8 +27,11 @@ typedef ReadDocument = Future<Object?> Function(
 /// when first asked for and kept.
 ///
 /// The feed tells only that a document is there; its value is read on
-/// request. An outcome is unknown until it has been read.
-class Outcomes extends ChangeNotifier with BatchedNotifier {
+/// request. An outcome is unknown until it has been read. A document that
+/// could not be read is read again once the feed gives it again.
+class Outcomes extends ChangeNotifier
+    with BatchedNotifier
+    implements KnownOutcomes {
   Outcomes(this._read, {this.batch = const Duration(milliseconds: 50)});
 
   /// Outcomes read by [reader].
@@ -39,12 +49,17 @@ class Outcomes extends ChangeNotifier with BatchedNotifier {
   final Set<String> _reading = {};
   final Map<String, String> _problems = {};
 
-  /// The outcome in the document [documentId], or `null` while it is not
-  /// known.
+  @override
   Outcome? operator [](String documentId) => _values[documentId];
 
-  /// Documents that could not be read, with why.
-  Map<String, String> get problems => Map.unmodifiable(_problems);
+  @override
+  String? problemOf(String documentId) => _problems[documentId];
+
+  /// The document [documentId] has been written: if it could not be read,
+  /// the next [load] reads it again.
+  void documentWritten(String documentId) {
+    if (_problems.remove(documentId) != null) notifyLater();
+  }
 
   /// Starts reading those of [documentIds] of the session [sessionId] that
   /// have not been read or tried yet.

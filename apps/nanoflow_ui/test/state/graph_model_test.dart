@@ -11,12 +11,15 @@ import 'package:nanoflow_ui/state/session_feed.dart';
 
 import 'support.dart';
 
-/// The changes that give [journals] of session `a1b2-session`.
-List<Change> _changesOf(List<Journal> journals) => [
-  const SessionAdded(Session(id: 'a1b2-session', graph: reviewGraph)),
+/// The changes that give [journals] of the session [sessionId].
+List<Change> _changesOf(
+  List<Journal> journals, {
+  String sessionId = 'a1b2-session',
+}) => [
+  SessionAdded(Session(id: sessionId, graph: reviewGraph)),
   for (final journal in journals) ...[
     RunAdded(
-      Run(id: journal.id, sessionId: 'a1b2-session', parentId: journal.parent),
+      Run(id: journal.id, sessionId: sessionId, parentId: journal.parent),
     ),
     for (final step in journal.steps) StepAdded(step),
     for (final event in journal.events) EventAdded(event),
@@ -26,12 +29,14 @@ List<Change> _changesOf(List<Journal> journals) => [
 void main() {
   late StreamController<Change> changes;
   late List<String> read;
+  late Set<String> unreadable;
   late GraphModel model;
   late int notified;
 
   void run(void Function(FakeAsync async) body) => fakeAsync((async) {
     changes = StreamController<Change>();
     read = [];
+    unreadable = {};
     model = GraphModel(
       source: GraphSource(
         file: '/nowhere/review.yaml',
@@ -40,12 +45,17 @@ void main() {
       feed: SessionFeed(changes.stream),
       outcomes: Outcomes((_, documentId) async {
         read.add(documentId);
+        if (unreadable.contains(documentId)) {
+          throw FormatException('$documentId.json: not there');
+        }
         return const {
           'is-empty-outcome': false,
           'verdict-outcome-1': 'returned',
           'verdict-outcome-2': 'accepted',
         }[documentId];
       }),
+      // The graph is opened at 14:20, after everything in the mockup.
+      now: () => at(1009),
     );
     notified = 0;
     model.addListener(() => notified++);
@@ -56,32 +66,58 @@ void main() {
 
   void give(FakeAsync async, Iterable<Change> list) {
     list.forEach(changes.add);
-    async.elapse(const Duration(milliseconds: 400));
+    async.elapse(const Duration(milliseconds: 100));
   }
 
-  test('selects the newest session once the feed has loaded', () {
+  test('selects the newest session started before the graph was opened', () {
     run((async) {
       final mockup = Mockup();
       give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
       expect(model.selection.sessionId, 'a1b2-session');
       expect(model.selection.runId, 'e5f6-run');
       expect(model.selectedSession!.id, 'a1b2-session');
+
+      give(
+        async,
+        _changesOf([
+          Journal(
+            'newe-run',
+            node: 'collect',
+            startedAt: 2000,
+            sessionId: 'newe-session',
+          ),
+        ], sessionId: 'newe-session'),
+      );
+      expect(model.selection.sessionId, 'a1b2-session');
     });
   });
 
   test('without sessions selects Current graph', () {
     run((async) {
-      async.elapse(const Duration(milliseconds: 400));
+      async.elapse(const Duration(milliseconds: 100));
       expect(model.selection.currentGraph, isTrue);
       expect(model.selectedSession, isNull);
       expect(model.sessionView(Mockup.now), isNull);
     });
   });
 
-  test('reads the outcomes of the selected session\'s forks', () {
+  test('reads the outcomes of the forks of the session it shows, and of no '
+      'other', () {
     run((async) {
+      final old = Journal(
+        'olde-run',
+        node: 'verdict',
+        startedAt: -600,
+        sessionId: 'olde-session',
+      )..step('verdict', -600, end: -599, output: 'old-outcome');
+      give(async, _changesOf([old], sessionId: 'olde-session'));
+      expect(model.selection.sessionId, 'olde-session');
       final mockup = Mockup();
       give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+      expect(read, isEmpty);
+
+      model.sessionView(Mockup.now);
+      async.elapse(const Duration(milliseconds: 100));
       expect(
         read,
         unorderedEquals([
@@ -96,6 +132,52 @@ void main() {
         view.run!.header.text,
         'run e5f6 · 8 steps, 7 inherited from k7f2',
       );
+    });
+  });
+
+  test('marks a run whose outcome cannot be read, and reads it again when '
+      'the feed gives its document', () {
+    run((async) {
+      final mockup = Mockup();
+      unreadable.add('verdict-outcome-1');
+      give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+      model.sessionView(Mockup.now);
+      async.elapse(const Duration(milliseconds: 100));
+      final k7f2 = model.sessionView(Mockup.now)!.runs.first;
+      expect(k7f2.incomplete, isTrue);
+
+      unreadable.clear();
+      give(async, const [
+        DocumentAdded(
+          sessionId: 'a1b2-session',
+          documentId: 'verdict-outcome-1',
+        ),
+      ]);
+      model.sessionView(Mockup.now);
+      async.elapse(const Duration(milliseconds: 100));
+      expect(read.where((id) => id == 'verdict-outcome-1'), hasLength(2));
+      expect(model.sessionView(Mockup.now)!.runs.first.incomplete, isFalse);
+    });
+  });
+
+  test('computes what it shows once per change and second', () {
+    run((async) {
+      final mockup = Mockup();
+      give(async, _changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]));
+      final now = Mockup.now;
+      final view = model.sessionView(now);
+      final sessions = model.sessions(now);
+      final sameSecond = now.add(const Duration(milliseconds: 400));
+      expect(model.sessionView(sameSecond), same(view));
+      expect(model.sessions(sameSecond), same(sessions));
+
+      final nextSecond = now.add(const Duration(seconds: 1));
+      expect(model.sessionView(nextSecond), isNot(same(view)));
+      expect(model.sessions(nextSecond), isNot(same(sessions)));
+
+      final again = model.sessionView(nextSecond);
+      model.selection.selectRun(mockup.session, 'k7f2-run');
+      expect(model.sessionView(nextSecond), isNot(same(again)));
     });
   });
 

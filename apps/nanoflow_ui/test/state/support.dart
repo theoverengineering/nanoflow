@@ -125,9 +125,25 @@ SessionData sessionOf(
   runs: [for (final run in runs) run.data],
 );
 
-/// Outcomes known by document id.
-OutcomeOf outcomesOf(Map<String, Object?> values) =>
-    (id) => values.containsKey(id) ? (value: values[id]) : null;
+/// Outcomes known by document id, and documents that could not be read.
+KnownOutcomes outcomesOf(
+  Map<String, Object?> values, {
+  Map<String, String> failed = const {},
+}) => _Outcomes(values, failed);
+
+final class _Outcomes implements KnownOutcomes {
+  _Outcomes(this._values, this._failed);
+
+  final Map<String, Object?> _values;
+  final Map<String, String> _failed;
+
+  @override
+  Outcome? operator [](String documentId) =>
+      _values.containsKey(documentId) ? (value: _values[documentId]) : null;
+
+  @override
+  String? problemOf(String documentId) => _failed[documentId];
+}
 
 /// What app reads for docs/design/graph.png: session a1b2 at 14:15:37.
 ///
@@ -166,7 +182,7 @@ final class Mockup {
     startedAt: 611.4,
   );
 
-  final OutcomeOf outcomes = outcomesOf({
+  final KnownOutcomes outcomes = outcomesOf({
     'is-empty-outcome': false,
     'verdict-outcome-1': 'returned',
     'verdict-outcome-2': 'accepted',

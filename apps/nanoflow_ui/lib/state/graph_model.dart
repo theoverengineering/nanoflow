@@ -69,20 +69,26 @@ CanvasGraph canvasOf({
 /// selected, the outcomes of forks; everything the screen shows is derived
 /// from it.
 ///
-/// It feeds new data to the [selection] and reads the outcomes of the
-/// selected session's forks. Listeners hear of any change; durations that
-/// grow with time need a clock besides (`LiveClock`).
+/// It feeds new data to the [selection], and reads the fork outcomes of the
+/// session it is asked to show, and of no other. Listeners hear of any
+/// change; durations that grow with time need a clock besides (`LiveClock`).
+/// What it derives is computed once per change and second, so any number of
+/// widgets can ask for it.
 class GraphModel extends ChangeNotifier {
+  /// [now] tells when the graph is opened, for the [selection].
   GraphModel({
     required this.source,
     required this.feed,
     required this.outcomes,
-    Selection? selection,
-  }) : selection = selection ?? Selection() {
+    DateTime Function()? now,
+  }) : selection = Selection(now: now) {
     feed.addListener(_fed);
-    outcomes.addListener(notifyListeners);
-    source.addListener(notifyListeners);
-    this.selection.addListener(_selected);
+    outcomes.addListener(_changed);
+    source.addListener(_changed);
+    selection.addListener(_selected);
+    _documents = feed.documentsAdded.listen(
+      (document) => outcomes.documentWritten(document.documentId),
+    );
   }
 
   /// The model of the graph file [file]: its current graph from
@@ -106,9 +112,19 @@ class GraphModel extends ChangeNotifier {
   final Outcomes outcomes;
   final Selection selection;
 
+  late final StreamSubscription<DocumentAdded> _documents;
+
   /// Whether the [selection] changes because of new data: the change is told
   /// with the data.
   bool _feeding = false;
+
+  /// Counts the changes: what was derived for an older count is stale.
+  int _changes = 0;
+
+  ({int changes, int second})? _sessionsKey;
+  List<SessionSummary> _sessions = const [];
+  ({int changes, int second})? _viewKey;
+  SessionView? _view;
 
   /// The selected session; `null` for `Current graph`.
   SessionData? get selectedSession {
@@ -117,21 +133,39 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// The sessions column at [now], newest first.
-  List<SessionSummary> sessions(DateTime now) =>
-      sessionSummaries(feed.sessions.values, now);
-
-  /// The selected session at [now]; `null` for `Current graph`.
-  SessionView? sessionView(DateTime now) {
-    final session = selectedSession;
-    if (session == null) return null;
-    return SessionView.of(
-      session,
-      now: now,
-      outcomes: (id) => outcomes[id],
-      runId: selection.runId,
-      stepId: selection.stepId,
-    );
+  List<SessionSummary> sessions(DateTime now) {
+    final key = _key(now);
+    if (key != _sessionsKey) {
+      _sessions = List.unmodifiable(
+        sessionSummaries(feed.sessions.values, now),
+      );
+      _sessionsKey = key;
+    }
+    return _sessions;
   }
+
+  /// The selected session at [now]; `null` for `Current graph`. Starts
+  /// reading the outcomes of its forks: they come as a change.
+  SessionView? sessionView(DateTime now) {
+    final key = _key(now);
+    if (key == _viewKey) return _view;
+    final session = selectedSession;
+    if (session != null) outcomes.load(session.id, forkOutputs(session));
+    _view = session == null
+        ? null
+        : SessionView.of(
+            session,
+            now: now,
+            outcomes: outcomes,
+            runId: selection.runId,
+            stepId: selection.stepId,
+          );
+    _viewKey = key;
+    return _view;
+  }
+
+  ({int changes, int second}) _key(DateTime now) =>
+      (changes: _changes, second: now.millisecondsSinceEpoch ~/ 1000);
 
   /// The graph on the canvas.
   CanvasGraph get canvas => canvasOf(
@@ -166,28 +200,26 @@ class GraphModel extends ChangeNotifier {
 
   void _fed() {
     _feeding = true;
-    selection.update(feed.sessions.values, loading: feed.loading);
+    selection.update(feed.sessions.values);
     _feeding = false;
-    _readOutcomes();
-    notifyListeners();
+    _changed();
   }
 
   void _selected() {
-    if (_feeding) return;
-    _readOutcomes();
-    notifyListeners();
+    if (!_feeding) _changed();
   }
 
-  void _readOutcomes() {
-    final session = selectedSession;
-    if (session != null) outcomes.load(session.id, forkOutputs(session));
+  void _changed() {
+    _changes++;
+    notifyListeners();
   }
 
   @override
   void dispose() {
+    unawaited(_documents.cancel());
     feed.removeListener(_fed);
-    outcomes.removeListener(notifyListeners);
-    source.removeListener(notifyListeners);
+    outcomes.removeListener(_changed);
+    source.removeListener(_changed);
     selection.removeListener(_selected);
     source.dispose();
     feed.dispose();

@@ -6,7 +6,6 @@ import 'dart:convert';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-import 'graph_marks.dart' show stepOutcome;
 import 'outcomes.dart';
 import 'runs.dart';
 import 'session_feed.dart';
@@ -186,7 +185,7 @@ TimeScale timeScale(SessionData session, DateTime now) =>
 List<LogRow> logRows(
   SessionData session,
   String runId, {
-  required OutcomeOf outcomes,
+  required KnownOutcomes outcomes,
   required DateTime now,
 }) {
   final scale = timeScale(session, now);
@@ -226,7 +225,7 @@ StepRow _stepRow(
   RunData run,
   StepState step,
   bool inherited,
-  OutcomeOf outcomes,
+  KnownOutcomes outcomes,
   DateTime now,
   TimeScale scale,
 ) {
@@ -258,7 +257,7 @@ String? _routeText(
   Node? node,
   RunData run,
   StepState step,
-  OutcomeOf outcomes,
+  KnownOutcomes outcomes,
 ) {
   if (node is! ForkNode || step.status != StepStatus.finished) return null;
   final outcome = stepOutcome(run, step, outcomes);

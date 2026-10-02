@@ -58,7 +58,7 @@ final class SessionView {
   factory SessionView.of(
     SessionData session, {
     required DateTime now,
-    required OutcomeOf outcomes,
+    required KnownOutcomes outcomes,
     String? runId,
     String? stepId,
   }) {
@@ -67,7 +67,7 @@ final class SessionView {
     if (run != null) {
       final steps = stepsOfRun(session, run.id);
       runView = RunView._(
-        RunChip(run),
+        RunChip(run, problems: runProblems(session, run, outcomes)),
         logsHeader(session, run.id, steps: steps),
         steps,
         logRows(session, run.id, outcomes: outcomes, now: now),
@@ -77,7 +77,7 @@ final class SessionView {
     return SessionView._(
       summary: summarize(session, now),
       graph: session.graph,
-      runs: List.unmodifiable(runChips(session)),
+      runs: List.unmodifiable(runChips(session, outcomes)),
       marks: GraphMarks.of(session, outcomes),
       run: runView,
       selectedNode: runView?.steps

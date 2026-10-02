@@ -96,6 +96,22 @@ void main() {
       });
     });
 
+    test('tells of each document as it is added', () {
+      run((async) {
+        final added = <DocumentAdded>[];
+        feed.documentsAdded.listen(added.add);
+        give(async, [
+          const DocumentAdded(sessionId: 'a1b2-session', documentId: 'doc'),
+          const SessionAdded(_session),
+          const DocumentAdded(sessionId: 'a1b2-session', documentId: 'out'),
+        ]);
+        expect(added, const [
+          DocumentAdded(sessionId: 'a1b2-session', documentId: 'doc'),
+          DocumentAdded(sessionId: 'a1b2-session', documentId: 'out'),
+        ]);
+      });
+    });
+
     test('a step-changed gives the step its outputId', () {
       run((async) {
         give(async, [
@@ -279,30 +295,6 @@ void main() {
       });
     });
 
-    test('is loading until the feed has been quiet for a while', () {
-      run((async) {
-        expect(feed.loading, isTrue);
-        async.elapse(const Duration(milliseconds: 200));
-        give(async, [const SessionAdded(_session)]);
-        async.elapse(const Duration(milliseconds: 200));
-        expect(feed.loading, isTrue);
-        notified = 0;
-        async.elapse(const Duration(milliseconds: 150));
-        expect(feed.loading, isFalse);
-        expect(notified, 1);
-      });
-    });
-
-    test('stops loading after a few seconds even if changes keep coming', () {
-      run((async) {
-        for (var i = 0; i < 60; i++) {
-          give(async, [EventAdded(_started('run-$i', 'collect', i))]);
-          async.elapse(const Duration(milliseconds: 100));
-        }
-        expect(feed.loading, isFalse);
-      });
-    });
-
     test('dispose stops listening to the changes', () {
       fakeAsync((async) {
         final changes = StreamController<Change>();
@@ -363,7 +355,11 @@ void main() {
     final reader = FsReader(runsDir: runs, graphName: 'review');
     final feed = SessionFeed.read(reader);
     addTearDown(feed.dispose);
-    await _until(() => !feed.loading);
+    // Documents come last in a pass over a session.
+    await _until(
+      () =>
+          feed.session(ids.session)?.documents.contains(ids.document) ?? false,
+    );
 
     final data = feed.session(ids.session)!;
     expect(data.session, session);

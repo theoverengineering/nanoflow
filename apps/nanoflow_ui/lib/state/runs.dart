@@ -5,6 +5,7 @@ library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
+import 'outcomes.dart';
 import 'session_feed.dart';
 import 'texts.dart' as texts show shortId;
 
@@ -22,13 +23,40 @@ enum RunPhase {
   split,
 }
 
-RunPhase phaseOf(RunData run) => switch (run.state.status) {
+RunPhase phaseOf(RunData run) => _phase(run.state.status);
+
+/// [run]'s phase as its events from before [t] tell.
+RunPhase phaseAt(RunData run, DateTime t) {
+  final events = run.events;
+  if (events.every((event) => event.time.isBefore(t))) return phaseOf(run);
+  return _phase(
+    replay(run.id, events.where((event) => event.time.isBefore(t))).status,
+  );
+}
+
+RunPhase _phase(RunStatus status) => switch (status) {
   RunStatus.pending => RunPhase.notStarted,
   RunStatus.running => RunPhase.running,
   RunStatus.finished => RunPhase.finished,
   RunStatus.failed => RunPhase.failed,
   RunStatus.split => RunPhase.split,
 };
+
+/// The run opening [session] at [at] selects (ui-spec «Выбор»): of the runs
+/// started before [at], as they were then, the first running one, else the
+/// first failed one, else the last; `null` when none had started.
+///
+/// What happens after [at] does not change it, and runs read later that had
+/// started before it do: the choice stays put while the feed catches up.
+RunData? openingRun(SessionData session, DateTime at) {
+  final runs = [
+    for (final run in runsInOrder(session))
+      if (run.started?.time.isBefore(at) ?? false) run,
+  ];
+  RunData? first(RunPhase phase) =>
+      runs.where((run) => phaseAt(run, at) == phase).firstOrNull;
+  return first(RunPhase.running) ?? first(RunPhase.failed) ?? runs.lastOrNull;
+}
 
 /// The runs of [session] in the order they were created: by `run-started`,
 /// then by id; runs without `run-started` yet come last.
@@ -46,10 +74,12 @@ List<RunData> runsInOrder(SessionData session) {
 
 /// A run in the run switcher.
 final class RunChip {
-  RunChip(RunData run)
+  /// [problems] are why the run is read incompletely; by default, those of
+  /// its journal.
+  RunChip(RunData run, {Iterable<String>? problems})
     : runId = run.id,
       phase = phaseOf(run),
-      incomplete = run.incomplete;
+      problems = List.unmodifiable(problems ?? run.problems);
 
   final String runId;
 
@@ -57,17 +87,57 @@ final class RunChip {
 
   final RunPhase phase;
 
+  /// Why the run is marked [logReadIncompletely]: what of its journal, its
+  /// files and its fork outcomes could not be read.
+  final List<String> problems;
+
   /// Whether the run is marked [logReadIncompletely].
-  final bool incomplete;
+  bool get incomplete => problems.isNotEmpty;
 
   /// The word next to the run's id: `split` for a run that split.
   String? get word => phase == RunPhase.split ? 'split' : null;
 }
 
 /// The run switcher of [session].
-List<RunChip> runChips(SessionData session) => [
-  for (final run in runsInOrder(session)) RunChip(run),
+List<RunChip> runChips(SessionData session, KnownOutcomes outcomes) => [
+  for (final run in runsInOrder(session))
+    RunChip(run, problems: runProblems(session, run, outcomes)),
 ];
+
+/// Why [run] of [session] is read incompletely: its journal's and its files'
+/// problems, and fork outcomes that could not be read.
+List<String> runProblems(
+  SessionData session,
+  RunData run,
+  KnownOutcomes outcomes,
+) => [
+  ...run.problems,
+  for (final document in forkOutputsOf(session.graph, run))
+    if (outcomes.problemOf(document) case final problem?)
+      'the outcome in document $document cannot be read: $problem',
+];
+
+/// The output documents of the fork steps of [run] that have finished: their
+/// outcomes say where the run went. None without a [graph].
+Iterable<String> forkOutputsOf(Graph? graph, RunData run) => [
+  if (graph != null)
+    for (final step in run.state.steps)
+      if (graph.nodes[step.node] is ForkNode &&
+          step.status == StepStatus.finished)
+        ?run.finishOf(step.stepId)?.outputId,
+];
+
+/// The output documents of every fork step of [session] that has finished.
+Set<String> forkOutputs(SessionData session) => {
+  for (final run in session.runs.values) ...forkOutputsOf(session.graph, run),
+};
+
+/// The outcome of the fork [step] of [run]: the value of its output document,
+/// once known.
+Outcome? stepOutcome(RunData run, StepState step, KnownOutcomes outcomes) {
+  final outputId = run.finishOf(step.stepId)?.outputId;
+  return outputId == null ? null : outcomes[outputId];
+}
 
 /// The run [runId] and its ancestors, from the root run down to it; empty
 /// when [session] has no such run.

@@ -11,11 +11,14 @@ SessionData _session(String id, num startedAt) => sessionOf([
 ], id: id);
 
 void main() {
+  late DateTime clock;
   late Selection selection;
   late int notified;
 
   setUp(() {
-    selection = Selection();
+    // The graph is opened at 14:20; the mockup's events end at 14:15:37.
+    clock = at(1009);
+    selection = Selection(now: () => clock);
     notified = 0;
     selection.addListener(() => notified++);
   });
@@ -28,62 +31,100 @@ void main() {
   );
 
   group('on opening the graph', () {
-    test('the newest session is selected', () {
+    test('the newest session started before then is selected', () {
       selection.update([
         _session('olde-session', -60),
         _session('newe-session', 0),
-      ], loading: false);
+      ]);
       expect(selection.currentGraph, isFalse);
       expect(selection.sessionId, 'newe-session');
+      expect(selection.runId, 'newe-run');
     });
 
-    test('without sessions Current graph is selected', () {
-      selection.update(const [], loading: false);
+    test('without such a session Current graph is selected', () {
+      selection.update(const []);
       expect(selected(), (true, null, null, null));
     });
 
-    test(
-      'while the feed still loads, the newest session so far is selected',
-      () {
-        selection.update([_session('olde-session', -60)], loading: true);
-        expect(selection.sessionId, 'olde-session');
-        selection.update([
-          _session('olde-session', -60),
-          _session('newe-session', 0),
-        ], loading: true);
-        expect(selection.sessionId, 'newe-session');
-        expect(selection.runId, 'newe-run');
-      },
-    );
-
-    test('a choice made while the feed loads is kept', () {
+    test('sessions read in any order lead to the same choice', () {
       final old = _session('olde-session', -60);
-      selection.update([old], loading: true);
+      final newer = _session('newe-session', 0);
+      selection.update([newer]);
+      selection.update([newer, old]);
+      expect(selection.sessionId, 'newe-session');
+
+      final other = Selection(now: () => clock)..update([old]);
+      expect(other.sessionId, 'olde-session');
+      other.update([old, newer]);
+      expect(other.sessionId, 'newe-session');
+    });
+
+    test('a session started after the graph was opened never takes the '
+        'selection', () {
+      final old = _session('olde-session', -60);
+      selection.update([old]);
+      clock = at(3000);
+      selection.update([old, _session('newe-session', 2000)]);
+      expect(selection.sessionId, 'olde-session');
+
+      final empty = Selection(now: () => at(1009))..update(const []);
+      empty.update([_session('newe-session', 2000)]);
+      expect(empty.currentGraph, isTrue);
+    });
+
+    test('a choice the user made is kept', () {
       selection.showCurrentGraph();
-      selection.update([old, _session('newe-session', 0)], loading: true);
+      selection.update([_session('olde-session', -60)]);
       expect(selection.currentGraph, isTrue);
+    });
+
+    test('runs read after their session still count for the run chosen', () {
+      final finished = Journal('fini-run', node: 'collect', startedAt: 0);
+      finished.step('collect', 0, end: 5);
+      finished.finish(5);
+      final running = Journal('runn-run', node: 'collect', startedAt: 1)
+        ..step('collect', 1);
+      selection.update([
+        sessionOf([finished]),
+      ]);
+      expect(selection.runId, 'fini-run');
+      selection.update([
+        sessionOf([finished, running]),
+      ]);
+      expect(selection.runId, 'runn-run');
+      expect(selection.stepId, 'runn-collect-0');
+    });
+
+    test('the run chosen stays when it ends after the graph was opened', () {
+      final failed = Journal('fail-run', node: 'collect', startedAt: 0);
+      failed.fail(
+        failed.step('collect', 0, end: 2, exit: 1),
+        2,
+        'exited with code 1',
+      );
+      final running = Journal('runn-run', node: 'collect', startedAt: 1)
+        ..step('collect', 1);
+      selection.update([
+        sessionOf([failed, running]),
+      ]);
+      expect(selection.runId, 'runn-run');
+      running.step('collect', 1100, end: 1101);
+      running.finish(1101);
+      selection.update([
+        sessionOf([failed, running]),
+      ]);
+      expect(selection.runId, 'runn-run');
     });
   });
 
   group('new data', () {
-    test('does not reset the selection: a new session does not take it', () {
-      final old = _session('olde-session', -60);
-      selection.update([old], loading: false);
-      selection.update([old, _session('newe-session', 0)], loading: false);
-      expect(selection.sessionId, 'olde-session');
-
-      final empty = Selection()..update(const [], loading: false);
-      empty.update([old], loading: false);
-      expect(empty.currentGraph, isTrue);
-    });
-
     test('does not reset the selected run and step', () {
       final mockup = Mockup();
-      selection.update([mockup.session], loading: false);
+      selection.update([mockup.session]);
       selection.selectRun(mockup.session, 'c3d4-run');
       selection.selectStep(mockup.session, 'k7f2-fix-4');
       mockup.e5f6.step('notify', 700);
-      selection.update([mockup.session], loading: false);
+      selection.update([mockup.session]);
       expect(selection.runId, 'c3d4-run');
       expect(selection.stepId, 'k7f2-fix-4');
     });
@@ -94,7 +135,7 @@ void main() {
         final early = sessionOf(const [], id: 'earl-session');
         selection.showSession(early);
         expect(selection.runId, isNull);
-        selection.update([_session('earl-session', 0)], loading: false);
+        selection.update([_session('earl-session', 0)]);
         expect(selection.runId, 'earl-run');
         expect(selection.stepId, 'earl-collect-0');
       },
@@ -102,9 +143,9 @@ void main() {
 
     test('that changes nothing selected is not announced', () {
       final session = _session('olde-session', 0);
-      selection.update([session], loading: false);
+      selection.update([session]);
       notified = 0;
-      selection.update([session], loading: false);
+      selection.update([session]);
       expect(notified, 0);
     });
   });
@@ -183,29 +224,29 @@ void main() {
     test('while the last step of a running run is selected, the new step is '
         'selected as it starts', () {
       final mockup = Mockup();
-      selection.update([mockup.session], loading: false);
+      selection.update([mockup.session]);
       expect(selection.stepId, 'e5f6-notify-0');
       expect(selection.following, isTrue);
 
       mockup.e5f6.step('notify', 700);
-      selection.update([mockup.session], loading: false);
+      selection.update([mockup.session]);
       expect(selection.stepId, 'e5f6-notify-1');
     });
 
     test('selecting another step stops following; selecting the last one '
         'again resumes it', () {
       final mockup = Mockup();
-      selection.update([mockup.session], loading: false);
+      selection.update([mockup.session]);
       selection.selectStep(mockup.session, 'k7f2-collect-0');
       expect(selection.following, isFalse);
       mockup.e5f6.step('notify', 700);
-      selection.update([mockup.session], loading: false);
+      selection.update([mockup.session]);
       expect(selection.stepId, 'k7f2-collect-0');
 
       selection.selectStep(mockup.session, 'e5f6-notify-1');
       expect(selection.following, isTrue);
       mockup.e5f6.step('notify', 710);
-      selection.update([mockup.session], loading: false);
+      selection.update([mockup.session]);
       expect(selection.stepId, 'e5f6-notify-2');
     });
   });

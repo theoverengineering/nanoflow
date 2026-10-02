@@ -75,8 +75,28 @@ void main() {
       outcomes.load('s', ['gone']);
       expect(outcomes['gone'], isNull);
       expect(asked, hasLength(1));
-      expect(outcomes.problems, {'gone': 'FormatException: gone.json: bad'});
+      expect(outcomes.problemOf('gone'), 'FormatException: gone.json: bad');
       expect(notified, 1);
+    });
+  });
+
+  test('a document written again after a failed read is read again', () {
+    run((async) {
+      outcomes.load('s', ['late']);
+      pending['late']!.completeError(const FormatException('late.json: bad'));
+      async.elapse(const Duration(milliseconds: 50));
+      outcomes.documentWritten('other');
+      expect(notified, 1);
+
+      outcomes.documentWritten('late');
+      async.elapse(const Duration(milliseconds: 50));
+      expect(outcomes.problemOf('late'), isNull);
+      expect(notified, 2);
+      outcomes.load('s', ['late']);
+      pending['late']!.complete('accepted');
+      async.elapse(const Duration(milliseconds: 50));
+      expect(outcomes['late'], (value: 'accepted'));
+      expect(asked, [('s', 'late'), ('s', 'late')]);
     });
   });
 
