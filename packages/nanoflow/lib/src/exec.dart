@@ -33,6 +33,14 @@ final class ExecException implements Exception {
 /// does, gives it its group. One that does not, as dash, is found out before
 /// the first program starts.
 ///
+/// The program cannot ask anything on the terminal: in the terminal of
+/// `nanoflow run` its group is in the background, so a program that asks
+/// there — git for credentials, ssh about a host key, sudo for a password —
+/// is stopped, and the step waits until it is stopped itself. Run such
+/// programs so that they do not ask, and they fail at once with the reason
+/// in the log: `exec('env', ['GIT_TERMINAL_PROMPT=0', 'git', …])`,
+/// `ssh -o BatchMode=yes`, `sudo -n`.
+///
 /// Throws an [ExecException] when the program exits with a code other than
 /// 0, a [FormatException] when its stdout is not UTF-8, and a [StateError]
 /// once the step is stopping, or when the shell cannot run the program in a
