@@ -6,8 +6,9 @@
 //   flutter test integration_test/history_test.dart -d macos
 //
 // Measures how long the newest session and the whole history take to show,
-// and the longest frame while they load and after: in the binding's
-// reportData (written out by `flutter drive`) and in a failure's reason.
+// and the longest frame while they load and after: they are in a failure's
+// reason. The binding's reportData gets them too, but only `flutter drive`
+// writes it out, not `flutter test`.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
