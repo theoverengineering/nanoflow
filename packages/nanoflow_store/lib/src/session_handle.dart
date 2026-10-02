@@ -115,25 +115,29 @@ final class SessionHandle {
     final run = Run(id: newId(), sessionId: session.id, parentId: parentId);
     final createdAt = _runTimes.next(_clock);
     late final Step step;
-    _runDirs[run.id] = await buildDirAtomically(
+    late final String stepName;
+    final runDir = _runDirs[run.id] = await buildDirAtomically(
       dir,
       id: run.id,
       name: runDirName(createdAt, run.id),
       build: (runDir) async {
         await writeJsonAtomically(p.join(runDir, runFileName), run.toJson());
-        await _appendLine(
+        await _startJournal(
           p.join(runDir, eventsFileName),
           RunStarted(runId: run.id, time: createdAt, node: node),
         );
         final stepsDir = await Directory(p.join(runDir, stepsDirName)).create();
-        step = await _buildStep(
+        final built = await _buildStep(
           stepsDir.path,
           runId: run.id,
           node: node,
           inputId: inputId,
         );
+        step = built.step;
+        stepName = p.basename(built.dir);
       },
     );
+    _stepDirs[step.id] = p.join(runDir, stepsDirName, stepName);
     return (run, step);
   }
 
@@ -150,21 +154,39 @@ final class SessionHandle {
     required String runId,
     required String node,
     required String? inputId,
-  }) async => _buildStep(
-    p.join(_runDir(runId), stepsDirName),
-    runId: runId,
-    node: node,
-    inputId: inputId,
-  );
+  }) async {
+    final (:step, :dir) = await _buildStep(
+      p.join(_runDir(runId), stepsDirName),
+      runId: runId,
+      node: node,
+      inputId: inputId,
+    );
+    _stepDirs[step.id] = dir;
+    return step;
+  }
 
   /// Appends [event] to the journal of its run: one line, flushed.
+  ///
+  /// Throws a [PathNotFoundException] when the run has no journal, which is
+  /// not made again; and, once the line is written, when the session has no
+  /// `session.json` or the run no `run.json`. Either way the session is gone
+  /// or being removed, as by `rm -rf`, which removes it depth first while
+  /// the engine still writes to what it has not reached yet: the engine
+  /// learns of it within one event.
   Future<void> appendEvent(Event event) async {
     final runId = switch (event) {
       KnownEvent(:final runId) => runId,
       UnknownEvent(:final runId) =>
         runId ?? (throw ArgumentError.value(event, 'event', 'has no runId')),
     };
-    await _appendLine(p.join(_runDir(runId), eventsFileName), event);
+    final runDir = _runDir(runId);
+    await _appendToJournal(p.join(runDir, eventsFileName), event);
+    for (final path in [
+      p.join(dir, sessionFileName),
+      p.join(runDir, runFileName),
+    ]) {
+      if (!await File(path).exists()) throw _missing('Cannot find file', path);
+    }
   }
 
   /// Writes a new document holding [value]; returns its id.
@@ -204,8 +226,13 @@ final class SessionHandle {
   StepLog openLog(String runId, String stepId) =>
       StepLog._(File(p.join(_stepDir(runId, stepId), logFileName)));
 
-  /// Builds the directory of a new step in [stepsDir].
-  Future<Step> _buildStep(
+  /// Builds the directory of a new step in [stepsDir]; gives the step and
+  /// its directory.
+  ///
+  /// The callers keep the directory, as [createRun] keeps a run's: a step
+  /// whose directory is removed later is not looked up again, which would
+  /// find it missing rather than fail as a write into it does.
+  Future<({Step step, String dir})> _buildStep(
     String stepsDir, {
     required String runId,
     required String node,
@@ -218,7 +245,7 @@ final class SessionHandle {
       outputId: null,
       log: logFileName,
     );
-    await buildDirAtomically(
+    final dir = await buildDirAtomically(
       stepsDir,
       id: step.id,
       name: stepDirName(
@@ -229,7 +256,7 @@ final class SessionHandle {
       build: (dir) =>
           writeJsonAtomically(p.join(dir, stepFileName), step.toJson()),
     );
-    return step;
+    return (step: step, dir: dir);
   }
 
   String _runDir(String runId) => _runDirs[runId] ??=
@@ -430,12 +457,44 @@ Event? _parseLine(List<int> line) {
   return json is Map<String, Object?> ? Event.fromJson(json) : null;
 }
 
-/// Appends [event] to the journal at [path] as one compact line.
-Future<void> _appendLine(String path, Event event) => File(path).writeAsString(
-  '${jsonEncode(event.toJson())}\n',
-  mode: FileMode.append,
-  flush: true,
-);
+/// [event] as a line of a journal: compact JSON and `\n`.
+String _line(Event event) => '${jsonEncode(event.toJson())}\n';
+
+/// Writes a new journal at [path] whose first line is [event], flushed.
+Future<void> _startJournal(String path, Event event) =>
+    File(path).writeAsString(_line(event), flush: true);
+
+/// Appends [event] to the journal at [path] as one line, flushed.
+///
+/// Throws a [PathNotFoundException] when there is no journal at [path].
+/// Opening a file to append to makes it when it is missing; a journal is
+/// never empty, so an empty one is one this made, and it is removed again.
+Future<void> _appendToJournal(String path, Event event) async {
+  final journal = await File(path).open(mode: FileMode.append);
+  try {
+    if (await journal.length() == 0) {
+      try {
+        await File(path).delete();
+      } on FileSystemException {
+        // Removed already, as the rest of the run is being.
+      }
+      throw _missing('Cannot open file', path);
+    }
+    await journal.writeString(_line(event));
+    await journal.flush();
+  } finally {
+    await journal.close();
+  }
+}
+
+/// The error of a file at [path] that is missing, as an operation of
+/// [message] would have thrown it.
+PathNotFoundException _missing(String message, String path) =>
+    PathNotFoundException(
+      path,
+      const OSError('No such file or directory', 2),
+      message,
+    );
 
 /// Truncates the file at [path] after its last `\n`.
 Future<void> _cutIncompleteLine(String path) async {

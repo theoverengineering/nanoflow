@@ -1012,6 +1012,13 @@ IFS= read -r line
       return Process.runSync('kill', ['-0', pid.trim()]).exitCode == 0;
     }
 
+    /// The journals under [dir], if it is there.
+    List<String> journalsIn(String dir) => [
+      if (Directory(dir).existsSync())
+        for (final entity in Directory(dir).listSync(recursive: true))
+          if (p.basename(entity.path) == 'log.jsonl') entity.path,
+    ];
+
     /// A node script that writes its pid to `<node>.pid` and runs for 20 s,
     /// should the engine not stop it.
     const waitAndLoop =
@@ -1046,6 +1053,89 @@ IFS= read -r line
       expect(lines.where((line) => line.startsWith('cannot ')), hasLength(1));
       expect(isRunning(fake, 'wait'), isFalse);
       expect(Directory(fake.runsDir).existsSync(), isFalse);
+    });
+
+    group('partly removed, as rm -rf leaves it on its way through: the next '
+        'event fails, exit 3', () {
+      /// Runs a graph whose first step removes [removed], a glob in the
+      /// program's directory, and then goes on to a second step; gives what
+      /// the engine did and the program.
+      Future<(Outcome, FakeProgram)> removing(String removed) async {
+        final fake = FakeProgram(
+          {
+            'start': 'remove',
+            'nodes': {
+              'remove': {'command': 'remove', 'then': 'after'},
+              'after': {'command': 'after'},
+            },
+          },
+          nodes: {'remove': 'rm $removed', 'after': 'true'},
+        );
+        final result = await nanoflow(['run', '--', fake.path])
+            .timeout(const Duration(seconds: 15));
+        return (result, fake);
+      }
+
+      void expectStopped(Outcome result, String path) {
+        expect(result.code, 3, reason: result.err);
+        final lines = const LineSplitter().convert(result.err);
+        expect(lines.last, storeFailure(path, 'No such file or directory'));
+        expect(lines.where((line) => line.startsWith('cannot ')), hasLength(1));
+        expect(lines.where((line) => line.endsWith(' after')), isEmpty);
+      }
+
+      test('the session without session.json', () async {
+        final (result, _) = await removing('runs/*/session.json');
+        expectStopped(result, r'/session\.json');
+      });
+
+      test('a run without its journal, which is not made again', () async {
+        final (result, fake) = await removing('runs/*/*/log.jsonl');
+        expectStopped(result, r'/log\.jsonl');
+        expect(journalsIn(fake.runsDir), isEmpty);
+      });
+    });
+
+    test('removed by rm -rf while a run takes step after step within '
+        'milliseconds: exit 3, never 0, and no journal left behind', () async {
+      // rm removes the session depth first, while the engine still writes
+      // into what it has not reached yet — a step, a document, an event. Each
+      // round races it once.
+      for (var round = 1; round <= 3; round++) {
+        final fake = FakeProgram(
+          {
+            'start': 'tick',
+            'nodes': {
+              'tick': {'command': 'tick', 'then': 'more'},
+              'more': {'decide': 'more', 'then': 'tick'},
+            },
+          },
+          nodes: {
+            'tick': 'echo x >> ticks',
+            'more': '[ \$(wc -l < ticks) -lt 300 ] && echo true || echo false',
+          },
+        );
+        final running = nanoflow(['run', '--', fake.path])
+            .timeout(const Duration(seconds: 30));
+        final ticks = File(p.join(fake.dir, 'ticks'));
+        await waitFor(
+          () => ticks.existsSync() && ticks.readAsLinesSync().length >= 20,
+        );
+        final session = Directory(fake.runsDir).listSync().single.path;
+        await Process.run('rm', ['-rf', session]);
+        final result = await running;
+
+        final reason = 'round $round: ${result.err}';
+        expect(result.code, 3, reason: reason);
+        final lines = const LineSplitter().convert(result.err);
+        expect(lines.last, startsWith('cannot store the session: '));
+        expect(
+          lines.where((line) => line.endsWith(' run-finished')),
+          isEmpty,
+          reason: reason,
+        );
+        expect(journalsIn(fake.runsDir), isEmpty, reason: reason);
+      }
     });
 
     test('a document it cannot write: no event after it, exit 3; once it '

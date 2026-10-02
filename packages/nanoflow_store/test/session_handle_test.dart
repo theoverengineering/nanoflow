@@ -516,6 +516,33 @@ void main() {
       expect(read(logFile), 'started\ncrashed\nstarted again\n');
     });
 
+    test('of a step created with a run or after it writes into the step '
+        'directory where it is now', () async {
+      final handle = await newSession();
+      final parent = (await handle.runs()).single;
+      final (run, first) = await handle.createRun(
+        parentId: parent.id,
+        node: 'publish',
+        inputId: null,
+      );
+      final next = await handle.createStep(
+        runId: run.id,
+        node: 'notify',
+        inputId: null,
+      );
+
+      for (final step in [first, next]) {
+        final log = handle.openLog(run.id, step.id);
+        log.add(utf8.encode('${step.id}\n'));
+        await log.close();
+        expect(
+          read(p.join(stepDir(handle, run.id, step.id), 'command.log')),
+          '${step.id}\n',
+        );
+      }
+      expect(dotEntries(handle.dir), isEmpty);
+    });
+
     test('flush makes the bytes added so far readable', () async {
       final handle = await newSession();
       final run = (await handle.runs()).single;
@@ -627,6 +654,75 @@ void main() {
         throwsA(isA<FileSystemException>()),
       );
       expect(Directory(handle.dir).existsSync(), isFalse);
+    });
+  });
+
+  group('a session that is being removed', () {
+    // `rm -rf` removes it depth first while an engine still writes to it:
+    // what it has not reached yet is still there.
+
+    /// The run of [handle] and an event to append to it.
+    Future<({Run run, Event event})> runAndEvent(SessionHandle handle) async {
+      final run = (await handle.runs()).single;
+      // An engine has the run's directory looked up by now.
+      await handle.events(run.id);
+      return (run: run, event: RunFinished(runId: run.id, time: start));
+    }
+
+    test(
+      'appendEvent fails, and makes no journal, when the run has none',
+      () async {
+        final handle = await newSession();
+        final (:run, :event) = await runAndEvent(handle);
+        final journal = p.join(runDir(handle, run.id), 'log.jsonl');
+        File(journal).deleteSync();
+
+        await expectLater(
+          handle.appendEvent(event),
+          throwsA(
+            isA<PathNotFoundException>().having((e) => e.path, 'path', journal),
+          ),
+        );
+        expect(File(journal).existsSync(), isFalse);
+      },
+    );
+
+    test('appendEvent fails once the session has no session.json or the run '
+        'no run.json', () async {
+      for (final removed in ['session.json', 'run.json']) {
+        final handle = await newSession();
+        final (:run, :event) = await runAndEvent(handle);
+        final file = removed == 'session.json'
+            ? p.join(handle.dir, removed)
+            : p.join(runDir(handle, run.id), removed);
+        File(file).deleteSync();
+
+        await expectLater(
+          handle.appendEvent(event),
+          throwsA(
+            isA<PathNotFoundException>().having((e) => e.path, 'path', file),
+          ),
+          reason: removed,
+        );
+      }
+    });
+
+    test('the log of a step whose directory is gone fails, throwing '
+        'nothing', () async {
+      final handle = await newSession();
+      final run = (await handle.runs()).single;
+      final step = await handle.createStep(
+        runId: run.id,
+        node: 'publish',
+        inputId: null,
+      );
+      Directory(stepDir(handle, run.id, step.id)).deleteSync(recursive: true);
+
+      final log = handle.openLog(run.id, step.id);
+      log.add(utf8.encode('lost\n'));
+      await log.close();
+
+      expect(await log.failed, isA<PathNotFoundException>());
     });
   });
 }
