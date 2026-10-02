@@ -146,6 +146,18 @@ void main() {
       expect(canvas.ofSession, isTrue);
     });
 
+    test('says when the selected session\'s graph cannot be read', () {
+      final session = sessionOf(const [], graph: const {'start': 'collect'});
+      final canvas = canvasOf(
+        session: session,
+        currentGraph: graph,
+        errors: const [],
+      );
+      expect(canvas.graph, isNull);
+      expect(canvas.placeholder, 'Graph of this session cannot be read');
+      expect(canvas.ofSession, isTrue);
+    });
+
     test('for Current graph shows the last graph that passed check, with the '
         'errors of the latest one', () {
       final canvas = canvasOf(

@@ -39,5 +39,26 @@ void main() {
       expect(view.run, isNull);
       expect(view.selectedNode, isNull);
     });
+
+    test('cannot be changed by the widgets that draw it', () {
+      final view = SessionView.of(
+        mockup.session,
+        now: now,
+        outcomes: mockup.outcomes,
+        runId: 'e5f6-run',
+      );
+      final run = view.run!;
+      expect(() => view.runs.clear(), throwsUnsupportedError);
+      expect(() => run.rows.clear(), throwsUnsupportedError);
+      expect(() => run.steps.clear(), throwsUnsupportedError);
+      expect(() => run.path.exits.clear(), throwsUnsupportedError);
+      expect(() => run.path.arrows.clear(), throwsUnsupportedError);
+      expect(() => run.path.inputs.clear(), throwsUnsupportedError);
+      expect(
+        () => view.marks.markersOn('notify').clear(),
+        throwsUnsupportedError,
+      );
+      expect(() => view.marks.passes.clear(), throwsUnsupportedError);
+    });
   });
 }

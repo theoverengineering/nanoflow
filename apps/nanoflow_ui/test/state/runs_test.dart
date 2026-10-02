@@ -6,7 +6,6 @@ import 'support.dart';
 
 void main() {
   final mockup = Mockup();
-  final now = Mockup.now;
 
   group('runs (ui-spec «Холст»)', () {
     test('are in the order they were created', () {

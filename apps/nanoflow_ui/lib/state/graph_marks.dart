@@ -78,7 +78,10 @@ final class GraphMarks {
         (markers[node] ??= []).add(RunMarker(run.id, phase));
       }
     }
-    return GraphMarks._(states, visits, Map.unmodifiable(passes), markers);
+    return GraphMarks._(states, visits, Map.unmodifiable(passes), {
+      for (final MapEntry(:key, :value) in markers.entries)
+        key: List.unmodifiable(value),
+    });
   }
 
   final Map<String, NodeState> _states;
@@ -211,5 +214,9 @@ RunPath pathOf(
       arrows.add((from: exit.node, exit: exit.exit, to: nodes[i + 1]));
     }
   }
-  return RunPath._(exits, arrows, {...nodes.skip(1)});
+  return RunPath._(
+    Set.unmodifiable(exits),
+    Set.unmodifiable(arrows),
+    Set.unmodifiable(nodes.skip(1)),
+  );
 }

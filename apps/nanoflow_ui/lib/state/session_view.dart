@@ -21,7 +21,14 @@ export 'sessions.dart';
 
 /// The selected run as the canvas and the `Logs` panel show it.
 final class RunView {
-  RunView._(this.chip, this.header, this.steps, this.rows, this.path);
+  RunView._(
+    this.chip,
+    this.header,
+    List<RunStep> steps,
+    List<LogRow> rows,
+    this.path,
+  ) : steps = List.unmodifiable(steps),
+      rows = List.unmodifiable(rows);
 
   final RunChip chip;
 
@@ -70,7 +77,7 @@ final class SessionView {
     return SessionView._(
       summary: summarize(session, now),
       graph: session.graph,
-      runs: runChips(session),
+      runs: List.unmodifiable(runChips(session)),
       marks: GraphMarks.of(session, outcomes),
       run: runView,
       selectedNode: runView?.steps

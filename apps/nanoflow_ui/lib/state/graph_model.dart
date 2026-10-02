@@ -28,13 +28,18 @@ final class CanvasGraph {
   /// counters and markers go on it. For `Current graph` they do not.
   final bool ofSession;
 
-  /// What the canvas says instead of a graph: [noValidGraphYet].
+  /// What the canvas says instead of a graph: [noValidGraphYet],
+  /// [unreadableSessionGraph].
   final String? placeholder;
 
   /// What `nanoflow check` found wrong with the current graph, for
   /// `Current graph`.
   final List<String> errors;
 }
+
+/// What the canvas says for a session whose graph is not one the app can
+/// read.
+const unreadableSessionGraph = 'Graph of this session cannot be read';
 
 /// The graph of the selected [session]: the graph it holds. Without a
 /// session (`Current graph`), the last graph that passed check,
@@ -45,7 +50,12 @@ CanvasGraph canvasOf({
   required List<String> errors,
 }) {
   if (session != null) {
-    return CanvasGraph._(graph: session.graph, ofSession: true);
+    final graph = session.graph;
+    return CanvasGraph._(
+      graph: graph,
+      ofSession: true,
+      placeholder: graph == null ? unreadableSessionGraph : null,
+    );
   }
   return CanvasGraph._(
     graph: currentGraph,
