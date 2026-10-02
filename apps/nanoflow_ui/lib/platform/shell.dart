@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Runs [executable] with [arguments] to the end.
@@ -149,26 +150,41 @@ class Shell {
     String? workingDirectory,
   }) async => _start(
     '/bin/sh',
-    ['-c', _inGroup, 'sh', executable, ...arguments],
+    ['-c', groupScript, 'sh', executable, ...arguments],
     workingDirectory: workingDirectory,
     environment: {'PATH': await path()},
   );
 
   /// The `/bin/sh -c` script that runs a program — `"$@"` — in a process
-  /// group of its own and sends SIGTERM to the group when the shell gets
-  /// SIGTERM, SIGINT or SIGHUP; otherwise it exits with the program's code.
+  /// group of its own, and sends SIGTERM to the group when the shell gets
+  /// SIGTERM, SIGINT or SIGHUP, or when the app that started it is gone:
+  /// quitting the app does not dispose what it shows, and a crash would not
+  /// either. Otherwise it exits with the program's code.
   ///
   /// With job control (`set -m`) the program, started in the background,
   /// leads a new process group and keeps the shell's stdin; bash — `/bin/sh`
   /// on macOS — keeps job control on without a terminal. The shell's own
   /// stderr (job notices) goes to /dev/null; the program gets the real one
-  /// through fd 3.
-  static const _inGroup = r'''
+  /// through fd 3. A watchdog in the background looks for the app once a
+  /// second, holding none of the program's pipes.
+  @visibleForTesting
+  static const groupScript = r'''
 exec 3>&2 2>/dev/null
+trap 'kill -TERM -$job; kill $watchdog; exit 143' TERM INT HUP
 set -m
-trap 'kill -TERM -$!; exit 143' TERM INT HUP
 exec "$@" 2>&3 3>&- &
-wait $!
+job=$!
+set +m
+app=$PPID
+(
+  while kill -0 "$app"; do sleep 1; done
+  kill -TERM -"$job"
+) </dev/null >/dev/null 3>&- &
+watchdog=$!
+wait "$job"
+code=$?
+kill "$watchdog"
+exit "$code"
 ''';
 
   /// Shows [path] selected in a Finder window; false when `open` fails.

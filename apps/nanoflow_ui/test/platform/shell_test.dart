@@ -299,6 +299,30 @@ eval "\$3"''');
     });
   });
 
+  test('a program the app started stops when the app dies', () async {
+    final pid = File('${tmp.path}/pid');
+    final program = script('watcher', 'echo \$\$ > ${pid.path}; exec sleep 5');
+    // A stand-in for the app: it starts the program as Shell.start does, and
+    // is killed without a chance to stop it.
+    final app = await Process.start('/bin/sh', [
+      '-c',
+      r'/bin/sh -c "$1" sh "$2" & wait',
+      'app',
+      Shell.groupScript,
+      program,
+    ]);
+    while (!pid.existsSync() || pid.readAsStringSync().isEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    app.kill(ProcessSignal.sigkill);
+    final deadline = DateTime.now().add(const Duration(seconds: 4));
+    final watcher = pid.readAsStringSync().trim();
+    while (Process.runSync('kill', ['-0', watcher]).exitCode == 0) {
+      if (DateTime.now().isAfter(deadline)) fail('$watcher still runs');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  });
+
   testWidgets('copyToClipboard puts the text on the clipboard', (tester) async {
     final copied = <Object?>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
