@@ -1,0 +1,130 @@
+/// Colors and text of the graph canvas, from docs/design/graph.html and
+/// task-graph.html; and the text measurer the layout lays them out with.
+library;
+
+import 'package:flutter/widgets.dart';
+
+import '../../layout/layout.dart' show LabelKind;
+import '../../theme.dart';
+
+/// The canvas's colors. Arrows, exits and input bars come in four tones
+/// (`Tone` in canvas_marks.dart), tiles in the node's state.
+abstract final class CanvasColors {
+  static const background = Color(0xFF27282C);
+  static const gridDot = Color(0xFF3A3B41);
+
+  /// The selected run's path; also the run legend.
+  static const path = Color(0xFF9C8CFF);
+  static const pathText = Color(0xFFBDB3FF);
+
+  /// Arrows runs went along, not the selected run; and every arrow of
+  /// `Current graph`.
+  static const taken = Color(0xFF6B6C73);
+
+  /// Arrows no run went along: darker.
+  static const untaken = Color(0xFF4A4B52);
+  static const untakenHead = Color(0xFF55565C);
+  static const untakenExit = Color(0xFF55565C);
+
+  /// A stub's line and its cross bar, where no run ended.
+  static const stub = Color(0xFF45464C);
+  static const stubBar = Color(0xFF55565C);
+
+  /// Keys and counters off the selected run's path.
+  static const chipText = Color(0xFF9A9BA2);
+
+  static const startCaption = Color(0xFF7E7F86);
+
+  /// The ring round the selected step's node: 4 px of the accent at 38 %.
+  static const ring = Color(0x619C8CFF);
+
+  /// The visit count over a tile.
+  static const countFill = Color(0xFF3A3B41);
+  static const countBorder = Color(0xFF4A4B52);
+  static const countText = Color(0xFFD5D6DA);
+
+  /// The zoom buttons and the legend.
+  static const panel = Color(0xFF202125);
+  static const panelBorder = Color(0xFF34353A);
+  static const buttonBorder = Color(0xFF3A3B41);
+  static const buttonIcon = Color(0xFFD5D6DA);
+  static const legendText = Color(0xFFA7A8AE);
+}
+
+/// The canvas's text. The layout measures with the same styles
+/// ([measureLabel]), so what it keeps room for is what is drawn.
+abstract final class CanvasText {
+  static const _height = 1.3;
+
+  static const _sans = TextStyle(
+    inherit: false,
+    fontFamily: AppText.sans,
+    height: _height,
+    leadingDistribution: TextLeadingDistribution.even,
+  );
+  static const _mono = TextStyle(
+    inherit: false,
+    fontFamily: AppText.mono,
+    height: _height,
+    leadingDistribution: TextLeadingDistribution.even,
+  );
+
+  /// A node's name under its tile; the selected step's node has it bold.
+  static final name = _sans.copyWith(
+    fontSize: 12.5,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// A node's command under its name.
+  static final command = _mono.copyWith(fontSize: 10.5);
+
+  /// `START` over a start node.
+  static final startCaption = _sans.copyWith(
+    fontSize: 9.5,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 9.5 * 0.08,
+    color: CanvasColors.startCaption,
+  );
+
+  /// Exit keys and arrow counters on their chips.
+  static final chip = _mono.copyWith(fontSize: 10);
+
+  /// Run ids and visit counts over a tile.
+  static final badge = _mono.copyWith(fontSize: 10);
+
+  static final legend = _sans.copyWith(
+    fontSize: 11,
+    color: CanvasColors.legendText,
+  );
+
+  /// What the canvas says instead of a graph.
+  static final placeholder = _sans.copyWith(
+    fontSize: 13,
+    color: CanvasColors.legendText,
+  );
+
+  /// How [kind] is drawn. A name is measured bold: the selected step's node
+  /// has it so, and it must fit where the layout keeps room for it.
+  static TextStyle of(LabelKind kind) => switch (kind) {
+    LabelKind.exitLabel || LabelKind.counter => chip,
+    LabelKind.nodeName => name.copyWith(fontWeight: FontWeight.w700),
+    LabelKind.command => command,
+    LabelKind.startCaption => startCaption,
+  };
+}
+
+final Map<(String, LabelKind), double> _widths = {};
+
+/// The width of [text] drawn as [kind] on the canvas: the layout's measurer.
+double measureLabel(String text, LabelKind kind) =>
+    _widths[(text, kind)] ??= () {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: CanvasText.of(kind)),
+        textDirection: TextDirection.ltr,
+        textScaler: TextScaler.noScaling,
+        maxLines: 1,
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }();
