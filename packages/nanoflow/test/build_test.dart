@@ -469,6 +469,8 @@ void main() {
             'method',
         'takesOnlyFromJson: in: OnlyFromJson needs a fromJson constructor '
             'and a toJson method',
+        'takesOnlyStaticToJson: in: OnlyStaticToJson needs a fromJson '
+            'constructor and a toJson method',
         'takesIntKeys: in: Map<int, String> has keys that are not String',
         'takesAnyList: in: List<dynamic>: dynamic is not a JSON type',
       ]);

@@ -48,9 +48,17 @@ class OnlyFromJson {
   OnlyFromJson.fromJson(Object? json);
 }
 
+/// Its toJson is static: a value has none to call.
+class OnlyStaticToJson {
+  OnlyStaticToJson.fromJson(Object? json);
+
+  static Object? toJson(OnlyStaticToJson value) => null;
+}
+
 final takesSet = node((Set<int> s) {});
 final givesOpaque = node((Object? x) => Opaque());
 final takesOnlyFromJson = node((OnlyFromJson o) {});
+final takesOnlyStaticToJson = node((OnlyStaticToJson o) {});
 final takesIntKeys = node((Map<int, String> m) {});
 final takesAnyList = node((List<dynamic> l) {});
 
@@ -58,6 +66,7 @@ final unsupported = Graph([
   Graph.start(takesSet),
   Graph.start(givesOpaque),
   Graph.start(takesOnlyFromJson),
+  Graph.start(takesOnlyStaticToJson),
   Graph.start(takesIntKeys),
   Graph.start(takesAnyList),
 ]);

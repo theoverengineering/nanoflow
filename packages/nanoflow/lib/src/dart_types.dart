@@ -168,8 +168,9 @@ _Kind _kindOf(TypeMirror type) {
   return _Kind.object;
 }
 
-/// Whether [type] has a `toJson()` method, abstract or not: declared by the
-/// class itself or by a class it extends, mixes in or implements.
+/// Whether [type] has an instance method `toJson()`, abstract or not:
+/// declared by the class itself or by a class it extends, mixes in or
+/// implements.
 ///
 /// `instanceMembers` leaves abstract methods out, such as the `toJson()` a
 /// sealed base declares for its subclasses to implement, or the one freezed
@@ -178,7 +179,9 @@ _Kind _kindOf(TypeMirror type) {
 bool _hasToJson(ClassMirror type) {
   final declared = type.declarations[#toJson];
   if (declared != null) {
-    return declared is MethodMirror && declared.isRegularMethod;
+    return declared is MethodMirror &&
+        declared.isRegularMethod &&
+        !declared.isStatic;
   }
   return [
     ?type.superclass,
