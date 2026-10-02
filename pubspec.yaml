@@ -9,5 +9,6 @@ workspace:
   - packages/nanoflow
   - apps/nanoflow_cli
   - examples/review
+  - tests/e2e
 dev_dependencies:
   lints: ^6.1.0
