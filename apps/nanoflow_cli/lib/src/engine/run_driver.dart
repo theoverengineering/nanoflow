@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart';
@@ -36,9 +38,19 @@ final class DrivenSession {
   /// Whether a run has failed.
   bool anyFailed = false;
 
+  final _stopped = Completer<void>();
+
   /// Whether the engine is stopping: it writes no more events and starts no
   /// more steps.
-  bool stopping = false;
+  bool get stopping => _stopped.isCompleted;
+
+  /// Completes once the engine begins to stop.
+  Future<void> get stopped => _stopped.future;
+
+  /// Begins to stop: see [stopping].
+  void stop() {
+    if (!_stopped.isCompleted) _stopped.complete();
+  }
 
   /// Appends [event] to the journal of its run and reports it, unless the
   /// engine is stopping; gives whether it did. [node] and [children] are for
@@ -54,6 +66,20 @@ final class DrivenSession {
     return true;
   }
 }
+
+/// How long a run waits for the engine to begin stopping after a call ended
+/// the way SIGINT or SIGTERM ends one.
+const _signalGrace = Duration(milliseconds: 250);
+
+/// Whether a call that exited with [exitCode] ended the way SIGINT or
+/// SIGTERM ends one: killed by the signal (a negative code), or exiting with
+/// `128 + N`, as a `--call` does when it stops on signal `N`.
+bool _endedBySignal(int exitCode) =>
+    [ProcessSignal.sigint, ProcessSignal.sigterm].any(
+      (signal) =>
+          exitCode == -signal.signalNumber ||
+          exitCode == 128 + signal.signalNumber,
+    );
 
 /// How a step that finished turned out, which decides where its run goes:
 /// the line of `run-failed` when it failed; otherwise its output document,
@@ -241,6 +267,13 @@ final class RunDriver {
       if (_session.stopping) call.stop();
       try {
         final end = await call.ended;
+        if (!_session.stopping && _endedBySignal(end.exitCode)) {
+          // A terminal's Ctrl+C reaches the calls along with the engine, and
+          // a call may end of it before the engine has seen its own signal.
+          // The engine gets a moment to begin stopping, so that the step is
+          // not written as failed.
+          await _session.stopped.timeout(_signalGrace, onTimeout: () {});
+        }
         return _session.stopping ? null : end;
       } finally {
         _session.calls.remove(call);

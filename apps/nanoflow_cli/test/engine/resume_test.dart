@@ -307,6 +307,62 @@ void main() {
     ]);
   });
 
+  test('a step that finished where the run ends: the run finishes', () async {
+    final (:fake, :session) = await created(
+      {
+        'start': 'a',
+        'nodes': {
+          'a': {'command': 'a'},
+        },
+      },
+      nodes: {'a': 'exit 9'},
+    );
+    final run = await onlyRun(session);
+    await ran(session, await firstStep(session, run.id), 'a');
+    final result = await resume(fake, session);
+    expect(result.code, 0, reason: result.err);
+    expect(await journal(session, run.id), [
+      'run-started a',
+      'step-started a',
+      'step-finished 0',
+      'run-finished',
+    ]);
+  });
+
+  test(
+    'a fork that finished with an outcome no key matches fails its run',
+    () async {
+      final (:fake, :session) = await created(
+        {
+          'start': 'verdict',
+          'nodes': {
+            'verdict': {
+              'decide': 'verdict',
+              'then': {'accepted': 'publish'},
+            },
+            'publish': {'command': 'publish'},
+          },
+        },
+        nodes: {'verdict': 'exit 9', 'publish': 'exit 9'},
+      );
+      final run = await onlyRun(session);
+      await ran(
+        session,
+        await firstStep(session, run.id),
+        'verdict',
+        outputId: await session.writeDocument('maybe'),
+      );
+      final result = await resume(fake, session);
+      expect(result.code, 1, reason: result.err);
+      expect(await journal(session, run.id), [
+        'run-started verdict',
+        'step-started verdict',
+        'step-finished 0',
+        'run-failed no target for outcome "maybe"',
+      ]);
+    },
+  );
+
   test('the step made for the next node before the engine died is the one '
       'that runs', () async {
     final (:fake, :session) = await created(

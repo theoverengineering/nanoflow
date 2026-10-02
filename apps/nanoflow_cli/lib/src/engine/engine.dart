@@ -79,7 +79,7 @@ final class Engine {
   /// `--call`, which then stops its command and exits. A call that has not
   /// exited after [stopTimeout] is killed. [drive] then completes.
   Future<void> stop() async {
-    _session.stopping = true;
+    _session.stop();
     for (final call in List.of(_session.calls)) {
       call.stop();
     }

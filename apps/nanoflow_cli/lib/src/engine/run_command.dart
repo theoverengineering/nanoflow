@@ -20,7 +20,9 @@ import 'engine.dart';
 /// A session to resume is found next to the program's graph file; it goes
 /// by the graph it holds, and [stdin] is not read. [stdout] gets the session
 /// id and a newline before the session is driven, and nothing else; [stderr]
-/// gets a line for each event the engine writes.
+/// gets a line for each event the engine writes, and the `run-started` line
+/// of each run it starts at the run's first step. On resume that line may
+/// come again: the engine that created the run may have printed it.
 ///
 /// Returns 0 when every run ended and none failed, 1 when one failed, and 2
 /// when there was no session to drive: the program gave no graph, the graph
