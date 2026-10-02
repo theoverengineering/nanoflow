@@ -1,0 +1,13 @@
+name: static_graph
+description: >-
+  Prototype: the graph of a workflow function, read from its code with
+  package:analyzer and printed in the README graph format.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dependencies:
+  analyzer: any
+  path: ^1.9.0
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.25.0

@@ -1,0 +1,10 @@
+name: step_keys
+description: >-
+  Prototype: keys that find a step's saved result again after a crash, with
+  no graph — copies side by side told apart by a zone.
+publish_to: none
+environment:
+  sdk: ^3.13.0
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.25.0
