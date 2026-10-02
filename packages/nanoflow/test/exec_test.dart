@@ -85,6 +85,31 @@ void main() {
     expect(await exec('echo', ['-n', 'hi']), 'hi');
   });
 
+  test('ends a program whose reader is gone, as a shell does', () async {
+    // The Dart VM ignores SIGPIPE, and a program inherits that: `yes` would
+    // get a write error instead, and a writer that does not stop on one —
+    // `tail -f` on macOS, a shell loop — would run on forever.
+    final stderr = Captured();
+    expect(
+      await withStderr(
+        stderr,
+        () =>
+            exec('/bin/bash', ['-c', r'yes | head -1; echo ${PIPESTATUS[0]}']),
+      ),
+      'y\n141\n',
+    );
+    expect(stderr.text, isEmpty);
+  }, skip: File('/bin/bash').existsSync() ? null : 'no /bin/bash');
+
+  test('exits with 127 and says why when there is no such program', () async {
+    final stderr = Captured();
+    await expectLater(
+      withStderr(stderr, () => exec('nanoflow-no-such-program', [])),
+      throwsA(isA<ExecException>().having((e) => e.exitCode, 'exitCode', 127)),
+    );
+    expect(stderr.text, contains('nanoflow-no-such-program'));
+  });
+
   test('passes the arguments as they are', () async {
     expect(
       await exec('/usr/bin/printf', ['%s|', 'a b', r'$HOME', '"q"', '']),

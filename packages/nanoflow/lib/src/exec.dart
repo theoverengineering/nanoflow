@@ -33,6 +33,13 @@ final class ExecException implements Exception {
 /// does, gives it its group. One that does not, as dash, is found out before
 /// the first program starts.
 ///
+/// A writer whose reader has exited is killed by SIGPIPE, as from a shell,
+/// so `tail -f server.log | grep -m1 listening` ends: the program runs
+/// through `/usr/bin/perl`, which gives SIGPIPE back the default that the
+/// Dart VM takes away. Without perl it starts with SIGPIPE ignored, and a
+/// writer that does not stop on a write error — `tail -f` on macOS, a shell
+/// loop — runs on forever.
+///
 /// The program cannot ask anything on the terminal: in the terminal of
 /// `nanoflow run` its group is in the background, so a program that asks
 /// there — git for credentials, ssh about a host key, sudo for a password —
@@ -230,6 +237,13 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 /// notices such as `Done` — goes to /dev/null; the job gets the real one
 /// through fd 3. The `while` loop waits again if `wait` returned while the
 /// program is only stopped.
+///
+/// The Dart VM ignores SIGPIPE, and an ignored signal stays ignored through
+/// `exec`; a shell cannot undo that. So, when there is `/usr/bin/perl`, the
+/// job becomes perl first, which gives SIGPIPE back its default and then
+/// becomes the program, found on `PATH` as well: a writer whose reader has
+/// exited is killed then, as from a shell. Without perl the program starts
+/// with SIGPIPE ignored.
 const inGroupScript =
     _endGroup +
     r'''
@@ -239,6 +253,12 @@ stop() {
   end_group $!
   exit 143
 }
+[ -x /usr/bin/perl ] && set -- /usr/bin/perl -e '
+  $SIG{PIPE} = "DEFAULT";
+  exec {$ARGV[0]} @ARGV;
+  print STDERR "$ARGV[0]: $!\n";
+  exit($!{ENOENT} ? 127 : 126);
+' "$@"
 exec 3>&2 2>/dev/null 4<&0
 set -m
 trap stop TERM INT HUP
