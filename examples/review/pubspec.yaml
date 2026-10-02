@@ -1,0 +1,9 @@
+name: review
+description: The review graph from the README, written in Dart - a graph program to run with nanoflow.
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.13.0
+dependencies:
+  nanoflow:
+    path: ../../packages/nanoflow

@@ -8,5 +8,6 @@ workspace:
   - packages/nanoflow_reader
   - packages/nanoflow
   - apps/nanoflow_cli
+  - examples/review
 dev_dependencies:
   lints: ^6.1.0
