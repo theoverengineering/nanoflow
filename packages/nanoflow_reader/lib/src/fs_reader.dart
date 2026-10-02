@@ -77,9 +77,8 @@ final class FsReader {
   /// Accumulated log text first, then appended text as it grows, until
   /// cancelled. Decodes UTF-8 across chunk boundaries.
   ///
-  /// Gives nothing until the log file appears: the engine creates it when the
-  /// step's command first writes to it. A step without a log gives nothing and
-  /// ends. Errors with an [ArgumentError] when there is no such step.
+  /// Gives nothing while there is no log file: the engine creates it when it
+  /// starts the step's command. A step without a log gives nothing and ends. Errors with an [ArgumentError] when there is no such step.
   Stream<String> stepLog(String sessionId, String runId, String stepId) async* {
     final path = logPath(stepId) ?? await _logOnDisk(sessionId, runId, stepId);
     if (path == null) return;
