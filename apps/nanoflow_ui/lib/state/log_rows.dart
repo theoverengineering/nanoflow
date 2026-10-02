@@ -136,7 +136,8 @@ final class SplitRow extends LogRow {
 
 /// The last row of a run that has ended.
 final class EndRow extends LogRow {
-  EndRow._(this.phase, this.error, this.children, this.at);
+  EndRow._(this.phase, this.error, List<String> children, this.at)
+    : children = List.unmodifiable(children);
 
   /// [RunPhase.finished], [RunPhase.failed] or [RunPhase.split].
   final RunPhase phase;

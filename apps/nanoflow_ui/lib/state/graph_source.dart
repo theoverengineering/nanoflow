@@ -220,7 +220,7 @@ class GraphSource extends ChangeNotifier {
 
   void _apply(String line, List<String>? errors) {
     if (errors != null && errors.isNotEmpty) {
-      _errors = errors;
+      _errors = List.unmodifiable(errors);
       return;
     }
     try {
@@ -228,7 +228,7 @@ class GraphSource extends ChangeNotifier {
       _errors = const [];
     } on FormatException catch (e) {
       // Checked or not, a graph the app cannot read is not shown.
-      if (errors != null) _errors = [e.message];
+      if (errors != null) _errors = List.unmodifiable([e.message]);
     }
   }
 

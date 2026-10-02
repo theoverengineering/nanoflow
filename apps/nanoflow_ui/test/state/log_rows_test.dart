@@ -196,6 +196,7 @@ void main() {
       final split = end(mockup.session, 'k7f2-run');
       expect(split.text, 'Run split into');
       expect(split.children, ['c3d4-run', 'e5f6-run']);
+      expect(() => split.children.clear(), throwsUnsupportedError);
       final failed = Journal('fail-run', node: 'collect', startedAt: 0);
       failed.fail(
         failed.step('collect', 0, end: 1, exit: 1),

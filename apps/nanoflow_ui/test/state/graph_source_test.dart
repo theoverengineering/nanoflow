@@ -125,6 +125,7 @@ void main() {
         'nodes.broken.then: names no node "nowhere"',
         'nodes.x: cannot be reached from start',
       ]);
+      expect(() => graph.errors.clear(), throwsUnsupportedError);
       expect(graph.graph!.nodes.keys, ['collect']);
 
       printLine(_description(graphFile, ['collect', 'notify']));
@@ -196,18 +197,26 @@ void main() {
       file: graphFile,
       shell: Shell(
         environment: {'PATH': '$bin:/usr/bin:/bin'},
-        start: (executable, arguments, {workingDirectory, environment}) {
-          if (arguments.contains('check') && failNext) {
-            failNext = false;
-            throw StateError('out of file descriptors');
-          }
-          return Process.start(
-            executable,
-            arguments,
-            workingDirectory: workingDirectory,
-            environment: environment,
-          );
-        },
+        start:
+            (
+              executable,
+              arguments, {
+              workingDirectory,
+              environment,
+              mode = ProcessStartMode.normal,
+            }) {
+              if (arguments.contains('check') && failNext) {
+                failNext = false;
+                throw StateError('out of file descriptors');
+              }
+              return Process.start(
+                executable,
+                arguments,
+                workingDirectory: workingDirectory,
+                environment: environment,
+                mode: mode,
+              );
+            },
       ),
     );
     addTearDown(graph.dispose);
