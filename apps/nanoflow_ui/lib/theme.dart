@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' show StepStatus;
 
+import 'state/runs.dart' show RunPhase;
 import 'state/sessions.dart' show SessionStatus;
 
 /// Colors of the mockups in docs/design/ (their HTML has the exact values).
@@ -99,6 +100,17 @@ extension SessionStatusColors on SessionStatus {
     SessionStatus.running => AppColors.running,
     SessionStatus.failed => AppColors.dangerText,
     SessionStatus.finished => AppColors.finishedText,
+  };
+}
+
+/// The colors a run's state is shown in: how it ended, at the end of its
+/// steps in `Logs`.
+extension RunPhaseColors on RunPhase {
+  Color get textColor => switch (this) {
+    RunPhase.running => AppColors.running,
+    RunPhase.finished => AppColors.finishedText,
+    RunPhase.failed => AppColors.dangerText,
+    RunPhase.notStarted || RunPhase.split => AppColors.textMuted,
   };
 }
 

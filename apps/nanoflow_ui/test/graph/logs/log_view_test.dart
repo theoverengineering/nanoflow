@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/graph/logs/log_view.dart';
+import 'package:nanoflow_ui/graph/logs/mono_lines.dart';
 import 'package:nanoflow_ui/graph/logs/step_details_pane.dart';
 import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/theme.dart';
@@ -78,6 +79,28 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(shown(tester, 'line 130'), isTrue);
+  });
+
+  testWidgets('opened again after it was scrolled up, follows the tail '
+      'again', (tester) async {
+    await pumpLog(tester, numbered(1, 1500));
+    await wheel(tester, lines(), -300);
+    expect(badge(), findsNothing);
+
+    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.input)));
+    await tester.pump();
+    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.log)));
+    // The text comes, then the view goes to its end.
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      textIn(tester, find.byKey(MonoLines.cutKey)),
+      'Showing the last 1,000 of 1,500 lines Show all',
+    );
+    expect(shown(tester, 'line 1500'), isTrue);
+    expect(badge(), findsOneWidget);
   });
 
   testWidgets('a finished step\'s log shows no badge', (tester) async {

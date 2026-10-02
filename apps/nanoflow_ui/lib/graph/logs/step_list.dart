@@ -4,12 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' show StepStatus;
 
 import '../../state/log_rows.dart';
-import '../../state/runs.dart' show RunPhase;
 import '../../state/texts.dart' show count, shortId;
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
-import '../../widgets/spinner.dart';
 import '../run_switcher.dart' show RunSign;
+import 'step_bar.dart';
 
 /// The steps of the selected run on the left of the `Logs` panel
 /// (docs/ui-spec.md «Logs»: «Лента шагов»), as the rows of `logRows` give
@@ -51,8 +50,6 @@ class StepList extends StatefulWidget {
   final ValueChanged<String> onSelectRun;
 
   static Key rowKey(String stepId) => ValueKey(('step row', stepId));
-  static Key trackKey(String stepId) => ValueKey(('step track', stepId));
-  static Key barKey(String stepId) => ValueKey(('step bar', stepId));
   static Key splitKey(String runId) => ValueKey(('split', runId));
   static Key childKey(String runId) => ValueKey(('child run', runId));
   static const endKey = ValueKey('end row');
@@ -71,7 +68,7 @@ abstract final class _Sizes {
   static const earlier = 20.0;
   static const padding = 16.0;
   static const gap = 10.0;
-  static const sign = 14.0;
+  static const sign = StepIcon.size;
   static const started = 58.0;
   static const took = 50.0;
   static const timeline = 150.0;
@@ -371,7 +368,7 @@ class _StepRowView extends StatelessWidget {
               )
             : AppText.stepTook,
       ),
-      bar: _Track(row),
+      bar: StepTrack(row),
     );
     if (row.inherited) content = Opacity(opacity: _dimmed, child: content);
     return Clickable(
@@ -415,159 +412,6 @@ class _StartsNote extends StatelessWidget {
     ),
     child: Text(text, style: AppText.startsNote),
   );
-}
-
-/// A step's timeline: the track, and on it the step's bar from where it
-/// started to where it ended or is now.
-class _Track extends StatelessWidget {
-  const _Track(this.row);
-
-  final StepRow row;
-
-  /// Shorter than this, a bar is this long.
-  static const _leastBar = 2.0;
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final width = constraints.maxWidth;
-      final length = math.max(_leastBar, (row.barEnd - row.barStart) * width);
-      final left = math.min(row.barStart * width, width - length);
-      return Center(
-        child: Container(
-          key: StepList.trackKey(row.stepId),
-          height: 6,
-          decoration: BoxDecoration(
-            color: AppColors.divider,
-            borderRadius: BorderRadius.circular(3),
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                left: left,
-                width: length,
-                top: 0,
-                bottom: 0,
-                child: StepBar(
-                  key: StepList.barKey(row.stepId),
-                  status: row.status,
-                  striped: row.striped,
-                  radius: length > _leastBar ? 3 : 1,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
-/// A step's bar in the color of its state; striped while it runs.
-class StepBar extends StatelessWidget {
-  const StepBar({
-    super.key,
-    required this.status,
-    required this.striped,
-    required this.radius,
-  });
-
-  final StepStatus status;
-  final bool striped;
-  final double radius;
-
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(radius),
-    child: striped
-        ? const CustomPaint(painter: _StripesPainter())
-        : ColoredBox(color: status.color),
-  );
-}
-
-/// The mockup's `repeating-linear-gradient(135deg, #F2A93B 0 4px, #C98526
-/// 4px 8px)`: stripes rising to the right, 8 px apart across them.
-class _StripesPainter extends CustomPainter {
-  const _StripesPainter();
-
-  static const _period = 8.0;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = AppColors.runningStripe,
-    );
-    // Along the bar, a period and a stripe are √2 times as long.
-    final step = _period * math.sqrt2;
-    final stripe = step / 2;
-    final h = size.height;
-    final paint = Paint()..color = AppColors.running;
-    for (var x = -h; x < size.width; x += step) {
-      canvas.drawPath(
-        Path()
-          ..moveTo(x, h)
-          ..lineTo(x + h, 0)
-          ..lineTo(x + h + stripe, 0)
-          ..lineTo(x + stripe, h)
-          ..close(),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_StripesPainter old) => false;
-}
-
-/// A step's sign: a green check finished, the turning sign running, a red
-/// cross failed.
-class StepIcon extends StatelessWidget {
-  const StepIcon(this.status, {super.key});
-
-  final StepStatus status;
-
-  @override
-  Widget build(BuildContext context) => status == StepStatus.running
-      ? const Spinner(size: _Sizes.sign, strokeWidth: 2.4)
-      : CustomPaint(
-          size: const Size.square(_Sizes.sign),
-          painter: _StepSignPainter(status),
-        );
-}
-
-/// The mockup's check, 10 units; a cross of the same weight.
-class _StepSignPainter extends CustomPainter {
-  const _StepSignPainter(this.status);
-
-  final StepStatus status;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 10);
-    final stroke = Paint()
-      ..color = status.color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.7
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    canvas.drawPath(
-      status == StepStatus.failed
-          ? (Path()
-              ..moveTo(2.6, 2.6)
-              ..lineTo(7.4, 7.4)
-              ..moveTo(7.4, 2.6)
-              ..lineTo(2.6, 7.4))
-          : (Path()
-              ..moveTo(1.6, 5.2)
-              ..lineTo(3.8, 7.4)
-              ..lineTo(8.4, 2.8)),
-      stroke,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_StepSignPainter old) => old.status != status;
 }
 
 /// `split · run e5f6` between two lines.
@@ -628,14 +472,9 @@ class _EndRowView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (row.phase) {
-      RunPhase.finished => AppColors.finishedText,
-      RunPhase.failed => AppColors.dangerText,
-      _ => AppColors.textMuted,
-    };
     final text = Text(
       row.text,
-      style: AppText.listNote.copyWith(color: color),
+      style: AppText.listNote.copyWith(color: row.phase.textColor),
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.ellipsis,

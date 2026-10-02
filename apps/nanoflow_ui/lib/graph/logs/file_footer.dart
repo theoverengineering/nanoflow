@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
@@ -10,8 +12,8 @@ import '../../widgets/failure_note.dart';
 /// The file of the open tab, under the step's details (docs/ui-spec.md
 /// «Logs»: «С файловым хранилищем»): its path from the graph's directory,
 /// cut from the left when too long and whole in a tooltip; `Finder` shows
-/// it, `Editor` opens it, and a button copies its path. When Finder or the
-/// editor fails, a note says so.
+/// it, `Editor` opens it, and a button copies its path and says `Copied` for
+/// a moment. When Finder, the editor or the clipboard fails, a note says so.
 class FileFooter extends StatelessWidget {
   const FileFooter({
     super.key,
@@ -78,21 +80,9 @@ class FileFooter extends StatelessWidget {
               'Could not open $name in an editor',
             ),
           ),
-          Tooltip(
-            message: 'Copy path',
-            child: Clickable(
-              onTap: () => shell.copyToClipboard(path),
-              child: Container(
-                width: 24,
-                height: 22,
-                alignment: Alignment.center,
-                decoration: _buttonBox,
-                child: CustomPaint(
-                  size: const Size.square(11),
-                  painter: _CopyIconPainter(),
-                ),
-              ),
-            ),
+          _CopyButton(
+            copy: () => shell.copyToClipboard(path),
+            failure: 'Could not copy the path of $name',
           ),
         ],
       ),
@@ -167,6 +157,106 @@ class _FileButton extends StatelessWidget {
       child: Text(label, style: AppText.fileButton),
     ),
   );
+}
+
+/// The copy button: `Copied` with a check for a moment after a copy; a note
+/// when copying fails.
+class _CopyButton extends StatefulWidget {
+  const _CopyButton({required this.copy, required this.failure});
+
+  final Future<void> Function() copy;
+
+  /// What the note says when copying fails.
+  final String failure;
+
+  @override
+  State<_CopyButton> createState() => _CopyButtonState();
+}
+
+class _CopyButtonState extends State<_CopyButton> {
+  /// How long `Copied` stays.
+  static const _copiedTime = Duration(milliseconds: 1500);
+
+  Timer? _copied;
+
+  @override
+  void dispose() {
+    _copied?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _copy() async {
+    try {
+      await widget.copy();
+    } on Exception {
+      if (mounted) showFailureNote(context, widget.failure);
+      return;
+    }
+    if (!mounted) return;
+    _copied?.cancel();
+    setState(() {
+      _copied = Timer(_copiedTime, () => setState(() => _copied = null));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => _copied != null
+      ? Container(
+          height: 22,
+          padding: const EdgeInsets.symmetric(horizontal: 7),
+          decoration: _buttonBox,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 5,
+            children: [
+              CustomPaint(
+                size: const Size.square(11),
+                painter: _CheckPainter(),
+              ),
+              Text('Copied', style: AppText.fileButton),
+            ],
+          ),
+        )
+      : Tooltip(
+          message: 'Copy path',
+          child: Clickable(
+            onTap: _copy,
+            child: Container(
+              width: 24,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: _buttonBox,
+              child: CustomPaint(
+                size: const Size.square(11),
+                painter: _CopyIconPainter(),
+              ),
+            ),
+          ),
+        );
+}
+
+/// The mockups' green check: 10 units.
+class _CheckPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas
+      ..scale(size.width / 10)
+      ..drawPath(
+        Path()
+          ..moveTo(1.6, 5.2)
+          ..lineTo(3.8, 7.4)
+          ..lineTo(8.4, 2.8),
+        Paint()
+          ..color = AppColors.finished
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.7
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+  }
+
+  @override
+  bool shouldRepaint(_CheckPainter old) => false;
 }
 
 /// Two sheets, one over the other: the mockup's SVG, 16 units.

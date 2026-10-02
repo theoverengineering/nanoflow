@@ -101,12 +101,19 @@ void main() {
     });
   }
 
-  testWidgets('copies the path', (tester) async {
-    final copied = <Object?>[];
+  /// The clipboard: what is copied goes to [copied]; copying fails with
+  /// [error] when given.
+  void mockClipboard(
+    WidgetTester tester,
+    List<Object?> copied, {
+    PlatformException? error,
+  }) {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
       (call) async {
-        if (call.method == 'Clipboard.setData') copied.add(call.arguments);
+        if (call.method != 'Clipboard.setData') return null;
+        if (error != null) throw error;
+        copied.add(call.arguments);
         return null;
       },
     );
@@ -116,6 +123,11 @@ void main() {
         null,
       ),
     );
+  }
+
+  testWidgets('copies the path, and says so for a moment', (tester) async {
+    final copied = <Object?>[];
+    mockClipboard(tester, copied);
     await pumpGraphScreen(tester);
 
     await tester.tap(inFooter(find.byTooltip('Copy path')));
@@ -123,5 +135,21 @@ void main() {
     expect(copied, [
       {'text': notifyLogPath},
     ]);
+    expect(inFooter(find.text('Copied')), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(inFooter(find.text('Copied')), findsNothing);
+    expect(inFooter(find.byTooltip('Copy path')), findsOneWidget);
+  });
+
+  testWidgets('says when copying fails', (tester) async {
+    mockClipboard(tester, [], error: PlatformException(code: 'busy'));
+    await pumpGraphScreen(tester);
+
+    await tester.tap(inFooter(find.byTooltip('Copy path')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Could not copy the path of command.log'), findsOneWidget);
+    expect(inFooter(find.text('Copied')), findsNothing);
   });
 }

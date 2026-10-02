@@ -6,6 +6,7 @@ import '../../state/step_details.dart';
 import '../../state/step_files.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
+import 'document_view.dart';
 import 'file_footer.dart';
 import 'log_view.dart';
 
@@ -53,7 +54,8 @@ class StepDetailsPane extends StatefulWidget {
 class _StepDetailsPaneState extends State<StepDetailsPane> {
   StepTab _tab = StepTab.log;
 
-  /// Whether the log holds on to its end: anew for each step.
+  /// Whether the log holds on to its end: anew for each log view, which
+  /// opens at the end.
   ValueNotifier<bool> _following = ValueNotifier(true);
 
   static bool _same(StepDetails a, StepDetails b) =>
@@ -62,13 +64,22 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
   @override
   void didUpdateWidget(StepDetailsPane old) {
     super.didUpdateWidget(old);
-    if (!_same(old.step, widget.step)) {
-      final previous = _following;
-      // The old log view lets go of it as this frame is built.
-      WidgetsBinding.instance.addPostFrameCallback((_) => previous.dispose());
-      _following = ValueNotifier(true);
-    }
+    if (!_same(old.step, widget.step)) _followAnew();
   }
+
+  /// A new flag for a new log view: one that holds on. Replaced rather than
+  /// set, so that nothing hears of it while the frame is built.
+  void _followAnew() {
+    final previous = _following;
+    // The old log view lets go of it as the next frame is built.
+    WidgetsBinding.instance.addPostFrameCallback((_) => previous.dispose());
+    _following = ValueNotifier(true);
+  }
+
+  void _open(StepTab tab) => setState(() {
+    if (tab == StepTab.log && _tab != StepTab.log) _followAnew();
+    _tab = tab;
+  });
 
   @override
   void dispose() {
@@ -129,7 +140,7 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
           step: step,
           tab: _tab,
           following: _following,
-          onTab: (tab) => setState(() => _tab = tab),
+          onTab: _open,
           onOpen: () => widget.onOpenStep?.call(step.node),
         ),
         Expanded(child: _body()),

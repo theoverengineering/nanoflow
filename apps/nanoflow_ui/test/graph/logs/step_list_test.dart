@@ -6,6 +6,7 @@ import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/logs/logs_panel.dart';
+import 'package:nanoflow_ui/graph/logs/step_bar.dart';
 import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/graph/run_switcher.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
@@ -144,9 +145,9 @@ void main() {
       await pumpGraphScreen(tester);
 
       Rect bar(String stepId) =>
-          tester.getRect(find.byKey(StepList.barKey(stepId)));
+          tester.getRect(find.byKey(StepTrack.barKey(stepId)));
       Rect track(String stepId) =>
-          tester.getRect(find.byKey(StepList.trackKey(stepId)));
+          tester.getRect(find.byKey(StepTrack.trackKey(stepId)));
       final collect = track('k7f2-collect-0');
       expect(collect.width, 150);
       expect(bar('k7f2-collect-0').left, collect.left);
@@ -161,13 +162,13 @@ void main() {
       expect(bar('e5f6-notify-0').right, notify.right);
       expect(
         tester
-            .widget<StepBar>(find.byKey(StepList.barKey('e5f6-notify-0')))
+            .widget<StepBar>(find.byKey(StepTrack.barKey('e5f6-notify-0')))
             .striped,
         isTrue,
       );
       expect(
         tester
-            .widget<StepBar>(find.byKey(StepList.barKey('k7f2-fix-4')))
+            .widget<StepBar>(find.byKey(StepTrack.barKey('k7f2-fix-4')))
             .striped,
         isFalse,
       );
@@ -178,12 +179,19 @@ void main() {
       final end = find.byKey(StepList.endKey);
       expect(end, findsNothing);
 
+      Color? colorOf(String text) => tester
+          .widget<Text>(find.descendant(of: end, matching: find.text(text)))
+          .style
+          ?.color;
+
       await tester.tap(find.byKey(RunSwitcher.pillKey('c3d4-run')));
       await tester.pump();
       expect(textIn(tester, end), 'Run finished 14:13:51');
+      expect(colorOf('Run finished'), AppColors.finishedText);
 
       await select(tester, '7c3e-s', 'p7c3-run');
       expect(textIn(tester, end), startsWith('Run failed: exited with code 1'));
+      expect(colorOf('Run failed: exited with code 1'), AppColors.dangerText);
     });
 
     testWidgets('ends a run that split with links to the runs it split '
