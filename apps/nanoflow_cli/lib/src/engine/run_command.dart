@@ -11,33 +11,64 @@ import '../program.dart';
 import 'engine.dart';
 
 /// `nanoflow run -- <program>`: creates a session of the graph that
-/// [program] describes and drives it until every run has ended.
+/// [program] describes and drives it until every run has ended; with
+/// [resume], `nanoflow run --resume <id> -- <program>`: drives the session
+/// [resume] on from where it stopped.
 ///
 /// The launch input is read from [stdin] only when a start node takes input,
 /// and is checked by the program's `--input` before the session is created.
-/// [stdout] gets the session id and a newline once the session exists, and
-/// nothing else; [stderr] gets a line for each event of the session.
+/// A session to resume is found next to the program's graph file; it goes
+/// by the graph it holds, and [stdin] is not read. [stdout] gets the session
+/// id and a newline before the session is driven, and nothing else; [stderr]
+/// gets a line for each event the engine writes.
 ///
 /// Returns 0 when every run ended and none failed, 1 when one failed, and 2
-/// when no session was created: the program gave no graph, the graph did not
-/// pass check (its errors go to [stderr], one per line), or there was no
-/// input or `--input` rejected it.
+/// when there was no session to drive: the program gave no graph, the graph
+/// did not pass check (its errors go to [stderr], one per line), there was
+/// no input or `--input` rejected it, or there is no session [resume]. SIGINT
+/// or SIGTERM stops the engine (the session can be resumed): `128 + N` for
+/// signal `N`.
 Future<int> runRun(
   List<String> program, {
+  String? resume,
   required Stream<List<int>> stdin,
   required IOSink stdout,
   required IOSink stderr,
 }) async {
   final graphProgram = GraphProgram(program, stderr: stderr);
+  final session = resume == null
+      ? await _createSession(graphProgram, stdin: stdin, stderr: stderr)
+      : await _openSession(graphProgram, resume, stderr: stderr);
+  if (session == null) return 2;
+  stdout.writeln(session.session.id);
+  await stdout.flush();
+  return _drive(
+    Engine(
+      store: session,
+      graph: Graph.fromJson(session.session.graph),
+      program: graphProgram,
+      progress: stderr,
+    ),
+  );
+}
+
+/// Creates a session of the graph [program] describes, with the launch input
+/// from [stdin] when a start node takes input; or writes why it cannot to
+/// [stderr] and gives `null`.
+Future<SessionHandle?> _createSession(
+  GraphProgram program, {
+  required Stream<List<int>> stdin,
+  required IOSink stderr,
+}) async {
   final GraphDescription description;
   try {
-    description = await graphProgram.describe();
+    description = await program.describe();
   } on GraphProgramException catch (e) {
     stderr.writeln('cannot read the graph: ${e.message}');
-    return 2;
+    return null;
   } on GraphCheckException catch (e) {
     e.errors.forEach(stderr.writeln);
-    return 2;
+    return null;
   }
   final graph = description.graph;
   final startNodes = [
@@ -53,30 +84,72 @@ Future<int> runRun(
     final raw = utf8.decode(bytes.takeBytes(), allowMalformed: true);
     if (raw.trim().isEmpty) {
       stderr.writeln('no input on stdin');
-      return 2;
+      return null;
     }
     try {
-      input = (value: jsonDecode(await graphProgram.validateInput(raw)));
+      input = (value: jsonDecode(await program.validateInput(raw)));
     } on GraphProgramException catch (e) {
       stderr.writeln(e.message);
-      return 2;
+      return null;
     }
   }
   // A relative path is relative to the directory the program ran in: this
   // one.
   final file = p.absolute(description.file);
-  final session = await FsStore(runsDirOf(file)).createSession(
+  return FsStore(runsDirOf(file)).createSession(
     graphName: graphNameOf(file),
     graph: graph.json,
     startNodes: startNodes,
     input: input,
   );
-  stdout.writeln(session.session.id);
-  await stdout.flush();
-  return Engine(
-    store: session,
-    graph: graph,
-    program: graphProgram,
-    progress: stderr,
-  ).drive();
+}
+
+/// The session [id] in the `runs` next to the graph file of [program]; or
+/// `null`, when there is none, with why on [stderr].
+///
+/// The graph [program] describes now is not read, only its file: the session
+/// goes by the graph it holds.
+Future<SessionHandle?> _openSession(
+  GraphProgram program,
+  String id, {
+  required IOSink stderr,
+}) async {
+  final String file;
+  try {
+    file = await program.graphFile();
+  } on GraphProgramException catch (e) {
+    stderr.writeln('cannot read the graph: ${e.message}');
+    return null;
+  }
+  final runsDir = runsDirOf(p.absolute(file));
+  final session = await FsStore(runsDir).openSession(id);
+  if (session == null) stderr.writeln('no session $id in $runsDir');
+  return session;
+}
+
+/// Drives [engine] until every run of its session has ended, or until the
+/// first SIGINT or SIGTERM stops it; gives the engine's code, or `128 + N`
+/// after signal `N`.
+Future<int> _drive(Engine engine) async {
+  ProcessSignal? stoppedBy;
+  Future<void>? stopped;
+  final watching = [
+    for (final signal in [ProcessSignal.sigint, ProcessSignal.sigterm])
+      signal.watch().listen((signal) {
+        if (stoppedBy != null) return;
+        stoppedBy = signal;
+        stopped = engine.stop();
+      }),
+  ];
+  try {
+    final code = await engine.drive();
+    await stopped;
+    return switch (stoppedBy) {
+      final signal? => 128 + signal.signalNumber,
+      null => code,
+    };
+  } finally {
+    // A signal watched keeps the process alive.
+    await Future.wait([for (final watch in watching) watch.cancel()]);
+  }
 }

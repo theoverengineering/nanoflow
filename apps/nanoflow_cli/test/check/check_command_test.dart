@@ -212,7 +212,8 @@ void main() {
 
   group('arguments', () {
     const usage =
-        'usage: nanoflow run -- <graph program> [args...]\n'
+        'usage: nanoflow run [--resume <session id>] -- <graph program> '
+        '[args...]\n'
         '       nanoflow check [-- <graph program> [args...]]\n';
 
     test('anything else prints the usage on stderr, exit 2', () async {

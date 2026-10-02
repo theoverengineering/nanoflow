@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -25,7 +26,7 @@ typedef CallEnd = ({int exitCode, Uint8List stdout});
 /// arrives, and so does its stdout unless it is data, which is kept until the
 /// call exits.
 final class StepCall {
-  StepCall._(this._process, this.ended);
+  StepCall._(this._process, this._reading, this._abandoned, this.ended);
 
   /// Starts `--call <node>` of [program] for a step of [node] and writes
   /// [input], a line without its `\n`, on its stdin.
@@ -43,27 +44,49 @@ final class StepCall {
     process.stdin.done.ignore();
     process.stdin.add(utf8.encode('$input\n'));
     final data = BytesBuilder(copy: false);
-    final read = [
-      process.stdout
-          .listen(printsData(node) ? data.add : log.add)
-          .asFuture<void>(),
-      process.stderr.listen(log.add).asFuture<void>(),
+    final reading = [
+      process.stdout.listen(printsData(node) ? data.add : log.add),
+      process.stderr.listen(log.add),
     ];
+    // Taken right away: a subscription that is done before `asFuture` is
+    // called never completes its future.
+    final read = Future.wait([
+      for (final subscription in reading) subscription.asFuture<void>(),
+    ]);
+    final abandoned = Completer<void>();
     Future<CallEnd> end() async {
       final exitCode = await process.exitCode;
       process.stdin.close().ignore();
-      await Future.wait(read);
+      await Future.any([read, abandoned.future]);
       return (exitCode: exitCode, stdout: data.takeBytes());
     }
 
-    return StepCall._(process, end());
+    return StepCall._(process, reading, abandoned, end());
   }
 
   final Process _process;
 
-  /// Completes once the call has exited and all it printed has been read.
+  /// The call's stdout and stderr, as they are read.
+  final List<StreamSubscription<List<int>>> _reading;
+
+  /// Completed by [kill]: what the call printed is read no further.
+  final Completer<void> _abandoned;
+
+  /// Completes once the call has exited and all it printed has been read,
+  /// or, after [kill], once it has exited.
   final Future<CallEnd> ended;
 
   /// Closes the call's stdin: the call stops its command and exits.
   void stop() => _process.stdin.close().ignore();
+
+  /// Kills the call, which has not stopped when asked to, and reads no
+  /// further what it printed: the command it started in a process group of
+  /// its own may outlive it and keep its stdout and stderr open.
+  void kill() {
+    _process.kill(ProcessSignal.sigkill);
+    for (final subscription in _reading) {
+      subscription.cancel().ignore();
+    }
+    if (!_abandoned.isCompleted) _abandoned.complete();
+  }
 }

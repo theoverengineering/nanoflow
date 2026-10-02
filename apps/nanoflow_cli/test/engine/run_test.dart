@@ -874,12 +874,18 @@ IFS= read -r line
 
     test('arguments that are not a command: the usage, exit 2', () async {
       const usage =
-          'usage: nanoflow run -- <graph program> [args...]\n'
+          'usage: nanoflow run [--resume <session id>] -- <graph program> '
+          '[args...]\n'
           '       nanoflow check [-- <graph program> [args...]]\n';
       for (final args in [
         ['run'],
         ['run', '--'],
         ['run', 'graph.sh'],
+        ['run', '--resume'],
+        ['run', '--resume', newId()],
+        ['run', '--resume', newId(), '--'],
+        ['run', '--resume', newId(), 'graph.sh'],
+        ['run', '--resume', '--', 'graph.sh'],
       ]) {
         expect(await nanoflow(args), (
           code: 2,

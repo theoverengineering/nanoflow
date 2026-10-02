@@ -55,89 +55,170 @@ final class DrivenSession {
   }
 }
 
+/// How a step that finished turned out, which decides where its run goes:
+/// the line of `run-failed` when it failed; otherwise its output document,
+/// and for a fork the outcome it printed.
+typedef StepResult = ({String? error, String? outputId, Object? outcome});
+
+/// A run that a split created: its id, its first step and its
+/// `run-started`.
+typedef SplitChild = ({String runId, Step first, RunStarted started});
+
+/// A step a run is to take: [step], at [node], into which the run carries
+/// [carried].
+typedef _Next = ({Step step, Node node, String? carried});
+
 /// Drives one run, a step at a time, until it finishes, fails or splits;
 /// then drives the runs its split created, all at once.
 final class RunDriver {
-  RunDriver(this._session, this._runId);
+  /// The driver of the run [_runId].
+  ///
+  /// [nextStep] and [children] are what an engine that stopped had made for
+  /// the run's next move: the step of its next node (D6), or runs of its
+  /// split, by the node they start at. The run takes them instead of making
+  /// them again.
+  RunDriver(
+    this._session,
+    this._runId, {
+    this._nextStep,
+    this._children = const {},
+  });
 
   final DrivenSession _session;
   final String _runId;
+  Step? _nextStep;
+  final Map<String, SplitChild> _children;
 
   SessionHandle get _store => _session.store;
 
-  /// Drives the run from [first], a step of [node] that has not started, into
-  /// which the run carries the document [carried].
+  /// Drives the run from [step], a step of [node] that is to start — for the
+  /// first time, or again when it did not finish — into which the run
+  /// carries [carried].
   ///
   /// Completes when the run and every run its split created have ended, or
   /// the engine is stopping.
   Future<void> drive(
-    Step first, {
-    required String node,
+    Step step, {
+    required Node node,
     required String? carried,
   }) async {
-    var step = first;
-    var stepNode = _session.graph[node]!;
-    var data = carried;
-    while (true) {
-      if (!await _session.record(
-        StepStarted(
-          runId: _runId,
-          time: _session.clock(),
-          stepId: step.id,
-          node: stepNode.name,
+    _Next? next = (step: step, node: node, carried: carried);
+    while (next != null) {
+      final (:step, :node, :carried) = next;
+      final result = await _take(step, node);
+      if (result == null) return;
+      next = await _goOn(
+        step,
+        node,
+        result,
+        carried: carriedAfter(
+          node,
+          carried: carried,
+          outputId: result.outputId,
         ),
-      )) {
-        return;
-      }
-      final CallEnd? end;
-      try {
-        end = await _call(step, stepNode);
-      } on GraphProgramStartException catch (e) {
-        // The step never ran: no `step-finished`.
-        return _fail(step, 'cannot start the graph program: ${e.reason}');
-      }
-      if (end == null) return;
-      final (:error, :printed) = _judge(stepNode, end);
-      // The output first, then the event that refers to it, then the step.
-      final outputId = printed == null
-          ? null
-          : await _store.writeDocument(printed.value);
-      if (!await _session.record(
-        StepFinished(
-          runId: _runId,
-          time: _session.clock(),
-          stepId: step.id,
-          exitCode: end.exitCode,
-          outputId: outputId,
-        ),
-        node: stepNode.name,
-      )) {
-        return;
-      }
-      if (outputId != null) step = await _store.setStepOutput(step, outputId);
-      if (error != null) return _fail(step, error);
-
-      data = carriedAfter(stepNode, carried: data, outputId: outputId);
-      switch (_route(stepNode, printed)) {
-        case RouteMissing(:final outcome):
-          return _fail(step, 'no target for outcome ${jsonEncode(outcome)}');
-        case RouteEnd():
-        case RouteTo(:final target) when target.isEmpty:
-          await _session.record(
-            RunFinished(runId: _runId, time: _session.clock()),
-          );
-          return;
-        case RouteTo(:final target) when target.isList:
-          return _split(target.names, data);
-        case RouteTo(:final target):
-          stepNode = _session.graph[target.names.single]!;
-      }
-      if (_session.stopping) return;
-      step = await _store.createStep(
-        runId: _runId,
-        node: stepNode.name,
-        inputId: inputIdOf(stepNode, data),
       );
+    }
+  }
+
+  /// Drives the run on from [step], a step of [node] that finished as
+  /// [result], after which the run carries [carried].
+  ///
+  /// Completes as [drive] does.
+  Future<void> goOn(
+    Step step, {
+    required Node node,
+    required StepResult result,
+    required String? carried,
+  }) async {
+    final next = await _goOn(step, node, result, carried: carried);
+    if (next == null) return;
+    await drive(next.step, node: next.node, carried: next.carried);
+  }
+
+  /// Takes [step], a step of [node]: `step-started`, the call, the output
+  /// document, `step-finished`, then the output in `step.json`. Gives how
+  /// the step turned out, or `null` when the run has failed because the
+  /// program did not start, or the engine is stopping.
+  Future<StepResult?> _take(Step step, Node node) async {
+    if (!await _session.record(
+      StepStarted(
+        runId: _runId,
+        time: _session.clock(),
+        stepId: step.id,
+        node: node.name,
+      ),
+    )) {
+      return null;
+    }
+    final CallEnd? end;
+    try {
+      end = await _call(step, node);
+    } on GraphProgramStartException catch (e) {
+      // The step never ran: no `step-finished`.
+      await _fail(step, 'cannot start the graph program: ${e.reason}');
+      return null;
+    }
+    if (end == null) return null;
+    final (:error, :printed) = _judge(node, end);
+    // The output first, then the event that refers to it, then the step.
+    final outputId = printed == null
+        ? null
+        : await _store.writeDocument(printed.value);
+    if (!await _session.record(
+      StepFinished(
+        runId: _runId,
+        time: _session.clock(),
+        stepId: step.id,
+        exitCode: end.exitCode,
+        outputId: outputId,
+      ),
+      node: node.name,
+    )) {
+      return null;
+    }
+    if (outputId != null) await _store.setStepOutput(step, outputId);
+    return (error: error, outputId: outputId, outcome: printed?.value);
+  }
+
+  /// Where the run goes after [step], a step of [node] that turned out as
+  /// [result], after which the run carries [carried]: the run fails,
+  /// finishes or splits, and the next step is `null`; or it goes on to the
+  /// next step.
+  Future<_Next?> _goOn(
+    Step step,
+    Node node,
+    StepResult result, {
+    required String? carried,
+  }) async {
+    if (result.error case final error?) {
+      await _fail(step, error);
+      return null;
+    }
+    switch (_route(node, result.outcome)) {
+      case RouteMissing(:final outcome):
+        await _fail(step, 'no target for outcome ${jsonEncode(outcome)}');
+        return null;
+      case RouteEnd():
+      case RouteTo(:final target) when target.isEmpty:
+        await _session.record(
+          RunFinished(runId: _runId, time: _session.clock()),
+        );
+        return null;
+      case RouteTo(:final target) when target.isList:
+        await _split(target.names, carried);
+        return null;
+      case RouteTo(:final target):
+        if (_session.stopping) return null;
+        final next = _session.graph[target.names.single]!;
+        final nextStep =
+            _nextStep ??
+            await _store.createStep(
+              runId: _runId,
+              node: next.name,
+              inputId: inputIdOf(next, carried),
+            );
+        _nextStep = null;
+        return (step: nextStep, node: next, carried: carried);
     }
   }
 
@@ -182,21 +263,16 @@ final class RunDriver {
     if (failed) _session.anyFailed = true;
   }
 
-  /// Creates a run for each of [nodes], whose parent is this run, writes
-  /// `run-split`, and drives the new runs all at once. [carried] is the
-  /// document this run carries into them.
+  /// Makes a run for each of [nodes], whose parent is this run, unless it was
+  /// made before; writes `run-split`; and drives the runs all at once.
+  /// [carried] is the document this run carries into them.
   Future<void> _split(List<String> nodes, String? carried) async {
-    final children = <({String runId, Step first, RunStarted started})>[];
-    for (final name in nodes) {
+    final children = <SplitChild>[];
+    for (final node in nodes) {
       if (_session.stopping) return;
-      final (run, first) = await _store.createRun(
-        parentId: _runId,
-        node: name,
-        inputId: inputIdOf(_session.graph[name]!, carried),
-      );
-      final started = (await _store.events(run.id)).first as RunStarted;
-      _session.progress.report(started);
-      children.add((runId: run.id, first: first, started: started));
+      final child = _children[node] ?? await _createChild(node, carried);
+      _session.progress.report(child.started);
+      children.add(child);
     }
     final split = await _session.record(
       RunSplit(runId: _runId, time: _session.clock()),
@@ -207,10 +283,22 @@ final class RunDriver {
       for (final child in children)
         RunDriver(_session, child.runId).drive(
           child.first,
-          node: child.started.node,
+          node: _session.graph[child.started.node]!,
           carried: carriedAtStart(child.first, fromParent: carried),
         ),
     ]);
+  }
+
+  /// Creates a run at [node], whose parent is this run, into which this run
+  /// carries [carried].
+  Future<SplitChild> _createChild(String node, String? carried) async {
+    final (run, first) = await _store.createRun(
+      parentId: _runId,
+      node: node,
+      inputId: inputIdOf(_session.graph[node]!, carried),
+    );
+    final started = (await _store.events(run.id)).first as RunStarted;
+    return (runId: run.id, first: first, started: started);
   }
 }
 
@@ -222,9 +310,7 @@ final class RunDriver {
 /// empty or not one JSON document. A worker without `out` that exits with 0
 /// gives neither.
 ({String? error, ({Object? value})? printed}) _judge(Node node, CallEnd end) {
-  if (end.exitCode != 0) {
-    return (error: 'exited with code ${end.exitCode}', printed: null);
-  }
+  if (end.exitCode != 0) return (error: _exited(end.exitCode), printed: null);
   if (!printsData(node)) return (error: null, printed: null);
   const invalid = (error: 'printed invalid JSON', printed: null);
   final String text;
@@ -241,12 +327,30 @@ final class RunDriver {
   }
 }
 
-/// Where the run goes after a step of [node] that succeeded and [printed]
-/// what it did: a worker goes to its `then`, or ends the run without one; a
-/// fork goes where its outcome leads.
-Route _route(Node node, ({Object? value})? printed) => switch (node) {
+/// How a step of [node] turned out, as its `step-finished` [finish] tells
+/// once the call has gone: [outcome] is the value of the step's output
+/// document.
+///
+/// The call's stdout is kept only as that document, once it was data; so a
+/// step that printed no output and one that printed something other than one
+/// JSON document cannot be told apart, and the error names both.
+StepResult finishedAs(Node node, StepFinished finish, {Object? outcome}) {
+  final StepFinished(:exitCode, :outputId) = finish;
+  final error = exitCode != 0
+      ? _exited(exitCode)
+      : printsData(node) && outputId == null
+      ? 'printed no output or invalid JSON'
+      : null;
+  return (error: error, outputId: outputId, outcome: outcome);
+}
+
+String _exited(int exitCode) => 'exited with code $exitCode';
+
+/// Where the run goes after a step of [node] that succeeded with [outcome]:
+/// a worker goes to its `then`, or ends the run without one; a fork goes
+/// where its outcome leads.
+Route _route(Node node, Object? outcome) => switch (node) {
   WorkerNode(exits: [final then]) => RouteTo(then),
   WorkerNode() => const RouteEnd(),
-  // A fork's stdout is always data.
-  ForkNode() => node.route(printed!.value),
+  ForkNode() => node.route(outcome),
 };
