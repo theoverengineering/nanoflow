@@ -85,7 +85,11 @@ void main() {
 
     final changes = reader.changes().listen(null);
     addTearDown(changes.cancel);
-    for (var i = 0; i < 100 && files.logPath(stepId) == null; i++) {
+    // The feed gives a session's documents after its runs.
+    bool given() =>
+        files.logPath(stepId) != null &&
+        files.documentPath(sessionId, documentId) != null;
+    for (var i = 0; i < 100 && !given(); i++) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     expect(files.logPath(stepId), p.join(stepDir, logFileName));

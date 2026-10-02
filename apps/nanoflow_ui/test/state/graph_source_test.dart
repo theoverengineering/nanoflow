@@ -408,7 +408,7 @@ exec tail -f /dev/null
     program('nanoflow-yaml', '''
 echo start >> "\$(dirname "\$0")/starts"
 echo '${_description(graphFile, ['collect'])}'
-[ "\$(wc -l < "\$(dirname "\$0")/starts")" -eq 4 ] && sleep 0.5
+[ "\$(wc -l < "\$(dirname "\$0")/starts")" -eq 4 ] && sleep 1.2
 exit 1
 ''');
     program('nanoflow', _nanoflowCheck);
@@ -416,7 +416,7 @@ exit 1
     int count() => starts.existsSync() ? starts.readAsLinesSync().length : 0;
     final graph = source(
       restartDelay: const Duration(milliseconds: 40),
-      maxRestartDelay: const Duration(milliseconds: 300),
+      maxRestartDelay: const Duration(seconds: 1),
     );
     final at = <int>[];
     final clock = Stopwatch()..start();
@@ -433,10 +433,11 @@ exit 1
     expect(gaps[0], greaterThanOrEqualTo(40));
     expect(gaps[1], greaterThanOrEqualTo(80));
     expect(gaps[2], greaterThanOrEqualTo(160));
-    // The fourth stayed up 500 ms, longer than the longest wait: after it,
-    // waiting starts over at 40 ms.
-    expect(gaps[3], greaterThanOrEqualTo(500));
-    expect(gaps[4], lessThan(gaps[3] - 400));
+    // The fourth stayed up 1.2 s, longer than the longest wait: after it,
+    // waiting starts over at 40 ms, and is 80 ms after the fifth exit. Had
+    // it not started over, it would be 320 ms and then 640 ms.
+    expect(gaps[3], greaterThanOrEqualTo(1200));
+    expect(gaps[4], lessThan(400));
   });
 
   test('ignores what an exited nanoflow-yaml left running prints after it '
