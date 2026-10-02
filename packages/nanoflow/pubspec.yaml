@@ -5,8 +5,8 @@ resolution: workspace
 environment:
   sdk: ^3.13.0
 dependencies:
-  nanoflow_model:
-    path: ../nanoflow_model
   path: ^1.9.0
 dev_dependencies:
+  nanoflow_model:
+    path: ../nanoflow_model
   test: ^1.25.0

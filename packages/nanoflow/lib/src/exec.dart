@@ -38,11 +38,14 @@ final class ExecException implements Exception {
 /// the first program starts.
 ///
 /// A writer whose reader has exited is killed by SIGPIPE, as from a shell,
-/// so `tail -f server.log | grep -m1 listening` ends: the program runs
-/// through `/usr/bin/perl`, which gives SIGPIPE back the default that the
-/// Dart VM takes away. Without perl it starts with SIGPIPE ignored, and a
-/// writer that does not stop on a write error — `tail -f` on macOS, a shell
-/// loop — runs on forever.
+/// but only when it writes next: the program runs through `/usr/bin/perl`,
+/// which gives SIGPIPE back the default that the Dart VM takes away. In
+/// `tail -f server.log | grep -m1 listening` grep exits at the first matching
+/// line, and `tail -f` ends once another line is appended to the log; if the
+/// log stays quiet the pipeline never ends, as in a shell. To wait for a ready
+/// line use `until grep -q listening server.log; do sleep 0.2; done`. Without
+/// perl the program starts with SIGPIPE ignored, and a writer that does not
+/// stop on a write error — `tail -f` on macOS, a shell loop — runs on forever.
 ///
 /// The program cannot ask anything on the terminal: in the terminal of
 /// `nanoflow run` its group is in the background, so a program that asks
