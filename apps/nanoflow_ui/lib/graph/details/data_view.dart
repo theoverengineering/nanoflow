@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../state/json_data.dart';
 import '../../state/step_files.dart';
-import '../../state/texts.dart' show thousands;
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
 import '../../widgets/icons.dart';
@@ -318,8 +317,8 @@ class _JsonViewState extends State<JsonView> {
   late List<String> _lines = jsonLines(widget.value);
   bool _all = false;
 
-  /// The longest line shown, once found.
-  String? _widest;
+  /// What of the data is shown, once found.
+  TextStart? _start;
 
   @override
   void didUpdateWidget(JsonView old) {
@@ -327,7 +326,7 @@ class _JsonViewState extends State<JsonView> {
     if (old.value != widget.value) {
       _lines = jsonLines(widget.value);
       _all = false;
-      _widest = null;
+      _start = null;
     }
   }
 
@@ -353,35 +352,25 @@ class _JsonViewState extends State<JsonView> {
   @override
   Widget build(BuildContext context) {
     final lines = _lines;
-    final linesCut = !_all && lines.length > previewLines;
-    final shown = linesCut ? previewLines : lines.length;
-    final widest = _widest ??= widestLine(lines, 0, shown);
-    final cut = _all
-        ? null
-        : cutText(
-            lines: linesCut
-                ? 'Showing the first ${thousands(previewLines)} of '
-                      '${thousands(lines.length)} lines'
-                : null,
-            widest: widest,
-          );
+    final start = _start ??= textStart(lines, all: _all);
     return MonoLines(
-      count: shown,
+      count: start.count,
       lineAt: (i) => shownLine(lines[i], whole: _all),
-      widest: shownLine(widest, whole: _all),
+      widest: shownLine(start.widest, whole: _all),
       style: AppText.jsonLine,
       spanOf: _spanOf,
       background: AppColors.backdrop,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      cut: cut == null
-          ? null
-          : (
-              text: cut,
-              showAll: () => setState(() {
-                _all = true;
-                _widest = null;
-              }),
-            ),
+      cut: switch (start.cut) {
+        null => null,
+        final cut => (
+          text: cut,
+          showAll: () => setState(() {
+            _all = true;
+            _start = null;
+          }),
+        ),
+      },
     );
   }
 }

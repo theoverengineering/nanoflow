@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../state/step_files.dart';
-import '../../state/texts.dart' show thousands;
 import '../../theme.dart';
 import 'mono_lines.dart';
 
@@ -34,8 +33,8 @@ class _DocumentViewState extends State<DocumentView> {
 
   bool _all = false;
 
-  /// The longest line shown, once found.
-  String? _widest;
+  /// What of the document is shown, once found.
+  TextStart? _start;
 
   @override
   Widget build(BuildContext context) => FutureBuilder(
@@ -50,31 +49,21 @@ class _DocumentViewState extends State<DocumentView> {
       }
       final lines = snapshot.data;
       if (lines == null) return const TabNote('');
-      final linesCut = !_all && lines.length > previewLines;
-      final shown = linesCut ? previewLines : lines.length;
-      final widest = _widest ??= widestLine(lines, 0, shown);
-      final cut = _all
-          ? null
-          : cutText(
-              lines: linesCut
-                  ? 'Showing the first ${thousands(previewLines)} of '
-                        '${thousands(lines.length)} lines'
-                  : null,
-              widest: widest,
-            );
+      final start = _start ??= textStart(lines, all: _all);
       return MonoLines(
-        count: shown,
+        count: start.count,
         lineAt: (i) => shownLine(lines[i], whole: _all),
-        widest: shownLine(widest, whole: _all),
-        cut: cut == null
-            ? null
-            : (
-                text: cut,
-                showAll: () => setState(() {
-                  _all = true;
-                  _widest = null;
-                }),
-              ),
+        widest: shownLine(start.widest, whole: _all),
+        cut: switch (start.cut) {
+          null => null,
+          final cut => (
+            text: cut,
+            showAll: () => setState(() {
+              _all = true;
+              _start = null;
+            }),
+          ),
+        },
       );
     },
   );

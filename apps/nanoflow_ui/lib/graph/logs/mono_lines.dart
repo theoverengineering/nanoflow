@@ -27,6 +27,33 @@ String? cutText({String? lines, required String widest}) {
   };
 }
 
+/// The first lines of a text, as shown until `Show all`: how many, the
+/// longest of them, and what the note over them says, `null` when nothing is
+/// cut.
+typedef TextStart = ({int count, String widest, String? cut});
+
+/// The first [previewLines] of [lines] — all of them when [all] — with lines
+/// cut at [previewLineLength] unless [all] (docs/ui-spec.md «Окно деталей
+/// шага»: «у JSON — начало»).
+TextStart textStart(List<String> lines, {required bool all}) {
+  final linesCut = !all && lines.length > previewLines;
+  final count = linesCut ? previewLines : lines.length;
+  final widest = widestLine(lines, 0, count);
+  return (
+    count: count,
+    widest: widest,
+    cut: all
+        ? null
+        : cutText(
+            lines: linesCut
+                ? 'Showing the first ${thousands(previewLines)} of '
+                      '${thousands(lines.length)} lines'
+                : null,
+            widest: widest,
+          ),
+  );
+}
+
 /// What is cut from a long text, and how to show all of it.
 typedef TextCut = ({String text, VoidCallback showAll});
 
