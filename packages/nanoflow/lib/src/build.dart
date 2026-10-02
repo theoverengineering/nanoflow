@@ -182,12 +182,12 @@ final class _Build {
         nullable: inputTakesNull(vertex),
       );
       if (vertex is! Worker<Object?, Object?>) continue;
-      outputs[vertex] = _schemaOf(
-        vertex,
-        'out',
-        awaited(reflectType(outputTypeOf(vertex))),
-        nullable: outputTakesNull(vertex),
-      );
+      final output = awaited(reflectType(outputTypeOf(vertex)));
+      // A function that never returns, such as one that always throws,
+      // passes nothing on: Dart infers its result as Never.
+      outputs[vertex] = output == currentMirrorSystem().neverType
+          ? null
+          : _schemaOf(vertex, 'out', output, nullable: outputTakesNull(vertex));
     }
   }
 

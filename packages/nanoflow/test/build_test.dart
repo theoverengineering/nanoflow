@@ -326,6 +326,17 @@ void main() {
       }
     });
 
+    test('a node whose function never returns, which Dart infers as Never, '
+        'as one without out', () {
+      final nodes =
+          graphOf(shapes.neverReturns)['nodes']! as Map<String, Object?>;
+      expectJson(nodes['rejects'], {
+        'command': sh('rejects'),
+        'in': ref('Report'),
+      });
+      expectJson(nodes['waits'], {'command': sh('waits')});
+    });
+
     test('switch keys that are not strings by their toString()', () {
       expectJson(graphOf(shapes.numbers), {
         'start': 'size',

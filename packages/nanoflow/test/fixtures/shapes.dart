@@ -22,6 +22,17 @@ final measure = node((String s) => s.length);
 final scale = node((num n) => n > 0 ? Verdict.accepted : Verdict.returned);
 final announce = node((Verdict v) {});
 
+/// Nodes whose functions never return, so that Dart infers their result as
+/// `Never`: one always throws, one waits for ever.
+final rejects = node(
+  (Report r) async => throw StateError('rejected ${r.change.path}'),
+);
+final waits = node((Object? _) async {
+  while (true) {
+    await Future<void>.delayed(const Duration(seconds: 1));
+  }
+});
+
 /// One part is a graph too: it is not wrapped in `Graph([…])`.
 final single = Graph.start(inspect).next(verdict).then({'accepted': publish});
 
@@ -54,6 +65,9 @@ final oneNodeSets = Graph([
     Verdict.accepted: {publish},
   }),
 ]);
+
+/// Nodes that never return.
+final neverReturns = Graph.start(inspect).next({rejects, waits});
 
 /// A switch on numbers, with an `else`.
 final numbers = Graph.start(size).then({0: publish, 2: notify}).otherwise(fix);
