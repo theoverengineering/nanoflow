@@ -49,6 +49,10 @@ final class Output {
   }
 }
 
+/// Every graph program [start] started, to kill once the tests are over:
+/// a test that fails or times out must not leave one running.
+final _started = <Process>[];
+
 /// Starts the graph program [file] with `dart run` and [args].
 Future<Process> start(String file, List<String> args) async {
   final process = await Process.start(Platform.resolvedExecutable, [
@@ -56,8 +60,16 @@ Future<Process> start(String file, List<String> args) async {
     file,
     ...args,
   ]);
+  _started.add(process);
   process.stdin.done.ignore();
   return process;
+}
+
+/// Kills every graph program [start] started that still runs.
+void killStarted() {
+  for (final process in _started) {
+    process.kill(ProcessSignal.sigkill);
+  }
 }
 
 /// How a run of a graph program ended.
@@ -214,6 +226,8 @@ List<String> nodesOf(String description) {
 }
 
 void main() {
+  tearDownAll(killStarted);
+
   group('serve', () {
     // Every program run here is independent, so all of them start at once.
     late Future<Ended> graph,

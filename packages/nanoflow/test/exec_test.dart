@@ -37,7 +37,8 @@ Future<T> withStderr<T>(Captured stderr, Future<T> Function() body) =>
 
 /// Starts [executable] with [arguments] without a controlling terminal, as a
 /// daemon or an app started from the Dock runs: a shell like dash then turns
-/// job control off. Gives what it prints on stdout once it has exited.
+/// job control off. Gives what it prints on stdout once it has exited; it is
+/// killed after the test if its stdout has not ended by then.
 Future<String> withoutTerminal(
   String executable,
   List<String> arguments, {
@@ -48,10 +49,18 @@ Future<String> withoutTerminal(
     arguments,
     mode: ProcessStartMode.detachedWithStdio,
   );
+  // A detached process tells no exit code, and once it has exited its pid
+  // may be another process's: only one whose stdout is open is killed.
+  var ended = false;
+  addTearDown(() {
+    if (!ended) process.kill(ProcessSignal.sigkill);
+  });
   process.stdin.write(stdin);
   await process.stdin.close();
   process.stderr.drain<void>().ignore();
-  return utf8.decodeStream(process.stdout);
+  final out = await utf8.decodeStream(process.stdout);
+  ended = true;
+  return out;
 }
 
 /// Why a test that needs dash is skipped, or `null` when there is one.
