@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../layout/layout.dart' as layout;
+import '../../layout/layout.dart' show LabelKind;
 import '../../state/graph_marks.dart';
 import '../../state/runs.dart';
 import 'canvas_style.dart';
@@ -24,6 +25,7 @@ class NodeTile extends StatelessWidget {
     this.selected = false,
     this.markers = const [],
     this.visits,
+    this.selectedRun,
     this.onTap,
     this.onDoubleTap,
   }) : super(key: keyOf(node.name));
@@ -47,6 +49,9 @@ class NodeTile extends StatelessWidget {
 
   /// `2×` for a node entered more than once.
   final String? visits;
+
+  /// The selected run: its marker stays when the markers do not fit.
+  final String? selectedRun;
 
   final VoidCallback? onTap;
   final VoidCallback? onDoubleTap;
@@ -73,13 +78,7 @@ class NodeTile extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Positioned.fromRect(rect: tile, child: _tile(look)),
-        if (_badge(state) case final badge?)
-          Positioned(
-            left: tile.right - 10,
-            top: tile.bottom - 10,
-            child: badge,
-          ),
+        _clickable(tile, look),
         if (node.startRect case final start?)
           _text(
             local(start),
@@ -102,15 +101,13 @@ class NodeTile extends StatelessWidget {
         ),
         if (markers.isNotEmpty || visits != null)
           Positioned(
-            right: area.width - tile.right - 6,
+            right: area.width - tile.right - _overhang,
             top: tile.top - 9,
             child: Row(
               mainAxisSize: MainAxisSize.min,
-              spacing: 4,
-              children: [
-                for (final marker in markers) _RunBadge(marker),
-                if (visits case final visits?) _CountBadge(visits),
-              ],
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: _badgeGap,
+              children: _badges(tile.width + 2 * _overhang),
             ),
           ),
       ],
@@ -120,33 +117,99 @@ class NodeTile extends StatelessWidget {
   static const _radius = 12.0;
   static const _ring = 4.0;
 
-  Widget _tile(_Look look) => MouseRegion(
-    key: tileKeyOf(node.name),
-    cursor: SystemMouseCursors.click,
-    child: RawGestureDetector(
-      gestures: {
-        SerialTapGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<SerialTapGestureRecognizer>(
-              SerialTapGestureRecognizer.new,
-              (recognizer) => recognizer.onSerialTapUp = _tapped,
-            ),
-      },
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: look.fill,
-          border: Border.all(color: look.border, width: look.borderWidth),
-          borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-          boxShadow: [
-            if (selected)
-              const BoxShadow(color: CanvasColors.ring, spreadRadius: _ring),
-          ],
+  /// How far past the tile's sides the badges over it may reach.
+  static const _overhang = 6.0;
+  static const _badgeGap = 4.0;
+
+  /// The badges over the tile: the runs on the node and the visit count.
+  /// When they are wider than [room], the runs collapse into one: the
+  /// selected run if it is on the node, else the first, with how many more
+  /// there are (`c3d4 +2`) and every id in its tooltip.
+  List<Widget> _badges(double room) {
+    final count = visits;
+    var width = count == null ? 0.0 : _CountBadge.widthOf(count);
+    for (final marker in markers) {
+      if (width > 0) width += _badgeGap;
+      width += _RunBadge.widthOf(marker.shortId, marker.phase);
+    }
+    final List<Widget> runs;
+    if (width <= room || markers.length < 2) {
+      runs = [
+        for (final marker in markers)
+          _RunBadge(marker.phase, marker.shortId, marker.runId),
+      ];
+    } else {
+      final shown =
+          markers.where((marker) => marker.runId == selectedRun).firstOrNull ??
+          markers.first;
+      runs = [
+        _RunBadge(
+          shown.phase,
+          '${shown.shortId} +${markers.length - 1}',
+          [for (final marker in markers) marker.runId].join('\n'),
         ),
-        child: Center(
-          child: CustomPaint(
-            size: const Size.square(28),
-            painter: _IconPainter(fork: node.isFork, color: look.icon),
+      ];
+    }
+    return [...runs, if (count != null) _CountBadge(count)];
+  }
+
+  /// The tile with the state badge on its corner: what is clicked, under the
+  /// pointing hand. Only the two shapes are hit, not the box round them.
+  Widget _clickable(Rect tile, _Look look) {
+    final badge = _badge(state);
+    // The badge's box, 21 px with its ring, 10 px into the tile's corner.
+    final badgeBox = Rect.fromLTWH(tile.right - 10, tile.bottom - 10, 21, 21);
+    final region = badge == null ? tile : tile.expandToInclude(badgeBox);
+    return Positioned.fromRect(
+      rect: region,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        hitTestBehavior: HitTestBehavior.deferToChild,
+        child: RawGestureDetector(
+          gestures: {
+            SerialTapGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  SerialTapGestureRecognizer
+                >(
+                  SerialTapGestureRecognizer.new,
+                  (recognizer) => recognizer.onSerialTapUp = _tapped,
+                ),
+          },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fromRect(
+                rect: tile.shift(-region.topLeft),
+                child: _tile(look),
+              ),
+              if (badge != null)
+                Positioned(
+                  left: badgeBox.left - region.left,
+                  top: badgeBox.top - region.top,
+                  child: badge,
+                ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _tile(_Look look) => DecoratedBox(
+    key: tileKeyOf(node.name),
+    decoration: BoxDecoration(
+      color: look.fill,
+      border: Border.all(color: look.border, width: look.borderWidth),
+      borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+      boxShadow: [
+        if (selected)
+          const BoxShadow(color: CanvasColors.ring, spreadRadius: _ring),
+      ],
+    ),
+    child: Center(
+      child: CustomPaint(
+        size: const Size.square(28),
+        painter: _IconPainter(fork: node.isFork, color: look.icon),
       ),
     ),
   );
@@ -400,7 +463,9 @@ class _MarkPainter extends CustomPainter {
   bool shouldRepaint(_MarkPainter old) => old.failed != failed;
 }
 
-/// The turning sign of a running node.
+/// The turning sign of a running node. It repaints as it turns and builds
+/// nothing: a rebuild under the canvas's layout builder would lay the canvas
+/// out and paint it again on every frame.
 class _Spinner extends StatefulWidget {
   const _Spinner();
 
@@ -423,26 +488,32 @@ class _SpinnerState extends State<_Spinner>
 
   @override
   Widget build(BuildContext context) => RepaintBoundary(
-    child: Container(
-      width: 17,
-      height: 17,
-      decoration: const BoxDecoration(
-        color: CanvasColors.background,
-        shape: BoxShape.circle,
-      ),
-      child: RotationTransition(
-        turns: _turns,
-        child: CustomPaint(painter: _SpinnerPainter()),
-      ),
+    child: CustomPaint(
+      size: const Size.square(17),
+      painter: _SpinnerPainter(_turns),
     ),
   );
 }
 
-/// A dim ring with a bright quarter: 18 units.
+/// A disc of the canvas's color, and on it a dim ring with a bright quarter
+/// turned by [turns]: 18 units.
 class _SpinnerPainter extends CustomPainter {
+  _SpinnerPainter(this.turns) : super(repaint: turns);
+
+  final Animation<double> turns;
+
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 18);
+    canvas
+      ..scale(size.width / 18)
+      ..drawCircle(
+        const Offset(9, 9),
+        9,
+        Paint()..color = CanvasColors.background,
+      )
+      ..translate(9, 9)
+      ..rotate(turns.value * 2 * math.pi)
+      ..translate(-9, -9);
     final ring = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.2
@@ -461,22 +532,32 @@ class _SpinnerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SpinnerPainter old) => false;
+  bool shouldRepaint(_SpinnerPainter old) => old.turns != turns;
 }
 
 /// A run's short id over the tile, in the color of the run's state; its
-/// full id in a tooltip.
+/// full id in a tooltip. A running run's has no border, as in the mockups.
 class _RunBadge extends StatelessWidget {
-  const _RunBadge(this.marker);
+  const _RunBadge(this.phase, this.text, this.tooltip);
 
-  final RunMarker marker;
+  final RunPhase phase;
+  final String text;
+  final String tooltip;
+
+  static const _padding = 7.0;
+
+  /// How wide the badge of [text] is for a run in [phase].
+  static double widthOf(String text, RunPhase phase) =>
+      measureLabel(text, LabelKind.counter) +
+      2 * _padding +
+      (phase == RunPhase.running ? 0 : 2);
 
   @override
   Widget build(BuildContext context) {
-    final (fill, border, text, weight) = switch (marker.phase) {
+    final (fill, border, color, weight) = switch (phase) {
       RunPhase.running => (
         const Color(0xFFF2A93B),
-        const Color(0xFFF2A93B),
+        null,
         const Color(0xFF1F1606),
         FontWeight.w500,
       ),
@@ -500,14 +581,14 @@ class _RunBadge extends StatelessWidget {
       ),
     };
     return Tooltip(
-      message: marker.runId,
+      message: tooltip,
       child: _Pill(
         fill: fill,
         border: border,
-        padding: 7,
+        padding: _padding,
         child: Text(
-          marker.shortId,
-          style: CanvasText.badge.copyWith(color: text, fontWeight: weight),
+          text,
+          style: CanvasText.badge.copyWith(color: color, fontWeight: weight),
           textScaler: TextScaler.noScaling,
         ),
       ),
@@ -521,11 +602,17 @@ class _CountBadge extends StatelessWidget {
 
   final String text;
 
+  static const _padding = 6.0;
+
+  /// How wide the badge of [text] is.
+  static double widthOf(String text) =>
+      measureLabel(text, LabelKind.counter) + 2 * _padding + 2;
+
   @override
   Widget build(BuildContext context) => _Pill(
     fill: CanvasColors.countFill,
     border: CanvasColors.countBorder,
-    padding: 6,
+    padding: _padding,
     child: Text(
       text,
       style: CanvasText.badge.copyWith(color: CanvasColors.countText),
@@ -534,6 +621,7 @@ class _CountBadge extends StatelessWidget {
   );
 }
 
+/// A rounded badge with a 1 px [border], or none.
 class _Pill extends StatelessWidget {
   const _Pill({
     required this.fill,
@@ -543,7 +631,7 @@ class _Pill extends StatelessWidget {
   });
 
   final Color fill;
-  final Color border;
+  final Color? border;
   final double padding;
   final Widget child;
 
@@ -552,7 +640,7 @@ class _Pill extends StatelessWidget {
     padding: EdgeInsets.symmetric(horizontal: padding, vertical: 1),
     decoration: BoxDecoration(
       color: fill,
-      border: Border.all(color: border),
+      border: border == null ? null : Border.all(color: border!),
       borderRadius: const BorderRadius.all(Radius.circular(999)),
     ),
     child: child,

@@ -1,13 +1,21 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
+import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
+import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
+import 'package:nanoflow_ui/graph/canvas/edges_painter.dart';
 import 'package:nanoflow_ui/graph/canvas/exit_labels.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
+import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/legend.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
+import 'package:nanoflow_ui/layout/layout.dart' show LayoutOptions, layoutGraph;
 import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 
@@ -122,6 +130,60 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       expect(opened, ['discard']);
+    });
+
+    testWidgets('on the state badge over the tile\'s corner selects the node, '
+        'under the hand', (tester) async {
+      final model = reviewModel();
+      await pumpCanvas(tester, model);
+      // On the badge's disc, past the tile's corner.
+      final badge =
+          tester.getRect(tile('inspect')).bottomRight + const Offset(6, 6);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: badge);
+      await tester.pump();
+      expect(
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+        SystemMouseCursors.click,
+      );
+
+      await tester.tapAt(badge);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(model.selection.stepId, 'k7f2-inspect-5');
+    });
+
+    testWidgets('selects the node drawn under it after zooming and panning', (
+      tester,
+    ) async {
+      final model = reviewModel();
+      await pumpCanvas(tester, model);
+      final layout = layoutGraph(
+        Graph.fromJson(reviewGraph),
+        options: const LayoutOptions(measure: measureLabel),
+      );
+      final origin = tester.getTopLeft(find.byType(GraphCanvas));
+      // Where the view draws the tile's middle, from its scale and offset.
+      Offset drawnAt(String node) =>
+          origin +
+          controller.offset +
+          layout.nodes[node]!.tile.center.toOffset() * controller.scale;
+
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      await tester.tapAt(drawnAt('verdict'));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(model.selection.stepId, 'k7f2-verdict-6');
+
+      await tester.dragFrom(
+        origin + const Offset(300, 80),
+        const Offset(-150, -60),
+      );
+      await tester.pump();
+      await tester.tapAt(drawnAt('inspect'));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(model.selection.stepId, 'k7f2-inspect-5');
     });
   });
 
@@ -325,6 +387,68 @@ void main() {
       await settle(tester);
       expect(controller.scale, 1);
     });
+
+    testWidgets('keeps the view when a new step comes', (tester) async {
+      final mockup = Mockup();
+      final e5f6 = Journal(
+        'e5f6-run',
+        parent: 'k7f2-run',
+        node: 'notify',
+        startedAt: 611.4,
+      );
+      final more = StreamController<Change>();
+      addTearDown(more.close);
+      await pumpCanvas(
+        tester,
+        modelOf(
+          changes: changesOf([mockup.k7f2, mockup.c3d4, e5f6]),
+          more: more.stream,
+          outcomes: reviewOutcomes,
+        ),
+      );
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      final (scale, offset) = (controller.scale, controller.offset);
+      expect(nodeTile(tester, 'notify').state, NodeState.notVisited);
+
+      e5f6.step('notify', 612);
+      more
+        ..add(StepAdded(e5f6.steps.last))
+        ..add(EventAdded(e5f6.events.last));
+      await settle(tester);
+
+      expect(nodeTile(tester, 'notify').state, NodeState.running);
+      expect(controller.scale, scale);
+      expect(controller.offset, offset);
+    });
+
+    testWidgets('keeps the view when the current graph is described again '
+        'the same, and fits another', (tester) async {
+      Graph described(Map<String, Object?> json) =>
+          Graph.fromJson(jsonDecode(jsonEncode(json)) as Map<String, Object?>);
+      final model = modelOf(current: described(reviewGraph));
+      final source = model.source as FixedSource;
+      await pumpCanvas(tester, model);
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      final (scale, offset) = (controller.scale, controller.offset);
+
+      // `--graph --watch` printed the same graph again: a new object.
+      source.graph = described(reviewGraph);
+      await settle(tester);
+      expect(controller.scale, scale);
+      expect(controller.offset, offset);
+
+      source.graph = described(const {
+        'start': 'only',
+        'nodes': {
+          'only': {'command': 'only.sh'},
+        },
+      });
+      await settle(tester);
+      expect(controller.scale, 1);
+      expect(find.byType(NodeTile), findsOneWidget);
+    });
   });
 
   group('Current graph', () {
@@ -348,6 +472,7 @@ void main() {
       }
       expect(find.text('taken by run e5f6'), findsNothing);
       expect(find.text('back edge'), findsOneWidget);
+      expect(tester.widget<Legend>(find.byType(Legend)).backEdges, Tone.plain);
     });
 
     testWidgets('says No valid graph yet until a graph passes check', (
@@ -376,7 +501,17 @@ void main() {
       await pumpCanvas(tester, reviewModel());
       expect(find.byType(Legend), findsOneWidget);
       expect(find.text('taken by run e5f6'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(Legend),
+          matching: find.byTooltip('e5f6-run'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('back edge'), findsOneWidget);
+      // e5f6 went back from fix to inspect: back arrows are shown in its
+      // color.
+      expect(tester.widget<Legend>(find.byType(Legend)).backEdges, Tone.path);
       // The review graph has no empty targets.
       expect(find.text('outcome with no target — run ends'), findsNothing);
     });
@@ -390,28 +525,54 @@ void main() {
     });
   });
 
-  testWidgets('the sign of a running node turns', (tester) async {
+  testWidgets('the sign of a running node turns, painting only itself; '
+      'moving the view does not paint the graph again', (tester) async {
     await pumpCanvas(tester, reviewModel());
-    Animation<double> turns(String node) => tester
-        .widget<RotationTransition>(
-          find.descendant(
-            of: find.byKey(NodeTile.keyOf(node)),
-            matching: find.byType(RotationTransition),
-          ),
-        )
-        .turns;
-
-    final before = turns('notify').value;
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(turns('notify').value, isNot(before));
-    // Only a running node has the sign.
-    expect(
-      find.descendant(
-        of: find.byKey(NodeTile.keyOf('fix')),
-        matching: find.byType(RotationTransition),
+    RenderObject renderOf(Finder finder) => tester.renderObject(finder);
+    final notify = renderOf(find.byKey(NodeTile.keyOf('notify')));
+    final edges = renderOf(
+      find.byWidgetPredicate(
+        (widget) => widget is CustomPaint && widget.painter is EdgesPainter,
       ),
-      findsNothing,
     );
+    final collect = renderOf(find.byKey(NodeTile.tileKeyOf('collect')));
+    bool under(RenderObject object, RenderObject ancestor) {
+      for (RenderObject? at = object; at != null; at = at.parent) {
+        if (identical(at, ancestor)) return true;
+      }
+      return false;
+    }
+
+    /// What is painted while [act] runs.
+    Future<List<RenderObject>> paintedWhile(Future<void> Function() act) async {
+      final painted = <RenderObject>[];
+      debugOnProfilePaint = painted.add;
+      try {
+        await act();
+      } finally {
+        debugOnProfilePaint = null;
+      }
+      return painted;
+    }
+
+    final turning = await paintedWhile(() async {
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+    });
+    expect(turning, isNotEmpty);
+    expect(turning.where((object) => !under(object, notify)), isEmpty);
+
+    final empty = tester.getRect(find.byType(GraphCanvas)).topLeft;
+    final moving = await paintedWhile(() async {
+      await tester.dragFrom(
+        empty + const Offset(300, 80),
+        const Offset(-40, 20),
+      );
+      await tester.pump();
+    });
+    expect(moving, isNotEmpty);
+    expect(moving, isNot(contains(edges)));
+    expect(moving, isNot(contains(collect)));
   });
 
   testWidgets('the selected step\'s node is ringed and its run marked', (

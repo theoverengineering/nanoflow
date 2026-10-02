@@ -1,5 +1,7 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
+import '../../state/texts.dart' show shortId;
+import 'canvas_marks.dart';
 import 'canvas_style.dart';
 
 /// What the canvas's lines mean, in its bottom right corner
@@ -14,11 +16,13 @@ class Legend extends StatelessWidget {
     required this.emptyTargets,
   });
 
-  /// The selected run, shortened; `null` when none is.
+  /// The selected run; `null` when none is. Shortened, its full id in a
+  /// tooltip.
   final String? runId;
 
-  /// Whether the graph has back arrows.
-  final bool backEdges;
+  /// The tone back arrows are shown in, as the canvas draws them; `null`
+  /// when the graph has none.
+  final Tone? backEdges;
 
   /// Whether the graph has outcomes with no target.
   final bool emptyTargets;
@@ -27,25 +31,25 @@ class Legend extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       if (runId case final run?)
-        _item(
-          Container(
-            width: 16,
-            height: 2.4,
-            decoration: const BoxDecoration(
-              color: CanvasColors.path,
-              borderRadius: BorderRadius.all(Radius.circular(2)),
+        Tooltip(
+          message: run,
+          child: _item(
+            Container(
+              width: 16,
+              height: 2.4,
+              decoration: const BoxDecoration(
+                color: CanvasColors.path,
+                borderRadius: BorderRadius.all(Radius.circular(2)),
+              ),
             ),
+            'taken by run ${shortId(run)}',
           ),
-          'taken by run $run',
         ),
-      if (backEdges)
+      if (backEdges case final tone?)
         _item(
           CustomPaint(
             size: const Size(16, 2.4),
-            // Without a run, arrows are all one gray, back ones too.
-            painter: _DashPainter(
-              runId == null ? CanvasColors.taken : CanvasColors.path,
-            ),
+            painter: _DashPainter(CanvasColors.line(tone)),
           ),
           'back edge',
         ),

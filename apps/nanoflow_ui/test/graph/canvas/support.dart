@@ -29,29 +29,49 @@ final class FixedSource extends GraphSource {
         shell: Shell(environment: const {}),
       );
 
-  final Graph? _graph;
+  Graph? _graph;
 
   @override
   Graph? get graph => _graph;
+
+  /// A new description passed check: [graph] is the current graph now.
+  set graph(Graph? graph) {
+    _graph = graph;
+    notifyListeners();
+  }
 }
 
-/// A graph screen's model fed [changes], whose fork outputs hold [outcomes],
-/// with [current] as the current graph. The graph is opened after everything
-/// in the mockups, so their sessions are selected.
+/// A graph screen's model fed [changes], then what [more] gives, whose fork
+/// outputs hold [outcomes], with [current] as the current graph. The graph
+/// is opened after everything in the mockups, so their sessions are
+/// selected.
 GraphModel modelOf({
   List<Change> changes = const [],
+  Stream<Change> more = const Stream.empty(),
   Map<String, Object?> outcomes = const {},
   Graph? current,
 }) {
   final model = GraphModel(
     source: FixedSource(current),
-    feed: SessionFeed(Stream.fromIterable(changes)),
+    feed: SessionFeed(_concat(Stream.fromIterable(changes), more)),
     outcomes: Outcomes((_, documentId) async => outcomes[documentId]),
     now: () => at(100000),
   );
   addTearDown(model.dispose);
   return model;
 }
+
+Stream<T> _concat<T>(Stream<T> first, Stream<T> then) async* {
+  yield* first;
+  yield* then;
+}
+
+/// The outcomes of the forks in [Mockup].
+const reviewOutcomes = <String, Object?>{
+  'is-empty-outcome': false,
+  'verdict-outcome-1': 'returned',
+  'verdict-outcome-2': 'accepted',
+};
 
 /// The model of docs/design/graph.png: session a1b2, run e5f6 and its step
 /// on `notify` selected; [current] is the current graph.
@@ -60,11 +80,7 @@ GraphModel reviewModel({Graph? current}) {
   return modelOf(
     current: current,
     changes: changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]),
-    outcomes: const {
-      'is-empty-outcome': false,
-      'verdict-outcome-1': 'returned',
-      'verdict-outcome-2': 'accepted',
-    },
+    outcomes: reviewOutcomes,
   );
 }
 

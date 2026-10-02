@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../layout/layout.dart' show LabelKind;
 import '../../theme.dart';
+import 'canvas_marks.dart' show Tone;
 
 /// The canvas's colors. Arrows, exits and input bars come in four tones
 /// (`Tone` in canvas_marks.dart), tiles in the node's state.
@@ -23,8 +24,14 @@ abstract final class CanvasColors {
 
   /// Arrows no run went along: darker.
   static const untaken = Color(0xFF4A4B52);
-  static const untakenHead = Color(0xFF55565C);
   static const untakenExit = Color(0xFF55565C);
+
+  /// The color of arrows, their heads and input bars in [tone].
+  static Color line(Tone tone) => switch (tone) {
+    Tone.path => path,
+    Tone.taken || Tone.plain => taken,
+    Tone.untaken => untaken,
+  };
 
   /// A stub's line and its cross bar, where no run ended.
   static const stub = Color(0xFF45464C);

@@ -54,7 +54,44 @@ void main() {
     expect(marks.visits('verdict'), '2×');
     expect(marks.visits('fix'), isNull);
     expect(marks.selectedNode, 'notify');
-    expect(marks.runId, 'e5f6');
+    expect(marks.runId, 'e5f6-run');
+  });
+
+  group('back arrows are shown in the tone', () {
+    final back = layout.edges.where((edge) => edge.isDashed);
+
+    test('of the selected run when it went back', () {
+      expect(marks.backEdges(back), Tone.path);
+    });
+
+    test('they are drawn in when it did not', () {
+      final noRun = CanvasMarks.of(
+        SessionView.of(
+          mockup.session,
+          now: Mockup.now,
+          outcomes: mockup.outcomes,
+        ),
+      );
+      expect(noRun.backEdges(back), Tone.taken);
+      final once = Journal('once-run', node: 'collect', startedAt: 0)
+        ..step('collect', 0, end: 1);
+      expect(
+        CanvasMarks.of(
+          SessionView.of(
+            sessionOf([once]),
+            now: Mockup.now,
+            outcomes: mockup.outcomes,
+            runId: 'once-run',
+          ),
+        ).backEdges(back),
+        Tone.untaken,
+      );
+      expect(CanvasMarks.plain.backEdges(back), Tone.plain);
+    });
+
+    test('none without back arrows', () {
+      expect(marks.backEdges(const <EdgePath>[]), isNull);
+    });
   });
 
   test('Current graph is plain', () {

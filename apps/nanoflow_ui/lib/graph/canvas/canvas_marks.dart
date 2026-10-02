@@ -2,6 +2,7 @@ import '../../layout/layout.dart';
 import '../../state/session_view.dart';
 
 /// How an arrow, an exit or an input bar is drawn (docs/ui-spec.md «Граф»).
+/// A session's tones go from the darkest to the one drawn over the rest.
 enum Tone {
   /// `Current graph`: no session, so nothing was gone along.
   plain,
@@ -28,7 +29,7 @@ final class CanvasMarks {
           view.marks,
           view.run?.path,
           view.selectedNode,
-          view.run?.chip.shortId,
+          view.run?.chip.runId,
         );
 
   static const plain = CanvasMarks._(null, null, null, null);
@@ -39,7 +40,7 @@ final class CanvasMarks {
   /// The node of the selected step: ringed.
   final String? selectedNode;
 
-  /// The selected run, shortened: `e5f6`.
+  /// The selected run.
   final String? runId;
 
   bool get isPlain => _marks == null;
@@ -71,6 +72,18 @@ final class CanvasMarks {
     return into.any((edge) => this.edge(edge) != Tone.untaken)
         ? Tone.taken
         : Tone.untaken;
+  }
+
+  /// The tone the legend shows back arrows in: the selected run's if it
+  /// went along one of [back], else the lightest they are drawn in; `null`
+  /// when there are none.
+  Tone? backEdges(Iterable<EdgePath> back) {
+    Tone? lightest;
+    for (final edge in back) {
+      final tone = this.edge(edge);
+      if (lightest == null || tone.index > lightest.index) lightest = tone;
+    }
+    return lightest;
   }
 
   /// `2×` on an exit runs went through; `null` otherwise.

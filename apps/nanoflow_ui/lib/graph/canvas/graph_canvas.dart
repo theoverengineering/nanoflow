@@ -326,7 +326,9 @@ class _GraphCanvasState extends State<GraphCanvas> {
                     bottom: 14,
                     child: Legend(
                       runId: _marks.runId,
-                      backEdges: graph.edges.any((edge) => edge.isDashed),
+                      backEdges: _marks.backEdges(
+                        graph.edges.where((edge) => edge.isDashed),
+                      ),
                       emptyTargets: graph.exits.any((exit) => exit.isEmpty),
                     ),
                   ),
@@ -376,6 +378,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
                 selected: _marks.selectedNode == node.name,
                 markers: _marks.markers(node.name),
                 visits: _marks.visits(node.name),
+                selectedRun: _marks.runId,
                 onTap: () => widget.model.clickNode(node.name),
                 onDoubleTap: () => widget.onOpenStep?.call(node.name),
               ),

@@ -39,7 +39,7 @@ class EdgesPainter extends CustomPainter {
       final tone = marks.bar(node.name, into[node.name] ?? const []);
       canvas.drawRRect(
         RRect.fromRectAndRadius(bar.rect.toRect(), const Radius.circular(2)),
-        Paint()..color = _lineColor(tone),
+        Paint()..color = CanvasColors.line(tone),
       );
     }
     // The selected run's path goes over the rest.
@@ -70,7 +70,7 @@ class EdgesPainter extends CustomPainter {
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..color = _lineColor(tone)
+        ..color = CanvasColors.line(tone)
         ..strokeWidth = tone == Tone.path ? _pathWidth : _width,
     );
     // The line ends at the arrowhead's base; the head draws the tip.
@@ -84,7 +84,7 @@ class EdgesPainter extends CustomPainter {
         ..lineTo(tip.dx, tip.dy)
         ..lineTo(base.dx - normal.dx, base.dy - normal.dy)
         ..close(),
-      Paint()..color = _headColor(tone),
+      Paint()..color = CanvasColors.line(tone),
     );
   }
 
@@ -98,17 +98,6 @@ class EdgesPainter extends CustomPainter {
     }
     return dashes;
   }
-
-  static Color _lineColor(Tone tone) => switch (tone) {
-    Tone.path => CanvasColors.path,
-    Tone.taken || Tone.plain => CanvasColors.taken,
-    Tone.untaken => CanvasColors.untaken,
-  };
-
-  static Color _headColor(Tone tone) => switch (tone) {
-    Tone.untaken => CanvasColors.untakenHead,
-    _ => _lineColor(tone),
-  };
 
   @override
   bool shouldRepaint(EdgesPainter old) =>
