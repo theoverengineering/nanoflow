@@ -75,6 +75,13 @@ Map<Vertex<Object?, Object?>, List<NodeVariable>> nodeVariables() {
   return byVertex;
 }
 
+/// The path of the program's own source file: the root library's.
+///
+/// `Platform.script` is not it when the program runs as a package
+/// executable (`dart run :graph`): then it is the snapshot pub built under
+/// `.dart_tool`.
+String programFile() => _pathOf(currentMirrorSystem().isolate.rootLibrary.uri);
+
 String _pathOf(Uri source) {
   final resolved = source.isScheme('package')
       ? Isolate.resolvePackageUriSync(source) ?? source

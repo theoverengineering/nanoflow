@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:path/path.dart' as p;
 
@@ -9,12 +10,12 @@ import 'package:path/path.dart' as p;
 /// each time the graph changes. Runs until the process is killed.
 ///
 /// A change is a change of a `.dart` file under the directory of [file],
-/// the program file. Once changes settle for 200 ms, the program is run again
-/// with `--graph`; its stderr goes to stderr, and its description — the
-/// last line of its stdout, a JSON object — is printed when it succeeds and
-/// differs from the last one printed. Other lines of its stdout go to
-/// stderr. While it fails — it does not compile, or the graph does not
-/// build — nothing is printed.
+/// the program's source file. Once changes settle for 200 ms, the source is
+/// run again with `--graph`, with the packages of this program; its stderr
+/// goes to stderr, and its description — the last line of its stdout, a
+/// JSON object — is printed when it succeeds and differs from the last one
+/// printed. Other lines of its stdout go to stderr. While it fails — it does
+/// not compile, or the graph does not build — nothing is printed.
 Future<Never> watchGraph(String file, String? description) {
   var last = description;
   var running = false;
@@ -31,7 +32,15 @@ Future<Never> watchGraph(String file, String? description) {
       again = false;
       final result = await Process.run(
         Platform.resolvedExecutable,
-        [...Platform.executableArguments, file, '--graph'],
+        [
+          ...Platform.executableArguments,
+          // The last one counts: one the program got may be relative, or
+          // missing when the package config was found next to it.
+          if (Isolate.packageConfigSync case final config?)
+            '--packages=${config.toFilePath()}',
+          file,
+          '--graph',
+        ],
         stdoutEncoding: _lenientUtf8,
         stderrEncoding: _lenientUtf8,
       );

@@ -8,6 +8,7 @@ import 'build.dart';
 import 'call.dart';
 import 'dart_types.dart';
 import 'graph.dart';
+import 'naming.dart';
 import 'watch.dart';
 
 /// Answers the call of the graph program that [args] name, about [graph],
@@ -63,7 +64,7 @@ Future<int> _answer(
   Graph<Object?> graph,
   Object? Function(String raw)? input,
 ) async {
-  final file = Platform.script.toFilePath();
+  final file = programFile();
   if (args case ['--graph', '--watch']) {
     final built = _build(graph);
     return watchGraph(

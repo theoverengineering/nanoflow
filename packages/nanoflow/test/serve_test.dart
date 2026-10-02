@@ -451,4 +451,60 @@ void main() {
     expect(nodesOf(lines().last), ['length', 'half']);
     await stderr.until((text) => text.contains('stray\n'));
   }, timeout: const Timeout(Duration(minutes: 1)));
+
+  test('run as a package executable, describes the source in bin as its '
+      'file, places commands next to it and watches it', () async {
+    final original = File(fixture('program_without_input.dart'))
+        .readAsStringSync();
+    final package = Directory.systemTemp
+        .createTempSync('nanoflow_package_')
+        .resolveSymbolicLinksSync();
+    addTearDown(() => Directory(package).deleteSync(recursive: true));
+    File(p.join(package, 'pubspec.yaml')).writeAsStringSync(
+      'name: graph_package\n'
+      'environment:\n'
+      '  sdk: ^3.13.0\n'
+      'dependencies:\n'
+      '  nanoflow:\n'
+      '    path: ${jsonEncode(p.absolute('.'))}\n',
+    );
+    final source = File(p.join(package, 'bin', 'graph.dart'))
+      ..createSync(recursive: true)
+      ..writeAsStringSync(original);
+    final got = await Process.run(Platform.resolvedExecutable, [
+      'pub',
+      'get',
+      '--offline',
+    ], workingDirectory: package);
+    expect(got.exitCode, 0, reason: '${got.stdout}${got.stderr}');
+
+    // `dart run :graph` runs a snapshot pub builds under .dart_tool.
+    final process = await Process.start(Platform.resolvedExecutable, [
+      'run',
+      ':graph',
+      '--graph',
+      '--watch',
+    ], workingDirectory: package);
+    addTearDown(process.kill);
+    final stdout = Output(process.stdout);
+    Output(process.stderr);
+    List<String> lines() => const LineSplitter().convert(stdout.text);
+
+    await stdout.until((text) => text.endsWith('\n'));
+    final first = jsonDecode(lines().single) as Map<String, Object?>;
+    expect(first['file'], source.path);
+    final graph = first['graph']! as Map<String, Object?>;
+    final nodes = graph['nodes']! as Map<String, Object?>;
+    final line = original
+        .split('\n')
+        .indexWhere((l) => l.startsWith('final length ='));
+    expect(nodes['length'], containsPair('command', 'graph.dart:${line + 1}'));
+
+    source.writeAsStringSync(
+      '${original.replaceFirst('Graph.start(length)', 'Graph.start(length).next(half)')}\n'
+      'final half = node((int n) async => n ~/ 2);\n',
+    );
+    await stdout.until((text) => lines().length >= 2);
+    expect(nodesOf(lines().last), ['length', 'half']);
+  }, timeout: const Timeout(Duration(minutes: 1)));
 }
