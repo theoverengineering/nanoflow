@@ -211,7 +211,9 @@ void main() {
   });
 
   group('arguments', () {
-    const usage = 'usage: nanoflow check [-- <graph program> [args...]]\n';
+    const usage =
+        'usage: nanoflow run -- <graph program> [args...]\n'
+        '       nanoflow check [-- <graph program> [args...]]\n';
 
     test('anything else prints the usage on stderr, exit 2', () async {
       for (final args in [

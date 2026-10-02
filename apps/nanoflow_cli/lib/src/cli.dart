@@ -1,8 +1,11 @@
 import 'dart:io' as io;
 
 import 'check/check_command.dart';
+import 'engine/run_command.dart';
 
-const _usage = 'usage: nanoflow check [-- <graph program> [args...]]';
+const _usage = '''
+usage: nanoflow run -- <graph program> [args...]
+       nanoflow check [-- <graph program> [args...]]''';
 
 /// Runs the `nanoflow` command with [args] and gives its exit code.
 ///
@@ -19,6 +22,13 @@ Future<int> runCli(
   final output = stdout ?? io.stdout;
   final errors = stderr ?? io.stderr;
   switch (args) {
+    case ['run', '--', _, ...]:
+      return runRun(
+        args.sublist(2),
+        stdin: input,
+        stdout: output,
+        stderr: errors,
+      );
     case ['check']:
       return runCheck(null, stdin: input, stdout: output, stderr: errors);
     case ['check', '--', _, ...]:

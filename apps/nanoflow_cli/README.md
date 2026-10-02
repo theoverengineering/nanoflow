@@ -1,9 +1,11 @@
 # nanoflow_cli
 
-Движок — команда `nanoflow`. Пока в нём только
-[`nanoflow check`](../../README.md#nanoflow-check); `run` будет следом.
+Движок — команда `nanoflow`: [`nanoflow run`](../../README.md#запуск) и
+[`nanoflow check`](../../README.md#nanoflow-check). `--resume` будет
+следом.
 
 ```bash
+nanoflow run -- dart run graph.dart < вход.json   # новая сессия до конца
 nanoflow check -- dart run graph.dart   # граф из --graph программы графа
 nanoflow check < описание.json          # описание графа из stdin, как его даёт UI
 ```
@@ -31,10 +33,28 @@ nanoflow check < описание.json          # описание графа и
   `describe()` — `--graph`, описание с графом, прошедшим проверку;
   `graphFile()` — `--graph`, только путь к файлу графа, без проверки графа;
   `validateInput()` — `--input`; `startCall()` — `--call <узел>`.
-- **Команда** (`src/cli.dart`, `src/check/check_command.dart`). Ошибки — в
-  stdout по одной в строке, код 0, если граф прошёл, иначе 1. Нет описания —
-  одна строка `cannot read the graph: <причина>`; stderr программы графа
-  идёт в stderr. Не те аргументы — usage в stderr, код 2.
+- **Движок** (`src/engine/`). `Engine` ведёт все прогоны сессии разом, пока
+  каждый не закончится; `stop()` закрывает stdin всех `--call` и больше
+  ничего не пишет.
+  - `run_driver.dart` — один прогон: шаг, маршрут, разветвление. Порядок
+    записи: `step-started` → `--call` → документ выхода → `step-finished` →
+    `outputId` в `step.json`; следующий шаг — каталог шага, потом его
+    `step-started`; разветвление — все прогоны-потомки, потом `run-split`.
+  - `step_process.dart` — один `--call`: строка входа в stdin, который
+    остаётся открытым; stderr (и stdout рабочего узла без `out`) — в лог
+    шага по мере поступления, stdout с данными копится до завершения.
+  - `carried_data.dart` — какие данные идут по прогону: вход шага, если у
+    узла есть `in`; после рабочего узла — его выход, развилка передаёт
+    данные дальше как есть.
+  - `progress.dart` — строка в stderr на событие:
+    `<ЧЧ:ММ:СС> <4 знака id прогона> <событие> <подробности>`.
+  - `run_command.dart` — `nanoflow run`: граф из `--graph` и его проверка,
+    вход через `--input` (только если он нужен узлам `start`), сессия, id
+    сессии в stdout, коды 0, 1 и 2.
+- **Команда** (`src/cli.dart`, `src/check/check_command.dart`). У `check`
+  ошибки — в stdout по одной в строке, код 0, если граф прошёл, иначе 1. Нет
+  описания — одна строка `cannot read the graph: <причина>`; stderr
+  программы графа идёт в stderr. Не те аргументы — usage в stderr, код 2.
 
 ## Тесты
 
@@ -43,4 +63,7 @@ dart test
 ```
 
 Программы графа в тестах — короткие скрипты `sh` во временном каталоге;
-общие помощники — в `test/support/`.
+общие помощники — в `test/support/`. Тесты движка идут через
+`FakeProgram` (`test/support/fake_program.dart`): программа графа на `sh`,
+у которой каждый узел — скрипт `nodes/<узел>.sh`; конец stdin `--call`
+убивает скрипт с его группой процессов.
