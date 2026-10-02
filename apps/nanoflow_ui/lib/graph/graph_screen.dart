@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import '../platform/home_path.dart';
 import '../platform/shell.dart';
 import '../theme.dart';
+import '../widgets/clickable.dart';
 
 /// One graph file's screen (docs/ui-spec.md «Экран графа»). For now only its
 /// header: `Graphs` back to the start screen, the file name, its directory.
@@ -38,15 +39,12 @@ class GraphScreen extends StatelessWidget {
           ),
           child: Row(
             children: [
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: onBack,
-                  child: const Text('Graphs', style: AppText.crumb),
-                ),
+              Clickable(
+                onTap: onBack,
+                child: Text('Graphs', style: AppText.crumb),
               ),
               const SizedBox(width: 10),
-              const Text('/', style: AppText.crumbSeparator),
+              Text('/', style: AppText.crumbSeparator),
               const SizedBox(width: 10),
               Text(p.basename(path), style: AppText.headerTitle),
               const SizedBox(width: 10),

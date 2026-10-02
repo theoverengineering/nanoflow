@@ -49,6 +49,23 @@ abstract final class AppText {
   static const _lineHeight = 1.3;
   static const _leading = TextLeadingDistribution.even;
 
+  /// [family] at [size], spaced as the mockups' text is.
+  static TextStyle _style(
+    String family,
+    double size, {
+    FontWeight? fontWeight,
+    double? letterSpacing,
+    Color? color,
+  }) => TextStyle(
+    height: _lineHeight,
+    leadingDistribution: _leading,
+    fontFamily: family,
+    fontSize: size,
+    fontWeight: fontWeight,
+    letterSpacing: letterSpacing,
+    color: color,
+  );
+
   /// The default for text that names no style.
   static const body = TextStyle(
     height: _lineHeight,
@@ -62,112 +79,48 @@ abstract final class AppText {
   );
 
   // Start screen.
-  static const pageTitle = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 26,
+  static final pageTitle = _style(
+    sans,
+    26,
     fontWeight: FontWeight.w700,
     letterSpacing: 26 * -0.015,
     color: AppColors.textPrimary,
   );
-  static const pageHint = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 13.5,
-    color: AppColors.textMuted,
-  );
-  static const primaryButton = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 13.5,
+  static final pageHint = _style(sans, 13.5, color: AppColors.textMuted);
+  static final primaryButton = _style(
+    sans,
+    13.5,
     fontWeight: FontWeight.w600,
     color: AppColors.onAccent,
   );
-  static const sectionTitle = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 12.5,
+  static final sectionTitle = _style(
+    sans,
+    12.5,
     fontWeight: FontWeight.w600,
     color: AppColors.textSecondary,
   );
-  static const count = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: mono,
-    fontSize: 11.5,
-    color: AppColors.textFaint,
-  );
-  static const cardTitle = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 14,
+  static final count = _style(mono, 11.5, color: AppColors.textFaint);
+  static final cardTitle = _style(
+    sans,
+    14,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
-  static const cardPath = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: mono,
-    fontSize: 11.5,
-    color: AppColors.textMuted,
-  );
-  static const cardMeta = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 12,
-    color: AppColors.textMuted,
-  );
-  static const badge = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 10.5,
-    fontWeight: FontWeight.w600,
-  );
-  static const button = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 12,
-    color: AppColors.textSecondary,
-  );
+  static final cardPath = _style(mono, 11.5, color: AppColors.textMuted);
+  static final cardMeta = _style(sans, 12, color: AppColors.textMuted);
+  static final badge = _style(sans, 10.5, fontWeight: FontWeight.w600);
+  static final button = _style(sans, 12, color: AppColors.textSecondary);
 
   // Graph screen header.
-  static const crumb = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 13,
-    color: AppColors.textMuted,
-  );
-  static const crumbSeparator = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 13,
-    color: AppColors.textDim,
-  );
-  static const headerTitle = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: sans,
-    fontSize: 13.5,
+  static final crumb = _style(sans, 13, color: AppColors.textMuted);
+  static final crumbSeparator = _style(sans, 13, color: AppColors.textDim);
+  static final headerTitle = _style(
+    sans,
+    13.5,
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
-  static const headerPath = TextStyle(
-    height: _lineHeight,
-    leadingDistribution: _leading,
-    fontFamily: mono,
-    fontSize: 11.5,
-    color: AppColors.textFaint,
-  );
+  static final headerPath = _style(mono, 11.5, color: AppColors.textFaint);
 }
 
 /// The app's dark theme.

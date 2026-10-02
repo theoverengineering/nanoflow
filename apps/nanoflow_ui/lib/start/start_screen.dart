@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../platform/home_path.dart';
 import '../theme.dart';
+import '../widgets/clickable.dart';
 import '../widgets/dashed_border.dart';
 import 'icons.dart';
 import 'recent_graphs.dart';
@@ -99,7 +100,7 @@ class _StartScreenState extends State<StartScreen> {
                 const SizedBox(height: 34),
                 Row(
                   children: [
-                    const Text('Recently opened', style: AppText.sectionTitle),
+                    Text('Recently opened', style: AppText.sectionTitle),
                     const SizedBox(width: 10),
                     Text('${graphs.length}', style: AppText.count),
                   ],
@@ -145,12 +146,12 @@ class _Title extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
-      const Expanded(
+      Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Graphs', style: AppText.pageTitle),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text(
               'Open a graph file to watch its runs live.',
               style: AppText.pageHint,
@@ -159,7 +160,7 @@ class _Title extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 16),
-      _Clickable(
+      Clickable(
         onTap: onOpen,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -167,11 +168,11 @@ class _Title extends StatelessWidget {
             color: AppColors.accent,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              FolderIcon(color: AppColors.onAccent),
-              SizedBox(width: 8),
+              const FolderIcon(color: AppColors.onAccent),
+              const SizedBox(width: 8),
               Text('Open graph', style: AppText.primaryButton),
             ],
           ),
@@ -182,7 +183,7 @@ class _Title extends StatelessWidget {
 }
 
 /// A graph whose file is there: a click opens it.
-class _RecentCard extends StatefulWidget {
+class _RecentCard extends StatelessWidget {
   const _RecentCard({
     required this.path,
     required this.opened,
@@ -194,58 +195,46 @@ class _RecentCard extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_RecentCard> createState() => _RecentCardState();
-}
-
-class _RecentCardState extends State<_RecentCard> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-    cursor: SystemMouseCursors.click,
-    onEnter: (_) => setState(() => _hovered = true),
-    onExit: (_) => setState(() => _hovered = false),
-    child: GestureDetector(
-      onTap: widget.onTap,
-      child: Container(
-        padding: _cardPadding,
-        decoration: BoxDecoration(
-          color: _hovered ? AppColors.accentSurface : AppColors.card,
-          border: Border.all(
-            color: _hovered ? AppColors.accentBorder : AppColors.cardBorder,
+  Widget build(BuildContext context) => Clickable.hover(
+    onTap: onTap,
+    builder: (context, hovered) => Container(
+      padding: _cardPadding,
+      decoration: BoxDecoration(
+        color: hovered ? AppColors.accentSurface : AppColors.card,
+        border: Border.all(
+          color: hovered ? AppColors.accentBorder : AppColors.cardBorder,
+        ),
+        borderRadius: BorderRadius.circular(_cardRadius),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: _tileSize,
+            height: _tileSize,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.tile,
+              border: Border.all(color: AppColors.tileBorder),
+              borderRadius: BorderRadius.circular(_tileRadius),
+            ),
+            child: const GraphIcon(color: AppColors.textSecondary),
           ),
-          borderRadius: BorderRadius.circular(_cardRadius),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: _tileSize,
-              height: _tileSize,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.tile,
-                border: Border.all(color: AppColors.tileBorder),
-                borderRadius: BorderRadius.circular(_tileRadius),
+          const SizedBox(width: 14),
+          Expanded(
+            child: _NameAndPath(
+              name: Text(
+                p.basename(path),
+                style: AppText.cardTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              child: const GraphIcon(color: AppColors.textSecondary),
+              path: path,
+              pathStyle: AppText.cardPath,
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: _NameAndPath(
-                name: Text(
-                  p.basename(widget.path),
-                  style: AppText.cardTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                path: widget.path,
-                pathStyle: AppText.cardPath,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Text(widget.opened, style: AppText.cardMeta),
-          ],
-        ),
+          ),
+          const SizedBox(width: 14),
+          Text(opened, style: AppText.cardMeta),
+        ],
       ),
     ),
   );
@@ -319,7 +308,7 @@ class _MissingCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-          _Clickable(
+          Clickable(
             onTap: onRemove,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
@@ -328,7 +317,7 @@ class _MissingCard extends StatelessWidget {
                 border: Border.all(color: AppColors.controlBorder),
                 borderRadius: BorderRadius.circular(7),
               ),
-              child: const Text('Remove', style: AppText.button),
+              child: Text('Remove', style: AppText.button),
             ),
           ),
         ],
@@ -362,19 +351,6 @@ class _NameAndPath extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
     ],
-  );
-}
-
-class _Clickable extends StatelessWidget {
-  const _Clickable({required this.onTap, required this.child});
-
-  final VoidCallback onTap;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => MouseRegion(
-    cursor: SystemMouseCursors.click,
-    child: GestureDetector(onTap: onTap, child: child),
   );
 }
 
