@@ -25,3 +25,15 @@ void showFailureNote(BuildContext context, String text) =>
         ),
       ),
     );
+
+/// Runs [open] on [path] — reveals it in Finder, opens it in an editor — and
+/// says [failure] when that fails.
+Future<void> openPath(
+  BuildContext context,
+  Future<bool> Function(String path) open,
+  String path,
+  String failure,
+) async {
+  if (await open(path) || !context.mounted) return;
+  showFailureNote(context, failure);
+}

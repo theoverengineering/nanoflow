@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
@@ -7,7 +5,15 @@ import '../../platform/home_path.dart';
 import '../../platform/shell.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
+import '../../widgets/copy_button.dart';
 import '../../widgets/failure_note.dart';
+import '../../widgets/head_cut.dart';
+
+/// [path] as the app shows a file of the storage: from [root], the graph's
+/// directory, when it is in it; else from the home directory, `~`.
+String shownPath(String path, {required String root}) => p.isWithin(root, path)
+    ? p.relative(path, from: root)
+    : abbreviateHome(path);
 
 /// The file of the open tab, under the step's details (docs/ui-spec.md
 /// «Logs»: «С файловым хранилищем»): its path from the graph's directory,
@@ -33,19 +39,6 @@ class FileFooter extends StatelessWidget {
   /// The key of the shown path.
   static const pathKey = ValueKey('file path');
 
-  String get _shown => p.isWithin(root, path)
-      ? p.relative(path, from: root)
-      : abbreviateHome(path);
-
-  Future<void> _open(
-    BuildContext context,
-    Future<bool> Function(String path) open,
-    String failure,
-  ) async {
-    if (await open(path) || !context.mounted) return;
-    showFailureNote(context, failure);
-  }
-
   @override
   Widget build(BuildContext context) {
     final name = p.basename(path);
@@ -61,26 +54,32 @@ class FileFooter extends StatelessWidget {
           Expanded(
             child: Tooltip(
               message: path,
-              child: _HeadCut(_shown, key: pathKey, style: AppText.filePath),
+              child: HeadCut(
+                shownPath(path, root: root),
+                key: pathKey,
+                style: AppText.filePath,
+              ),
             ),
           ),
           _FileButton(
             'Finder',
-            onTap: () => _open(
+            onTap: () => openPath(
               context,
               shell.revealInFinder,
+              path,
               'Could not reveal $name in Finder',
             ),
           ),
           _FileButton(
             'Editor',
-            onTap: () => _open(
+            onTap: () => openPath(
               context,
               shell.openInEditor,
+              path,
               'Could not open $name in an editor',
             ),
           ),
-          _CopyButton(
+          CopyButton(
             copy: () => shell.copyToClipboard(path),
             failure: 'Could not copy the path of $name',
           ),
@@ -88,57 +87,6 @@ class FileFooter extends StatelessWidget {
       ),
     );
   }
-}
-
-final _buttonBox = BoxDecoration(
-  color: AppColors.control,
-  border: Border.all(color: AppColors.controlBorder),
-  borderRadius: BorderRadius.circular(6),
-);
-
-/// One line of [text] that, when it does not fit, loses its start to `…`:
-/// the end of a path tells more than its start.
-class _HeadCut extends StatelessWidget {
-  const _HeadCut(this.text, {super.key, required this.style});
-
-  final String text;
-  final TextStyle style;
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final scaler = MediaQuery.textScalerOf(context);
-      final painter = TextPainter(
-        textDirection: TextDirection.ltr,
-        textScaler: scaler,
-        maxLines: 1,
-      );
-      bool fits(String line) {
-        painter
-          ..text = TextSpan(text: line, style: style)
-          ..layout();
-        return painter.width <= constraints.maxWidth;
-      }
-
-      var shown = text;
-      if (!fits(text)) {
-        // The most characters of the end that fit after `…`.
-        var low = 0;
-        var high = text.length;
-        while (low < high) {
-          final mid = (low + high + 1) ~/ 2;
-          if (fits('…${text.substring(text.length - mid)}')) {
-            low = mid;
-          } else {
-            high = mid - 1;
-          }
-        }
-        shown = '…${text.substring(text.length - low)}';
-      }
-      painter.dispose();
-      return Text(shown, style: style, maxLines: 1, softWrap: false);
-    },
-  );
 }
 
 /// `Finder`, `Editor`.
@@ -153,155 +101,8 @@ class _FileButton extends StatelessWidget {
     onTap: onTap,
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: _buttonBox,
+      decoration: CopyButton.box,
       child: Text(label, style: AppText.fileButton),
     ),
   );
-}
-
-/// The copy button: `Copied` with a check for a moment after a copy; a note
-/// when copying fails.
-class _CopyButton extends StatefulWidget {
-  const _CopyButton({required this.copy, required this.failure});
-
-  final Future<void> Function() copy;
-
-  /// What the note says when copying fails.
-  final String failure;
-
-  @override
-  State<_CopyButton> createState() => _CopyButtonState();
-}
-
-class _CopyButtonState extends State<_CopyButton> {
-  /// How long `Copied` stays.
-  static const _copiedTime = Duration(milliseconds: 1500);
-
-  Timer? _copied;
-
-  @override
-  void dispose() {
-    _copied?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _copy() async {
-    try {
-      await widget.copy();
-    } on Exception {
-      if (mounted) showFailureNote(context, widget.failure);
-      return;
-    }
-    if (!mounted) return;
-    _copied?.cancel();
-    setState(() {
-      _copied = Timer(_copiedTime, () => setState(() => _copied = null));
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => _copied != null
-      ? Container(
-          height: 22,
-          padding: const EdgeInsets.symmetric(horizontal: 7),
-          decoration: _buttonBox,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 5,
-            children: [
-              CustomPaint(
-                size: const Size.square(11),
-                painter: _CheckPainter(),
-              ),
-              Text('Copied', style: AppText.fileButton),
-            ],
-          ),
-        )
-      : Tooltip(
-          message: 'Copy path',
-          child: Clickable(
-            onTap: _copy,
-            child: Container(
-              width: 24,
-              height: 22,
-              alignment: Alignment.center,
-              decoration: _buttonBox,
-              child: CustomPaint(
-                size: const Size.square(11),
-                painter: _CopyIconPainter(),
-              ),
-            ),
-          ),
-        );
-}
-
-/// The mockups' green check: 10 units.
-class _CheckPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas
-      ..scale(size.width / 10)
-      ..drawPath(
-        Path()
-          ..moveTo(1.6, 5.2)
-          ..lineTo(3.8, 7.4)
-          ..lineTo(8.4, 2.8),
-        Paint()
-          ..color = AppColors.finished
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.7
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round,
-      );
-  }
-
-  @override
-  bool shouldRepaint(_CheckPainter old) => false;
-}
-
-/// Two sheets, one over the other: the mockup's SVG, 16 units.
-class _CopyIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 16);
-    final stroke = Paint()
-      ..color = AppColors.textSecondary
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4;
-    canvas
-      ..drawRRect(
-        RRect.fromRectAndRadius(
-          const Rect.fromLTWH(5.4, 5.4, 8.2, 8.2),
-          const Radius.circular(1.6),
-        ),
-        stroke,
-      )
-      ..drawPath(
-        Path()
-          ..moveTo(10.6, 5.4)
-          ..lineTo(10.6, 3.8)
-          ..arcToPoint(
-            const Offset(9.2, 2.4),
-            radius: const Radius.circular(1.4),
-            clockwise: false,
-          )
-          ..lineTo(3.8, 2.4)
-          ..arcToPoint(
-            const Offset(2.4, 3.8),
-            radius: const Radius.circular(1.4),
-            clockwise: false,
-          )
-          ..lineTo(2.4, 9.2)
-          ..arcToPoint(
-            const Offset(3.8, 10.6),
-            radius: const Radius.circular(1.4),
-            clockwise: false,
-          )
-          ..lineTo(5.4, 10.6),
-        stroke,
-      );
-  }
-
-  @override
-  bool shouldRepaint(_CopyIconPainter old) => false;
 }

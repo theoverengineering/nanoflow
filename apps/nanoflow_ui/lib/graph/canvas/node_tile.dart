@@ -5,6 +5,7 @@ import '../../layout/layout.dart' as layout;
 import '../../layout/layout.dart' show LabelKind;
 import '../../state/graph_marks.dart';
 import '../../state/runs.dart';
+import '../../widgets/icons.dart';
 import '../../widgets/spinner.dart';
 import 'canvas_style.dart';
 import 'layout_geometry.dart';
@@ -206,10 +207,7 @@ class NodeTile extends StatelessWidget {
       ],
     ),
     child: Center(
-      child: CustomPaint(
-        size: const Size.square(28),
-        painter: _IconPainter(fork: node.isFork, color: look.icon),
-      ),
+      child: NodeIcon(fork: node.isFork, size: 28, color: look.icon),
     ),
   );
 
@@ -344,63 +342,6 @@ final class _Look {
     nameWeight: FontWeight.w600,
     command: Color(0xFFC98A8D),
   );
-}
-
-/// A worker's terminal or a fork's fork: the mockups' SVG, 28 units.
-class _IconPainter extends CustomPainter {
-  _IconPainter({required this.fork, required this.color});
-
-  final bool fork;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 28);
-    final stroke = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    if (fork) {
-      canvas
-        ..drawCircle(const Offset(8, 14), 2.6, stroke)
-        ..drawPath(
-          Path()
-            ..moveTo(10.6, 14)
-            ..lineTo(13.6, 14)
-            ..cubicTo(15.4, 14, 16, 13, 16, 11.6)
-            ..lineTo(16, 9.8)
-            ..cubicTo(16, 8.6, 16.8, 7.8, 18, 7.8)
-            ..lineTo(21.2, 7.8)
-            ..moveTo(13.6, 14)
-            ..cubicTo(15.4, 14, 16, 15, 16, 16.4)
-            ..lineTo(16, 18.2)
-            ..cubicTo(16, 19.4, 16.8, 20.2, 18, 20.2)
-            ..lineTo(21.2, 20.2),
-          stroke,
-        );
-    } else {
-      canvas
-        ..drawRRect(
-          RRect.fromLTRBR(3.5, 5.5, 24.5, 22.5, const Radius.circular(3.5)),
-          stroke,
-        )
-        ..drawPath(
-          Path()
-            ..moveTo(9, 11)
-            ..lineTo(12.2, 14)
-            ..lineTo(9, 17)
-            ..moveTo(14.5, 17.5)
-            ..lineTo(19, 17.5),
-          stroke,
-        );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_IconPainter old) =>
-      old.fork != fork || old.color != color;
 }
 
 /// The check of a visited node, or the `!` of a failed one: a 17 px disc in
