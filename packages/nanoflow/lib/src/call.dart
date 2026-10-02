@@ -26,7 +26,8 @@ import 'vertex.dart';
 ///
 /// However the step ends, programs [exec] started that still run are
 /// stopped, with their process groups, before anything is printed: none
-/// outlives the step.
+/// outlives the step. From then on SIGINT and SIGTERM end the process at
+/// once.
 Future<int> callNode(BuiltGraph graph, String name) async {
   final vertex = graph.nodes[name];
   if (vertex == null) {
@@ -41,8 +42,10 @@ Future<int> callNode(BuiltGraph graph, String name) async {
     if (!ended.isCompleted) ended.complete(how);
   }
 
-  ProcessSignal.sigint.watch().listen((_) => end(const _Stop(130)));
-  ProcessSignal.sigterm.watch().listen((_) => end(const _Stop(143)));
+  final signals = [
+    ProcessSignal.sigint.watch().listen((_) => end(const _Stop(130))),
+    ProcessSignal.sigterm.watch().listen((_) => end(const _Stop(143))),
+  ];
   final line = Completer<Uint8List>();
   final read = BytesBuilder(copy: false);
   stdin.listen(
@@ -62,6 +65,8 @@ Future<int> callNode(BuiltGraph graph, String name) async {
 
   final how = await ended.future;
   await stopRunning();
+  // Nothing is left to stop: SIGINT and SIGTERM end the process again.
+  await Future.wait([for (final signal in signals) signal.cancel()]);
   switch (how) {
     case _Stop(:final exitCode):
       return exitCode;

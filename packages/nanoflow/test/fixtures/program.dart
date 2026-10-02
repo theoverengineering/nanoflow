@@ -79,6 +79,16 @@ final hangHard = node((Object? _) async {
   ]);
 });
 
+/// Like [hang], but the shell writes to the log when SIGTERM stops it, as
+/// many programs do.
+final logsWhenStopped = node((Object? _) async {
+  await exec('/bin/sh', [
+    '-c',
+    r'trap "echo stopped >&2; exit 143" TERM; '
+        r'sleep 1000 & echo "pids $$ $!" >&2; wait',
+  ]);
+});
+
 /// A step whose program exits at once but leaves a `sleep` behind in its
 /// process group that holds its stdout, so that [exec] still waits. Once the
 /// shell [exec] runs the program through has exited too, the `sleep` tells
@@ -142,6 +152,7 @@ final graph = Graph([
       .then({Verdict.accepted: notify, Verdict.returned: fix}),
   Graph.part(hang),
   Graph.part(hangHard),
+  Graph.part(logsWhenStopped),
   Graph.part(leavesChild),
   Graph.part(timesOut),
   Graph.part(returnsEarly),

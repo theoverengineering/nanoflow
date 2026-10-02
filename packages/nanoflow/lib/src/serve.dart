@@ -41,7 +41,9 @@ import 'watch.dart';
 ///   is 0. An input that does not fit the node, or an exception of the
 ///   function — also one that nothing awaits — goes to stderr, and the exit
 ///   code is 1. However the step ends, the programs `exec` started that
-///   still run end with their process groups before `--call` exits.
+///   still run end with their process groups before `--call` exits; it
+///   exits even when no one reads its stdout and stderr any more, as when
+///   the engine has died.
 /// - Any other arguments print the usage on stderr; the exit code is 2.
 ///
 /// stdout carries data only, and only the library writes it, once, at the
@@ -59,9 +61,21 @@ Future<Never> serve<I>(
       print: (_, _, _, line) => stderr.writeln(line),
     ),
   );
-  await stdout.flush();
-  await stderr.flush();
+  await _flush();
   exit(code);
+}
+
+/// Flushes stdout and stderr, giving up after a second and on any error:
+/// with no one left to read them, as when the engine has died, a write fails
+/// — and the flush of a stream whose write failed inside a step may never
+/// complete, as the error goes to the step's zone.
+Future<void> _flush() async {
+  try {
+    await Future.wait([stdout.flush(), stderr.flush()])
+        .timeout(const Duration(seconds: 1));
+  } catch (_) {
+    // Nothing reads what is left: there is no one to tell.
+  }
 }
 
 Future<int> _answer(

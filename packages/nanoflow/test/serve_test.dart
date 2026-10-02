@@ -19,25 +19,30 @@ final String programFile = fixture('program.dart');
 /// Text a process writes to one of its streams, collected as it arrives.
 final class Output {
   Output(Stream<List<int>> stream) {
-    stream
-        .transform(utf8.decoder)
-        .listen(
-          (text) {
-            _text.write(text);
-            _changes.add(null);
-          },
-          onDone: () {
-            _ended = true;
-            _changes.add(null);
-          },
-        );
+    _reading = stream.transform(utf8.decoder).listen((text) {
+      _text.write(text);
+      _changes.add(null);
+    }, onDone: _end);
   }
 
+  late final StreamSubscription<String> _reading;
   final _text = StringBuffer();
   final _changes = StreamController<void>.broadcast();
   var _ended = false;
 
   String get text => '$_text';
+
+  /// Stops reading the stream, as a reader that is gone: what the process
+  /// writes to it after that fails.
+  Future<void> close() async {
+    await _reading.cancel();
+    _end();
+  }
+
+  void _end() {
+    _ended = true;
+    _changes.add(null);
+  }
 
   /// Waits until the text written so far passes [test]; throws if the
   /// stream ends first.
@@ -46,6 +51,14 @@ final class Output {
       if (_ended) throw StateError('the stream ended with: $text');
       await _changes.stream.first;
     }
+  }
+
+  /// All the text, once the stream has ended or was closed.
+  Future<String> get whole async {
+    while (!_ended) {
+      await _changes.stream.first;
+    }
+    return text;
   }
 }
 
@@ -119,28 +132,43 @@ typedef Stopped = ({
   Duration exitedIn,
 });
 
+/// A `--call` running as the engine runs it, and what it writes.
+typedef Calling = ({Process process, Output stdout, Output stderr});
+
 /// Runs `--call [node]`, waits until the node's command tells the pids of
 /// the processes it started — a line `pids <pid>…` on stderr — then calls
-/// [stop].
-Future<Stopped> stopMidStep(String node, void Function(Process) stop) async {
+/// [stop]. Throws if `--call` has not exited 30 s after.
+Future<Stopped> stopMidStep(
+  String node,
+  FutureOr<void> Function(Calling call) stop,
+) async {
   final process = await start(programFile, ['--call', node]);
-  final stdout = utf8.decodeStream(process.stdout);
-  final stderr = Output(process.stderr);
+  final call = (
+    process: process,
+    stdout: Output(process.stdout),
+    stderr: Output(process.stderr),
+  );
   process.stdin.writeln();
   final told = RegExp(r'^pids (\d+(?: \d+)*)$', multiLine: true);
-  await stderr.until(told.hasMatch);
-  final match = told.firstMatch(stderr.text)!;
+  await call.stderr.until(told.hasMatch);
+  final match = told.firstMatch(call.stderr.text)!;
   final watch = Stopwatch()..start();
-  stop(process);
-  final exitCode = await process.exitCode;
+  await stop(call);
+  final exitCode = await process.exitCode.timeout(
+    const Duration(seconds: 30),
+    onTimeout: () => throw TimeoutException('--call $node has not exited'),
+  );
   process.stdin.close().ignore();
   return (
     exitCode: exitCode,
-    stdout: await stdout,
+    stdout: await call.stdout.whole,
     pids: [for (final pid in match[1]!.split(' ')) int.parse(pid)],
     exitedIn: watch.elapsed,
   );
 }
+
+/// Ends the stdin of [call], which stops the step.
+void closeStdin(Calling call) => call.process.stdin.close().ignore();
 
 /// How `--call` of a node that ends while a `sleep` it started with `exec`
 /// runs ended, and the pid of that `sleep`.
@@ -249,6 +277,7 @@ void main() {
         terminated,
         interrupted,
         ignoresTerm,
+        engineGone,
         leftClosedStdin,
         leftTerminated;
     late Future<EndedWithSleep> timedOut, returned, uncaught;
@@ -284,17 +313,27 @@ void main() {
       unknownNode = call('nope', '');
       badLine = call('collect', '{"branch":3}');
       abstractToJson = callAbstractToJson();
-      closedStdin = stopMidStep('hang', (p) => p.stdin.close().ignore());
-      terminated = stopMidStep('hang', (p) => p.kill(ProcessSignal.sigterm));
-      interrupted = stopMidStep('hang', (p) => p.kill(ProcessSignal.sigint));
-      ignoresTerm = stopMidStep('hangHard', (p) => p.stdin.close().ignore());
-      leftClosedStdin = stopMidStep(
-        'leavesChild',
-        (p) => p.stdin.close().ignore(),
+      closedStdin = stopMidStep('hang', closeStdin);
+      terminated = stopMidStep(
+        'hang',
+        (c) => c.process.kill(ProcessSignal.sigterm),
       );
+      interrupted = stopMidStep(
+        'hang',
+        (c) => c.process.kill(ProcessSignal.sigint),
+      );
+      ignoresTerm = stopMidStep('hangHard', closeStdin);
+      engineGone = stopMidStep('logsWhenStopped', (c) async {
+        // The engine dies: nothing reads what the call writes any more, and
+        // the OS closes its stdin.
+        await c.stdout.close();
+        await c.stderr.close();
+        closeStdin(c);
+      });
+      leftClosedStdin = stopMidStep('leavesChild', closeStdin);
       leftTerminated = stopMidStep(
         'leavesChild',
-        (p) => p.kill(ProcessSignal.sigterm),
+        (c) => c.process.kill(ProcessSignal.sigterm),
       );
       timedOut = endsWhileExecRuns('timesOut');
       returned = endsWhileExecRuns('returnsEarly');
@@ -454,6 +493,14 @@ void main() {
           final stopped = await ignoresTerm;
           expectStopped(stopped, 1);
           expect(stopped.exitedIn, greaterThan(const Duration(seconds: 5)));
+        });
+
+        test('when the engine is gone, though the command writes to the log '
+            'as it stops and nothing reads the log: exits all the same, with '
+            '1', () async {
+          final stopped = await engineGone;
+          expectStopped(stopped, 1);
+          expect(stopped.exitedIn, lessThan(const Duration(seconds: 10)));
         });
 
         group('also once the program has exited, leaving a process in its '
