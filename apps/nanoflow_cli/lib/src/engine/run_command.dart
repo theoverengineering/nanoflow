@@ -29,9 +29,12 @@ import 'engine.dart';
 /// Returns 0 when every run ended and none failed, 1 when one failed, and 2
 /// when there was no session to drive: the program gave no graph, the graph
 /// did not pass check (its errors go to [stderr], one per line), there was
-/// no input or `--input` rejected it, there is no session [resume], or
-/// another engine drives it. SIGINT or SIGTERM stops the engine (the
-/// session can be resumed): `128 + N` for signal `N`.
+/// no input or `--input` rejected it, there is no session [resume], another
+/// engine drives it, or the session could not be created or opened. SIGINT
+/// or SIGTERM stops the engine (the session can be resumed): `128 + N` for
+/// signal `N`. When the session cannot be written or read while the engine
+/// drives it, the engine stops the same way and returns 3. A session that
+/// cannot be stored ends with the line [storeFailure] on [stderr].
 Future<int> runRun(
   List<String> program, {
   String? resume,
@@ -47,17 +50,32 @@ Future<int> runRun(
   try {
     stdout.writeln(session.session.id);
     await stdout.flush();
-    return await _drive(
-      Engine(
-        store: session,
-        graph: Graph.fromJson(session.session.graph),
-        program: graphProgram,
-        progress: stderr,
-      ),
-    );
+    try {
+      return await _drive(
+        Engine(
+          store: session,
+          graph: Graph.fromJson(session.session.graph),
+          program: graphProgram,
+          progress: stderr,
+        ),
+      );
+    } on FileSystemException catch (e) {
+      stderr.writeln(storeFailure(e));
+      return 3;
+    }
   } finally {
     await session.release();
   }
+}
+
+/// The line that says the session cannot be stored because of [error]:
+/// what failed, on which path, and why, as in
+/// `cannot store the session: Cannot open file /…/log.jsonl: Disk full`.
+String storeFailure(FileSystemException error) {
+  final FileSystemException(:message, :path, :osError) = error;
+  final what = path == null || path.isEmpty ? message : '$message $path';
+  final why = osError == null ? '' : ': ${osError.message}';
+  return 'cannot store the session: $what$why';
 }
 
 /// Creates a session of the graph [program] describes, with the launch input
@@ -104,17 +122,22 @@ Future<SessionHandle?> _createSession(
   // A relative path is relative to the directory the program ran in: this
   // one.
   final file = p.absolute(description.file);
-  return FsStore(runsDirOf(file)).createSession(
-    graphName: graphNameOf(file),
-    graph: graph.json,
-    startNodes: startNodes,
-    input: input,
-  );
+  try {
+    return await FsStore(runsDirOf(file)).createSession(
+      graphName: graphNameOf(file),
+      graph: graph.json,
+      startNodes: startNodes,
+      input: input,
+    );
+  } on FileSystemException catch (e) {
+    stderr.writeln(storeFailure(e));
+    return null;
+  }
 }
 
 /// The session [id] in the `runs` next to the graph file of [program]; or
-/// `null`, with why on [stderr], when there is none or another engine drives
-/// it.
+/// `null`, with why on [stderr], when there is none, another engine drives
+/// it, or it cannot be read.
 ///
 /// The graph [program] describes now is not read, only its file: the session
 /// goes by the graph it holds.
@@ -136,6 +159,9 @@ Future<SessionHandle?> _openSession(
     session = await FsStore(runsDir).openSession(id);
   } on SessionBusyException {
     stderr.writeln('session $id is being run by another engine');
+    return null;
+  } on FileSystemException catch (e) {
+    stderr.writeln(storeFailure(e));
     return null;
   }
   if (session == null) stderr.writeln('no session $id in $runsDir');

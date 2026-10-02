@@ -993,6 +993,137 @@ IFS= read -r line
       await progress.close();
     });
   });
+
+  group('a session that cannot be stored', () {
+    /// The line the engine ends with when it cannot store the session:
+    /// what failed, on which path, and why.
+    Matcher storeFailure(String path, String why) =>
+        matches('^cannot store the session: \\w.* \\S*$path: $why\$');
+
+    /// Gives back the write permission chmod took from [path], so that the
+    /// test's directory can be deleted.
+    void restoreWrite(String path) =>
+        addTearDown(() => Process.runSync('chmod', ['-R', 'u+rwx', path]));
+
+    test('removed while steps run: every step stops, one line says why, '
+        'exit 3', () async {
+      final fake = FakeProgram(
+        {
+          'start': ['remove', 'wait'],
+          'nodes': {
+            'remove': {'command': 'remove'},
+            'wait': {'command': 'wait'},
+          },
+        },
+        nodes: {
+          'remove': '${waitForFile('wait.pid')}\nrm -rf runs',
+          // Ends on its own after 20 s, should the engine not stop it.
+          'wait':
+              'echo \$\$ > wait.pid\n'
+              'i=0; while [ \$i -lt 400 ]; do sleep 0.05; i=\$((i + 1)); done',
+        },
+      );
+      final result = await nanoflow(['run', '--', fake.path])
+          .timeout(const Duration(seconds: 15));
+
+      expect(result.code, 3, reason: result.err);
+      expect(result.out, matches(r'^[0-9a-f-]{36}\n$'));
+      final lines = const LineSplitter().convert(result.err);
+      expect(
+        lines.last,
+        storeFailure(r'/log\.jsonl', 'No such file or directory'),
+      );
+      expect(lines.where((line) => line.startsWith('cannot ')), hasLength(1));
+      final pid = File(p.join(fake.dir, 'wait.pid')).readAsStringSync().trim();
+      expect(
+        Process.runSync('kill', ['-0', pid]).exitCode,
+        isNot(0),
+        reason: 'the wait step still runs',
+      );
+      expect(Directory(fake.runsDir).existsSync(), isFalse);
+    });
+
+    test('a document it cannot write: no event after it, exit 3', () async {
+      final fake = FakeProgram(
+        {
+          'start': 'make',
+          'nodes': {
+            'make': {'command': 'make', 'out': object},
+          },
+        },
+        nodes: {'make': "chmod 500 runs/*/documents\necho '{}'"},
+      );
+      restoreWrite(fake.runsDir);
+      final result = await nanoflow(['run', '--', fake.path])
+          .timeout(const Duration(seconds: 15));
+
+      expect(result.code, 3, reason: result.err);
+      final lines = const LineSplitter().convert(result.err);
+      expect(lines.last, storeFailure(r'/documents/\S+', 'Permission denied'));
+      final session = (await FsStore(fake.runsDir)
+          .openSession(result.out.trim()))!;
+      expect(await journal(session, (await onlyRun(session)).id), [
+        'run-started make',
+        'step-started make',
+      ]);
+    });
+
+    test('one that cannot be created: no session, one line says why, '
+        'exit 2', () async {
+      final fake = FakeProgram(
+        {
+          'start': 'a',
+          'nodes': {
+            'a': {'command': 'a'},
+          },
+        },
+        nodes: {'a': 'true'},
+      );
+      Directory(fake.runsDir).createSync();
+      Process.runSync('chmod', ['500', fake.runsDir]);
+      restoreWrite(fake.runsDir);
+
+      final result = await nanoflow(['run', '--', fake.path]);
+
+      expect(result.code, 2);
+      expect(result.out, isEmpty);
+      expect(const LineSplitter().convert(result.err), [
+        storeFailure(r'/runs/\.tmp-\S+', 'Permission denied'),
+      ]);
+    });
+
+    test('--resume of one that cannot be opened: one line says why, '
+        'exit 2', () async {
+      final fake = FakeProgram(
+        {
+          'start': 'a',
+          'nodes': {
+            'a': {'command': 'a'},
+          },
+        },
+        nodes: {'a': 'true'},
+      );
+      final ran = await nanoflow(['run', '--', fake.path]);
+      expect(ran.code, 0, reason: ran.err);
+      final sessionDir = Directory(fake.runsDir).listSync().single.path;
+      Process.runSync('chmod', ['000', sessionDir]);
+      restoreWrite(sessionDir);
+
+      final result = await nanoflow([
+        'run',
+        '--resume',
+        ran.out.trim(),
+        '--',
+        fake.path,
+      ]);
+
+      expect(result.code, 2);
+      expect(result.out, isEmpty);
+      expect(const LineSplitter().convert(result.err), [
+        storeFailure(r'/\.engine\.lock', 'Permission denied'),
+      ]);
+    });
+  });
 }
 
 /// A sink's bytes, like [Capture], and a call of [onData] for every chunk

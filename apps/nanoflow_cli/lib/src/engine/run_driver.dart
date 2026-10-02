@@ -52,6 +52,27 @@ final class DrivenSession {
     if (!_stopped.isCompleted) _stopped.complete();
   }
 
+  /// Why the session could not be written or read — its directory is gone,
+  /// the disk is full, it may not be written — once that happened.
+  FileSystemException? get storageFailure => _storageFailure;
+  FileSystemException? _storageFailure;
+
+  final _failed = Completer<void>();
+
+  /// Completes once the session could not be written or read.
+  Future<void> get failed => _failed.future;
+
+  /// [driving], a run being driven, with a failure to write or read the
+  /// session caught: the first such failure becomes [storageFailure], and
+  /// the engine begins to stop. Other errors pass through.
+  Future<void> guard(Future<void> driving) =>
+      driving.catchError((Object error) {
+        if (_failed.isCompleted) return;
+        _storageFailure = error as FileSystemException;
+        stop();
+        _failed.complete();
+      }, test: (error) => error is FileSystemException);
+
   /// Appends [event] to the journal of its run and reports it, unless the
   /// engine is stopping; gives whether it did. [node] and [children] are for
   /// [Progress.report].
@@ -314,10 +335,12 @@ final class RunDriver {
     if (!split) return;
     await Future.wait([
       for (final child in children)
-        RunDriver(_session, child.runId).drive(
-          child.first,
-          node: _session.graph[child.started.node]!,
-          carried: carriedAtStart(child.first, fromParent: carried),
+        _session.guard(
+          RunDriver(_session, child.runId).drive(
+            child.first,
+            node: _session.graph[child.started.node]!,
+            carried: carriedAtStart(child.first, fromParent: carried),
+          ),
         ),
     ]);
   }

@@ -42,7 +42,12 @@ final class Engine {
   /// ([resumptionsOf]): a run of a new session starts its first step, which
   /// was created with it. A run that failed does not stop the others; a run
   /// that splits is followed by the runs it created.
+  ///
+  /// When the session cannot be written or read, the engine stops as [stop]
+  /// does, and [drive] throws that [FileSystemException] once every running
+  /// step has stopped.
   Future<int> drive() async {
+    final stoppedOnFailure = _session.failed.then((_) => stop());
     final driving = <Future<void>>[];
     for (final run in await resumptionsOf(_session.store, _session.graph)) {
       switch (run) {
@@ -55,23 +60,36 @@ final class Engine {
             _session.progress.report(started);
           }
           driving.add(
-            RunDriver(
-              _session,
-              runId,
-            ).drive(step, node: node, carried: carried),
+            _session.guard(
+              RunDriver(
+                _session,
+                runId,
+              ).drive(step, node: node, carried: carried),
+            ),
           );
         case RunAfterStep(:final runId, :final step, :final node):
           driving.add(
-            RunDriver(
-              _session,
-              runId,
-              nextStep: run.nextStep,
-              children: run.children,
-            ).goOn(step, node: node, result: run.result, carried: run.carried),
+            _session.guard(
+              RunDriver(
+                _session,
+                runId,
+                nextStep: run.nextStep,
+                children: run.children,
+              ).goOn(
+                step,
+                node: node,
+                result: run.result,
+                carried: run.carried,
+              ),
+            ),
           );
       }
     }
     await Future.wait(driving);
+    if (_session.storageFailure case final failure?) {
+      await stoppedOnFailure;
+      throw failure;
+    }
     return _session.anyFailed ? 1 : 0;
   }
 
