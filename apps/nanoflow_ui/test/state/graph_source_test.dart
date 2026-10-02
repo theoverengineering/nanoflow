@@ -64,12 +64,17 @@ void main() {
   void printLine(String line) =>
       lines.writeAsStringSync('$line\n', mode: FileMode.append);
 
-  GraphSource source({Duration restartDelay = const Duration(seconds: 1)}) {
+  GraphSource source({
+    Duration restartDelay = const Duration(seconds: 1),
+    Duration maxRestartDelay = const Duration(seconds: 30),
+    Duration fileCheckInterval = const Duration(milliseconds: 20),
+  }) {
     final source = GraphSource(
       file: graphFile,
       shell: Shell(environment: {'PATH': '$bin:/usr/bin:/bin'}),
-      fileCheckInterval: const Duration(milliseconds: 20),
+      fileCheckInterval: fileCheckInterval,
       restartDelay: restartDelay,
+      maxRestartDelay: maxRestartDelay,
     );
     addTearDown(source.dispose);
     return source;
@@ -360,6 +365,102 @@ exit 1
     await until(graph, () => graph.programProblem == null);
     expect(starts.readAsLinesSync().length, greaterThan(whileGone));
     expect(graph.fileMissing, isFalse);
+  });
+
+  test('starts nanoflow-yaml again once the graph file is back, also when '
+      'only the wait to start it again saw the file gone', () async {
+    // Its first run takes the file away and exits, as an editor saving by
+    // replacing the file might make it; later runs describe the graph.
+    program('nanoflow-yaml', '''
+echo start >> "\$(dirname "\$0")/starts"
+if [ "\$(wc -l < "\$(dirname "\$0")/starts")" -eq 1 ]; then
+  rm "\$1"
+  exit 1
+fi
+echo '${_description(graphFile, ['collect'])}'
+exec tail -f /dev/null
+''');
+    program('nanoflow', _nanoflowCheck);
+    final starts = File(p.join(bin, 'starts'));
+    // The file is looked at once, as it opens: only the wait sees it gone.
+    final graph = source(
+      restartDelay: const Duration(milliseconds: 20),
+      fileCheckInterval: const Duration(hours: 1),
+    );
+    await graph.start();
+
+    await until(graph, () => graph.fileMissing && graph.programProblem != null);
+    expect(graph.programProblem!.message, 'nanoflow-yaml exited with code 1');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(starts.readAsLinesSync(), hasLength(1));
+
+    File(graphFile).writeAsStringSync('start: collect\n');
+    await until(graph, () => graph.graph != null);
+    expect(graph.programProblem, isNull);
+    expect(graph.fileMissing, isFalse);
+    expect(starts.readAsLinesSync(), hasLength(2));
+  });
+
+  test('keeps waiting longer for a nanoflow-yaml that describes the graph '
+      'and exits, until one stays up a while', () async {
+    // Each run describes the graph and exits at once, but the fourth, which
+    // stays up longer than the longest wait.
+    program('nanoflow-yaml', '''
+echo start >> "\$(dirname "\$0")/starts"
+echo '${_description(graphFile, ['collect'])}'
+[ "\$(wc -l < "\$(dirname "\$0")/starts")" -eq 4 ] && sleep 0.5
+exit 1
+''');
+    program('nanoflow', _nanoflowCheck);
+    final starts = File(p.join(bin, 'starts'));
+    int count() => starts.existsSync() ? starts.readAsLinesSync().length : 0;
+    final graph = source(
+      restartDelay: const Duration(milliseconds: 40),
+      maxRestartDelay: const Duration(milliseconds: 300),
+    );
+    final at = <int>[];
+    final clock = Stopwatch()..start();
+    await graph.start();
+    while (at.length < 6) {
+      if (clock.elapsed > const Duration(seconds: 10)) fail('started $at');
+      if (count() > at.length) at.add(clock.elapsedMilliseconds);
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+    }
+
+    // 40, 80, 160 ms after the first three exits in a row, though each run
+    // described the graph.
+    final gaps = [for (var i = 1; i < at.length; i++) at[i] - at[i - 1]];
+    expect(gaps[0], greaterThanOrEqualTo(40));
+    expect(gaps[1], greaterThanOrEqualTo(80));
+    expect(gaps[2], greaterThanOrEqualTo(160));
+    // The fourth stayed up 500 ms, longer than the longest wait: after it,
+    // waiting starts over at 40 ms.
+    expect(gaps[3], greaterThanOrEqualTo(500));
+    expect(gaps[4], lessThan(gaps[3] - 400));
+  });
+
+  test('ignores what an exited nanoflow-yaml left running prints after it '
+      'was started again', () async {
+    // The first run leaves a program behind that holds its stdout and prints
+    // an old graph after the run was started again; later runs describe the
+    // new graph.
+    program('nanoflow-yaml', '''
+echo start >> "\$(dirname "\$0")/starts"
+if [ "\$(wc -l < "\$(dirname "\$0")/starts")" -eq 1 ]; then
+  (sleep 1.6; echo '${_description(graphFile, ['old'])}') &
+  exit 3
+fi
+echo '${_description(graphFile, ['new'])}'
+exec tail -f /dev/null
+''');
+    program('nanoflow', _nanoflowCheck);
+    final graph = source(restartDelay: const Duration(milliseconds: 20));
+    await graph.start();
+    await until(graph, () => graph.graph != null);
+    expect(graph.graph!.nodes.keys, ['new']);
+
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    expect(graph.graph!.nodes.keys, ['new']);
   });
 
   test('waits longer after each exit in a row, up to a limit', () {

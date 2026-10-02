@@ -40,8 +40,10 @@ final class SourceProblem {
 ///
 /// A `nanoflow-yaml` that exits is started again: after [restartDelay], twice
 /// as long after each exit in a row, up to [maxRestartDelay]; while the graph
-/// file is gone, once it is back. The [programProblem] stays until it
-/// describes the graph again.
+/// file is gone, once it is back. An exit counts as one in a row unless the
+/// run stayed up at least [maxRestartDelay], so a program that describes the
+/// graph and dies is not started every second. The [programProblem] stays
+/// until it describes the graph again.
 class GraphSource extends ChangeNotifier {
   GraphSource({
     required this.file,
@@ -90,8 +92,8 @@ class GraphSource extends ChangeNotifier {
   /// Starts `nanoflow-yaml` again, while it waits to.
   Timer? _restart;
 
-  /// Whether `nanoflow-yaml` is to start again once the graph file is back.
-  bool _awaitingFile = false;
+  /// How long the running `nanoflow-yaml` has been up.
+  final Stopwatch _up = Stopwatch();
 
   /// The latest description not yet checked, and whether one is being
   /// checked.
@@ -168,6 +170,9 @@ class GraphSource extends ChangeNotifier {
       return;
     }
     _watch = watch;
+    _up
+      ..reset()
+      ..start();
     final output = [
       _lines(watch.stdout).listen(_described),
       _lines(watch.stderr).listen(_keepStderr),
@@ -180,8 +185,12 @@ class GraphSource extends ChangeNotifier {
       watch.exitCode.then((code) async {
         // Its last description and its last words count: they are read
         // before the exit is told, unless something it started holds them.
+        // What that prints later is not this graph's any more.
         await printed.timeout(const Duration(seconds: 1), onTimeout: () {});
-        output.forEach(_subscriptions.remove);
+        for (final subscription in output) {
+          _subscriptions.remove(subscription);
+          unawaited(subscription.cancel());
+        }
         _exited(code);
       }),
     );
@@ -189,6 +198,7 @@ class GraphSource extends ChangeNotifier {
   }
 
   void _described(String line) {
+    if (_disposed) return;
     final Object? json;
     try {
       json = jsonDecode(line);
@@ -197,8 +207,7 @@ class GraphSource extends ChangeNotifier {
     }
     // A line that is not a description is something else the program printed.
     if (json is! Map<String, Object?>) return;
-    // It works again.
-    _exits = 0;
+    // It works again; whether for good, its exit, if any, will tell.
     if (_programProblem != null) {
       _programProblem = null;
       notifyListeners();
@@ -289,6 +298,9 @@ class GraphSource extends ChangeNotifier {
   void _exited(int code) {
     if (_disposed) return;
     _watch = null;
+    _up.stop();
+    // Up long enough, it exited for a reason of its own: waiting starts over.
+    if (_up.elapsed >= maxRestartDelay) _exits = 0;
     _programProblem = SourceProblem(
       'nanoflow-yaml exited with code $code',
       _stderr.join('\n'),
@@ -298,31 +310,39 @@ class GraphSource extends ChangeNotifier {
   }
 
   /// Starts `nanoflow-yaml` again after a while, longer after each exit in a
-  /// row; once the graph file is back, if it is gone by then.
+  /// row.
   void _startAgainLater() {
     _exits++;
-    _restart = Timer(restartDelayAfter(_exits), () async {
+    _startWhenFileIsThere(restartDelayAfter(_exits));
+  }
+
+  /// Starts `nanoflow-yaml` after [delay] if the graph file is there; else
+  /// looks for the file every [restartDelay] and starts it once the file is
+  /// back. What it sees of the file goes to [fileMissing] too: the
+  /// file may be gone only between two of [_lookAtFile]'s looks.
+  void _startWhenFileIsThere(Duration delay) {
+    _restart = Timer(delay, () async {
       _restart = null;
-      final there = await File(file).exists();
+      final missing = !await File(file).exists();
       if (_disposed) return;
-      if (there) {
-        unawaited(_run());
+      _fileIs(missing: missing);
+      if (missing) {
+        _startWhenFileIsThere(restartDelay);
       } else {
-        _awaitingFile = true;
+        unawaited(_run());
       }
     });
   }
 
   Future<void> _lookAtFile() async {
     final missing = !await File(file).exists();
-    if (_disposed || missing == _fileMissing) return;
+    if (!_disposed) _fileIs(missing: missing);
+  }
+
+  /// Tells listeners when the graph file has gone or come back.
+  void _fileIs({required bool missing}) {
+    if (missing == _fileMissing) return;
     _fileMissing = missing;
-    if (!missing && _awaitingFile) {
-      // What made it exit may have been the file being gone.
-      _awaitingFile = false;
-      _exits = 0;
-      unawaited(_run());
-    }
     notifyListeners();
   }
 
