@@ -29,7 +29,9 @@ typedef OpenModel = GraphModel Function(String file, Shell shell);
 /// selected step; a double click on a node, on the node's last visit in the
 /// selected run, else its latest in the session, else on its description
 /// alone. The visit the window shows is selected, so the canvas and `Logs`
-/// are on it once the window closes.
+/// are on it once the window closes — or, when it is the last step of a
+/// running run, on that run's newest step: following goes on under the
+/// window, which stays on its visit.
 ///
 /// The screen owns the [GraphModel] of its file: it opens it as it opens,
 /// and disposes it, with the programs it started, when it is left or the

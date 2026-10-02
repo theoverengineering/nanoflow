@@ -28,8 +28,8 @@ import 'output_column.dart';
 /// switcher `Visit 2 of 2` through every visit to the node in the selected
 /// session, the visit's run, how the step went, and close; Esc closes too.
 /// Under it, the columns `Input`, the node, `Output`. Showing another visit
-/// is [onVisit]: the graph screen selects it, so the canvas and `Logs` are
-/// on it once the window closes.
+/// is [onVisit]: the graph screen selects it. The window stays on its visit
+/// while the selection follows a running run's new steps.
 class StepDetailsWindow extends StatefulWidget {
   const StepDetailsWindow({
     super.key,

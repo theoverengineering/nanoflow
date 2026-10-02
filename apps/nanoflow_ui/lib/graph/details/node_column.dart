@@ -8,6 +8,7 @@ import '../../theme.dart';
 import '../../widgets/copy_button.dart';
 import '../../widgets/failure_note.dart';
 import '../../widgets/icons.dart';
+import '../../widgets/path_bar.dart';
 import 'parts.dart';
 
 /// The node column of the step details window (docs/ui-spec.md «Окно
@@ -97,7 +98,7 @@ class NodeColumn extends StatelessWidget {
                 border: AppColors.panelBorder,
                 pathKey: pathKey,
                 buttons: [
-                  WindowButton(
+                  FileButton(
                     'Reveal in Finder',
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,

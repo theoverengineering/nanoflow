@@ -66,6 +66,17 @@ class ModeToggle extends StatelessWidget {
   );
 }
 
+/// A document's value as read, and its size, measured once when first asked
+/// for: the window is built again every second.
+final class LoadedDocument {
+  LoadedDocument(this.value);
+
+  final Object? value;
+
+  /// How many bytes the value's JSON takes: `214 B`.
+  late final String size = sizeText(byteSize(value));
+}
+
 /// The value of a document, read once: [builder] shows it; until it is read,
 /// nothing; a note when it cannot be.
 class DocumentData extends StatefulWidget {
@@ -80,21 +91,20 @@ class DocumentData extends StatefulWidget {
   final StepFiles files;
   final String sessionId;
   final String documentId;
-  final Widget Function(BuildContext context, Object? value) builder;
+  final Widget Function(BuildContext context, LoadedDocument document) builder;
 
   @override
   State<DocumentData> createState() => _DocumentDataState();
 }
 
 class _DocumentDataState extends State<DocumentData> {
-  late final Future<Object?> _value = widget.files.documentValue(
-    widget.sessionId,
-    widget.documentId,
-  );
+  late final Future<LoadedDocument> _document = widget.files
+      .documentValue(widget.sessionId, widget.documentId)
+      .then(LoadedDocument.new);
 
   @override
   Widget build(BuildContext context) => FutureBuilder(
-    future: _value,
+    future: _document,
     builder: (context, snapshot) {
       if (snapshot.error case final error?) {
         return DataNote(
@@ -102,10 +112,10 @@ class _DocumentDataState extends State<DocumentData> {
           color: AppColors.dangerText,
         );
       }
-      if (snapshot.connectionState != ConnectionState.done) {
-        return const SizedBox.shrink();
-      }
-      return widget.builder(context, snapshot.data);
+      final document = snapshot.data;
+      return document == null
+          ? const SizedBox.shrink()
+          : widget.builder(context, document);
     },
   );
 }
@@ -149,7 +159,14 @@ class SchemaView extends StatefulWidget {
 
 class _SchemaViewState extends State<SchemaView> {
   final Set<String> _toggled = {};
-  late List<SchemaRow> _rows = schemaRows(widget.value);
+
+  /// The rows shown, whether any of them opens, and the width of their
+  /// names in [_scaler]: measured once per rows, not on every build — the
+  /// window is built again every second.
+  late List<SchemaRow> _rows;
+  late bool _chevrons;
+  double? _nameWidth;
+  TextScaler? _scaler;
 
   static const _rowHeight = 30.0;
   static const _gap = 4.0;
@@ -158,21 +175,33 @@ class _SchemaViewState extends State<SchemaView> {
   static const _mostName = 200.0;
 
   @override
+  void initState() {
+    super.initState();
+    _show(schemaRows(widget.value));
+  }
+
+  @override
   void didUpdateWidget(SchemaView old) {
     super.didUpdateWidget(old);
     if (old.value != widget.value) {
       _toggled.clear();
-      _rows = schemaRows(widget.value);
+      _show(schemaRows(widget.value));
     }
   }
 
   void _toggle(String path) => setState(() {
     if (!_toggled.remove(path)) _toggled.add(path);
-    _rows = schemaRows(widget.value, toggled: _toggled);
+    _show(schemaRows(widget.value, toggled: _toggled));
   });
 
+  void _show(List<SchemaRow> rows) {
+    _rows = rows;
+    _chevrons = rows.any((row) => row.container);
+    _nameWidth = null;
+  }
+
   /// The width of the names: the longest one's, within limits.
-  double _nameWidth(TextScaler scaler) {
+  double _measure(TextScaler scaler) {
     var longest = '';
     for (final row in _rows) {
       if (row.name.length > longest.length) longest = row.name;
@@ -194,8 +223,11 @@ class _SchemaViewState extends State<SchemaView> {
     if (rows.isEmpty) {
       return DataNote(widget.value is List ? 'An empty array' : 'No fields');
     }
-    final nameWidth = _nameWidth(MediaQuery.textScalerOf(context));
-    final chevrons = rows.any((row) => row.container);
+    final scaler = MediaQuery.textScalerOf(context);
+    if (scaler != _scaler) _nameWidth = null;
+    _scaler = scaler;
+    final nameWidth = _nameWidth ??= _measure(scaler);
+    final chevrons = _chevrons;
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       itemExtent: _rowHeight + _gap,

@@ -133,6 +133,16 @@ void main() {
       expect(sourceOf('fork-inspect-1', runs: [run]), isA<LaunchInput>());
     });
 
+    test('through a fork without in, which gets no input and passes it on', () {
+      // collect → pick (a fork that declares no in) → inspect.
+      final run = Journal('skip-run', node: 'collect', startedAt: 0)
+        ..step('collect', 0, end: 1, input: 'request', output: 'change')
+        ..step('pick', 1, end: 2, output: 'picked')
+        ..step('inspect', 2, input: 'change');
+      expect(fromStep('skip-inspect-2', runs: [run]), 'skip-collect-0');
+      expect(sourceOf('skip-pick-1', runs: [run]), isNull);
+    });
+
     test('nowhere for a step without input', () {
       final run = Journal('none-run', node: 'collect', startedAt: 0)
         ..step('collect', 0, end: 1, output: 'change');

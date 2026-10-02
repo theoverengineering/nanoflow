@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../../platform/shell.dart';
-import '../../state/json_data.dart';
 import '../../state/step_details.dart';
 import '../../state/step_files.dart';
 import '../../state/visit_details.dart';
@@ -10,6 +9,7 @@ import '../../theme.dart';
 import '../../widgets/clickable.dart';
 import '../../widgets/failure_note.dart';
 import '../../widgets/icons.dart';
+import '../../widgets/path_bar.dart';
 import '../logs/log_view.dart';
 import 'data_view.dart';
 import 'parts.dart';
@@ -130,7 +130,7 @@ class _OutputColumnState extends State<OutputColumn> {
             path: path,
             root: p.dirname(widget.graphFile),
             buttons: [
-              WindowButton(
+              FileButton(
                 'Open in editor',
                 onTap: () => openPath(
                   context,
@@ -171,7 +171,7 @@ class _OutputColumnState extends State<OutputColumn> {
       files: widget.files,
       sessionId: step.sessionId,
       documentId: documentId,
-      builder: (context, value) => Column(
+      builder: (context, document) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ?failure,
@@ -189,11 +189,11 @@ class _OutputColumnState extends State<OutputColumn> {
                 if (type != null) TypePill(type.label),
               ],
               const Spacer(),
-              Text(sizeText(byteSize(value)), style: AppText.filePath),
+              Text(document.size, style: AppText.filePath),
             ],
           ),
           Expanded(
-            child: DataView(value: value, mode: _mode),
+            child: DataView(value: document.value, mode: _mode),
           ),
         ],
       ),

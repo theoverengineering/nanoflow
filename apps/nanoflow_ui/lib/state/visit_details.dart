@@ -59,9 +59,13 @@ final class NodeDescription {
       output: node is WorkerNode ? card(node.output) : null,
       ways: switch (node) {
         WorkerNode(:final then) => [(outcome: null, targets: targets(then))],
-        ForkNode(:final exits) => [
+        ForkNode(:final exits, :final isIf, :final otherwise) => [
           for (final exit in exits)
             (outcome: exit.label, targets: targets(exit.target)),
+          // An if without `else` ends the run on any other outcome; a
+          // switch without one fails it, which is no way to go.
+          if (isIf && otherwise == null)
+            (outcome: 'else', targets: const <WayTarget>[]),
         ],
       },
     );
@@ -83,7 +87,8 @@ final class NodeDescription {
   /// `null` when the node declares no `out`, and for a fork.
   final TypeCard? output;
 
-  /// A worker's `then`; a fork's outcomes, `else` last.
+  /// A worker's `then`; a fork's outcomes, `else` last — for an if without
+  /// `else` too, leading nowhere, as it does.
   final List<Way> ways;
 }
 

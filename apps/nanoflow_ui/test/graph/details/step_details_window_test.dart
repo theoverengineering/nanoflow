@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/details/data_view.dart';
 import 'package:nanoflow_ui/graph/details/input_column.dart';
@@ -181,6 +183,37 @@ void main() {
         expect(window(), findsNothing);
       });
     }
+
+    testWidgets('on a running run\'s newest step when the window showed its '
+        'last: following goes on under the window', (tester) async {
+      final mockup = Mockup();
+      final more = StreamController<Change>();
+      addTearDown(more.close);
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(
+          changes: changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]),
+          more: more.stream,
+          outcomes: reviewOutcomes,
+          files: mockupFiles(),
+        ),
+      );
+      await tap(tester, find.byKey(StepDetailsPane.openKey));
+
+      final next = mockup.e5f6.step('notify', 700);
+      more
+        ..add(StepAdded(mockup.e5f6.steps.last))
+        ..add(EventAdded(mockup.e5f6.events.last));
+      await settle(tester);
+
+      expect(
+        topBar(tester),
+        contains('notify nodes/notify/run.sh Visit 1 of 2'),
+      );
+      expect(model.selection.stepId, next);
+      await tap(tester, find.byKey(StepDetailsWindow.closeKey));
+      expect(model.selection.stepId, next);
+    });
 
     testWidgets('leaving the canvas and Logs on the visit shown last', (
       tester,
@@ -454,10 +487,57 @@ void main() {
     });
   });
 
+  testWidgets('stops following a step\'s log when the window shows another '
+      'visit, and when it closes', (tester) async {
+    final files = mockupFiles();
+    await pumpGraphScreen(tester, model: mockupModel(files: files));
+    // Logs shows the selected step's input: only the window follows logs.
+    await tap(tester, find.byKey(StepDetailsPane.tabKey(StepTab.input)));
+    await doubleClick(tester, 'inspect');
+    await tap(tester, find.byKey(OutputColumn.tabKey(OutputTab.log)));
+    expect(files.followed, ['k7f2-inspect-5']);
+
+    await tap(tester, find.byKey(StepDetailsWindow.previousKey));
+    expect(files.followed, ['k7f2-inspect-2']);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(files.followed, isEmpty);
+  });
+
+  testWidgets('measures the output once, not at each tick of the clock', (
+    tester,
+  ) async {
+    final report = _Counting(mockupDocuments['report-2']);
+    final files = mockupFiles()..documents['report-2'] = report;
+    await pumpGraphScreen(tester, model: mockupModel(files: files));
+    await doubleClick(tester, 'inspect');
+    final encoded = report.encoded;
+
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    expect(report.encoded, encoded);
+  });
+
   testWidgets('the data views tell Schema from JSON', (tester) async {
     await pumpGraphScreen(tester);
     await doubleClick(tester, 'inspect');
     expect(inColumn(InputColumn, find.byType(SchemaView)), findsOneWidget);
     expect(inColumn(OutputColumn, find.byType(JsonView)), findsOneWidget);
   });
+}
+
+/// A document's value that counts how many times it is encoded as JSON.
+final class _Counting {
+  _Counting(this.json);
+
+  final Object? json;
+  int encoded = 0;
+
+  Object? toJson() {
+    encoded++;
+    return json;
+  }
 }

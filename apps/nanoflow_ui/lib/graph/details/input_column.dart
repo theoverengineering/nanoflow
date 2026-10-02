@@ -10,6 +10,7 @@ import '../../theme.dart';
 import '../../widgets/clickable.dart';
 import '../../widgets/failure_note.dart';
 import '../../widgets/icons.dart';
+import '../../widgets/path_bar.dart';
 import 'data_view.dart';
 import 'parts.dart';
 
@@ -86,7 +87,7 @@ class _InputColumnState extends State<InputColumn> {
             path: path,
             root: p.dirname(widget.graphFile),
             buttons: [
-              WindowButton(
+              FileButton(
                 'Finder',
                 onTap: () => openPath(
                   context,
@@ -136,8 +137,8 @@ class _InputColumnState extends State<InputColumn> {
                 files: widget.files,
                 sessionId: step.sessionId,
                 documentId: documentId,
-                builder: (context, value) =>
-                    DataView(value: value, mode: _mode),
+                builder: (context, document) =>
+                    DataView(value: document.value, mode: _mode),
               ),
       ),
     ];

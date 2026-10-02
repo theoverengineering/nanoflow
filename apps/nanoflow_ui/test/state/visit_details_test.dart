@@ -201,6 +201,41 @@ void main() {
       ]);
     });
 
+    test('of an if without else: the run ends when the outcome is not '
+        'true', () {
+      final run = Journal('ifno-run', node: 'pick', startedAt: null);
+      final session = sessionOf(
+        [run],
+        graph: const {
+          'start': 'pick',
+          'nodes': {
+            'pick': {'decide': 'pick.sh', 'then': 'pick'},
+          },
+        },
+      );
+      final pick = details('pick', session: session).description!;
+      expect(waysOf(pick), ['true → pick', 'else →']);
+    });
+
+    test('of a switch without else: no way for an outcome that matches no '
+        'key, which is an error', () {
+      final run = Journal('swno-run', node: 'pick', startedAt: null);
+      final session = sessionOf(
+        [run],
+        graph: const {
+          'start': 'pick',
+          'nodes': {
+            'pick': {
+              'decide': 'pick.sh',
+              'then': {'a': 'pick'},
+            },
+          },
+        },
+      );
+      final pick = details('pick', session: session).description!;
+      expect(waysOf(pick), ['a → pick']);
+    });
+
     test('of a fork whose else leads nowhere', () {
       final run = Journal('else-run', node: 'pick', startedAt: null);
       final session = sessionOf(

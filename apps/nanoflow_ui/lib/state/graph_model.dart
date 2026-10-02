@@ -219,8 +219,9 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// Selects the step [stepId] of the selected session, a visit the step
-  /// details window shows: closed, the window leaves the canvas and `Logs`
-  /// on it.
+  /// details window shows, so the canvas and `Logs` are on it. Following
+  /// goes on as for any selected step: on the last step of a running run,
+  /// the selection moves on to the run's new steps.
   void showVisit(String stepId) {
     final session = selectedSession;
     if (session == null) return;
