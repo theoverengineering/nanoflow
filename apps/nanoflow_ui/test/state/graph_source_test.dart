@@ -187,6 +187,43 @@ void main() {
     ]);
   });
 
+  test('a check that throws says so and does not stop later checks', () async {
+    program('nanoflow-yaml', _yamlWatch);
+    program('nanoflow', _nanoflowCheck);
+    printLine(_description(graphFile, ['collect']));
+    var failNext = true;
+    final graph = GraphSource(
+      file: graphFile,
+      shell: Shell(
+        environment: {'PATH': '$bin:/usr/bin:/bin'},
+        start: (executable, arguments, {workingDirectory, environment}) {
+          if (arguments.contains('check') && failNext) {
+            failNext = false;
+            throw StateError('out of file descriptors');
+          }
+          return Process.start(
+            executable,
+            arguments,
+            workingDirectory: workingDirectory,
+            environment: environment,
+          );
+        },
+      ),
+    );
+    addTearDown(graph.dispose);
+    await graph.start();
+    await until(graph, () => graph.errors.isNotEmpty);
+    expect(graph.errors, [
+      'nanoflow check could not run: Bad state: out of file descriptors',
+    ]);
+    expect(graph.graph, isNull);
+
+    printLine(_description(graphFile, ['collect', 'notify']));
+    await until(graph, () => graph.graph != null);
+    expect(graph.graph!.nodes.keys, ['collect', 'notify']);
+    expect(graph.errors, isEmpty);
+  });
+
   test('says nanoflow-yaml is not on the PATH', () async {
     program('nanoflow', _nanoflowCheck);
     final graph = source();

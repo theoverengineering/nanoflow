@@ -159,18 +159,28 @@ class GraphSource extends ChangeNotifier {
   }
 
   /// Checks the latest description until none is left; one that a newer one
-  /// has replaced while it was checked counts no more.
+  /// has replaced while it was checked counts no more. A check that fails in
+  /// an unexpected way is that description's error, and later ones are still
+  /// checked.
   Future<void> _checkPending() async {
     _checking = true;
-    while (_pending != null && !_disposed) {
-      final line = _pending!;
-      _pending = null;
-      final errors = await _checkLine(line);
-      if (_disposed || _pending != null) continue;
-      _apply(line, errors);
-      notifyListeners();
+    try {
+      while (_pending != null && !_disposed) {
+        final line = _pending!;
+        _pending = null;
+        List<String>? errors;
+        try {
+          errors = await _checkLine(line);
+        } on Object catch (error) {
+          errors = ['nanoflow check could not run: $error'];
+        }
+        if (_disposed || _pending != null) continue;
+        _apply(line, errors);
+        notifyListeners();
+      }
+    } finally {
+      _checking = false;
     }
-    _checking = false;
   }
 
   /// The errors `nanoflow check` finds in [line]: empty when it passes,
