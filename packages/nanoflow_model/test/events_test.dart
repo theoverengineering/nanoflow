@@ -3,12 +3,15 @@ import 'dart:convert';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:test/test.dart';
 
-const String _runId = '0c6e1f7a-93d4-4b58-8e21-5a7d3c9b4f06';
 const String _stepId = '2e9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
 const String _outputId = '5f2d8b6a-1c93-4e07-a4b8-9e3c7a1d5b20';
+const String _graphId = '9a4d6c20-7e15-4b83-a0f9-3c2b8d5e7f41';
+const String _code = 'sha256:7d3e9f0c';
 
-final DateTime _time = DateTime.utc(2026, 9, 20, 14, 3, 11, 470);
-const String _timeText = '2026-09-20T14:03:11.470Z';
+final DateTime _time = DateTime.utc(2026, 10, 3, 10, 0, 0, 482);
+const String _timeText = '2026-10-03T10:00:00.482Z';
+
+const String _stack = '#0      main (file:///app/bin/main.dart:5:3)\n';
 
 Map<String, Object?> _decode(String text) =>
     jsonDecode(text) as Map<String, Object?>;
@@ -16,23 +19,18 @@ Map<String, Object?> _decode(String text) =>
 /// What a consumer of events can do without a default branch: the compiler
 /// checks that every kind of event is covered.
 String _kind(Event event) => switch (event) {
-  RunStarted() => 'run-started',
+  SessionStarted() => 'session-started',
+  SessionResumed() => 'session-resumed',
   StepStarted() => 'step-started',
   StepFinished() => 'step-finished',
-  RunSplit() => 'run-split',
-  RunFinished() => 'run-finished',
-  RunFailed() => 'run-failed',
+  StepFailed() => 'step-failed',
+  SessionFinished() => 'session-finished',
+  SessionFailed() => 'session-failed',
   UnknownEvent() => 'unknown',
 };
 
-/// What a consumer that only needs the run an event belongs to can do without
-/// a six-way switch: a known event has its `runId`, an unknown one may not.
-String? _runIdOf(Event event) => switch (event) {
-  KnownEvent(:final runId) => runId,
-  UnknownEvent(:final runId) => runId,
-};
-
-/// Likewise for the time: only a known event is sure to have one.
+/// What a consumer that only needs the time of an event can do without a
+/// seven-way switch: only a known event is sure to have one.
 DateTime? _timeOf(Event event) => switch (event) {
   KnownEvent(:final time) => time,
   UnknownEvent() => null,
@@ -42,54 +40,60 @@ void main() {
   /// Every event with the exact text it must be written as.
   final cases = <(Event, String)>[
     (
-      RunStarted(runId: _runId, time: _time, node: 'collect'),
-      '{"runId":"$_runId","time":"$_timeText","event":"run-started",'
-          '"node":"collect"}',
+      SessionStarted(time: _time, code: _code),
+      '{"time":"$_timeText","event":"session-started","code":"$_code"}',
     ),
     (
-      StepStarted(runId: _runId, time: _time, stepId: _stepId, node: 'collect'),
-      '{"runId":"$_runId","time":"$_timeText","event":"step-started",'
-          '"stepId":"$_stepId","node":"collect"}',
+      SessionStarted(time: _time, code: null),
+      '{"time":"$_timeText","event":"session-started","code":null}',
     ),
     (
-      StepFinished(
-        runId: _runId,
+      SessionResumed(time: _time, code: _code, graphId: _graphId),
+      '{"time":"$_timeText","event":"session-resumed","code":"$_code",'
+          '"graphId":"$_graphId"}',
+    ),
+    (
+      SessionResumed(time: _time, code: null, graphId: null),
+      '{"time":"$_timeText","event":"session-resumed","code":null,'
+          '"graphId":null}',
+    ),
+    (
+      StepStarted(time: _time, stepId: _stepId),
+      '{"time":"$_timeText","event":"step-started","stepId":"$_stepId"}',
+    ),
+    (
+      StepFinished(time: _time, stepId: _stepId, outputId: _outputId),
+      '{"time":"$_timeText","event":"step-finished","stepId":"$_stepId",'
+          '"outputId":"$_outputId"}',
+    ),
+    (
+      StepFinished(time: _time, stepId: _stepId, outputId: null),
+      '{"time":"$_timeText","event":"step-finished","stepId":"$_stepId",'
+          '"outputId":null}',
+    ),
+    (
+      StepFailed(
         time: _time,
         stepId: _stepId,
-        exitCode: 0,
-        outputId: _outputId,
+        error: 'Exception: boom',
+        stack: _stack,
       ),
-      '{"runId":"$_runId","time":"$_timeText","event":"step-finished",'
-          '"stepId":"$_stepId","exitCode":0,"outputId":"$_outputId"}',
+      '{"time":"$_timeText","event":"step-failed","stepId":"$_stepId",'
+          '"error":"Exception: boom","stack":${jsonEncode(_stack)}}',
     ),
     (
-      StepFinished(
-        runId: _runId,
-        time: _time,
-        stepId: _stepId,
-        exitCode: 2,
-        outputId: null,
-      ),
-      '{"runId":"$_runId","time":"$_timeText","event":"step-finished",'
-          '"stepId":"$_stepId","exitCode":2,"outputId":null}',
+      SessionFinished(time: _time, outputId: _outputId),
+      '{"time":"$_timeText","event":"session-finished",'
+          '"outputId":"$_outputId"}',
     ),
     (
-      RunSplit(runId: _runId, time: _time),
-      '{"runId":"$_runId","time":"$_timeText","event":"run-split"}',
+      SessionFinished(time: _time, outputId: null),
+      '{"time":"$_timeText","event":"session-finished","outputId":null}',
     ),
     (
-      RunFinished(runId: _runId, time: _time),
-      '{"runId":"$_runId","time":"$_timeText","event":"run-finished"}',
-    ),
-    (
-      RunFailed(
-        runId: _runId,
-        time: _time,
-        stepId: _stepId,
-        error: 'exited with code 2',
-      ),
-      '{"runId":"$_runId","time":"$_timeText","event":"run-failed",'
-          '"stepId":"$_stepId","error":"exited with code 2"}',
+      SessionFailed(time: _time, error: 'StateError: no', stack: _stack),
+      '{"time":"$_timeText","event":"session-failed",'
+          '"error":"StateError: no","stack":${jsonEncode(_stack)}}',
     ),
   ];
 
@@ -111,125 +115,100 @@ void main() {
 
     test('names are the values of the event field', () {
       expect(
-        [for (final (event, _) in cases) event.name],
-        [
-          'run-started',
+        {for (final (event, _) in cases) event.name},
+        {
+          'session-started',
+          'session-resumed',
           'step-started',
           'step-finished',
-          'step-finished',
-          'run-split',
-          'run-finished',
-          'run-failed',
-        ],
+          'step-failed',
+          'session-finished',
+          'session-failed',
+        },
       );
     });
 
     test('expose their fields', () {
-      final started = Event.fromJson(_decode(cases[0].$2)) as RunStarted;
-      expect(started.runId, _runId);
-      expect(started.node, 'collect');
-      final finished = Event.fromJson(_decode(cases[2].$2)) as StepFinished;
+      final resumed = Event.fromJson(_decode(cases[2].$2)) as SessionResumed;
+      expect(resumed.code, _code);
+      expect(resumed.graphId, _graphId);
+      final finished = Event.fromJson(_decode(cases[5].$2)) as StepFinished;
       expect(finished.stepId, _stepId);
-      expect(finished.exitCode, 0);
       expect(finished.outputId, _outputId);
-      final failed = Event.fromJson(_decode(cases[6].$2)) as RunFailed;
+      final failed = Event.fromJson(_decode(cases[7].$2)) as StepFailed;
       expect(failed.stepId, _stepId);
-      expect(failed.error, 'exited with code 2');
+      expect(failed.error, 'Exception: boom');
+      expect(failed.stack, _stack);
+      final ended = Event.fromJson(_decode(cases[10].$2)) as SessionFailed;
+      expect(ended.error, 'StateError: no');
+      expect(ended.stack, _stack);
     });
 
     test('compare by value and by kind', () {
       expect(
-        RunSplit(runId: _runId, time: _time),
-        isNot(RunFinished(runId: _runId, time: _time)),
+        SessionFinished(time: _time, outputId: null),
+        isNot(SessionStarted(time: _time, code: null)),
       );
       expect(
-        RunFinished(runId: _runId, time: _time),
-        isNot(RunFinished(runId: _stepId, time: _time)),
+        SessionStarted(time: _time, code: _code),
+        isNot(SessionStarted(time: _time, code: null)),
       );
       expect(
-        RunFinished(runId: _runId, time: _time),
+        SessionStarted(time: _time, code: _code),
         isNot(
-          RunFinished(
-            runId: _runId,
+          SessionStarted(
             time: _time.add(const Duration(milliseconds: 1)),
+            code: _code,
           ),
         ),
       );
       expect(
-        StepFinished(
-          runId: _runId,
-          time: _time,
-          stepId: _stepId,
-          exitCode: 0,
-          outputId: null,
-        ),
-        isNot(
-          StepFinished(
-            runId: _runId,
-            time: _time,
-            stepId: _stepId,
-            exitCode: 1,
-            outputId: null,
-          ),
-        ),
+        StepFinished(time: _time, stepId: _stepId, outputId: null),
+        isNot(StepFinished(time: _time, stepId: _stepId, outputId: _outputId)),
       );
       expect(
-        StepFinished(
-          runId: _runId,
-          time: _time,
-          stepId: _stepId,
-          exitCode: 0,
-          outputId: null,
-        ),
-        isNot(
-          StepFinished(
-            runId: _runId,
-            time: _time,
-            stepId: _stepId,
-            exitCode: 0,
-            outputId: _outputId,
-          ),
-        ),
+        StepFailed(time: _time, stepId: _stepId, error: 'a', stack: ''),
+        isNot(StepFailed(time: _time, stepId: _stepId, error: 'a', stack: 's')),
       );
     });
 
     test('have a readable toString', () {
-      final text = RunStarted(
-        runId: _runId,
+      final text = StepFinished(
         time: _time,
-        node: 'collect',
+        stepId: _stepId,
+        outputId: _outputId,
       ).toString();
-      expect(text, startsWith('RunStarted('));
-      expect(text, contains(_runId));
+      expect(text, startsWith('StepFinished('));
+      expect(text, contains(_stepId));
       expect(text, contains(_timeText));
-      expect(text, contains('collect'));
+      expect(text, contains(_outputId));
     });
   });
 
   group('time', () {
     test('is parsed to UTC from the written form', () {
-      final event = Event.fromJson(_decode(cases[4].$2)) as RunSplit;
+      final event = Event.fromJson(_decode(cases[4].$2)) as StepStarted;
       expect(event.time.isUtc, isTrue);
-      expect(event.time, DateTime.utc(2026, 9, 20, 14, 3, 11, 470));
+      expect(event.time, DateTime.utc(2026, 10, 3, 10, 0, 0, 482));
     });
 
     test('is printed with three fractional digits', () {
       expect(
-        RunFinished(
-          runId: _runId,
-          time: DateTime.utc(2026, 9, 20, 14, 3, 11),
+        SessionFinished(
+          time: DateTime.utc(2026, 10, 3, 10),
+          outputId: null,
         ).toJson()['time'],
-        '2026-09-20T14:03:11.000Z',
+        '2026-10-03T10:00:00.000Z',
       );
     });
 
     test('is kept in UTC with milliseconds, as it is written', () {
-      final local = DateTime.utc(2026, 9, 20, 14, 3, 11, 470, 123).toLocal();
-      final event = RunFinished(runId: _runId, time: local);
+      final local = DateTime.utc(2026, 10, 3, 10, 0, 0, 482, 123).toLocal();
+      final event = StepStarted(time: local, stepId: _stepId);
       expect(event.time.isUtc, isTrue);
       expect(event.time.microsecond, 0);
       expect(event.time, _time);
-      expect(event, RunFinished(runId: _runId, time: _time));
+      expect(event, StepStarted(time: _time, stepId: _stepId));
       expect(Event.fromJson(event.toJson()), event);
     });
   });
@@ -237,72 +216,73 @@ void main() {
   group('UnknownEvent', () {
     test('is what an unknown event name gives, written back as it was', () {
       final input = _decode(
-        '{"runId":"$_runId","time":"$_timeText","event":"run-paused",'
+        '{"time":"$_timeText","event":"session-paused",'
         '"reason":"manual","nested":{"a":[1,2]}}',
       );
       final event = Event.fromJson(input);
       expect(event, isA<UnknownEvent>());
       expect(event.toJson(), input);
       expect(jsonEncode(event.toJson()), jsonEncode(input));
-      expect(event.name, 'run-paused');
-      expect((event as UnknownEvent).runId, _runId);
-      expect(event.json, input);
-    });
-
-    test('is what a known name without exitCode gives', () {
-      final input = _decode(
-        '{"runId":"$_runId","time":"$_timeText","event":"step-finished",'
-        '"stepId":"$_stepId","outputId":null}',
-      );
-      final event = Event.fromJson(input);
-      expect(event, isA<UnknownEvent>());
-      expect(event.toJson(), input);
-      expect(event.name, 'step-finished');
-      expect((event as UnknownEvent).runId, _runId);
+      expect(event.name, 'session-paused');
+      expect((event as UnknownEvent).json, input);
     });
 
     test('is what any missing or mistyped field of a known name gives', () {
       final bad = <String>[
-        // exitCode of the wrong type
-        '{"runId":"$_runId","time":"$_timeText","event":"step-finished",'
-            '"stepId":"$_stepId","exitCode":"0","outputId":null}',
-        // outputId missing: the key is always present
-        '{"runId":"$_runId","time":"$_timeText","event":"step-finished",'
-            '"stepId":"$_stepId","exitCode":0}',
-        // node of the wrong type
-        '{"runId":"$_runId","time":"$_timeText","event":"run-started",'
-            '"node":5}',
+        // code missing: the key is always present
+        '{"time":"$_timeText","event":"session-started"}',
+        // code of the wrong type
+        '{"time":"$_timeText","event":"session-started","code":1}',
+        // graphId missing
+        '{"time":"$_timeText","event":"session-resumed","code":null}',
+        // graphId of the wrong type
+        '{"time":"$_timeText","event":"session-resumed","code":null,'
+            '"graphId":[]}',
         // stepId missing
-        '{"runId":"$_runId","time":"$_timeText","event":"run-failed",'
+        '{"time":"$_timeText","event":"step-started"}',
+        // stepId null
+        '{"time":"$_timeText","event":"step-started","stepId":null}',
+        // outputId missing
+        '{"time":"$_timeText","event":"step-finished","stepId":"$_stepId"}',
+        // outputId of the wrong type
+        '{"time":"$_timeText","event":"step-finished","stepId":"$_stepId",'
+            '"outputId":3}',
+        // stack missing
+        '{"time":"$_timeText","event":"step-failed","stepId":"$_stepId",'
             '"error":"boom"}',
-        // runId missing
-        '{"time":"$_timeText","event":"run-finished"}',
-        // runId of the wrong type
-        '{"runId":1,"time":"$_timeText","event":"run-split"}',
+        // error null
+        '{"time":"$_timeText","event":"step-failed","stepId":"$_stepId",'
+            '"error":null,"stack":""}',
+        // outputId missing
+        '{"time":"$_timeText","event":"session-finished"}',
+        // stack of the wrong type
+        '{"time":"$_timeText","event":"session-failed","error":"boom",'
+            '"stack":["#0"]}',
         // time missing
-        '{"runId":"$_runId","event":"run-split"}',
+        '{"event":"session-finished","outputId":null}',
         // time of the wrong type
-        '{"runId":"$_runId","time":20260920,"event":"run-split"}',
+        '{"time":20261003,"event":"session-finished","outputId":null}',
       ];
       for (final text in bad) {
         final input = _decode(text);
         final event = Event.fromJson(input);
         expect(event, isA<UnknownEvent>(), reason: text);
         expect(event.toJson(), input, reason: text);
+        expect(jsonEncode(event.toJson()), text, reason: text);
       }
     });
 
     test('is what a time that parseTime rejects gives', () {
       for (final time in [
-        '2026-09-20T14:03:11Z', // no milliseconds
-        '2026-09-20T14:03:11.470', // no zone
-        '2026-09-20T14:03:11.470+00:00', // not the Z form
-        '2026-02-30T14:03:11.470Z', // no such day
+        '2026-10-03T10:00:00Z', // no milliseconds
+        '2026-10-03T10:00:00.482', // no zone
+        '2026-10-03T10:00:00.482+00:00', // not the Z form
+        '2026-02-30T10:00:00.482Z', // no such day
         'yesterday',
         '',
       ]) {
         final input = _decode(
-          '{"runId":"$_runId","time":"$time","event":"run-finished"}',
+          '{"time":"$time","event":"session-finished","outputId":null}',
         );
         final event = Event.fromJson(input);
         expect(event, isA<UnknownEvent>(), reason: time);
@@ -311,29 +291,27 @@ void main() {
     });
 
     test('is what a missing or non-string event gives', () {
-      final missing = _decode('{"runId":"$_runId","time":"$_timeText"}');
+      final missing = _decode('{"time":"$_timeText"}');
       expect(Event.fromJson(missing), isA<UnknownEvent>());
       expect(Event.fromJson(missing).toJson(), missing);
       expect(Event.fromJson(missing).name, '');
-      final number = _decode('{"runId":"$_runId","event":7}');
+      final number = _decode('{"time":"$_timeText","event":7}');
       expect(Event.fromJson(number), isA<UnknownEvent>());
       expect(Event.fromJson(number).toJson(), number);
       expect(Event.fromJson(number).name, '');
       expect(Event.fromJson(<String, Object?>{}), isA<UnknownEvent>());
     });
 
-    test('has no runId when the map has none, or not a string', () {
-      expect((Event.fromJson({'event': 'x'}) as UnknownEvent).runId, isNull);
-      expect(
-        (Event.fromJson({'event': 'x', 'runId': 4}) as UnknownEvent).runId,
-        isNull,
+    test('is what an event of the old run journals gives', () {
+      final input = _decode(
+        '{"runId":"$_stepId","time":"$_timeText","event":"run-finished"}',
       );
+      expect(Event.fromJson(input), isA<UnknownEvent>());
     });
 
     test('compares the map by value, deeply', () {
       UnknownEvent of(String reason) => Event.fromJson({
-        'runId': _runId,
-        'event': 'run-paused',
+        'event': 'session-paused',
         'detail': {
           'reasons': [reason],
         },
@@ -341,13 +319,13 @@ void main() {
       expect(of('manual'), of('manual'));
       expect(of('manual').hashCode, of('manual').hashCode);
       expect(of('manual'), isNot(of('timeout')));
-      expect(of('manual'), isNot(RunFinished(runId: _runId, time: _time)));
+      expect(of('manual'), isNot(SessionFinished(time: _time, outputId: null)));
     });
 
     test('has a readable toString', () {
-      final event = Event.fromJson({'runId': _runId, 'event': 'run-paused'});
+      final event = Event.fromJson({'event': 'session-paused'});
       expect(event.toString(), startsWith('UnknownEvent('));
-      expect(event.toString(), contains('run-paused'));
+      expect(event.toString(), contains('session-paused'));
     });
   });
 
@@ -355,28 +333,15 @@ void main() {
     test('is exhaustively switchable', () {
       expect(
         [for (final (event, _) in cases) _kind(event)],
-        [
-          'run-started',
-          'step-started',
-          'step-finished',
-          'step-finished',
-          'run-split',
-          'run-finished',
-          'run-failed',
-        ],
+        [for (final (event, _) in cases) event.name],
       );
       expect(_kind(Event.fromJson({'event': 'future'})), 'unknown');
     });
 
     test('is exhaustively switchable by KnownEvent and UnknownEvent', () {
       expect([
-        for (final (event, _) in cases) _runIdOf(event),
-      ], everyElement(_runId));
-      expect([
         for (final (event, _) in cases) _timeOf(event),
       ], everyElement(_time));
-      expect(_runIdOf(Event.fromJson({'event': 'future'})), isNull);
-      expect(_runIdOf(Event.fromJson({'event': 'x', 'runId': _runId})), _runId);
       expect(_timeOf(Event.fromJson({'event': 'future'})), isNull);
     });
 

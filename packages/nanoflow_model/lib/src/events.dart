@@ -5,13 +5,13 @@ import 'time.dart';
 
 const DeepCollectionEquality _deep = DeepCollectionEquality();
 
-/// One fact in a run's journal.
+/// One fact in a session's journal.
 ///
-/// The engine only ever appends events, and a run's state is what replaying
-/// them gives. Every event of a known kind is a [KnownEvent]: a [RunStarted],
-/// [StepStarted], [StepFinished], [RunSplit], [RunFinished] or [RunFailed];
-/// anything else is an [UnknownEvent], so a switch over an event covers every
-/// case.
+/// Events are only ever appended, and a session's state is what replaying
+/// them gives. Every event of a known kind is a [KnownEvent]: a
+/// [SessionStarted], [SessionResumed], [StepStarted], [StepFinished],
+/// [StepFailed], [SessionFinished] or [SessionFailed]; anything else is an
+/// [UnknownEvent], so a switch over an event covers every case.
 sealed class Event {
   const Event();
 
@@ -32,25 +32,21 @@ sealed class Event {
   /// The value of the `event` field.
   String get name;
 
-  /// The JSON form: `runId`, `time`, `event`, then the event's own fields.
+  /// The JSON form: `time`, `event`, then the event's own fields.
   Map<String, Object?> toJson();
 }
 
-/// A known event: one with a run and a time.
+/// A known event: one with a time.
 ///
-/// Reading the [runId] or the [time] of any known event takes no switch over
-/// its kind.
+/// Reading the [time] of any known event takes no switch over its kind.
 sealed class KnownEvent extends Event {
   /// The time is kept in UTC with milliseconds, as it is written, so that an
   /// event equals the one read back from its JSON form.
-  KnownEvent({required this.runId, required DateTime time})
+  KnownEvent({required DateTime time})
     : time = DateTime.fromMillisecondsSinceEpoch(
         time.millisecondsSinceEpoch,
         isUtc: true,
       );
-
-  /// The run the event belongs to.
-  final String runId;
 
   /// When the event happened, in UTC.
   final DateTime time;
@@ -60,7 +56,6 @@ sealed class KnownEvent extends Event {
 
   @override
   Map<String, Object?> toJson() => {
-    'runId': runId,
     'time': formatTime(time),
     'event': name,
     ..._own,
@@ -83,115 +78,138 @@ sealed class KnownEvent extends Event {
   }
 }
 
-/// The run was created. The first event of a run.
-final class RunStarted extends KnownEvent {
-  RunStarted({required super.runId, required super.time, required this.node});
+/// The session was created. The first event of a session.
+final class SessionStarted extends KnownEvent {
+  SessionStarted({required super.time, required this.code});
 
-  /// The node the run starts at.
-  final String node;
-
-  @override
-  String get name => 'run-started';
+  /// The hash of the code that runs the session; `null` when it could not be
+  /// computed.
+  final String? code;
 
   @override
-  Map<String, Object?> get _own => {'node': node};
+  String get name => 'session-started';
+
+  @override
+  Map<String, Object?> get _own => {'code': code};
 }
 
-/// A step's command is about to run. Written again each time the engine
-/// restarts the command of an unfinished step.
-final class StepStarted extends KnownEvent {
-  StepStarted({
-    required super.runId,
+/// The session goes on after its process ended: written on every resume.
+final class SessionResumed extends KnownEvent {
+  SessionResumed({
     required super.time,
-    required this.stepId,
-    required this.node,
+    required this.code,
+    required this.graphId,
   });
 
-  final String stepId;
+  /// The hash of the code that runs the session now; `null` when it could
+  /// not be computed.
+  final String? code;
 
-  /// The name of the node.
-  final String node;
+  /// The document with a new snapshot of the graph file, when the code is
+  /// not the one last written; otherwise `null`.
+  final String? graphId;
+
+  @override
+  String get name => 'session-resumed';
+
+  @override
+  Map<String, Object?> get _own => {'code': code, 'graphId': graphId};
+}
+
+/// A step begins to run live. Written again each time it runs again.
+final class StepStarted extends KnownEvent {
+  StepStarted({required super.time, required this.stepId});
+
+  final String stepId;
 
   @override
   String get name => 'step-started';
 
   @override
-  Map<String, Object?> get _own => {'stepId': stepId, 'node': node};
+  Map<String, Object?> get _own => {'stepId': stepId};
 }
 
-/// A step's command ended. This event, and nothing else, records the outcome
-/// of a step.
+/// A step returned a value. This event, and not `step.json`, records it.
 final class StepFinished extends KnownEvent {
   StepFinished({
-    required super.runId,
     required super.time,
     required this.stepId,
-    required this.exitCode,
     required this.outputId,
   });
 
   final String stepId;
 
-  /// The exit code of the step's process.
-  final int exitCode;
-
-  /// The document the command produced: the data of a worker or the outcome of
-  /// a fork. `null` for a worker without `out`, and on failure.
+  /// The document with the value the step returned.
   final String? outputId;
 
   @override
   String get name => 'step-finished';
 
   @override
-  Map<String, Object?> get _own => {
-    'stepId': stepId,
-    'exitCode': exitCode,
-    'outputId': outputId,
-  };
+  Map<String, Object?> get _own => {'stepId': stepId, 'outputId': outputId};
 }
 
-/// The run goes on as several new runs. The last event of the run.
-final class RunSplit extends KnownEvent {
-  RunSplit({required super.runId, required super.time});
-
-  @override
-  String get name => 'run-split';
-
-  @override
-  Map<String, Object?> get _own => const {};
-}
-
-/// The run has nowhere to go. The last event of the run.
-final class RunFinished extends KnownEvent {
-  RunFinished({required super.runId, required super.time});
-
-  @override
-  String get name => 'run-finished';
-
-  @override
-  Map<String, Object?> get _own => const {};
-}
-
-/// A command failed or a route could not be found. The last event of the run.
-final class RunFailed extends KnownEvent {
-  RunFailed({
-    required super.runId,
+/// A step threw. The exception goes on into the workflow's code.
+final class StepFailed extends KnownEvent {
+  StepFailed({
     required super.time,
     required this.stepId,
     required this.error,
+    required this.stack,
   });
 
-  /// The step it happened at.
   final String stepId;
 
-  /// One line about what happened.
+  /// The exception's text, on one line.
   final String error;
 
-  @override
-  String get name => 'run-failed';
+  /// The stack trace's text.
+  final String stack;
 
   @override
-  Map<String, Object?> get _own => {'stepId': stepId, 'error': error};
+  String get name => 'step-failed';
+
+  @override
+  Map<String, Object?> get _own => {
+    'stepId': stepId,
+    'error': error,
+    'stack': stack,
+  };
+}
+
+/// The workflow function returned a value. The last event of a session.
+final class SessionFinished extends KnownEvent {
+  SessionFinished({required super.time, required this.outputId});
+
+  /// The document with the value the workflow returned.
+  final String? outputId;
+
+  @override
+  String get name => 'session-finished';
+
+  @override
+  Map<String, Object?> get _own => {'outputId': outputId};
+}
+
+/// The workflow function threw. The last event of a session.
+final class SessionFailed extends KnownEvent {
+  SessionFailed({
+    required super.time,
+    required this.error,
+    required this.stack,
+  });
+
+  /// The exception's text, on one line.
+  final String error;
+
+  /// The stack trace's text.
+  final String stack;
+
+  @override
+  String get name => 'session-failed';
+
+  @override
+  Map<String, Object?> get _own => {'error': error, 'stack': stack};
 }
 
 /// An event this version does not understand: its name is not known, or a
@@ -203,12 +221,6 @@ final class UnknownEvent extends Event {
 
   /// The map the event was read from.
   final Map<String, Object?> json;
-
-  /// The `runId` of the map, or `null` when it has none that is a string.
-  String? get runId {
-    final value = json['runId'];
-    return value is String ? value : null;
-  }
 
   /// The `event` of the map, or an empty string when it has none that is a
   /// string.
@@ -240,37 +252,38 @@ Event? _parse(Map<String, Object?> json) {
   final name = json['event'];
   if (name is! String) return null;
   return switch (name) {
-    'run-started' => RunStarted(
-      runId: readString(json, 'runId'),
+    'session-started' => SessionStarted(
       time: readTime(json, 'time'),
-      node: readString(json, 'node'),
+      code: readStringOrNull(json, 'code'),
+    ),
+    'session-resumed' => SessionResumed(
+      time: readTime(json, 'time'),
+      code: readStringOrNull(json, 'code'),
+      graphId: readStringOrNull(json, 'graphId'),
     ),
     'step-started' => StepStarted(
-      runId: readString(json, 'runId'),
       time: readTime(json, 'time'),
       stepId: readString(json, 'stepId'),
-      node: readString(json, 'node'),
     ),
     'step-finished' => StepFinished(
-      runId: readString(json, 'runId'),
       time: readTime(json, 'time'),
       stepId: readString(json, 'stepId'),
-      exitCode: readInt(json, 'exitCode'),
       outputId: readStringOrNull(json, 'outputId'),
     ),
-    'run-split' => RunSplit(
-      runId: readString(json, 'runId'),
-      time: readTime(json, 'time'),
-    ),
-    'run-finished' => RunFinished(
-      runId: readString(json, 'runId'),
-      time: readTime(json, 'time'),
-    ),
-    'run-failed' => RunFailed(
-      runId: readString(json, 'runId'),
+    'step-failed' => StepFailed(
       time: readTime(json, 'time'),
       stepId: readString(json, 'stepId'),
       error: readString(json, 'error'),
+      stack: readString(json, 'stack'),
+    ),
+    'session-finished' => SessionFinished(
+      time: readTime(json, 'time'),
+      outputId: readStringOrNull(json, 'outputId'),
+    ),
+    'session-failed' => SessionFailed(
+      time: readTime(json, 'time'),
+      error: readString(json, 'error'),
+      stack: readString(json, 'stack'),
     ),
     _ => null,
   };

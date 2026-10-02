@@ -55,6 +55,14 @@ Map<String, Object?> readObject(Map<String, Object?> json, String key) =>
     asObject(readValue(json, key)) ??
     (throw FormatException('$key: expected an object'));
 
+/// The object at [key], or `null`.
+Map<String, Object?>? readObjectOrNull(Map<String, Object?> json, String key) {
+  final value = readValue(json, key);
+  if (value == null) return null;
+  return asObject(value) ??
+      (throw FormatException('$key: expected an object or null'));
+}
+
 /// The list at [key].
 List<Object?> readList(Map<String, Object?> json, String key) {
   final value = readValue(json, key);

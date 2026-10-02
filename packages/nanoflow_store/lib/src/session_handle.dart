@@ -7,27 +7,25 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
 import 'atomic.dart';
-import 'engine_lock.dart';
+import 'owner_lock.dart';
 
 const _newline = 0x0a;
 
-/// One session on disk: what the engine writes while it drives the session,
-/// and what it reads back to continue it after a crash (`--resume`).
+/// One session on disk: what the process that runs it writes, and what it
+/// reads back to continue it after a crash.
 ///
-/// Only one engine process works with a session at a time: the handle holds
-/// the session's lock until [release] or the end of the process.
+/// Only one process works with a session at a time: the handle holds the
+/// session's lock until [release] or the end of the process.
 final class SessionHandle {
   SessionHandle._(this.session, this.dir, this._clock, this._lock)
-    : _runTimes = _IncreasingTimes(),
-      _stepTimes = {};
+    : _stepTimes = _IncreasingTimes();
 
   /// [from] after its directory was renamed to [dir]. The times it has given
-  /// its runs and steps stay taken, and it keeps its lock.
+  /// its steps stay taken, and it keeps its lock.
   SessionHandle._moved(SessionHandle from, this.dir)
     : session = from.session,
       _clock = from._clock,
       _lock = from._lock,
-      _runTimes = from._runTimes,
       _stepTimes = from._stepTimes;
 
   /// The session's fields, as in `session.json`.
@@ -38,246 +36,137 @@ final class SessionHandle {
 
   final Clock _clock;
 
-  /// The open lock file that keeps other engine processes off the session;
-  /// `null` once released.
+  /// The open lock file that keeps other processes off the session; `null`
+  /// once released.
   RandomAccessFile? _lock;
 
-  /// Times of the session's runs, and of each run's steps by run id: a
-  /// directory's name must sort after its siblings created before it.
-  final _IncreasingTimes _runTimes;
-  final Map<String, _IncreasingTimes> _stepTimes;
+  /// Times of the session's steps: a step directory's name must sort after
+  /// those of the steps created before it.
+  final _IncreasingTimes _stepTimes;
 
-  /// Directories of the runs and steps looked up so far, by id. A directory
-  /// keeps its name once it is built.
-  final Map<String, String> _runDirs = {};
+  /// Directories of the steps looked up so far, by id. A directory keeps its
+  /// name once it is built.
   final Map<String, String> _stepDirs = {};
 
-  /// The session's runs, ordered by directory name: in the order they were
-  /// created.
-  Future<List<Run>> runs() async => [
-    for (final run in _builtDirs(dir))
-      await _readModel(p.join(run.path, runFileName), Run.fromJson),
-  ];
+  String get _stepsDir => p.join(dir, stepsDirName);
 
-  /// The events of the run [runId], in the order they were written.
+  /// The events of the session, in the order they were written.
   ///
   /// An incomplete last line, one that is still being written, is left out.
   /// Throws a [StoreCorruptedException] for a complete line that is not a JSON
   /// object; an object that is not an event this version knows is an
   /// [UnknownEvent].
-  Future<List<Event>> events(String runId) async {
-    final path = p.join(_runDir(runId), eventsFileName);
-    final bytes = await File(path).readAsBytes();
-    final events = <Event>[];
-    var start = 0;
-    var end = bytes.indexOf(_newline);
-    while (end != -1) {
-      final event = _parseLine(bytes.sublist(start, end));
-      if (event == null) {
-        throw StoreCorruptedException(path: path, line: events.length + 1);
-      }
-      events.add(event);
-      start = end + 1;
-      end = bytes.indexOf(_newline, start);
-    }
-    return events;
-  }
+  Future<List<Event>> events() => readJournal(p.join(dir, eventsFileName));
 
-  /// The steps of the run [runId], ordered by directory name: in the order
-  /// they were created.
-  Future<List<Step>> steps(String runId) async => [
-    for (final step in _builtDirs(p.join(_runDir(runId), stepsDirName)))
-      await _readModel(p.join(step.path, stepFileName), Step.fromJson),
+  /// The records of the session's steps, ordered by directory name: in the
+  /// order they were created.
+  Future<List<Step>> steps() async => [
+    for (final step in _builtDirs(_stepsDir))
+      await readModel(p.join(step.path, stepFileName), Step.fromJson),
   ];
 
   /// The value of the document [documentId].
-  Future<Object?> documentValue(String documentId) async => (await _readModel(
+  Future<Object?> documentValue(String documentId) async => (await readModel(
     p.join(dir, documentsDirName, documentFileName(documentId)),
     Document.fromJson,
   )).value;
 
-  /// Creates a run of the session together with its first step, at [node],
-  /// whose input is [inputId]. The run's journal holds `run-started`.
-  ///
-  /// The run appears whole: its directory, `run.json`, `log.jsonl` and the
-  /// step's directory are built under a temporary name and renamed into place.
-  /// The run's time, in its directory's name and in `run-started`, comes from
-  /// the clock, but is at least a millisecond after the time of the run
-  /// created before it, so that runs sort by name in the order they were
-  /// created. The step's directory is named the same way.
-  ///
-  /// Throws a [FileSystemException], having built nothing, when the
-  /// session's directory is gone.
-  Future<(Run, Step)> createRun({
-    required String? parentId,
-    required String node,
-    required String? inputId,
-  }) async {
-    final run = Run(id: newId(), sessionId: session.id, parentId: parentId);
-    final createdAt = _runTimes.next(_clock);
-    late final Step step;
-    late final String stepName;
-    final runDir = _runDirs[run.id] = await buildDirAtomically(
-      dir,
-      id: run.id,
-      name: runDirName(createdAt, run.id),
-      build: (runDir) async {
-        await writeJsonAtomically(p.join(runDir, runFileName), run.toJson());
-        await _startJournal(
-          p.join(runDir, eventsFileName),
-          RunStarted(runId: run.id, time: createdAt, node: node),
-        );
-        final stepsDir = await Directory(p.join(runDir, stepsDirName)).create();
-        final built = await _buildStep(
-          stepsDir.path,
-          runId: run.id,
-          node: node,
-          inputId: inputId,
-        );
-        step = built.step;
-        stepName = p.basename(built.dir);
-      },
-    );
-    _stepDirs[step.id] = p.join(runDir, stepsDirName, stepName);
-    return (run, step);
-  }
-
-  /// Creates a step of the run [runId] at [node], whose input is [inputId].
+  /// Creates the record of a step: `steps/<time>-<name>-<id>/step.json`,
+  /// without `outputId`. No event is written.
   ///
   /// The step's directory appears whole, with `step.json`. Its name holds the
   /// time from the clock, but at least a millisecond after the time of the
-  /// run's step created before it, so that steps sort by name in the order
-  /// they were created. No event is written.
+  /// step created before it, so that steps sort by name in the order they
+  /// were created.
   ///
-  /// Throws a [FileSystemException], having built nothing, when the run's
-  /// directory is gone.
+  /// Throws a [FileSystemException], having built nothing, when the
+  /// session's directory is gone.
   Future<Step> createStep({
-    required String runId,
-    required String node,
-    required String? inputId,
+    required String name,
+    required String key,
+    required String? after,
+    required String? place,
   }) async {
-    final (:step, :dir) = await _buildStep(
-      p.join(_runDir(runId), stepsDirName),
-      runId: runId,
-      node: node,
-      inputId: inputId,
+    final step = Step(
+      id: newId(),
+      sessionId: session.id,
+      name: name,
+      key: key,
+      after: after,
+      place: place,
+      outputId: null,
+      log: logFileName,
     );
-    _stepDirs[step.id] = dir;
+    // Kept, so that a step whose directory is removed later is not looked up
+    // again, which would find it missing rather than fail as a write into it
+    // does.
+    _stepDirs[step.id] = await buildDirAtomically(
+      _stepsDir,
+      id: step.id,
+      name: stepDirName(_stepTimes.next(_clock), name, step.id),
+      build: (dir) =>
+          writeJsonAtomically(p.join(dir, stepFileName), step.toJson()),
+    );
     return step;
   }
 
-  /// Appends [event] to the journal of its run: one line, flushed.
+  /// Appends [event] to the session's journal: one line, flushed.
   ///
-  /// Throws a [PathNotFoundException] when the run has no journal, which is
-  /// not made again; and, once the line is written, when the session has no
-  /// `session.json` or the run no `run.json`. Either way the session is gone
-  /// or being removed, as by `rm -rf`, which removes it depth first while
-  /// the engine still writes to what it has not reached yet: the engine
-  /// learns of it within one event.
-  Future<void> appendEvent(Event event) async {
-    final runId = switch (event) {
-      KnownEvent(:final runId) => runId,
-      UnknownEvent(:final runId) =>
-        runId ?? (throw ArgumentError.value(event, 'event', 'has no runId')),
-    };
-    final runDir = _runDir(runId);
-    await _appendToJournal(p.join(runDir, eventsFileName), event);
-    for (final path in [
-      p.join(dir, sessionFileName),
-      p.join(runDir, runFileName),
-    ]) {
-      if (!await File(path).exists()) throw _missing('Cannot find file', path);
+  /// Throws a [PathNotFoundException] when the session has no journal, which
+  /// is not made again; and, once the line is written, when the session has
+  /// no `session.json`. Either way the session is gone or being removed, as
+  /// by `rm -rf`, which removes it depth first while the process still
+  /// writes to what it has not reached yet: the process learns of it within
+  /// one event.
+  Future<void> appendEvent(KnownEvent event) async {
+    await _appendToJournal(p.join(dir, eventsFileName), event);
+    final sessionFile = p.join(dir, sessionFileName);
+    if (!await File(sessionFile).exists()) {
+      throw _missing('Cannot find file', sessionFile);
     }
   }
 
   /// Writes a new document holding [value]; returns its id.
-  Future<String> writeDocument(Object? value) async {
-    final document = Document(id: newId(), sessionId: session.id, value: value);
-    await writeJsonAtomically(
-      p.join(dir, documentsDirName, documentFileName(document.id)),
-      document.toJson(),
-    );
-    return document.id;
-  }
+  Future<String> writeDocument(Object? value) =>
+      writeDocumentAt(dir, session.id, value);
 
   /// Rewrites `step.json` of [step] with [outputId]; returns the step as it is
   /// now.
   Future<Step> setStepOutput(Step step, String outputId) async {
     final changed = step.withOutput(outputId);
     await writeJsonAtomically(
-      p.join(_stepDir(step.runId, step.id), stepFileName),
+      p.join(_stepDir(step.id), stepFileName),
       changed.toJson(),
     );
     return changed;
   }
 
-  /// Gives up the session's lock: another engine process may drive the
-  /// session from now on. Reading through the handle still works; writing
-  /// through it must not be done any more.
+  /// Opens the log of the step [stepId] for appending: a step that runs
+  /// again adds to the log it has.
+  ///
+  /// The log throws no error of its file: [StepLog.failed] gives it.
+  StepLog openLog(String stepId) =>
+      StepLog._(File(p.join(_stepDir(stepId), logFileName)));
+
+  /// Gives up the session's lock: another process may own the session from
+  /// now on. Reading through the handle still works; writing through it must
+  /// not be done any more.
   Future<void> release() async {
     final lock = _lock;
     _lock = null;
     await lock?.close();
   }
 
-  /// Opens the command log of the step [stepId] of the run [runId] for
-  /// appending: a step that runs again adds to the log it has.
-  ///
-  /// The log throws no error of its file: [StepLog.failed] gives it.
-  StepLog openLog(String runId, String stepId) =>
-      StepLog._(File(p.join(_stepDir(runId, stepId), logFileName)));
-
-  /// Builds the directory of a new step in [stepsDir]; gives the step and
-  /// its directory.
-  ///
-  /// The callers keep the directory, as [createRun] keeps a run's: a step
-  /// whose directory is removed later is not looked up again, which would
-  /// find it missing rather than fail as a write into it does.
-  Future<({Step step, String dir})> _buildStep(
-    String stepsDir, {
-    required String runId,
-    required String node,
-    required String? inputId,
-  }) async {
-    final step = Step(
-      id: newId(),
-      runId: runId,
-      inputId: inputId,
-      outputId: null,
-      log: logFileName,
-    );
-    final dir = await buildDirAtomically(
-      stepsDir,
-      id: step.id,
-      name: stepDirName(
-        _stepTimes.putIfAbsent(runId, _IncreasingTimes.new).next(_clock),
-        node,
-        step.id,
-      ),
-      build: (dir) =>
-          writeJsonAtomically(p.join(dir, stepFileName), step.toJson()),
-    );
-    return (step: step, dir: dir);
-  }
-
-  String _runDir(String runId) => _runDirs[runId] ??=
-      _builtDirOf(dir, runId) ??
-      (throw ArgumentError.value(
-        runId,
-        'runId',
-        'no such run in session ${session.id}',
-      ));
-
-  String _stepDir(String runId, String stepId) => _stepDirs[stepId] ??=
-      _builtDirOf(p.join(_runDir(runId), stepsDirName), stepId) ??
+  String _stepDir(String stepId) => _stepDirs[stepId] ??=
+      _builtDirOf(_stepsDir, stepId) ??
       (throw ArgumentError.value(
         stepId,
         'stepId',
-        'no such step in run $runId',
+        'no such step in session ${session.id}',
       ));
 }
 
-/// The log of one step's command, open for appending.
+/// The log of one step, open for appending.
 ///
 /// Its file is written in the background, in the order the bytes were added:
 /// what is added while a write is under way waits, and goes in one write
@@ -405,8 +294,8 @@ SessionHandle movedSessionHandle(SessionHandle handle, String dir) =>
 /// opening it.
 ///
 /// Takes the session's lock first: throws a [SessionBusyException] when
-/// another engine process holds it, and changes nothing. Then cuts an
-/// incomplete last line off the journal of each run: the engine died while
+/// another process holds it, and changes nothing. Then cuts an incomplete
+/// last line off the journal: the process that owned the session died while
 /// writing it, and the next event must start on a line of its own. Not
 /// exported.
 Future<SessionHandle> loadSessionHandle(
@@ -416,17 +305,77 @@ Future<SessionHandle> loadSessionHandle(
 ) async {
   final lock = await lockSession(dir, sessionId);
   try {
-    final session = await _readModel(
+    final session = await readModel(
       p.join(dir, sessionFileName),
       Session.fromJson,
     );
-    for (final run in _builtDirs(dir)) {
-      await _cutIncompleteLine(p.join(run.path, eventsFileName));
-    }
+    await _cutIncompleteLine(p.join(dir, eventsFileName));
     return SessionHandle._(session, dir, clock, lock);
   } catch (_) {
     await lock.close();
     rethrow;
+  }
+}
+
+/// Writes a new document of the session [sessionId] in its directory [dir],
+/// holding [value]; returns its id. Not exported.
+Future<String> writeDocumentAt(
+  String dir,
+  String sessionId,
+  Object? value,
+) async {
+  final document = Document(id: newId(), sessionId: sessionId, value: value);
+  await writeJsonAtomically(
+    p.join(dir, documentsDirName, documentFileName(document.id)),
+    document.toJson(),
+  );
+  return document.id;
+}
+
+/// Writes a new journal at [path] whose first line is [event], flushed. Not
+/// exported.
+Future<void> startJournal(String path, KnownEvent event) =>
+    File(path).writeAsString(_line(event), flush: true);
+
+/// The events of the journal at [path], in the order they were written. Not
+/// exported.
+///
+/// An incomplete last line is left out. Throws a [StoreCorruptedException]
+/// for a complete line that is not a JSON object.
+Future<List<Event>> readJournal(String path) async {
+  final bytes = await File(path).readAsBytes();
+  final events = <Event>[];
+  var start = 0;
+  var end = bytes.indexOf(_newline);
+  while (end != -1) {
+    final event = _parseLine(bytes.sublist(start, end));
+    if (event == null) {
+      throw StoreCorruptedException(path: path, line: events.length + 1);
+    }
+    events.add(event);
+    start = end + 1;
+    end = bytes.indexOf(_newline, start);
+  }
+  return events;
+}
+
+/// Reads the JSON file at [path] with [fromJson]. Not exported.
+///
+/// Throws a [FormatException] that starts with [path] when the file is not a
+/// JSON object or not the model's JSON form.
+Future<T> readModel<T>(
+  String path,
+  T Function(Map<String, Object?> json) fromJson,
+) async {
+  final text = await File(path).readAsString();
+  try {
+    final json = jsonDecode(text);
+    if (json is! Map<String, Object?>) {
+      throw const FormatException('expected a JSON object');
+    }
+    return fromJson(json);
+  } on FormatException catch (e) {
+    throw FormatException('$path: ${e.message}');
   }
 }
 
@@ -459,26 +408,6 @@ String? _builtDirOf(String parent, String id) {
   return null;
 }
 
-/// Reads the JSON file at [path] with [fromJson].
-///
-/// Throws a [FormatException] that starts with [path] when the file is not a
-/// JSON object or not the model's JSON form.
-Future<T> _readModel<T>(
-  String path,
-  T Function(Map<String, Object?> json) fromJson,
-) async {
-  final text = await File(path).readAsString();
-  try {
-    final json = jsonDecode(text);
-    if (json is! Map<String, Object?>) {
-      throw const FormatException('expected a JSON object');
-    }
-    return fromJson(json);
-  } on FormatException catch (e) {
-    throw FormatException('$path: ${e.message}');
-  }
-}
-
 /// The event on a journal [line] without its `\n`, or `null` when the line is
 /// not a JSON object.
 Event? _parseLine(List<int> line) {
@@ -492,25 +421,21 @@ Event? _parseLine(List<int> line) {
 }
 
 /// [event] as a line of a journal: compact JSON and `\n`.
-String _line(Event event) => '${jsonEncode(event.toJson())}\n';
-
-/// Writes a new journal at [path] whose first line is [event], flushed.
-Future<void> _startJournal(String path, Event event) =>
-    File(path).writeAsString(_line(event), flush: true);
+String _line(KnownEvent event) => '${jsonEncode(event.toJson())}\n';
 
 /// Appends [event] to the journal at [path] as one line, flushed.
 ///
 /// Throws a [PathNotFoundException] when there is no journal at [path].
 /// Opening a file to append to makes it when it is missing; a journal is
 /// never empty, so an empty one is one this made, and it is removed again.
-Future<void> _appendToJournal(String path, Event event) async {
+Future<void> _appendToJournal(String path, KnownEvent event) async {
   final journal = await File(path).open(mode: FileMode.append);
   try {
     if (await journal.length() == 0) {
       try {
         await File(path).delete();
       } on FileSystemException {
-        // Removed already, as the rest of the run is being.
+        // Removed already, as the rest of the session is being.
       }
       throw _missing('Cannot open file', path);
     }

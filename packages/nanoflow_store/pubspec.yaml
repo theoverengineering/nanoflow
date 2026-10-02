@@ -1,5 +1,5 @@
 name: nanoflow_store
-description: The engine's filesystem store - writes a session and reads it back for --resume.
+description: Writes the sessions of nanoflow workflows and reads one back for resume.
 publish_to: none
 resolution: workspace
 environment:

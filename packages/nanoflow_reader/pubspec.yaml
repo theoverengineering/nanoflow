@@ -1,5 +1,5 @@
 name: nanoflow_reader
-description: Follows all sessions of a graph in its runs directory - the feed of changes and data on request for the UI.
+description: Follows all sessions in a runs directory - the feed of changes and data on request for the UI.
 publish_to: none
 resolution: workspace
 environment:

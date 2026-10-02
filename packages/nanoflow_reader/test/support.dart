@@ -1,4 +1,4 @@
-// Fixtures written the way the store writes them (D2, D3), with plain
+// Fixtures written the way the store writes them (spec §5, D3), with plain
 // `dart:io` and the models' `toJson`: the reader's tests must not depend on
 // `nanoflow_store`.
 
@@ -11,18 +11,17 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// 2026-09-20 14:03:11.470 UTC, the time of the README's example session.
-final DateTime start = DateTime.utc(2026, 9, 20, 14, 3, 11, 470);
+/// 2026-10-03 10:00:00.482 UTC, the time of the spec's example session.
+final DateTime start = DateTime.utc(2026, 10, 3, 10, 0, 0, 482);
 
 /// [start] moved on by [seconds].
 DateTime at(int seconds) => start.add(Duration(seconds: seconds));
 
-/// The graph a session holds: a session stores whatever map it is given.
+/// The graph file a session holds: a session stores whatever map it is
+/// given.
 const graph = <String, Object?>{
-  'start': 'collect',
-  'nodes': {
-    'collect': {'command': 'nodes/collect/run.sh', 'then': 'is-empty'},
-  },
+  'format': 1,
+  'workflows': ['lib/review.dart#review'],
 };
 
 /// How long a test waits for the feed before it fails.
@@ -77,48 +76,43 @@ String buildDir(String parent, String name, void Function(String dir) build) {
   return temporary.renameSync(p.join(parent, name)).path;
 }
 
-/// Writes [session] of the graph [graphName] to [runsDir]; returns its
-/// directory. Without [documents], the session has no `documents` directory.
+/// A session of [workflow] with no graph and no input.
+Session newSession({String workflow = 'review'}) =>
+    Session(id: newId(), workflow: workflow, graph: graph, inputId: null);
+
+/// Writes [session] to [runsDir], with [events] in its journal; returns its
+/// directory. Without [events], the session has no journal; without
+/// [documents], no `documents` directory, and without [steps], no `steps`
+/// directory.
 String writeSession(
   String runsDir,
   Session session, {
-  String graphName = 'review',
   DateTime? createdAt,
+  List<Event>? events = const [],
   bool documents = true,
+  bool steps = true,
 }) => buildDir(
   runsDir,
-  sessionDirName(graphName, createdAt ?? start, session.id),
+  sessionDirName(session.workflow, createdAt ?? start, session.id),
   (dir) {
     writeJson(p.join(dir, sessionFileName), session.toJson());
     if (documents) Directory(p.join(dir, documentsDirName)).createSync();
+    if (steps) Directory(p.join(dir, stepsDirName)).createSync();
+    if (events != null) {
+      File(p.join(dir, eventsFileName))
+          .writeAsStringSync(events.map(line).join());
+    }
   },
 );
 
-/// Writes [run] to [sessionDir], with [events] in its journal; returns its
+/// Writes [step] to the session directory [sessionDir]; returns its
 /// directory.
-String writeRun(
-  String sessionDir,
-  Run run, {
-  required DateTime createdAt,
-  List<Event> events = const [],
-}) => buildDir(sessionDir, runDirName(createdAt, run.id), (dir) {
-  writeJson(p.join(dir, runFileName), run.toJson());
-  File(p.join(dir, eventsFileName)).writeAsStringSync(events.map(line).join());
-  Directory(p.join(dir, stepsDirName)).createSync();
-});
-
-/// Writes [step] of the node [node] to the run directory [runDir]; returns
-/// its directory.
-String writeStep(
-  String runDir,
-  Step step, {
-  required String node,
-  required DateTime startedAt,
-}) => buildDir(
-  p.join(runDir, stepsDirName),
-  stepDirName(startedAt, node, step.id),
-  (dir) => writeJson(p.join(dir, stepFileName), step.toJson()),
-);
+String writeStep(String sessionDir, Step step, {required DateTime startedAt}) =>
+    buildDir(
+      p.join(sessionDir, stepsDirName),
+      stepDirName(startedAt, step.name, step.id),
+      (dir) => writeJson(p.join(dir, stepFileName), step.toJson()),
+    );
 
 /// Rewrites `step.json` in [stepDir] with [step].
 void rewriteStep(String stepDir, Step step) =>
@@ -133,9 +127,9 @@ void writeDocument(String sessionDir, Document document) => writeJson(
 /// The journal line of [event]: compact JSON and `\n`.
 String line(Event event) => '${jsonEncode(event.toJson())}\n';
 
-/// Appends [text] to the journal of the run in [runDir].
-void append(String runDir, String text) =>
-    File(p.join(runDir, eventsFileName))
+/// Appends [text] to the journal of the session in [sessionDir].
+void append(String sessionDir, String text) =>
+    File(p.join(sessionDir, eventsFileName))
         .writeAsStringSync(text, mode: FileMode.append, flush: true);
 
 /// Appends [bytes] to the file at [path].
@@ -152,30 +146,26 @@ void truncate(String path, int length) {
   }
 }
 
-/// A step of [runId] that has not finished, with its log in `command.log`.
-Step newStep(String runId, {String? inputId}) => Step(
-  id: newId(),
-  runId: runId,
-  inputId: inputId,
-  outputId: null,
-  log: logFileName,
-);
+/// A step record of the session [sessionId] that has not finished.
+Step newStep(String sessionId, {String name = 'collect', String? after}) =>
+    Step(
+      id: newId(),
+      sessionId: sessionId,
+      name: name,
+      key: '$name#1@e3b0c44298fc1c14',
+      after: after,
+      place: 'lib/review.dart:12',
+      outputId: null,
+      log: logFileName,
+    );
 
 /// The changes and errors a reader's feed gives, collected as they come.
 final class Feed {
-  /// Listens to the feed of a new reader of [graphName] in [runsDir] until
-  /// the test ends.
+  /// Listens to the feed of a new reader of [runsDir] until the test ends.
   Feed(
     String runsDir, {
-    String graphName = 'review',
     Duration pollInterval = const Duration(milliseconds: 20),
-  }) : this.of(
-         FsReader(
-           runsDir: runsDir,
-           graphName: graphName,
-           pollInterval: pollInterval,
-         ),
-       );
+  }) : this.of(FsReader(runsDir: runsDir, pollInterval: pollInterval));
 
   /// Listens to the feed of [reader] until the test ends.
   Feed.of(this.reader) {
@@ -236,26 +226,27 @@ final class Feed {
     return found!;
   }
 
-  /// Waits until the feed has given everything the sessions of the graph on
-  /// disk hold now.
+  /// Waits until the feed has given everything the sessions on disk hold
+  /// now.
   ///
-  /// Writes a marker session of the graph created in 1970 and waits for it:
-  /// the scan that finds it has listed the sessions after this call, and went
-  /// through those that are newer — every other — first. A second call waits
-  /// for a scan that began after the one that gave the first marker had
-  /// ended, so by then anything a scan gives again, or gives for a directory
-  /// older than the marker, has come too.
+  /// Writes a marker session created in 1970 and waits for it: the scan that
+  /// finds it has listed the sessions after this call, and went through
+  /// those that are newer — every other — first. A second call waits for a
+  /// scan that began after the one that gave the first marker had ended, so
+  /// by then anything a scan gives again, or gives for a directory older
+  /// than the marker, has come too.
   Future<void> settle() async {
-    final id = newId();
-    _markers[id] = false;
+    final marker = newSession(workflow: 'marker');
+    _markers[marker.id] = false;
     writeSession(
       reader.runsDir,
-      Session(id: id, graph: const {}),
-      graphName: reader.graphName,
+      marker,
       createdAt: DateTime.utc(1970),
+      events: null,
       documents: false,
+      steps: false,
     );
-    await until(() => _markers[id]!);
+    await until(() => _markers[marker.id]!);
   }
 
   /// The changes given since [mark], a length of [changes] taken earlier.
@@ -271,7 +262,7 @@ final class Feed {
   }
 }
 
-/// Collects the text of a [stepLog] stream as it comes.
+/// Collects the text of a [FsReader.stepLog] stream as it comes.
 final class LogText {
   LogText(Stream<String> log) {
     final subscription = log.listen((text) {

@@ -4,66 +4,66 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
 import 'atomic.dart';
-import 'engine_lock.dart';
+import 'owner_lock.dart';
 import 'session_handle.dart';
 
-/// A node of the graph's `start`, and whether it declares `in`.
-typedef StartNode = ({String node, bool takesInput});
-
-/// The sessions in a `runs` directory, as the engine keeps them.
+/// The sessions in a `runs` directory, as the process that runs them keeps
+/// them.
 final class FsStore {
   FsStore(this.runsDir, {this._clock = systemClock});
 
-  /// The `runs` directory next to the graph file.
+  /// The `runs` directory in the project directory.
   final String runsDir;
 
   final Clock _clock;
 
-  /// Creates a session of the graph [graphName] that holds [graph].
+  /// Creates a session of the workflow [workflow]: one call of it.
   ///
   /// The session's lock is taken before anything is written to it: the
-  /// handle holds it, so no other engine process can open the session (see
+  /// handle holds it, so no other process can open the session (see
   /// [openSession]). Builds the whole session under `runs/.tmp-<id>/` and
-  /// renames it into place: `session.json`, the `documents` directory with
-  /// the input document (when [input] is given), and for every start node a
-  /// run (`run.json`, `log.jsonl` with `run-started`) with its first step,
-  /// whose `inputId` is the input document if the node takes input, else
-  /// `null`. The session directory's name holds the time the session is
-  /// created; creates [runsDir] when there is none.
+  /// renames it into place: `session.json` with [graph], the `documents`
+  /// directory with the input document (when [input] is given), the empty
+  /// `steps` directory and `log.jsonl` with `session-started` and [code].
+  /// The session directory's name and the time of `session-started` are the
+  /// time the session is created; creates [runsDir] when there is none.
   Future<SessionHandle> createSession({
-    required String graphName,
-    required Map<String, Object?> graph,
-    required List<StartNode> startNodes,
-    ({Object? value})? input,
+    required String workflow,
+    required Map<String, Object?>? graph,
+    required ({Object? value})? input,
+    required String? code,
   }) async {
-    final session = Session(id: newId(), graph: graph);
+    final id = newId();
     final createdAt = _clock();
     late final SessionHandle built;
     final dir = await buildDirAtomically(
       runsDir,
-      id: session.id,
-      name: sessionDirName(graphName, createdAt, session.id),
+      id: id,
+      name: sessionDirName(workflow, createdAt, id),
       createParent: true,
       build: (dir) async {
         // A lock on an open file outlives the rename of its directory.
-        final lock = await lockSession(dir, session.id);
+        final lock = await lockSession(dir, id);
+        await Directory(p.join(dir, documentsDirName)).create();
+        await Directory(p.join(dir, stepsDirName)).create();
+        final inputId = input == null
+            ? null
+            : await writeDocumentAt(dir, id, input.value);
+        final session = Session(
+          id: id,
+          workflow: workflow,
+          graph: graph,
+          inputId: inputId,
+        );
         await writeJsonAtomically(
           p.join(dir, sessionFileName),
           session.toJson(),
         );
-        await Directory(p.join(dir, documentsDirName)).create();
-        final handle = sessionHandleAt(dir, session, _clock, lock);
-        final inputId = input == null
-            ? null
-            : await handle.writeDocument(input.value);
-        for (final start in startNodes) {
-          await handle.createRun(
-            parentId: null,
-            node: start.node,
-            inputId: start.takesInput ? inputId : null,
-          );
-        }
-        built = handle;
+        await startJournal(
+          p.join(dir, eventsFileName),
+          SessionStarted(time: createdAt, code: code),
+        );
+        built = sessionHandleAt(dir, session, _clock, lock);
       },
     );
     return movedSessionHandle(built, dir);
@@ -74,24 +74,69 @@ final class FsStore {
   /// The session's directory is the one whose name ends with the id; a name
   /// that starts with `.` belongs to a session that was never finished being
   /// created. Takes the session's lock, which the handle holds, and then cuts
-  /// an incomplete last line off the journal of each run.
+  /// an incomplete last line off the journal.
   ///
   /// Throws a [SessionBusyException], having changed nothing, when another
-  /// engine process holds the lock: one that created or opened the session
-  /// and still runs. The system drops the lock of a process that dies. A
-  /// session it cannot read is a [FileSystemException].
+  /// process holds the lock: one that created or opened the session and
+  /// still runs. The system drops the lock of a process that dies. A session
+  /// it cannot read is a [FileSystemException].
   Future<SessionHandle?> openSession(String sessionId) async {
-    final runs = Directory(runsDir);
-    if (!await runs.exists()) return null;
-    String? dir;
-    await for (final entity in runs.list()) {
-      if (idOfBuiltDir(entity) == sessionId) {
-        dir = entity.path;
-        break;
+    final dirs = await _sessionDirs();
+    final dir = dirs.where((dir) => dir.id == sessionId).firstOrNull;
+    return dir == null ? null : loadSessionHandle(dir.path, sessionId, _clock);
+  }
+
+  /// Ids of the sessions of [workflow] whose journal has no
+  /// `session-finished` or `session-failed`, newest first: by the time of
+  /// their `session-started`.
+  ///
+  /// Takes no lock: a session another process owns is listed too. A
+  /// session whose `session.json` or journal cannot be read is left out.
+  Future<List<String>> unfinishedSessions(String workflow) async {
+    final found = <({String id, DateTime startedAt, String name})>[];
+    for (final dir in await _sessionDirs()) {
+      try {
+        final session = await readModel(
+          p.join(dir.path, sessionFileName),
+          Session.fromJson,
+        );
+        if (session.workflow != workflow) continue;
+        final events = await readJournal(p.join(dir.path, eventsFileName));
+        if (events.any((e) => e is SessionFinished || e is SessionFailed)) {
+          continue;
+        }
+        final started = events.whereType<SessionStarted>().firstOrNull;
+        found.add((
+          id: session.id,
+          // A journal without session-started is written by hand: oldest.
+          startedAt: started?.time ?? DateTime.utc(0),
+          name: p.basename(dir.path),
+        ));
+      } on FileSystemException {
+        continue;
+      } on FormatException {
+        continue;
+      } on StoreCorruptedException {
+        continue;
       }
     }
-    // Loaded once the listing is closed: a load that failed while the
-    // listing was being closed would be an error no one awaits.
-    return dir == null ? null : loadSessionHandle(dir, sessionId, _clock);
+    found.sort((a, b) {
+      final byTime = b.startedAt.compareTo(a.startedAt);
+      return byTime != 0 ? byTime : b.name.compareTo(a.name);
+    });
+    return [for (final session in found) session.id];
+  }
+
+  /// The built session directories in [runsDir]; none when there is no
+  /// [runsDir].
+  Future<List<({String id, String path})>> _sessionDirs() async {
+    final runs = Directory(runsDir);
+    if (!await runs.exists()) return const [];
+    return [
+      await for (final entity in runs.list())
+        if (idOfBuiltDir(entity) case final id?
+            when isSessionDirName(p.basename(entity.path)))
+          (id: id, path: entity.path),
+    ];
   }
 }

@@ -4,92 +4,75 @@ import 'json_fields.dart';
 
 const DeepCollectionEquality _deep = DeepCollectionEquality();
 
-/// One launch of a graph.
+/// One call of a workflow function, with its own journal.
 ///
-/// The start time is not a field: it is the `run-started` time of the
-/// session's runs.
+/// The start time is not a field: it is the time of the journal's
+/// `session-started`.
 final class Session {
-  const Session({required this.id, required this.graph});
+  const Session({
+    required this.id,
+    required this.workflow,
+    required this.graph,
+    required this.inputId,
+  });
 
   /// Reads a session from its JSON form.
   ///
   /// Throws a [FormatException] whose message starts with the field that is
   /// missing or of the wrong kind.
-  factory Session.fromJson(Map<String, Object?> json) =>
-      Session(id: readString(json, 'id'), graph: readObject(json, 'graph'));
-
-  final String id;
-
-  /// The graph as it was when the session was created, as raw JSON.
-  final Map<String, Object?> graph;
-
-  Map<String, Object?> toJson() => {'id': id, 'graph': graph};
-
-  @override
-  bool operator ==(Object other) =>
-      other is Session && other.id == id && _deep.equals(other.graph, graph);
-
-  @override
-  int get hashCode => Object.hash(id, _deep.hash(graph));
-
-  @override
-  String toString() => 'Session(id: $id, graph: $graph)';
-}
-
-/// One path through the graph.
-final class Run {
-  const Run({
-    required this.id,
-    required this.sessionId,
-    required this.parentId,
-  });
-
-  /// Reads a run from its JSON form.
-  ///
-  /// Throws a [FormatException] whose message starts with the field that is
-  /// missing or of the wrong kind.
-  factory Run.fromJson(Map<String, Object?> json) => Run(
+  factory Session.fromJson(Map<String, Object?> json) => Session(
     id: readString(json, 'id'),
-    sessionId: readString(json, 'sessionId'),
-    parentId: readStringOrNull(json, 'parentId'),
+    workflow: readString(json, 'workflow'),
+    graph: readObjectOrNull(json, 'graph'),
+    inputId: readStringOrNull(json, 'inputId'),
   );
 
   final String id;
 
-  /// The session the run belongs to.
-  final String sessionId;
+  /// The name of the workflow function.
+  final String workflow;
 
-  /// The run whose fork created this one, from the same session. `null` for a
-  /// run the launch started.
-  final String? parentId;
+  /// The graph file as it was when the session was created, as raw JSON;
+  /// `null` when there was none.
+  final Map<String, Object?>? graph;
+
+  /// The document with the workflow's input; `null` when there is none.
+  final String? inputId;
 
   Map<String, Object?> toJson() => {
     'id': id,
-    'sessionId': sessionId,
-    'parentId': parentId,
+    'workflow': workflow,
+    'graph': graph,
+    'inputId': inputId,
   };
 
   @override
   bool operator ==(Object other) =>
-      other is Run &&
+      other is Session &&
       other.id == id &&
-      other.sessionId == sessionId &&
-      other.parentId == parentId;
+      other.workflow == workflow &&
+      _deep.equals(other.graph, graph) &&
+      other.inputId == inputId;
 
   @override
-  int get hashCode => Object.hash(id, sessionId, parentId);
+  int get hashCode => Object.hash(id, workflow, _deep.hash(graph), inputId);
 
   @override
   String toString() =>
-      'Run(id: $id, sessionId: $sessionId, parentId: $parentId)';
+      'Session(id: $id, workflow: $workflow, graph: $graph, '
+      'inputId: $inputId)';
 }
 
-/// One entry into a node.
+/// One call of `f.step` that ran live: its record, kept when the step runs
+/// again after a crash.
 final class Step {
   const Step({
     required this.id,
-    required this.runId,
-    required this.inputId,
+    required this.sessionId,
+    required this.name,
+    required this.key,
+    required this.after,
+    required this.place,
     required this.outputId,
     required this.log,
   });
@@ -100,42 +83,60 @@ final class Step {
   /// missing or of the wrong kind.
   factory Step.fromJson(Map<String, Object?> json) => Step(
     id: readString(json, 'id'),
-    runId: readString(json, 'runId'),
-    inputId: readStringOrNull(json, 'inputId'),
+    sessionId: readString(json, 'sessionId'),
+    name: readString(json, 'name'),
+    key: readString(json, 'key'),
+    after: readStringOrNull(json, 'after'),
+    place: readStringOrNull(json, 'place'),
     outputId: readStringOrNull(json, 'outputId'),
-    log: readStringOrNull(json, 'log'),
+    log: readString(json, 'log'),
   );
 
   final String id;
 
-  /// The run the step belongs to.
-  final String runId;
+  /// The session the step belongs to.
+  final String sessionId;
 
-  /// The document the command takes as input. `null` when the node has no
-  /// `in`.
-  final String? inputId;
+  /// The name given to `f.step`.
+  final String name;
 
-  /// The document the command produced. `null` until the command has finished
-  /// with exit code 0, and for a worker without `out`.
+  /// The key that finds the step again when the session goes on after a
+  /// crash: `collect#1@e3b0c44298fc1c14`.
+  final String key;
+
+  /// The key of the step adopted last before this one in its context;
+  /// `null` for a step with none before it.
+  final String? after;
+
+  /// Where `f.step` was called: `path:line`; `null` when not known.
+  final String? place;
+
+  /// The document with the step's result. `null` until the step has
+  /// finished; the journal's `step-finished` is what tells, this is a copy.
   final String? outputId;
 
-  /// The name of the command's log file, relative to the step's directory.
-  /// `null` when there is none.
-  final String? log;
+  /// The name of the step's log file, relative to the step's directory.
+  final String log;
 
   /// This step with [outputId] set: the only change a step ever goes through.
   Step withOutput(String outputId) => Step(
     id: id,
-    runId: runId,
-    inputId: inputId,
+    sessionId: sessionId,
+    name: name,
+    key: key,
+    after: after,
+    place: place,
     outputId: outputId,
     log: log,
   );
 
   Map<String, Object?> toJson() => {
     'id': id,
-    'runId': runId,
-    'inputId': inputId,
+    'sessionId': sessionId,
+    'name': name,
+    'key': key,
+    'after': after,
+    'place': place,
     'outputId': outputId,
     'log': log,
   };
@@ -144,21 +145,26 @@ final class Step {
   bool operator ==(Object other) =>
       other is Step &&
       other.id == id &&
-      other.runId == runId &&
-      other.inputId == inputId &&
+      other.sessionId == sessionId &&
+      other.name == name &&
+      other.key == key &&
+      other.after == after &&
+      other.place == place &&
       other.outputId == outputId &&
       other.log == log;
 
   @override
-  int get hashCode => Object.hash(id, runId, inputId, outputId, log);
+  int get hashCode =>
+      Object.hash(id, sessionId, name, key, after, place, outputId, log);
 
   @override
   String toString() =>
-      'Step(id: $id, runId: $runId, inputId: $inputId, outputId: $outputId, '
-      'log: $log)';
+      'Step(id: $id, sessionId: $sessionId, name: $name, key: $key, '
+      'after: $after, place: $place, outputId: $outputId, log: $log)';
 }
 
-/// Data passed between steps: the input of a launch or the output of a step.
+/// Data of a session: the input of the workflow, the result of a step or of
+/// the workflow, a snapshot of the graph.
 final class Document {
   const Document({
     required this.id,

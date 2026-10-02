@@ -1,8 +1,8 @@
 # nanoflow_model
 
-Договор между движком и UI: то, что они должны понимать одинаково. Единственный
-пакет, общий для всех частей репозитория; зависит только от `path`,
-`collection` и `crypto`.
+Договор между библиотекой и UI: то, что они должны понимать одинаково.
+Единственный пакет, общий для всех частей репозитория; зависит только от
+`path`, `collection` и `crypto`.
 Подробнее — в [Хранении](../../README.md#хранение) и
 [адаптере файловой системы](../../README.md#адаптер-файловой-системы).
 
@@ -14,10 +14,12 @@
   (`2026-09-20T14:03:11.470Z`), микросекунд не бывает. `parseTime` читает
   только такую запись и бросает `FormatException` на любой другой. `Clock` —
   источник времени, `systemClock` — настоящие часы в UTC.
-- **Раскладка `runs`.** Имена каталогов и файлов сессии, прогона, шага и
-  документа; `idOfDirName` достаёт идентификатор из имени каталога,
-  `isSessionDirOf` отличает сессии графа `review` от сессий графа `review-x`;
-  `graphNameOf` и `runsDirOf` — имя графа и каталог `runs` по файлу графа.
+- **Раскладка `runs`.** Имена каталогов и файлов сессии, шага и документа
+  (`runs/<воркфлоу>-<время>-<id>/`, `session.json`, `log.jsonl`,
+  `.owner.lock`, `documents/<id>.json`, `steps/<время>-<имя>-<id>/` со
+  `step.json` и `step.log`); знаки имени вне `[A-Za-z0-9._-]` — `_`.
+  `idOfDirName` достаёт идентификатор из имени каталога, `isSessionDirName`
+  узнаёт каталог сессии, `runsDirOf` — каталог `runs` в каталоге проекта.
 - **Граф.** `Graph.fromJson` разбирает [граф](../../README.md#граф) из JSON:
   рабочие узлы (`WorkerNode`) и развилки (`ForkNode`), цели (`Target`) и
   выходы узлов (`Exit`) в порядке объявления. `ForkNode.route` решает, куда
@@ -28,18 +30,21 @@
   объект или boolean, проверяет `nanoflow check`, а сами схемы и их
   совместимость — программа графа.
   `GraphDescription` — описание графа, которое печатает программа графа.
-- **Модели и их JSON.** `Session`, `Run`, `Step` и `Document` — сущности
-  [хранения](../../README.md#модели), `Event` — [событие](../../README.md#события)
-  журнала прогона, `Change` — [изменение](../../README.md#чтение) ленты
-  читателя. У каждой `fromJson` и `toJson`: ключи пишутся в порядке из
-  README, и все всегда есть, `null` — когда значения нет. Равенство по
-  значению (для `Session.graph`, `Document.value` и `UnknownEvent.json` —
-  глубокое). `fromJson` бросает `FormatException` с местом проблемы
-  (`session.id`); `Event.fromJson` не бросает никогда: событие с незнакомым
-  именем или с неподходящими полями становится `UnknownEvent`, который
-  пишется обратно как был. Время события хранится в UTC с точностью до
-  миллисекунд. У известных событий общий предок `KnownEvent` с `runId` и
-  `time`: `switch` по `Event` исчерпывается им и `UnknownEvent`.
+- **Модели и их JSON.** `Session` (один вызов функции воркфлоу: `workflow`,
+  снимок файла графа `graph`, `inputId`), `Step` (`name`, `key`, `after`,
+  `place`, `outputId`, `log`) и `Document`; `Event` — событие журнала
+  сессии (`session-started`, `session-resumed`, `step-started`,
+  `step-finished`, `step-failed`, `session-finished`, `session-failed`),
+  `Change` — изменение ленты читателя. У каждой `fromJson` и `toJson`: ключи
+  пишутся в порядке спецификации, и все всегда есть, `null` — когда значения
+  нет. Равенство по значению (для `Session.graph`, `Document.value` и
+  `UnknownEvent.json` — глубокое). `fromJson` бросает `FormatException` с
+  местом проблемы (`session.id`); `Event.fromJson` не бросает никогда:
+  событие с незнакомым именем или с неподходящими полями становится
+  `UnknownEvent`, который пишется обратно как был. Время события хранится в
+  UTC с точностью до миллисекунд. У известных событий общий предок
+  `KnownEvent` с `time`: `switch` по `Event` исчерпывается им и
+  `UnknownEvent`.
 - **Файл графа.** `GraphFile.fromJson` разбирает `nanoflow.graph.json`
   (`graphFileName`, формат `graphFileFormat`): функции с шагами
   (`GraphFunction`), их тела (`GraphBody`) из узлов `StepNode`,
@@ -51,11 +56,13 @@
 - **Исходники и отпечаток.** `packageSourcePaths`, `sourceHash` (`\r\n` читается
   как `\n`), `bytesHash`, `hashSources` и `fingerprintOf` считают `sources` и
   `fingerprint` файла графа одним кодом для `describe`, библиотеки и UI.
-- **Состояние прогона.** `replay(runId, events)` проигрывает журнал прогона и
-  возвращает `RunState` — [состояние прогона](../../README.md#состояние-прогона):
-  `status` (`RunStatus`), `steps` (`StepState`) в порядке первых `step-started`,
-  `startedAt`, `finishedAt` и `error`. События незнакомого имени и чужих
-  прогонов пропускаются. Состояние не хранится: оно считается заново.
+- **Состояние сессии.** `replaySession(events)` проигрывает журнал сессии и
+  возвращает `SessionState`: `status` (`SessionStatus` — по последнему
+  событию), `steps` (`StepState`: `status`, `starts`, `startedAt`,
+  `finishedAt`, `outputId`, `error`) в порядке первых `step-started`,
+  `startedAt`, `finishedAt`, `outputId`, `error`, `codes` (хэши кода
+  `session-started` и каждого `session-resumed`) и `graphIds`. Незнакомые
+  события пропускаются. Состояние не хранится: оно считается заново.
 
 ## Тесты
 

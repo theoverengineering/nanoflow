@@ -4,14 +4,16 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:test/test.dart';
 
 const String _sessionId = '8d3a9c1e-5b2f-4e7a-a0c4-1f6b2d9e3a57';
-const String _runId = '0c6e1f7a-93d4-4b58-8e21-5a7d3c9b4f06';
-const String _childId = 'b41f8d2c-6e05-4a9b-b3c7-7d2e9f1a5c84';
+const String _otherId = '0c6e1f7a-93d4-4b58-8e21-5a7d3c9b4f06';
 const String _stepId = '2e9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
 const String _inputId = 'a7c5e3b1-4d92-4860-8f1a-6c9e2b7d3f58';
 const String _outputId = '5f2d8b6a-1c93-4e07-a4b8-9e3c7a1d5b20';
 
+const String _key = 'collect#1@e3b0c44298fc1c14';
+const String _afterKey = 'inspect#1@9f2c1a7b3d5e8f04';
+
 const String _graphJson =
-    '{"start":"collect","nodes":{"collect":{"command":"run.sh","then":[]}}}';
+    '{"format":1,"workflows":["lib/review.dart#review"],"functions":{}}';
 
 Map<String, Object?> _decode(String text) =>
     jsonDecode(text) as Map<String, Object?>;
@@ -28,64 +30,177 @@ String _problem(void Function() read) {
 
 void main() {
   group('Session', () {
-    final session = Session(id: _sessionId, graph: _decode(_graphJson));
-    final text = '{"id":"$_sessionId","graph":$_graphJson}';
+    final session = Session(
+      id: _sessionId,
+      workflow: 'review',
+      graph: _decode(_graphJson),
+      inputId: _inputId,
+    );
+    final text =
+        '{"id":"$_sessionId","workflow":"review","graph":$_graphJson,'
+        '"inputId":"$_inputId"}';
 
-    test('writes id then graph', () {
+    test('writes id, workflow, graph, inputId', () {
       expect(jsonEncode(session.toJson()), text);
     });
 
+    test('writes a missing graph and input as null', () {
+      expect(
+        jsonEncode(
+          Session(
+            id: _sessionId,
+            workflow: 'review',
+            graph: null,
+            inputId: null,
+          ).toJson(),
+        ),
+        '{"id":"$_sessionId","workflow":"review","graph":null,'
+        '"inputId":null}',
+      );
+    });
+
     test('round trips through JSON', () {
-      expect(Session.fromJson(_decode(text)), session);
-      expect(Session.fromJson(_decode(text)).toJson(), session.toJson());
+      final bare = Session(
+        id: _sessionId,
+        workflow: 'review',
+        graph: null,
+        inputId: null,
+      );
+      for (final model in [session, bare]) {
+        final read = Session.fromJson(_decode(jsonEncode(model.toJson())));
+        expect(read, model);
+        expect(read.toJson(), model.toJson());
+      }
     });
 
     test('compares the graph by value, deeply', () {
-      final other = Session(id: _sessionId, graph: _decode(_graphJson));
+      final other = Session(
+        id: _sessionId,
+        workflow: 'review',
+        graph: _decode(_graphJson),
+        inputId: _inputId,
+      );
       expect(other, session);
       expect(other.hashCode, session.hashCode);
       final changed = _decode(_graphJson);
-      ((changed['nodes'] as Map<String, Object?>)['collect']
-              as Map<String, Object?>)['command'] =
-          'other.sh';
-      expect(Session(id: _sessionId, graph: changed), isNot(session));
-      expect(Session(id: _runId, graph: _decode(_graphJson)), isNot(session));
+      (changed['workflows'] as List<Object?>).add('lib/other.dart#other');
+      expect(
+        Session(
+          id: _sessionId,
+          workflow: 'review',
+          graph: changed,
+          inputId: _inputId,
+        ),
+        isNot(session),
+      );
+      expect(
+        Session(
+          id: _sessionId,
+          workflow: 'review',
+          graph: null,
+          inputId: _inputId,
+        ),
+        isNot(session),
+      );
+    });
+
+    test('compares every other field', () {
+      Session variant({
+        String id = _sessionId,
+        String workflow = 'review',
+        String? inputId = _inputId,
+      }) => Session(
+        id: id,
+        workflow: workflow,
+        graph: _decode(_graphJson),
+        inputId: inputId,
+      );
+      expect(variant(id: _otherId), isNot(session));
+      expect(variant(workflow: 'publish'), isNot(session));
+      expect(variant(inputId: null), isNot(session));
     });
 
     test('has a readable toString', () {
       expect(session.toString(), startsWith('Session('));
       expect(session.toString(), contains(_sessionId));
+      expect(session.toString(), contains('review'));
     });
 
     test('throws on missing or mistyped fields, naming the field', () {
       expect(
-        _problem(() => Session.fromJson(_decode('{"graph":$_graphJson}'))),
+        _problem(
+          () => Session.fromJson(
+            _decode('{"workflow":"review","graph":null,"inputId":null}'),
+          ),
+        ),
         'id: missing',
       );
       expect(
         _problem(
-          () => Session.fromJson(_decode('{"id":1,"graph":$_graphJson}')),
+          () => Session.fromJson(
+            _decode('{"id":"$_sessionId","graph":null,"inputId":null}'),
+          ),
         ),
-        'id: expected a string',
+        'workflow: missing',
       );
       expect(
-        _problem(() => Session.fromJson(_decode('{"id":"$_sessionId"}'))),
+        _problem(
+          () => Session.fromJson(
+            _decode(
+              '{"id":"$_sessionId","workflow":7,"graph":null,"inputId":null}',
+            ),
+          ),
+        ),
+        'workflow: expected a string',
+      );
+      expect(
+        _problem(
+          () => Session.fromJson(
+            _decode('{"id":"$_sessionId","workflow":"review","inputId":null}'),
+          ),
+        ),
         'graph: missing',
       );
       expect(
         _problem(
-          () => Session.fromJson(_decode('{"id":"$_sessionId","graph":[]}')),
+          () => Session.fromJson(
+            _decode(
+              '{"id":"$_sessionId","workflow":"review","graph":[],'
+              '"inputId":null}',
+            ),
+          ),
         ),
-        'graph: expected an object',
+        'graph: expected an object or null',
       );
       expect(
         _problem(
           () => Session.fromJson({
             'id': _sessionId,
+            'workflow': 'review',
             'graph': {1: 'not a string key'},
+            'inputId': null,
           }),
         ),
-        'graph: expected an object',
+        'graph: expected an object or null',
+      );
+      expect(
+        _problem(
+          () => Session.fromJson(
+            _decode('{"id":"$_sessionId","workflow":"review","graph":null}'),
+          ),
+        ),
+        'inputId: missing',
+      );
+      expect(
+        _problem(
+          () => Session.fromJson(
+            _decode(
+              '{"id":"$_sessionId","workflow":"review","graph":null,'
+              '"inputId":5}',
+            ),
+          ),
+        ),
+        'inputId: expected a string or null',
       );
     });
 
@@ -93,102 +208,52 @@ void main() {
       // What an empty map literal inside another map literal is.
       final read = Session.fromJson({
         'id': _sessionId,
-        'graph': {'start': 'a', 'nodes': <dynamic, dynamic>{}},
+        'workflow': 'review',
+        'graph': {'format': 1, 'functions': <dynamic, dynamic>{}},
+        'inputId': null,
       });
-      expect(read.graph, {'start': 'a', 'nodes': <String, Object?>{}});
-    });
-  });
-
-  group('Run', () {
-    final root = Run(id: _runId, sessionId: _sessionId, parentId: null);
-    final child = Run(id: _childId, sessionId: _sessionId, parentId: _runId);
-
-    test('writes id, sessionId, parentId and keeps a null parentId', () {
-      expect(
-        jsonEncode(root.toJson()),
-        '{"id":"$_runId","sessionId":"$_sessionId","parentId":null}',
-      );
-      expect(
-        jsonEncode(child.toJson()),
-        '{"id":"$_childId","sessionId":"$_sessionId","parentId":"$_runId"}',
-      );
-    });
-
-    test('round trips through JSON', () {
-      for (final run in [root, child]) {
-        expect(Run.fromJson(_decode(jsonEncode(run.toJson()))), run);
-      }
-    });
-
-    test('compares by value', () {
-      expect(Run(id: _runId, sessionId: _sessionId, parentId: null), root);
-      expect(
-        Run(id: _runId, sessionId: _sessionId, parentId: null).hashCode,
-        root.hashCode,
-      );
-      expect(root, isNot(child));
-      expect(
-        Run(id: _runId, sessionId: _sessionId, parentId: _childId),
-        isNot(root),
-      );
-    });
-
-    test('has a readable toString', () {
-      expect(child.toString(), startsWith('Run('));
-      expect(child.toString(), contains(_runId));
-    });
-
-    test('throws on missing or mistyped fields, naming the field', () {
-      expect(
-        _problem(
-          () => Run.fromJson(_decode('{"id":"$_runId","sessionId":"s"}')),
-        ),
-        'parentId: missing',
-      );
-      expect(
-        _problem(
-          () => Run.fromJson(
-            _decode('{"id":"$_runId","sessionId":"s","parentId":3}'),
-          ),
-        ),
-        'parentId: expected a string or null',
-      );
-      expect(
-        _problem(
-          () => Run.fromJson(_decode('{"id":"$_runId","parentId":null}')),
-        ),
-        'sessionId: missing',
-      );
+      expect(read.graph, {'format': 1, 'functions': <String, Object?>{}});
     });
   });
 
   group('Step', () {
     final fresh = Step(
       id: _stepId,
-      runId: _runId,
-      inputId: _inputId,
+      sessionId: _sessionId,
+      name: 'collect',
+      key: _key,
+      after: _afterKey,
+      place: 'lib/review.dart:12',
       outputId: null,
-      log: 'command.log',
+      log: 'step.log',
     );
 
-    test('writes id, runId, inputId, outputId, log and keeps nulls', () {
+    test('writes id, sessionId, name, key, after, place, outputId, log', () {
       expect(
-        jsonEncode(fresh.toJson()),
-        '{"id":"$_stepId","runId":"$_runId","inputId":"$_inputId",'
-        '"outputId":null,"log":"command.log"}',
+        jsonEncode(fresh.withOutput(_outputId).toJson()),
+        '{"id":"$_stepId","sessionId":"$_sessionId","name":"collect",'
+        '"key":"$_key","after":"$_afterKey","place":"lib/review.dart:12",'
+        '"outputId":"$_outputId","log":"step.log"}',
       );
+    });
+
+    test('keeps null after, place and outputId', () {
       expect(
         jsonEncode(
           Step(
             id: _stepId,
-            runId: _runId,
-            inputId: null,
+            sessionId: _sessionId,
+            name: 'collect',
+            key: _key,
+            after: null,
+            place: null,
             outputId: null,
-            log: null,
+            log: 'step.log',
           ).toJson(),
         ),
-        '{"id":"$_stepId","runId":"$_runId","inputId":null,'
-        '"outputId":null,"log":null}',
+        '{"id":"$_stepId","sessionId":"$_sessionId","name":"collect",'
+        '"key":"$_key","after":null,"place":null,"outputId":null,'
+        '"log":"step.log"}',
       );
     });
 
@@ -206,86 +271,88 @@ void main() {
         done,
         Step(
           id: _stepId,
-          runId: _runId,
-          inputId: _inputId,
+          sessionId: _sessionId,
+          name: 'collect',
+          key: _key,
+          after: _afterKey,
+          place: 'lib/review.dart:12',
           outputId: _outputId,
-          log: 'command.log',
+          log: 'step.log',
         ),
       );
       expect(fresh.outputId, isNull);
     });
 
-    test('compares by value', () {
-      final same = Step(
-        id: _stepId,
-        runId: _runId,
-        inputId: _inputId,
-        outputId: null,
-        log: 'command.log',
+    test('compares by value, every field', () {
+      Step variant({
+        String id = _stepId,
+        String sessionId = _sessionId,
+        String name = 'collect',
+        String key = _key,
+        String? after = _afterKey,
+        String? place = 'lib/review.dart:12',
+        String? outputId,
+        String log = 'step.log',
+      }) => Step(
+        id: id,
+        sessionId: sessionId,
+        name: name,
+        key: key,
+        after: after,
+        place: place,
+        outputId: outputId,
+        log: log,
       );
-      expect(same, fresh);
-      expect(same.hashCode, fresh.hashCode);
-      expect(fresh.withOutput(_outputId), isNot(fresh));
-      expect(
-        Step(
-          id: _stepId,
-          runId: _runId,
-          inputId: null,
-          outputId: null,
-          log: 'command.log',
-        ),
-        isNot(fresh),
-      );
-      expect(
-        Step(
-          id: _stepId,
-          runId: _runId,
-          inputId: _inputId,
-          outputId: null,
-          log: null,
-        ),
-        isNot(fresh),
-      );
+      expect(variant(), fresh);
+      expect(variant().hashCode, fresh.hashCode);
+      expect(variant(id: _otherId), isNot(fresh));
+      expect(variant(sessionId: _otherId), isNot(fresh));
+      expect(variant(name: 'inspect'), isNot(fresh));
+      expect(variant(key: _afterKey), isNot(fresh));
+      expect(variant(after: null), isNot(fresh));
+      expect(variant(place: 'lib/review.dart:13'), isNot(fresh));
+      expect(variant(outputId: _outputId), isNot(fresh));
+      expect(variant(log: 'other.log'), isNot(fresh));
     });
 
     test('has a readable toString', () {
       expect(fresh.toString(), startsWith('Step('));
-      expect(fresh.toString(), contains('command.log'));
+      expect(fresh.toString(), contains(_key));
+      expect(fresh.toString(), contains('lib/review.dart:12'));
     });
 
     test('throws on missing or mistyped fields, naming the field', () {
+      final complete = fresh.toJson();
+      for (final key in complete.keys) {
+        expect(
+          _problem(() => Step.fromJson({...complete}..remove(key))),
+          '$key: missing',
+          reason: key,
+        );
+      }
       expect(
-        _problem(
-          () => Step.fromJson(
-            _decode(
-              '{"id":"$_stepId","runId":"$_runId","inputId":null,'
-              '"outputId":null}',
-            ),
-          ),
-        ),
-        'log: missing',
+        _problem(() => Step.fromJson({...complete, 'name': null})),
+        'name: expected a string',
       );
       expect(
-        _problem(
-          () => Step.fromJson(
-            _decode(
-              '{"id":"$_stepId","runId":"$_runId","inputId":null,'
-              '"outputId":7,"log":null}',
-            ),
-          ),
-        ),
+        _problem(() => Step.fromJson({...complete, 'key': 1})),
+        'key: expected a string',
+      );
+      expect(
+        _problem(() => Step.fromJson({...complete, 'after': 1})),
+        'after: expected a string or null',
+      );
+      expect(
+        _problem(() => Step.fromJson({...complete, 'place': false})),
+        'place: expected a string or null',
+      );
+      expect(
+        _problem(() => Step.fromJson({...complete, 'outputId': 7})),
         'outputId: expected a string or null',
       );
       expect(
-        _problem(
-          () => Step.fromJson(
-            _decode(
-              '{"id":"$_stepId","runId":null,"inputId":null,'
-              '"outputId":null,"log":null}',
-            ),
-          ),
-        ),
-        'runId: expected a string',
+        _problem(() => Step.fromJson({...complete, 'log': null})),
+        'log: expected a string',
       );
     });
   });

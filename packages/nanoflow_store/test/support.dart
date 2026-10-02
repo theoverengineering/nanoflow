@@ -5,8 +5,8 @@ import 'package:nanoflow_store/nanoflow_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-/// 2026-09-20 14:03:11.470 UTC, the time of the README's example session.
-final DateTime start = DateTime.utc(2026, 9, 20, 14, 3, 11, 470);
+/// 2026-10-03 10:00:00.482 UTC, the time of the spec's example session.
+final DateTime start = DateTime.utc(2026, 10, 3, 10, 0, 0, 482);
 
 /// A clock that returns [from] and then moves by [tick] on every reading.
 Clock tickingClock({
@@ -34,11 +34,11 @@ List<String> names(String dir) =>
       ..sort();
 
 /// Every path under [dir] whose name starts with `.`, but the lock file of
-/// the engine that drives a session: what is left of writes.
+/// the process that owns a session: what is left of writes.
 List<String> dotEntries(String dir) => [
   for (final entity in Directory(dir).listSync(recursive: true))
     if (p.basename(entity.path) case final name
-        when name.startsWith('.') && name != '.engine.lock')
+        when name.startsWith('.') && name != '.owner.lock')
       entity.path,
 ];
 
@@ -60,43 +60,35 @@ const anId = r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
 /// The text of the file at [path].
 String read(String path) => File(path).readAsStringSync();
 
-/// A graph from the README, cut down: what a session stores is whatever map
-/// it is given.
+/// The code hash a session's `session-started` holds in these tests.
+const code = 'sha256:7d3e9f0c';
+
+/// A graph file, cut down: what a session stores is whatever map it is
+/// given.
 const graph = <String, Object?>{
-  'start': 'collect',
-  'nodes': {
-    'collect': {
-      'command': 'nodes/collect/run.sh',
-      'in': {r'$ref': '#/Request'},
-      'then': 'is-empty',
-    },
-  },
+  'format': 1,
+  'workflows': ['lib/review.dart#review'],
 };
 
-/// The session.json of [sessionId] for [graph].
-String sessionJson(String sessionId) =>
+/// The session.json of [sessionId] for [graph] and [inputId].
+String sessionJson(String sessionId, {required String? inputId}) =>
     '''
 {
   "id": "$sessionId",
+  "workflow": "review",
   "graph": {
-    "start": "collect",
-    "nodes": {
-      "collect": {
-        "command": "nodes/collect/run.sh",
-        "in": {
-          "\$ref": "#/Request"
-        },
-        "then": "is-empty"
-      }
-    }
-  }
+    "format": 1,
+    "workflows": [
+      "lib/review.dart#review"
+    ]
+  },
+  "inputId": ${inputId == null ? 'null' : '"$inputId"'}
 }
 ''';
 
-/// A new session of graph `review` in a fresh `runs` directory.
+/// A new session of workflow `review` in a fresh `runs` directory.
 Future<SessionHandle> newSession({
   Clock? clock,
-  List<StartNode> startNodes = const [(node: 'collect', takesInput: true)],
   ({Object? value})? input = const (value: {'branch': 'main'}),
 }) async {
   final store = FsStore(
@@ -104,21 +96,28 @@ Future<SessionHandle> newSession({
     clock: clock ?? tickingClock(),
   );
   return store.createSession(
-    graphName: 'review',
+    workflow: 'review',
     graph: graph,
-    startNodes: startNodes,
     input: input,
+    code: code,
   );
 }
 
-/// The directory of the run [runId] in the session of [handle].
-String runDir(SessionHandle handle, String runId) =>
-    only(handle.dir, '[0-9T-]{23}-($runId)').path;
+/// A new step of [handle] named [name], with a key made of it.
+Future<Step> newStep(
+  SessionHandle handle, {
+  String name = 'collect',
+  String? after,
+}) => handle.createStep(
+  name: name,
+  key: '$name#1@e3b0c44298fc1c14',
+  after: after,
+  place: 'lib/review.dart:12',
+);
 
-/// The directory of the step [stepId] of the run [runId].
-String stepDir(SessionHandle handle, String runId, String stepId) =>
-    only(p.join(runDir(handle, runId), 'steps'), '.*-($stepId)').path;
+/// The directory of the step [stepId] in the session of [handle].
+String stepDir(SessionHandle handle, String stepId) =>
+    only(p.join(handle.dir, 'steps'), '.*-($stepId)').path;
 
-/// The node the run [runId] started at.
-Future<String> firstNode(SessionHandle handle, String runId) async =>
-    ((await handle.events(runId)).first as RunStarted).node;
+/// The journal of the session of [handle].
+String journal(SessionHandle handle) => p.join(handle.dir, 'log.jsonl');

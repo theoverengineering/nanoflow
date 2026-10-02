@@ -2,8 +2,8 @@ import 'entities.dart';
 import 'events.dart';
 import 'json_fields.dart';
 
-/// One thing that happened to the storage of a graph: an entry of the feed a
-/// reader gives.
+/// One thing that happened to the sessions in a `runs` directory: an entry of
+/// the feed a reader gives.
 ///
 /// The feed is first everything that is already there, then what appears. A
 /// change carries a model, or, for a document, only where to ask for it.
@@ -22,16 +22,18 @@ sealed class Change {
       'session-added' => SessionAdded(
         _readModel(json, 'session', Session.fromJson),
       ),
-      'run-added' => RunAdded(_readModel(json, 'run', Run.fromJson)),
       'step-added' => StepAdded(_readModel(json, 'step', Step.fromJson)),
       'step-changed' => StepChanged(_readModel(json, 'step', Step.fromJson)),
-      'event-added' => EventAdded(Event.fromJson(readObject(json, 'event'))),
+      'event-added' => EventAdded(
+        sessionId: readString(json, 'sessionId'),
+        event: Event.fromJson(readObject(json, 'event')),
+      ),
       'document-added' => DocumentAdded(
         sessionId: readString(json, 'sessionId'),
         documentId: readString(json, 'documentId'),
       ),
       'log-corrupted' => LogCorrupted(
-        runId: readString(json, 'runId'),
+        sessionId: readString(json, 'sessionId'),
         line: readInt(json, 'line'),
         text: readString(json, 'text'),
       ),
@@ -46,7 +48,7 @@ sealed class Change {
   Map<String, Object?> toJson();
 }
 
-/// A session of the graph appeared.
+/// A session appeared.
 final class SessionAdded extends Change {
   const SessionAdded(this.session);
 
@@ -72,29 +74,7 @@ final class SessionAdded extends Change {
   String toString() => 'SessionAdded($session)';
 }
 
-/// A run appeared.
-final class RunAdded extends Change {
-  const RunAdded(this.run);
-
-  final Run run;
-
-  @override
-  String get name => 'run-added';
-
-  @override
-  Map<String, Object?> toJson() => {'change': name, 'run': run.toJson()};
-
-  @override
-  bool operator ==(Object other) => other is RunAdded && other.run == run;
-
-  @override
-  int get hashCode => Object.hash(name, run);
-
-  @override
-  String toString() => 'RunAdded($run)';
-}
-
-/// A step appeared.
+/// A step's record appeared.
 final class StepAdded extends Change {
   const StepAdded(this.step);
 
@@ -139,9 +119,12 @@ final class StepChanged extends Change {
   String toString() => 'StepChanged($step)';
 }
 
-/// An event was appended to a run's journal.
+/// An event was appended to a session's journal.
 final class EventAdded extends Change {
-  const EventAdded(this.event);
+  const EventAdded({required this.sessionId, required this.event});
+
+  /// The session whose journal holds the event.
+  final String sessionId;
 
   /// The event as it is in the journal: an [UnknownEvent] when it is not known.
   final Event event;
@@ -150,16 +133,23 @@ final class EventAdded extends Change {
   String get name => 'event-added';
 
   @override
-  Map<String, Object?> toJson() => {'change': name, 'event': event.toJson()};
+  Map<String, Object?> toJson() => {
+    'change': name,
+    'sessionId': sessionId,
+    'event': event.toJson(),
+  };
 
   @override
-  bool operator ==(Object other) => other is EventAdded && other.event == event;
+  bool operator ==(Object other) =>
+      other is EventAdded &&
+      other.sessionId == sessionId &&
+      other.event == event;
 
   @override
-  int get hashCode => Object.hash(name, event);
+  int get hashCode => Object.hash(name, sessionId, event);
 
   @override
-  String toString() => 'EventAdded($event)';
+  String toString() => 'EventAdded(sessionId: $sessionId, event: $event)';
 }
 
 /// A document was written in full. Its value is for the reader to give on
@@ -195,15 +185,16 @@ final class DocumentAdded extends Change {
       'DocumentAdded(sessionId: $sessionId, documentId: $documentId)';
 }
 
-/// A line of a run's journal that is not JSON.
+/// A line of a session's journal that is not an event.
 final class LogCorrupted extends Change {
   const LogCorrupted({
-    required this.runId,
+    required this.sessionId,
     required this.line,
     required this.text,
   });
 
-  final String runId;
+  /// The session whose journal has the line.
+  final String sessionId;
 
   /// The number of the line in the journal, counted from 1.
   final int line;
@@ -217,7 +208,7 @@ final class LogCorrupted extends Change {
   @override
   Map<String, Object?> toJson() => {
     'change': name,
-    'runId': runId,
+    'sessionId': sessionId,
     'line': line,
     'text': text,
   };
@@ -225,15 +216,16 @@ final class LogCorrupted extends Change {
   @override
   bool operator ==(Object other) =>
       other is LogCorrupted &&
-      other.runId == runId &&
+      other.sessionId == sessionId &&
       other.line == line &&
       other.text == text;
 
   @override
-  int get hashCode => Object.hash(name, runId, line, text);
+  int get hashCode => Object.hash(name, sessionId, line, text);
 
   @override
-  String toString() => 'LogCorrupted(runId: $runId, line: $line, text: $text)';
+  String toString() =>
+      'LogCorrupted(sessionId: $sessionId, line: $line, text: $text)';
 }
 
 /// The model at [key], read by [fromJson]. A problem inside the model is put

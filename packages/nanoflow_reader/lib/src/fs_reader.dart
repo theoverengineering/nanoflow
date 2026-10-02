@@ -9,23 +9,19 @@ import 'package:path/path.dart' as p;
 import 'scanner.dart';
 import 'tail.dart';
 
-/// The storage of one graph in its `runs` directory, as the engine writes it:
-/// a feed of changes, and data on request.
+/// The sessions in a `runs` directory, as the library writes them: a feed of
+/// changes, and data on request.
 ///
 /// The reader only reads. It follows the directory by file system events and
 /// polls it as well, since events come late and get merged.
 final class FsReader {
   FsReader({
     required this.runsDir,
-    required this.graphName,
     this.pollInterval = const Duration(milliseconds: 500),
-  }) : _scanner = Scanner(runsDir: runsDir, graphName: graphName);
+  }) : _scanner = Scanner(runsDir: runsDir);
 
-  /// The `runs` directory next to the graph file.
+  /// The `runs` directory in the project directory.
   final String runsDir;
-
-  /// The graph's name: its sessions are the directories named after it.
-  final String graphName;
 
   /// How often the reader looks for changes when no file system event tells
   /// it to.
@@ -39,30 +35,22 @@ final class FsReader {
     _scanner.scan,
   );
 
-  /// Everything already on disk, then new changes as they appear. Single
-  /// subscription; cancelling stops all watching. Works when [runsDir] does
-  /// not exist yet (it starts emitting once it appears).
+  /// Everything already on disk, then new changes as they appear, for every
+  /// session in [runsDir]. Single subscription; cancelling stops all
+  /// watching. Works when [runsDir] does not exist yet (it starts emitting
+  /// once it appears).
   ///
-  /// The events of a run come in the order of its journal, after the run's
-  /// `run-added`; anything else may come in any order. A journal line that is
-  /// still being written is given once it is complete. A file that is not its
-  /// model, such as a `run.json` that is not a run, comes as an error on the
-  /// stream, once, and the entity is not given until the file is fixed; the
-  /// feed goes on.
+  /// The events of a session come in the order of its journal, after the
+  /// session's `session-added`; anything else may come in any order. A
+  /// journal line that is still being written is given once it is complete.
+  /// A file that is not its model, such as a `step.json` that is not a step,
+  /// comes as an error on the stream, once, and the entity is not given
+  /// until the file is fixed; the feed goes on.
   Stream<Change> changes() => _changes;
-
-  /// The graph the session [sessionId] holds.
-  ///
-  /// Throws an [ArgumentError] when the graph has no such session.
-  Future<Map<String, Object?>> sessionGraph(String sessionId) async =>
-      (await readModel(
-        p.join(await _sessionDir(sessionId), sessionFileName),
-        Session.fromJson,
-      )).graph;
 
   /// The value of the document [documentId] of the session [sessionId].
   ///
-  /// Throws an [ArgumentError] when the graph has no such session, and a
+  /// Throws an [ArgumentError] when [runsDir] has no such session, and a
   /// [PathNotFoundException] when the session has no such document.
   Future<Object?> documentValue(String sessionId, String documentId) async =>
       (await readModel(
@@ -77,12 +65,11 @@ final class FsReader {
   /// Accumulated log text first, then appended text as it grows, until
   /// cancelled. Decodes UTF-8 across chunk boundaries.
   ///
-  /// Gives nothing while there is no log file: the engine creates it when it
-  /// starts the step's command. A step without a log gives nothing and ends.
-  /// Errors with an [ArgumentError] when there is no such step.
-  Stream<String> stepLog(String sessionId, String runId, String stepId) async* {
-    final path = logPath(stepId) ?? await _logOnDisk(sessionId, runId, stepId);
-    if (path == null) return;
+  /// Gives nothing while there is no log file: it is created when the step
+  /// first prints. Errors with an [ArgumentError] when there is no such
+  /// session or step.
+  Stream<String> stepLog(String sessionId, String stepId) async* {
+    final path = logPath(stepId) ?? await _logOnDisk(sessionId, stepId);
     final tail = Tail(path);
     yield* const Utf8Decoder(allowMalformed: true).bind(
       follow<Uint8List>(
@@ -103,14 +90,10 @@ final class FsReader {
   /// The directory of the session [sessionId].
   String? sessionPath(String sessionId) => _scanner.sessionPath(sessionId);
 
-  /// The directory of the run [runId].
-  String? runPath(String runId) => _scanner.runPath(runId);
-
   /// The directory of the step [stepId].
   String? stepPath(String stepId) => _scanner.stepPath(stepId);
 
-  /// The log file of the step [stepId], which may not exist yet; `null` also
-  /// for a step without a log.
+  /// The log file of the step [stepId], which may not exist yet.
   String? logPath(String stepId) => _scanner.logPath(stepId);
 
   /// The file of the document [documentId] of the session [sessionId].
@@ -118,63 +101,42 @@ final class FsReader {
       _scanner.documentPath(sessionId, documentId);
 
   /// The log file of a step the feed has not given, from its `step.json`.
-  Future<String?> _logOnDisk(
-    String sessionId,
-    String runId,
-    String stepId,
-  ) async {
-    final dir = await _stepDir(sessionId, runId, stepId);
-    final log = (await readModel(p.join(dir, stepFileName), Step.fromJson)).log;
-    return log == null ? null : p.join(dir, log);
+  Future<String> _logOnDisk(String sessionId, String stepId) async {
+    final dir = await _stepDir(sessionId, stepId);
+    final step = await readModel(p.join(dir, stepFileName), Step.fromJson);
+    return p.join(dir, step.log);
   }
 
-  // The directories of entities, given or not: a step's command may be
-  // running before the feed gives the step.
+  // The directories of entities, given or not: a step may be running before
+  // the feed gives it.
 
   Future<String> _sessionDir(String sessionId) async =>
       sessionPath(sessionId) ??
-      await _findDir(
-        runsDir,
-        sessionId,
-        (name) => isSessionDirOf(name, graphName),
-      ) ??
+      await _findDir(runsDir, sessionId, isSessionDirName) ??
       (throw ArgumentError.value(
         sessionId,
         'sessionId',
-        'no session of graph $graphName in $runsDir',
+        'no session in $runsDir',
       ));
 
-  Future<String> _runDir(String sessionId, String runId) async =>
-      runPath(runId) ??
-      await _findDir(await _sessionDir(sessionId), runId) ??
-      (throw ArgumentError.value(
-        runId,
-        'runId',
-        'no such run in session $sessionId',
-      ));
-
-  Future<String> _stepDir(
-    String sessionId,
-    String runId,
-    String stepId,
-  ) async =>
+  Future<String> _stepDir(String sessionId, String stepId) async =>
       stepPath(stepId) ??
       await _findDir(
-        p.join(await _runDir(sessionId, runId), stepsDirName),
+        p.join(await _sessionDir(sessionId), stepsDirName),
         stepId,
       ) ??
       (throw ArgumentError.value(
         stepId,
         'stepId',
-        'no such step in run $runId',
+        'no such step in session $sessionId',
       ));
 }
 
 /// What [scan] gives, run as the feed of [runsDir] runs it: when listened
 /// to, on every file system event under [runsDir] but those of a step's
-/// `command.log`, and every [interval].
+/// `step.log`, and every [interval].
 ///
-/// A running command writes its log all the time, and a scan does not read
+/// A running step writes its log all the time, and a scan does not read
 /// logs: [FsReader.stepLog] follows a log by itself.
 Stream<T> followRuns<T>(
   String runsDir,

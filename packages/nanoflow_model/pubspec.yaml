@@ -1,5 +1,5 @@
 name: nanoflow_model
-description: Models, their JSON forms and the storage layout shared by the nanoflow engine and UI.
+description: Models, their JSON forms and the storage layout shared by the nanoflow library and UI.
 publish_to: none
 resolution: workspace
 environment:

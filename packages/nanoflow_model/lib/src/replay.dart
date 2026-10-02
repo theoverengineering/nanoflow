@@ -1,182 +1,205 @@
 import 'events.dart';
 
-/// Where a run is, as its last event and its steps tell.
-enum RunStatus {
-  /// The run has no step yet.
-  pending,
-
-  /// The run has steps and no last event.
+/// Where a session is, as its last event tells.
+enum SessionStatus {
+  /// The last event is neither `session-finished` nor `session-failed`.
   running,
 
-  /// The last event is `run-finished`.
+  /// The last event is `session-finished`.
   finished,
 
-  /// The last event is `run-failed`.
+  /// The last event is `session-failed`.
   failed,
-
-  /// The last event is `run-split`.
-  split,
 }
 
-/// Where a step is.
+/// Where a step is, as the events after its last `step-started` tell.
 enum StepStatus {
-  /// No `step-finished` yet.
+  /// No `step-finished` or `step-failed` after the last `step-started`.
   running,
 
-  /// Its command ended: there is a `step-finished`.
+  /// A `step-finished` after the last `step-started`.
   finished,
 
-  /// A `run-failed` names the step. It may still have a `step-finished`: a
-  /// route error comes after one.
+  /// A `step-failed` after the last `step-started`.
   failed,
 }
 
-/// What replaying a run's journal says about one step.
+/// What replaying a session's journal says about one step.
 final class StepState {
   const StepState({
     required this.stepId,
-    required this.node,
     required this.status,
     required this.starts,
     required this.startedAt,
     required this.finishedAt,
-    required this.exitCode,
+    required this.outputId,
+    required this.error,
   });
 
   final String stepId;
 
-  /// The name of the node, from the first `step-started`.
-  final String node;
-
   final StepStatus status;
 
-  /// How many times the command was started: the number of `step-started`.
+  /// How many times the step ran live: the number of its `step-started`.
   final int starts;
 
   /// The time of the first `step-started`.
   final DateTime startedAt;
 
-  /// The time of `step-finished`; `null` while the step runs.
+  /// The time of the outcome of the last start; `null` while the step runs.
   final DateTime? finishedAt;
 
-  /// The exit code from `step-finished`; `null` while the step runs.
-  final int? exitCode;
+  /// The `outputId` of `step-finished`; `null` unless the step finished.
+  final String? outputId;
+
+  /// The `error` of `step-failed`; `null` unless the step failed.
+  final String? error;
 }
 
-/// What replaying a run's journal says about the run.
+/// What replaying a session's journal says about the session.
 ///
 /// Never stored: the state is computed again from the events.
-final class RunState {
-  const RunState({
-    required this.runId,
+final class SessionState {
+  const SessionState({
     required this.status,
     required this.steps,
     required this.startedAt,
     required this.finishedAt,
+    required this.outputId,
     required this.error,
+    required this.codes,
+    required this.graphIds,
   });
 
-  final String runId;
-
-  final RunStatus status;
+  final SessionStatus status;
 
   /// The steps in the order of their first `step-started`.
   final List<StepState> steps;
 
-  /// The time of `run-started`; `null` when the journal has none.
+  /// The time of `session-started`; `null` when the journal has none.
   final DateTime? startedAt;
 
-  /// The time of the run's last event once the run has ended; `null` while it
-  /// goes on.
+  /// The time of the last event once the session has ended; `null` while it
+  /// runs.
   final DateTime? finishedAt;
 
-  /// The `error` of `run-failed`; `null` when the run has not failed.
+  /// The `outputId` of `session-finished`; `null` unless the session
+  /// finished.
+  final String? outputId;
+
+  /// The `error` of `session-failed`; `null` unless the session failed.
   final String? error;
 
-  /// The last step, which a running run is executing; `null` before the first.
-  StepState? get currentStep => steps.isEmpty ? null : steps.last;
+  /// The hashes of the code that ran the session, in order: of
+  /// `session-started`, then of each `session-resumed`.
+  final List<String?> codes;
 
-  /// Whether the run's last event has been written: it finished, failed or
-  /// split.
-  bool get isEnded => switch (status) {
-    RunStatus.finished || RunStatus.failed || RunStatus.split => true,
-    RunStatus.pending || RunStatus.running => false,
-  };
+  /// The documents with the graph snapshots of the `session-resumed` events
+  /// that have one, in order.
+  final List<String> graphIds;
 }
 
-/// The state of run [runId] after [events], which are in the order of its
+/// The state of a session after [events], which are in the order of its
 /// journal.
 ///
-/// Events of another run are skipped, and so are events this version does not
-/// know. A `step-finished` or a `run-failed` that names a step with no
-/// `step-started` changes no step. Replaying never fails.
-RunState replay(String runId, Iterable<Event> events) {
+/// Events this version does not know are skipped. An outcome of a step with
+/// no `step-started` changes no step. Replaying never fails.
+SessionState replaySession(List<Event> events) {
   // Insertion order is the order of the first `step-started`.
   final steps = <String, _Step>{};
+  final codes = <String?>[];
+  final graphIds = <String>[];
   DateTime? startedAt;
   KnownEvent? last;
 
   for (final event in events) {
-    if (event is! KnownEvent || event.runId != runId) continue;
+    if (event is! KnownEvent) continue;
     last = event;
     switch (event) {
-      case RunStarted(:final time):
+      case SessionStarted(:final time, :final code):
         startedAt ??= time;
-      case StepStarted(:final stepId, :final node, :final time):
-        (steps[stepId] ??= _Step(stepId, node, time)).starts++;
-      case StepFinished(:final stepId, :final exitCode, :final time):
-        steps[stepId]?.finish(time, exitCode);
-      case RunFailed(:final stepId):
-        steps[stepId]?.failed = true;
-      case RunSplit() || RunFinished():
+        codes.add(code);
+      case SessionResumed(:final code, :final graphId):
+        codes.add(code);
+        if (graphId != null) graphIds.add(graphId);
+      case StepStarted(:final stepId, :final time):
+        (steps[stepId] ??= _Step(stepId, time)).start();
+      case StepFinished(:final stepId, :final time, :final outputId):
+        steps[stepId]?.end(StepStatus.finished, time, outputId: outputId);
+      case StepFailed(:final stepId, :final time, :final error):
+        steps[stepId]?.end(StepStatus.failed, time, error: error);
+      case SessionFinished() || SessionFailed():
         break;
     }
   }
 
-  final (RunStatus status, DateTime? finishedAt) = switch (last) {
-    RunFinished(:final time) => (RunStatus.finished, time),
-    RunFailed(:final time) => (RunStatus.failed, time),
-    RunSplit(:final time) => (RunStatus.split, time),
-    _ => (steps.isEmpty ? RunStatus.pending : RunStatus.running, null),
+  final (status, finishedAt, outputId, error) = switch (last) {
+    SessionFinished(:final time, :final outputId) => (
+      SessionStatus.finished,
+      time,
+      outputId,
+      null,
+    ),
+    SessionFailed(:final time, :final error) => (
+      SessionStatus.failed,
+      time,
+      null,
+      error,
+    ),
+    _ => (SessionStatus.running, null, null, null),
   };
-  return RunState(
-    runId: runId,
+  return SessionState(
     status: status,
     steps: List.unmodifiable([for (final step in steps.values) step.freeze()]),
     startedAt: startedAt,
     finishedAt: finishedAt,
-    error: last is RunFailed ? last.error : null,
+    outputId: outputId,
+    error: error,
+    codes: List.unmodifiable(codes),
+    graphIds: List.unmodifiable(graphIds),
   );
 }
 
 /// A step while its events are being replayed.
 class _Step {
-  _Step(this.stepId, this.node, this.startedAt);
+  _Step(this.stepId, this.startedAt);
 
   final String stepId;
-  final String node;
   final DateTime startedAt;
   int starts = 0;
+  StepStatus status = StepStatus.running;
   DateTime? finishedAt;
-  int? exitCode;
-  bool failed = false;
+  String? outputId;
+  String? error;
 
-  void finish(DateTime time, int code) {
+  /// A new start: the outcome of the start before no longer holds.
+  void start() {
+    starts++;
+    status = StepStatus.running;
+    finishedAt = null;
+    outputId = null;
+    error = null;
+  }
+
+  void end(
+    StepStatus status,
+    DateTime time, {
+    String? outputId,
+    String? error,
+  }) {
+    this.status = status;
     finishedAt = time;
-    exitCode = code;
+    this.outputId = outputId;
+    this.error = error;
   }
 
   StepState freeze() => StepState(
     stepId: stepId,
-    node: node,
-    status: failed
-        ? StepStatus.failed
-        : finishedAt != null
-        ? StepStatus.finished
-        : StepStatus.running,
+    status: status,
     starts: starts,
     startedAt: startedAt,
     finishedAt: finishedAt,
-    exitCode: exitCode,
+    outputId: outputId,
+    error: error,
   );
 }

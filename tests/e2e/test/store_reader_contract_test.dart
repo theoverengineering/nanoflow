@@ -10,218 +10,158 @@ import 'package:test/test.dart';
 import 'support/feed.dart';
 import 'support/wait.dart';
 
-/// A graph whose session has every kind of event: `collect`, then `verdict`,
-/// which splits the run into `publish` and `notify`.
-const graph = {
-  'start': 'collect',
-  'nodes': {
-    'collect': {
-      'command': 'collect.sh',
-      'in': {'type': 'object'},
-      'out': {'type': 'object'},
-      'then': 'verdict',
-    },
-    'verdict': {
-      'decide': 'verdict.sh',
-      'in': {'type': 'object'},
-      'then': {
-        'accepted': ['publish', 'notify'],
-      },
-    },
-    'publish': {
-      'command': 'publish.sh',
-      'in': {'type': 'object'},
-    },
-    'notify': {
-      'command': 'notify.sh',
-      'in': {'type': 'object'},
-    },
-  },
+/// The graph file the session keeps a snapshot of: a session stores whatever
+/// map it is given.
+const graph = <String, Object?>{
+  'format': 1,
+  'workflows': ['lib/review.dart#review'],
 };
 
 void main() {
   test('what nanoflow_store writes, nanoflow_reader gives as the same '
-      'models: every event, document, step, a step that gets its output, and '
-      'a log', () async {
+      'models: a session with input, a step that finishes with output, one '
+      'that fails with a log, and the end of the session', () async {
     final dir = Directory.systemTemp.createTempSync('nanoflow_contract_');
     addTearDown(() => dir.deleteSync(recursive: true));
-    final runsDir = p.join(dir.path, runsDirName);
+    final runsDir = runsDirOf(dir.path);
 
     final session = await FsStore(runsDir).createSession(
-      graphName: 'review',
+      workflow: 'review',
       graph: graph,
-      startNodes: [(node: 'collect', takesInput: true)],
       input: (value: {'branch': 'main'}),
+      code: 'sha256:7d3e9f0c',
     );
     final sessionId = session.session.id;
-    final [root] = await session.runs();
-    final [collect] = await session.steps(root.id);
     final documents = <String, Object?>{
-      collect.inputId!: {'branch': 'main'},
+      session.session.inputId!: {'branch': 'main'},
     };
 
     final feed = Feed(
       FsReader(
         runsDir: runsDir,
-        graphName: 'review',
         pollInterval: const Duration(milliseconds: 20),
       ),
     );
     final reader = feed.reader;
 
-    final created = <Step>[collect];
-    final finished = <Step>[];
-
-    Future<void> append(Event event) => session.appendEvent(event);
-
-    Future<void> start(Step step, String node) => append(
-      StepStarted(
-        runId: step.runId,
-        time: systemClock(),
-        stepId: step.id,
-        node: node,
-      ),
+    // The library's order (spec §4.6, D3): the step's record, step-started,
+    // then the output document, step-finished and step.json with outputId —
+    // once the reader has given the step without it.
+    final collect = await session.createStep(
+      name: 'collect',
+      key: 'collect#1@e3b0c44298fc1c14',
+      after: null,
+      place: 'lib/review.dart:12',
     );
-
-    /// Finishes [step] with [output] the way the engine does: the document,
-    /// `step-finished`, then `outputId` in `step.json` — once the reader has
-    /// given the step without it.
-    Future<void> finish(Step step, Object? output) async {
-      final outputId = await session.writeDocument(output);
-      documents[outputId] = output;
-      final event = StepFinished(
-        runId: step.runId,
-        time: systemClock(),
-        stepId: step.id,
-        exitCode: 0,
-        outputId: outputId,
-      );
-      await append(event);
-      await waitFor(
-        'the reader to give step ${step.id} and its step-finished',
-        () =>
-            feed.changes.contains(StepAdded(step)) &&
-            feed.changes.contains(EventAdded(event)),
-      );
-      finished.add(await session.setStepOutput(step, outputId));
-    }
-
-    await start(collect, 'collect');
-    await finish(collect, {'id': '1', 'path': 'lib/main.dart'});
-    final change = finished.last.outputId;
-    final verdict = await session.createStep(
-      runId: root.id,
-      node: 'verdict',
-      inputId: change,
+    await session.appendEvent(
+      StepStarted(time: systemClock(), stepId: collect.id),
     );
-    created.add(verdict);
-    await start(verdict, 'verdict');
-    // A fork's output is its outcome.
-    await finish(verdict, 'accepted');
-    final (publishRun, publish) = await session.createRun(
-      parentId: root.id,
-      node: 'publish',
-      inputId: change,
+    final collected = {'id': '1', 'path': 'lib/main.dart'};
+    final collectedId = await session.writeDocument(collected);
+    documents[collectedId] = collected;
+    final collectFinished = StepFinished(
+      time: systemClock(),
+      stepId: collect.id,
+      outputId: collectedId,
     );
-    final (notifyRun, notify) = await session.createRun(
-      parentId: root.id,
-      node: 'notify',
-      inputId: change,
+    await session.appendEvent(collectFinished);
+    await waitFor(
+      'the reader to give step collect and its step-finished',
+      () =>
+          feed.changes.contains(StepAdded(collect)) &&
+          feed.changes.contains(
+            EventAdded(sessionId: sessionId, event: collectFinished),
+          ),
     );
-    created.addAll([publish, notify]);
-    await append(RunSplit(runId: root.id, time: systemClock()));
+    final collectDone = await session.setStepOutput(collect, collectedId);
 
-    await start(publish, 'publish');
-    final log = session.openLog(publishRun.id, publish.id)
-      ..add(utf8.encode('published lib/main.dart\n'));
+    final inspect = await session.createStep(
+      name: 'inspect',
+      key: 'inspect#1@9f2c1a7b3d5e8f04',
+      after: collect.key,
+      place: 'lib/review.dart:13',
+    );
+    await session.appendEvent(
+      StepStarted(time: systemClock(), stepId: inspect.id),
+    );
+    final log = session.openLog(inspect.id)
+      ..add(utf8.encode('inspecting lib/main.dart\n'));
     await log.close();
-    await append(
-      StepFinished(
-        runId: publishRun.id,
+    await session.appendEvent(
+      StepFailed(
         time: systemClock(),
-        stepId: publish.id,
-        exitCode: 0,
-        outputId: null,
-      ),
-    );
-    await append(RunFinished(runId: publishRun.id, time: systemClock()));
-
-    await start(notify, 'notify');
-    await append(
-      StepFinished(
-        runId: notifyRun.id,
-        time: systemClock(),
-        stepId: notify.id,
-        exitCode: 1,
-        outputId: null,
-      ),
-    );
-    await append(
-      RunFailed(
-        runId: notifyRun.id,
-        time: systemClock(),
-        stepId: notify.id,
-        error: 'exited with code 1',
+        stepId: inspect.id,
+        error: 'Exception: no reviewer',
+        stack: '#0      inspect (lib/review.dart:30:5)\n',
       ),
     );
 
-    final runs = [root, publishRun, notifyRun];
-    final journals = {
-      for (final run in runs) run.id: await session.events(run.id),
-    };
+    final result = 'skipped';
+    final resultId = await session.writeDocument(result);
+    documents[resultId] = result;
+    await session.appendEvent(
+      SessionFinished(time: systemClock(), outputId: resultId),
+    );
+
+    final journal = await session.events();
     expect(
-      {
-        for (final events in journals.values)
-          for (final event in events) event.name,
-      },
-      {
-        'run-started',
+      [for (final event in journal) event.name],
+      [
+        'session-started',
         'step-started',
         'step-finished',
-        'run-split',
-        'run-finished',
-        'run-failed',
-      },
+        'step-started',
+        'step-failed',
+        'session-finished',
+      ],
     );
-    final others = [
-      SessionAdded(session.session),
-      for (final run in runs) RunAdded(run),
-      for (final step in created) StepAdded(step),
-      for (final step in finished) StepChanged(step),
-      for (final id in documents.keys)
-        DocumentAdded(sessionId: sessionId, documentId: id),
-    ];
     await feed.settle();
 
     expect(feed.errors, isEmpty);
     expect(
       feed.changes.where((c) => c is! EventAdded),
-      unorderedEquals(others),
+      unorderedEquals([
+        SessionAdded(session.session),
+        StepAdded(collect),
+        StepAdded(inspect),
+        StepChanged(collectDone),
+        for (final id in documents.keys)
+          DocumentAdded(sessionId: sessionId, documentId: id),
+      ]),
     );
-    expect(
-      feed.changes.whereType<EventAdded>(),
-      hasLength(journals.values.fold<int>(0, (n, events) => n + events.length)),
-    );
-    for (final run in runs) {
-      expect([
-        for (final change in feed.changes)
-          if (change case EventAdded(event: KnownEvent(:final runId))
-              when runId == run.id)
-            change.event,
-      ], journals[run.id]);
-    }
+    expect(feed.changes.first, SessionAdded(session.session));
+    final given = [
+      for (final change in feed.changes)
+        if (change is EventAdded) change,
+    ];
+    expect(given, [
+      for (final event in journal)
+        EventAdded(sessionId: sessionId, event: event),
+    ]);
+    expect(await session.steps(), [collectDone, inspect]);
 
-    expect(await reader.sessionGraph(sessionId), graph);
+    final state = replaySession([for (final change in given) change.event]);
+    expect(state.status, SessionStatus.finished);
+    expect(state.outputId, resultId);
+    expect(
+      [for (final step in state.steps) (step.stepId, step.status)],
+      [(collect.id, StepStatus.finished), (inspect.id, StepStatus.failed)],
+    );
+
     for (final MapEntry(key: id, :value) in documents.entries) {
       expect(await reader.documentValue(sessionId, id), value);
       expect(await session.documentValue(id), value);
     }
     expect(
       await reader
-          .stepLog(sessionId, publishRun.id, publish.id)
+          .stepLog(sessionId, inspect.id)
           .first
           .timeout(const Duration(seconds: 10)),
-      'published lib/main.dart\n',
+      'inspecting lib/main.dart\n',
+    );
+    expect(
+      reader.logPath(inspect.id),
+      p.join(reader.stepPath(inspect.id)!, 'step.log'),
     );
   });
 }

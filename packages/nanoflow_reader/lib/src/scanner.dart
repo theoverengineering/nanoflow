@@ -8,42 +8,36 @@ import 'package:path/path.dart' as p;
 
 import 'tail.dart';
 
-/// The `runs` directory of one graph as far as the feed has given it.
+/// The sessions of a `runs` directory as far as the feed has given them.
 ///
 /// Each [scan] goes through the tree once and gives what has appeared since
 /// the scan before. Names that start with `.` are never looked at: the store
 /// builds files and directories under such names and renames them into place
 /// once they are complete.
 ///
-/// What has ended is not looked at again: nothing is written to a run after
-/// its last event (`run-split`, `run-finished`, `run-failed`), nor to a
-/// session all of whose runs have ended. A run is read once more after the
-/// scan that read its last event, and its session once more after that: the
-/// scan may have listed the run's steps, or the session's runs, before the
-/// engine put in place the last step or the runs its split made.
+/// What has ended is not looked at again: nothing is written to a session
+/// after its last event (`session-finished`, `session-failed`). A session is
+/// read once more after the scan that read its last event: that scan may
+/// have listed the session's steps before the last of them was put in place.
 final class Scanner {
-  Scanner({required this.runsDir, required this.graphName});
+  Scanner({required this.runsDir});
 
   final String runsDir;
-
-  final String graphName;
 
   /// The sessions given, by directory.
   final Map<String, _Session> _sessions = {};
 
-  /// The sessions, runs and steps given, by id.
+  /// The sessions and steps given, by id.
   final Map<String, _Session> _sessionsById = {};
-  final Map<String, _Run> _runsById = {};
   final Map<String, _Step> _stepsById = {};
 
   /// Paths whose problem has been given as an error: it is given once.
   final Set<String> _reported = {};
 
-  /// Gives to [out] what has appeared since the scan before: for each session,
-  /// newest first, `session-added` (once), then for each of its runs in name
-  /// order `run-added` (once), its new steps, its journal's new complete lines
-  /// and a `step-changed` for a step that got its `outputId`, then the
-  /// session's new documents.
+  /// Gives to [out] what has appeared since the scan before: for each
+  /// session, newest first, `session-added` (once), then its new steps and a
+  /// `step-changed` for a step that got its `outputId`, its journal's new
+  /// complete lines, then its new documents.
   ///
   /// Newest first: a feed of a long history gives first the sessions that
   /// are likely to be looked at.
@@ -56,23 +50,25 @@ final class Scanner {
     final sessions = await _attempt(
       runsDir,
       out,
-      () => builtDirs(runsDir, (name) => isSessionDirOf(name, graphName)),
+      () => builtDirs(runsDir, isSessionDirName),
     );
-    for (final dir in (sessions ?? const <String>[]).reversed) {
+    final newestFirst = [...?sessions]
+      ..sort((a, b) {
+        final byTime = _createdStamp(b).compareTo(_createdStamp(a));
+        return byTime != 0 ? byTime : b.compareTo(a);
+      });
+    for (final dir in newestFirst) {
       await _scanSession(dir, out);
     }
   }
 
   String? sessionPath(String sessionId) => _sessionsById[sessionId]?.dir;
 
-  String? runPath(String runId) => _runsById[runId]?.dir;
-
   String? stepPath(String stepId) => _stepsById[stepId]?.dir;
 
   String? logPath(String stepId) {
     final step = _stepsById[stepId];
-    final log = step?.step.log;
-    return step == null || log == null ? null : p.join(step.dir, log);
+    return step == null ? null : p.join(step.dir, step.step.log);
   }
 
   String? documentPath(String sessionId, String documentId) {
@@ -95,15 +91,27 @@ final class Scanner {
       session = _sessions[dir] = _sessionsById[model.id] = _Session(model, dir);
       out.add(SessionAdded(model));
     }
-    // Whether every run had ended before this scan listed them: then the
-    // listing has every run their splits made.
-    final known = session.runs;
-    final runsEnded =
-        known.isNotEmpty && known.values.every((run) => run.ended);
-    final runs = await _attempt(dir, out, () => builtDirs(dir));
-    final ended = runsEnded && runs != null && runs.every(known.containsKey);
-    for (final runDir in runs ?? const <String>[]) {
-      await _scanRun(session, runDir, out);
+    final sessionId = session.session.id;
+    // Whether its last event was read before this scan listed its steps:
+    // then the listing has every step it has.
+    final lastRead = session.lastRead;
+    final stepsDir = p.join(dir, stepsDirName);
+    final steps = await _attempt(stepsDir, out, () => builtDirs(stepsDir));
+    for (final stepDir in steps ?? const <String>[]) {
+      await _scanStep(session, stepDir, out);
+    }
+    final journal = session.journal;
+    final lines = await _attempt(journal.path, out, journal.readLines);
+    for (final (:number, :bytes) in lines ?? const <Line>[]) {
+      final change = _journalChange(sessionId, number, bytes);
+      switch (change) {
+        case EventAdded(event: StepFinished(:final stepId, outputId: _?)):
+          session.finishedWithOutput.add(stepId);
+        case EventAdded(event: SessionFinished() || SessionFailed()):
+          session.lastRead = true;
+        default:
+      }
+      out.add(change);
     }
     // A session written by hand may have no documents directory.
     final documentsDir = p.join(dir, documentsDirName);
@@ -114,65 +122,27 @@ final class Scanner {
     );
     for (final documentId in documents ?? const <String>[]) {
       if (session.documents.add(documentId)) {
-        out.add(
-          DocumentAdded(sessionId: session.session.id, documentId: documentId),
-        );
+        out.add(DocumentAdded(sessionId: sessionId, documentId: documentId));
       }
     }
-    // Documents are written before the events that refer to them.
-    session.ended = ended && documents != null;
-  }
-
-  Future<void> _scanRun(
-    _Session session,
-    String dir,
-    EventSink<Change> out,
-  ) async {
-    var run = session.runs[dir];
-    if (run != null && run.ended) return;
-    if (run == null) {
-      final model = await _readModel(
-        p.join(dir, runFileName),
-        Run.fromJson,
-        out,
-      );
-      if (model == null) return;
-      run = session.runs[dir] = _runsById[model.id] = _Run(model, dir);
-      out.add(RunAdded(model));
-    }
-    // Whether its last event was read before this scan listed its steps:
-    // then the listing has every step it has.
-    final lastRead = run.lastRead;
-    final stepsDir = p.join(dir, stepsDirName);
-    final steps = await _attempt(stepsDir, out, () => builtDirs(stepsDir));
-    for (final stepDir in steps ?? const <String>[]) {
-      await _scanStep(run, stepDir, out);
-    }
-    final lines = await _attempt(run.journal.path, out, run.journal.readLines);
-    for (final (:number, :bytes) in lines ?? const <Line>[]) {
-      final change = _journalChange(run.run.id, number, bytes);
-      switch (change) {
-        case EventAdded(event: StepFinished(:final stepId, outputId: _?)):
-          run.finishedWithOutput.add(stepId);
-        case EventAdded(event: RunSplit() || RunFinished() || RunFailed()):
-          run.lastRead = true;
-        default:
-      }
-      out.add(change);
-    }
-    run.ended =
+    session.ended =
         lastRead &&
         steps != null &&
-        steps.every(run.steps.containsKey) &&
-        !run.awaitsAnyOutput;
+        steps.every(session.steps.containsKey) &&
+        !session.awaitsAnyOutput &&
+        documents != null;
   }
 
   /// Gives a step that is new, or a step given without `outputId` whose
   /// `step-finished` has one: its `step.json` is rewritten with the
   /// `outputId` after that event is written.
-  Future<void> _scanStep(_Run run, String dir, EventSink<Change> out) async {
-    final known = run.steps[dir];
-    if (known != null && !run.awaitsOutput(known.step)) return;
+  Future<void> _scanStep(
+    _Session session,
+    String dir,
+    EventSink<Change> out,
+  ) async {
+    final known = session.steps[dir];
+    if (known != null && !session.awaitsOutput(known.step)) return;
     final step = await _readModel(
       p.join(dir, stepFileName),
       Step.fromJson,
@@ -180,7 +150,7 @@ final class Scanner {
     );
     if (step == null) return;
     if (known == null) {
-      run.steps[dir] = _stepsById[step.id] = _Step(step, dir);
+      session.steps[dir] = _stepsById[step.id] = _Step(step, dir);
       out.add(StepAdded(step));
     } else if (step.outputId != null) {
       known.step = step;
@@ -248,6 +218,14 @@ Future<T> readModel<T>(
   }
 }
 
+/// The time to the second in the name of the session directory [dir]:
+/// `YYYY-MM-DDTHH-MM-SS`, which sorts as the time does.
+String _createdStamp(String dir) {
+  final name = _name(Directory(dir));
+  // `<workflow>-<stamp>-<id>`: the stamp is 19 characters before `-<id>`.
+  return name.substring(name.length - 56, name.length - 37);
+}
+
 /// The ids of the documents in the `documents` directory [dir], in name
 /// order.
 Future<List<String>> _documentIds(String dir) async => [
@@ -265,18 +243,16 @@ Future<List<FileSystemEntity>> _visibleEntries(String dir) async => [
     if (!_name(entity).startsWith('.')) entity,
 ];
 
-/// The change a complete [line] of the journal of the run [runId] gives: an
-/// event, or `log-corrupted` when the line is not a JSON object with string
-/// `runId`, `time` and `event`. [number] counts lines from 1.
-Change _journalChange(String runId, int number, Uint8List line) {
+/// The change a complete [line] of the journal of the session [sessionId]
+/// gives: an event, or `log-corrupted` when the line is not a JSON object
+/// with string `time` and `event`. [number] counts lines from 1.
+Change _journalChange(String sessionId, int number, Uint8List line) {
   if (_decode(line) case final Map<String, Object?> json
-      when json['runId'] is String &&
-          json['time'] is String &&
-          json['event'] is String) {
-    return EventAdded(Event.fromJson(json));
+      when json['time'] is String && json['event'] is String) {
+    return EventAdded(sessionId: sessionId, event: Event.fromJson(json));
   }
   return LogCorrupted(
-    runId: runId,
+    sessionId: sessionId,
     line: number,
     text: utf8.decode(line, allowMalformed: true),
   );
@@ -297,28 +273,10 @@ bool _endsWithId(String name) => idOfDirName(name) != null;
 
 /// A session given, with what of it has been given.
 final class _Session {
-  _Session(this.session, this.dir);
+  _Session(this.session, this.dir)
+    : journal = Tail(p.join(dir, eventsFileName));
 
   final Session session;
-
-  final String dir;
-
-  /// Its runs, by directory.
-  final Map<String, _Run> runs = {};
-
-  /// Ids of its documents.
-  final Set<String> documents = {};
-
-  /// Whether every run of it has ended, and it has been read since: nothing
-  /// more is written to it.
-  bool ended = false;
-}
-
-/// A run given, with what of it has been given.
-final class _Run {
-  _Run(this.run, this.dir) : journal = Tail(p.join(dir, eventsFileName));
-
-  final Run run;
 
   final String dir;
 
@@ -330,6 +288,9 @@ final class _Run {
 
   /// Ids of its steps whose `step-finished` has an `outputId`.
   final Set<String> finishedWithOutput = {};
+
+  /// Ids of its documents.
+  final Set<String> documents = {};
 
   /// Whether its last event has been read.
   bool lastRead = false;

@@ -1,4 +1,4 @@
-/// A source of the current time. The engine takes one so tests can fix it.
+/// A source of the current time. The store takes one so tests can fix it.
 typedef Clock = DateTime Function();
 
 /// The wall clock, in UTC.

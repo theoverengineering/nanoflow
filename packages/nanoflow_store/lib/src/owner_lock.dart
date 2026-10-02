@@ -1,16 +1,13 @@
-// One engine process drives a session (README «Правила»): while it does, it
-// holds an OS lock on a file in the session's directory. The system drops
-// the lock when the process dies, so a session is free again after a crash.
+// One process owns a session (spec §4.6): while it does, it holds an OS lock
+// on a file in the session's directory. The system drops the lock when the
+// process dies, so a session is free again after a crash.
 
 import 'dart:io';
 
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
-/// The file in a session's directory whose lock the engine driving the
-/// session holds. Its name starts with `.`: readers skip it.
-const engineLockFileName = '.engine.lock';
-
-/// Another engine process drives the session: it holds the session's lock.
+/// Another process owns the session: it holds the session's lock.
 final class SessionBusyException implements Exception {
   const SessionBusyException(this.sessionId);
 
@@ -18,8 +15,7 @@ final class SessionBusyException implements Exception {
 
   @override
   String toString() =>
-      'SessionBusyException: session $sessionId is being run by another '
-      'engine';
+      'SessionBusyException: another process owns the session $sessionId';
 }
 
 /// Takes the lock of the session [sessionId] in [dir] for this process and
@@ -27,7 +23,7 @@ final class SessionBusyException implements Exception {
 ///
 /// Throws a [SessionBusyException] when another process holds the lock.
 Future<RandomAccessFile> lockSession(String dir, String sessionId) async {
-  final file = await File(p.join(dir, engineLockFileName))
+  final file = await File(p.join(dir, ownerLockFileName))
       .open(mode: FileMode.append);
   try {
     await file.lock(FileLock.exclusive);
