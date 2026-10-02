@@ -41,6 +41,7 @@ eval "\$3"''');
     test('comes from the interactive login shell, which reads the rc file '
         'too', () async {
       final shell = Shell(
+        terminal: false,
         environment: {
           'SHELL': loginShell(
             '/opt/homebrew/bin:/usr/bin',
@@ -59,6 +60,7 @@ eval "\$3"''');
       'comes from a login shell that is not interactive when -i fails',
       () async {
         final shell = Shell(
+          terminal: false,
           environment: {
             'SHELL': loginShell(
               '/opt/homebrew/bin:/usr/bin',
@@ -73,6 +75,7 @@ eval "\$3"''');
 
     test('skips what the profile prints before and after it', () async {
       final shell = Shell(
+        terminal: false,
         environment: {
           'SHELL': loginShell(
             '/login/bin',
@@ -84,9 +87,27 @@ eval "\$3"''');
       expect(await shell.path(), '/login/bin');
     });
 
+    test('is the process PATH, without asking the shell, when the app runs in '
+        'a terminal', () async {
+      final calls = File('${tmp.path}/calls');
+      final shell = Shell(
+        terminal: true,
+        environment: {
+          'SHELL': loginShell(
+            '/login/bin',
+            profile: 'echo call >> ${calls.path}',
+          ),
+          'PATH': '/terminal/bin:/usr/bin',
+        },
+      );
+      expect(await shell.path(), '/terminal/bin:/usr/bin');
+      expect(calls.existsSync(), isFalse);
+    });
+
     test('is resolved once', () async {
       final calls = File('${tmp.path}/calls');
       final shell = Shell(
+        terminal: false,
         environment: {
           'SHELL': loginShell(
             '/login/bin',
@@ -110,6 +131,7 @@ eval "\$3"''');
     for (final MapEntry(key: reason, value: shellPath) in failing.entries) {
       test('is the process PATH when $reason', () async {
         final shell = Shell(
+          terminal: false,
           environment: {'SHELL': shellPath(), 'PATH': '/usr/bin:/bin'},
         );
         expect(await shell.path(), '/usr/bin:/bin');
@@ -118,13 +140,17 @@ eval "\$3"''');
 
     test('is the process PATH when SHELL is not set', () async {
       expect(
-        await Shell(environment: {'PATH': '/usr/bin:/bin'}).path(),
+        await Shell(
+          terminal: false,
+          environment: {'PATH': '/usr/bin:/bin'},
+        ).path(),
         '/usr/bin:/bin',
       );
     });
 
     test('is the process PATH when the login shell hangs', () async {
       final shell = Shell(
+        terminal: false,
         environment: {
           'SHELL': script('sh', 'exec sleep 2'),
           'PATH': '/usr/bin:/bin',
@@ -138,6 +164,7 @@ eval "\$3"''');
       'does not wait for a program the profile leaves holding the output',
       () async {
         final shell = Shell(
+          terminal: false,
           environment: {
             'SHELL': loginShell('/login/bin', profile: 'sleep 3 &'),
             'PATH': '/usr/bin',
@@ -152,6 +179,7 @@ eval "\$3"''');
     test('gives up on the output after the timeout when a program the '
         'profile leaves holds it', () async {
       final shell = Shell(
+        terminal: false,
         environment: {
           'SHELL': script('sh', 'sleep 3 & exit 0'),
           'PATH': '/usr/bin:/bin',
@@ -173,6 +201,7 @@ eval "\$3"''');
     Process.runSync('chmod', ['+x', nanoflow.path]);
     Directory('${first.path}/nanoflow-yaml').createSync();
     final shell = Shell(
+      terminal: false,
       environment: {
         'SHELL': loginShell('${first.path}::${second.path}'),
         'PATH': '/usr/bin',

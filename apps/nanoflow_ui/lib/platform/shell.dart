@@ -23,17 +23,20 @@ typedef StartProcess = Future<Process> Function(
 /// the clipboard.
 class Shell {
   /// [environment] defaults to the app's own; [run] to [Process.run];
-  /// [start] to [Process.start]. [timeout] bounds each shell asked for
-  /// `PATH`.
+  /// [start] to [Process.start]; [terminal] to whether the app's stdin or
+  /// stdout is a terminal. [timeout] bounds each shell asked for `PATH`.
   Shell({
     Map<String, String>? environment,
     RunProcess? run,
     StartProcess? start,
+    bool? terminal,
     this.timeout = const Duration(seconds: 5),
-  }) : _environment = environment ?? Platform.environment,
+  }) : _terminal = terminal ?? (stdin.hasTerminal || stdout.hasTerminal),
+       _environment = environment ?? Platform.environment,
        _run = run ?? Process.run,
        _start = start ?? Process.start;
 
+  final bool _terminal;
   final Map<String, String> _environment;
   final RunProcess _run;
   final StartProcess _start;
@@ -49,7 +52,8 @@ class Shell {
   /// `~/.pub-cache/bin` usually goes; when that fails, as a login shell only,
   /// `$SHELL -l -c …`; when that fails too, the app's own `PATH`. The shell
   /// prints `PATH` on a line after [_marker], so whatever the profile prints
-  /// around it does not matter.
+  /// around it does not matter. An app attached to a terminal uses its own
+  /// `PATH` at once: it is the user's.
   Future<String> path() => _path ??= _userPath();
 
   /// What the shell prints in front of `PATH`.
@@ -58,7 +62,9 @@ class Shell {
   Future<String> _userPath() async {
     final fallback = _environment['PATH'] ?? '';
     final shell = _environment['SHELL'] ?? '';
-    if (shell.isEmpty) return fallback;
+    // Started from a terminal (`flutter run`), the app has the user's PATH
+    // already, and an interactive shell could take the terminal over.
+    if (_terminal || shell.isEmpty) return fallback;
     for (final flags in const [
       ['-i', '-l'],
       ['-l'],
