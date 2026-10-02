@@ -247,7 +247,12 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 /// job becomes perl first, which gives SIGPIPE back its default and then
 /// becomes the program, found on `PATH` as well: a writer whose reader has
 /// exited is killed then, as from a shell. Without perl the program starts
-/// with SIGPIPE ignored.
+/// with SIGPIPE ignored. perl would warn on stderr — into the step's log —
+/// about a `LANG` whose locale is not installed, as Debian images often have
+/// it; `PERL_BADLANG=0` keeps it quiet, and perl removes the variable again
+/// before it starts the program, which so gets its environment unchanged. The
+/// `--` keeps perl from taking a program whose name starts with `-` for a
+/// switch of its own.
 const inGroupScript =
     _endGroup +
     r'''
@@ -257,12 +262,13 @@ stop() {
   end_group $!
   exit 143
 }
-[ -x /usr/bin/perl ] && set -- /usr/bin/perl -e '
+[ -x /usr/bin/perl ] && export PERL_BADLANG=0 && set -- /usr/bin/perl -e '
+  delete $ENV{PERL_BADLANG};
   $SIG{PIPE} = "DEFAULT";
   exec {$ARGV[0]} @ARGV;
   print STDERR "$ARGV[0]: $!\n";
   exit($!{ENOENT} ? 127 : 126);
-' "$@"
+' -- "$@"
 exec 3>&2 2>/dev/null 4<&0
 set -m
 trap stop TERM INT HUP

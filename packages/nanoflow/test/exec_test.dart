@@ -63,8 +63,17 @@ Future<String> withoutTerminal(
   return out;
 }
 
+/// Why a test that needs bash is skipped, or `null` when there is one.
+final String? noBash = File('/bin/bash').existsSync() ? null : 'no /bin/bash';
+
 /// Why a test that needs dash is skipped, or `null` when there is one.
 final String? noDash = File('/bin/dash').existsSync() ? null : 'no /bin/dash';
+
+/// Why a test that needs perl is skipped, or `null` when there is one. Without
+/// it [exec] runs programs with SIGPIPE ignored.
+final String? noPerl = File('/usr/bin/perl').existsSync()
+    ? null
+    : 'no /usr/bin/perl';
 
 void main() {
   late Directory temp;
@@ -99,7 +108,38 @@ void main() {
       'y\n141\n',
     );
     expect(stderr.text, isEmpty);
-  }, skip: File('/bin/bash').existsSync() ? null : 'no /bin/bash');
+  }, skip: noBash ?? noPerl);
+
+  test('keeps perl out of the step log and out of the program\'s '
+      'environment under a locale that is not installed', () async {
+    // perl warns on stderr about it, unless told not to with PERL_BADLANG,
+    // which then must not reach the program.
+    final run = await Process.run(
+      '/bin/bash',
+      [
+        '-c',
+        inGroupScript,
+        'sh',
+        '/bin/sh',
+        '-c',
+        r'echo "${PERL_BADLANG-unset}"',
+      ],
+      environment: {'LANG': 'xx_XX.UTF-8', 'LC_ALL': 'xx_XX.UTF-8'},
+    );
+    expect(run.stdout, 'unset\n');
+    expect(run.stderr, matches(RegExp(r'^nanoflow-exec-group \d+\n$')));
+  }, skip: noBash ?? noPerl);
+
+  test('takes an executable that starts with - for a program, not a switch '
+      'of perl', () async {
+    // `-v` as a switch makes perl print its version and exit with 0.
+    final stderr = Captured();
+    await expectLater(
+      withStderr(stderr, () => exec('-v', [])),
+      throwsA(isA<ExecException>()),
+    );
+    expect(stderr.text, contains('-v'));
+  });
 
   test('exits with 127 and says why when there is no such program', () async {
     final stderr = Captured();
@@ -112,8 +152,16 @@ void main() {
 
   test('passes the arguments as they are', () async {
     expect(
-      await exec('/usr/bin/printf', ['%s|', 'a b', r'$HOME', '"q"', '']),
-      'a b|\$HOME|"q"||',
+      await exec('/usr/bin/printf', [
+        '%s|',
+        'a b',
+        r'$HOME',
+        '"q"',
+        '',
+        '-n',
+        '--',
+      ]),
+      'a b|\$HOME|"q"||-n|--|',
     );
   });
 
@@ -202,7 +250,7 @@ void main() {
     // ps prints the path of the program on macOS, only its name on Linux.
     final parent = await exec('/bin/sh', ['-c', r'ps -o comm= -p $PPID']);
     expect(p.basename(parent.trim()), 'bash');
-  }, skip: File('/bin/bash').existsSync() ? null : 'no /bin/bash');
+  }, skip: noBash);
 
   group(
     'through a shell without job control, as dash is without a terminal',
