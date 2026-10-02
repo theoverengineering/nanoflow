@@ -98,13 +98,17 @@
 
 ```dart
 import 'package:nanoflow/nanoflow.dart';
-import 'package:reviewer/graph.dart';
+import 'package:reviewer/graph.dart' as reviewer;
 import 'package:test/test.dart';
 
 void main() {
-  test('the graph builds', () => expect(graphErrors(graph), isEmpty));
+  test('the graph builds', () => expect(graphErrors(reviewer.graph), isEmpty));
 }
 ```
+
+Граф импортируется с префиксом: узлы — переменные верхнего уровня, и
+развилка `isEmpty` или `contains` иначе столкнулась бы с одноимённым
+матчером `package:test`.
 
 Методов у узла нет, поэтому работу узла тест вызывает через её функцию.
 Работу, которую стоит проверить, удобно объявить именованной функцией —
