@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -73,7 +74,9 @@ Future<String> execIn(
     executable,
     ...arguments,
   ], workingDirectory: workingDirectory);
-  _running.add(process);
+  final group = Completer<int?>();
+  final program = (shell: process, group: group.future);
+  _running.add(program);
   // A stop that came while the shell was starting may have finished
   // already; the shell ends the program on its own.
   if (_stopping) process.kill();
@@ -87,15 +90,54 @@ Future<String> execIn(
       BytesBuilder(copy: false),
       (bytes, chunk) => bytes..add(chunk),
     );
-    final log = stderr;
-    final logged = process.stderr.listen(log.add).asFuture<void>();
+    final logged = _log(process.stderr, stderr, group);
     final exitCode = await process.exitCode;
     final printed = await out;
     await logged;
     if (exitCode != 0) throw ExecException(executable, exitCode);
     return utf8.decode(printed.takeBytes());
   } finally {
-    _running.remove(process);
+    _running.remove(program);
+  }
+}
+
+/// Passes [shellStderr], the stderr of the shell that runs a program, on to
+/// [log] as it arrives, all but the line that tells the program's process
+/// group: [group] completes with the group's id from it, or with `null`
+/// when [shellStderr] ends without it.
+///
+/// The line comes before anything the program writes, so lines are only
+/// looked at until it comes; any before it are the shell's own.
+Future<void> _log(
+  Stream<List<int>> shellStderr,
+  IOSink log,
+  Completer<int?> group,
+) async {
+  var head = <int>[];
+  try {
+    await for (final chunk in shellStderr) {
+      if (group.isCompleted) {
+        log.add(chunk);
+        continue;
+      }
+      head += chunk;
+      for (var end = head.indexOf(0x0A); end >= 0; end = head.indexOf(0x0A)) {
+        final line = head.sublist(0, end + 1);
+        head = head.sublist(end + 1);
+        final told = _groupLine.firstMatch(latin1.decode(line));
+        if (told == null) {
+          log.add(line);
+          continue;
+        }
+        group.complete(int.parse(told[1]!));
+        if (head.isNotEmpty) log.add(head);
+        head = [];
+        break;
+      }
+    }
+  } finally {
+    if (head.isNotEmpty) log.add(head);
+    if (!group.isCompleted) group.complete(null);
   }
 }
 
@@ -123,20 +165,45 @@ Future<bool> _givesGroups(String shell) async {
 /// started, and refuses to start new ones.
 ///
 /// Each program's process group gets SIGTERM, and SIGKILL if any of it is
-/// still running 5 s later. Completes once every program has ended.
+/// still running 5 s later — also the group of a program that has exited
+/// already, but left a process behind that keeps [exec] waiting, as one
+/// that holds the program's stdout does. Completes once every program has
+/// ended.
 Future<void> stopRunning() async {
   _stopping = true;
   // Programs whose start was under way when the stop came are stopped on a
   // later round.
   while (_running.isNotEmpty) {
     final stopped = List.of(_running);
-    for (final process in stopped) {
-      process.kill();
-    }
-    await Future.wait([for (final process in stopped) process.exitCode]);
+    await Future.wait([for (final program in stopped) _stop(program)]);
     _running.removeAll(stopped);
   }
 }
+
+/// Stops [program]. While its shell runs, the shell ends the program's
+/// group; once the shell has exited, what is left of the group is ended
+/// here.
+Future<void> _stop(_Program program) async {
+  program.shell.kill();
+  await program.shell.exitCode;
+  if (await program.group case final group?) {
+    await Process.run('/bin/sh', ['-c', _endGroupScript, 'sh', '$group']);
+  }
+}
+
+/// Shell code that defines `end_group`, which ends the process group `$1`:
+/// SIGTERM, then SIGKILL after 5 s if any of it is still running.
+const _endGroup = r'''
+end_group() {
+  kill -TERM -$1 || return 0
+  i=0
+  while kill -0 -$1 && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+  kill -KILL -$1
+}
+''';
+
+/// The `sh -c` script that ends the process group its argument names.
+const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 
 /// The `sh -c` script that runs a program — `"$@"` — in a process group of
 /// its own and ends the group when the shell gets SIGTERM, SIGINT or
@@ -147,26 +214,28 @@ Future<void> stopRunning() async {
 /// program, started in the background, leads a new process group. That needs
 /// a shell that keeps job control on without a terminal, as bash does; dash
 /// turns it off. The program gets the shell's stdin through fd 4: without
-/// job control, a background job's stdin would be /dev/null. `exec` makes
-/// the job the program itself, found on `PATH`, rather than a builtin or a
-/// function of this script. The shell's own stderr — job notices such as
-/// `Done` — goes to /dev/null; the program gets the real one through fd 3.
-/// The `while` loop waits again if `wait` returned while the program is only
-/// stopped.
-const inGroupScript = r'''
+/// job control, a background job's stdin would be /dev/null. The job is a
+/// `/bin/sh` that first tells the group's id — its own pid — on stderr in a
+/// line [_groupLine] matches, so that a stop can end the group after this
+/// shell has exited; then its `exec` makes the job the program itself,
+/// found on `PATH`, rather than a builtin. The shell's own stderr — job
+/// notices such as `Done` — goes to /dev/null; the job gets the real one
+/// through fd 3. The `while` loop waits again if `wait` returned while the
+/// program is only stopped.
+const inGroupScript =
+    _endGroup +
+    r'''
 stop() {
   trap '' TERM INT HUP
   set +m
-  kill -TERM -$!
-  i=0
-  while kill -0 -$! && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-  kill -KILL -$!
+  end_group $!
   exit 143
 }
 exec 3>&2 2>/dev/null 4<&0
 set -m
 trap stop TERM INT HUP
-exec "$@" <&4 4<&- 2>&3 3>&- &
+/bin/sh -c 'echo "nanoflow-exec-group $$" >&2; exec "$@"' sh "$@" \
+  <&4 4<&- 2>&3 3>&- &
 while :; do
   wait $!
   code=$?
@@ -174,14 +243,22 @@ while :; do
 done
 ''';
 
+/// The line the job of [inGroupScript] tells its process group with.
+final _groupLine = RegExp(r'^nanoflow-exec-group (\d+)\n$');
+
 /// The shell [exec] runs programs through.
 final String _shell = File('/bin/bash').existsSync() ? '/bin/bash' : '/bin/sh';
 
 /// Whether each shell asked runs programs in process groups of their own.
 final _groups = <String, Future<bool>>{};
 
-/// The shells [exec] has started that have not ended yet.
-final _running = <Process>{};
+/// A program [exec] runs: the shell it runs through, and the id of the
+/// program's process group once the shell has told it — `null` when the
+/// shell ended without telling it.
+typedef _Program = ({Process shell, Future<int?> group});
+
+/// The programs [exec] has started that it has not returned for yet.
+final _running = <_Program>{};
 
 /// Whether [stopRunning] was called.
 var _stopping = false;

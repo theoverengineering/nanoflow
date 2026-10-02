@@ -98,8 +98,8 @@ Future<List<Ended>> callAbstractToJson() async {
   return [judged, summarized, shouted];
 }
 
-/// How `--call` of a node that waits on its command ended after a stop, and
-/// how long it took to exit after the stop.
+/// How `--call` of a node that waits on its command ended after a stop, the
+/// pids its command told, and how long it took to exit after the stop.
 typedef Stopped = ({
   int exitCode,
   String stdout,
@@ -107,14 +107,15 @@ typedef Stopped = ({
   Duration exitedIn,
 });
 
-/// Runs `--call [node]`, waits until the node's command tells the pids of its
-/// shell and of the `sleep` the shell started, then calls [stop].
+/// Runs `--call [node]`, waits until the node's command tells the pids of
+/// the processes it started — a line `pids <pid>…` on stderr — then calls
+/// [stop].
 Future<Stopped> stopMidStep(String node, void Function(Process) stop) async {
   final process = await start(programFile, ['--call', node]);
   final stdout = utf8.decodeStream(process.stdout);
   final stderr = Output(process.stderr);
   process.stdin.writeln();
-  final told = RegExp(r'^pids (\d+) (\d+)$', multiLine: true);
+  final told = RegExp(r'^pids (\d+(?: \d+)*)$', multiLine: true);
   await stderr.until(told.hasMatch);
   final match = told.firstMatch(stderr.text)!;
   final watch = Stopwatch()..start();
@@ -124,7 +125,7 @@ Future<Stopped> stopMidStep(String node, void Function(Process) stop) async {
   return (
     exitCode: exitCode,
     stdout: await stdout,
-    pids: [int.parse(match[1]!), int.parse(match[2]!)],
+    pids: [for (final pid in match[1]!.split(' ')) int.parse(pid)],
     exitedIn: watch.elapsed,
   );
 }
@@ -230,7 +231,12 @@ void main() {
         unknownNode,
         badLine;
     late Future<List<Ended>> abstractToJson;
-    late Future<Stopped> closedStdin, terminated, interrupted, ignoresTerm;
+    late Future<Stopped> closedStdin,
+        terminated,
+        interrupted,
+        ignoresTerm,
+        leftClosedStdin,
+        leftTerminated;
     late Future<EndedWithSleep> timedOut, returned, uncaught;
 
     setUpAll(() {
@@ -268,6 +274,14 @@ void main() {
       terminated = stopMidStep('hang', (p) => p.kill(ProcessSignal.sigterm));
       interrupted = stopMidStep('hang', (p) => p.kill(ProcessSignal.sigint));
       ignoresTerm = stopMidStep('hangHard', (p) => p.stdin.close().ignore());
+      leftClosedStdin = stopMidStep(
+        'leavesChild',
+        (p) => p.stdin.close().ignore(),
+      );
+      leftTerminated = stopMidStep(
+        'leavesChild',
+        (p) => p.kill(ProcessSignal.sigterm),
+      );
       timedOut = endsWhileExecRuns('timesOut');
       returned = endsWhileExecRuns('returnsEarly');
       uncaught = endsWhileExecRuns('failsUncaught');
@@ -426,6 +440,17 @@ void main() {
           final stopped = await ignoresTerm;
           expectStopped(stopped, 1);
           expect(stopped.exitedIn, greaterThan(const Duration(seconds: 5)));
+        });
+
+        group('also once the program has exited, leaving a process in its '
+            'group that holds its stdout', () {
+          test('when stdin ends, exiting with 1', () async {
+            expectStopped(await leftClosedStdin, 1);
+          });
+
+          test('on SIGTERM, exiting with 143', () async {
+            expectStopped(await leftTerminated, 143);
+          });
         });
       });
 

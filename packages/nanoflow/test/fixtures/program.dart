@@ -79,6 +79,23 @@ final hangHard = node((Object? _) async {
   ]);
 });
 
+/// A step whose program exits at once but leaves a `sleep` behind in its
+/// process group that holds its stdout, so that [exec] still waits. Once the
+/// shell [exec] runs the program through has exited too, the `sleep` tells
+/// its pid on stderr.
+final leavesChild = node((Object? _) async {
+  await exec('/bin/sh', [
+    '-c',
+    r'''
+shell=$PPID
+(
+  while kill -0 $shell 2>/dev/null; do sleep 0.01; done
+  exec /bin/sh -c 'echo "pids $$" >&2; exec sleep 1000'
+) &
+''',
+  ]);
+});
+
 /// Starts a `sleep` with [exec] that first writes its pid to [pidFile];
 /// gives what [exec] gives.
 Future<String> sleepWritingPid(String pidFile) => exec('/bin/sh', [
@@ -125,6 +142,7 @@ final graph = Graph([
       .then({Verdict.accepted: notify, Verdict.returned: fix}),
   Graph.part(hang),
   Graph.part(hangHard),
+  Graph.part(leavesChild),
   Graph.part(timesOut),
   Graph.part(returnsEarly),
   Graph.part(failsUncaught),
