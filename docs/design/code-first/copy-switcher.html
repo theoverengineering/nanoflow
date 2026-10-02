@@ -1,0 +1,87 @@
+<h2>Как посмотреть одну копию</h2>
+<p class="subtitle">Три пакета — три копии тела цикла. Копии нумеруются в порядке старта; при наведении на номер — что вернул первый шаг копии, чтобы узнать её (например, «core:uploaded»).</p>
+
+<style>
+  .canvas { background:#1e1e21; border-radius:10px; padding:10px; }
+  .canvas svg { width:100%; height:auto; display:block; }
+  .note { font-size:13px; color: var(--text-secondary); margin-top:8px; }
+</style>
+
+<div class="options">
+
+  <div class="option" data-choice="switcher" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Переключатель копий в шапке рамки</h3>
+      <p>В шапке — «все» и номера копий со статусом. Выбрали копию 2: внутри рамки виден только её путь — пройденные шаги с галочкой, текущий подсвечен, не пройденные приглушены. Панель логов под холстом показывает шаги только этой копии.</p>
+      <div class="canvas">
+        <svg viewBox="0 0 720 250" font-family="-apple-system, system-ui, sans-serif">
+          <defs><marker id="a-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8e8e96"/></marker></defs>
+          <rect x="152" y="32" width="380" height="170" rx="12" fill="none" stroke="#3a3a40"/>
+          <rect x="146" y="38" width="380" height="170" rx="12" fill="none" stroke="#45454b"/>
+          <rect x="140" y="44" width="380" height="170" rx="12" fill="#1e1e21" stroke="#5a5a62"/>
+          <text x="156" y="64" fill="#d6d6dc" font-size="12" font-weight="600">каждый pkg в packages</text>
+          <text x="506" y="64" fill="#a9a9b2" font-size="12" text-anchor="end">×3 · одновременно</text>
+          <!-- copy chips -->
+          <g font-size="11">
+            <rect x="156" y="74" width="34" height="20" rx="10" fill="none" stroke="#5a5a62"/><text x="173" y="88" fill="#a9a9b2" text-anchor="middle">все</text>
+            <rect x="196" y="74" width="40" height="20" rx="10" fill="none" stroke="#5a5a62"/><text x="216" y="88" fill="#a9a9b2" text-anchor="middle">1 ✓</text>
+            <rect x="242" y="74" width="40" height="20" rx="10" fill="#3a3550" stroke="#9b87f5"/><text x="262" y="88" fill="#ffffff" text-anchor="middle" font-weight="600">2 ●</text>
+            <rect x="288" y="74" width="40" height="20" rx="10" fill="none" stroke="#5a5a62"/><text x="308" y="88" fill="#a9a9b2" text-anchor="middle">3 ●</text>
+          </g>
+          <g fill="none" stroke="#8e8e96" stroke-width="1.5" marker-end="url(#a-arr)">
+            <path d="M76 140 L138 140"/>
+            <path d="M216 138 L258 138"/><path d="M316 138 L358 138" stroke-dasharray="3 3"/>
+            <path d="M520 140 L598 140"/>
+          </g>
+          <g font-size="12" text-anchor="middle">
+            <g transform="translate(20,112)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">plan</text></g>
+            <g transform="translate(160,110)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">upload</text><circle cx="54" cy="2" r="9" fill="#5a5a62"/><text x="54" y="6" fill="#f0f0f3" font-size="10">✓</text></g>
+            <g transform="translate(260,110)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#6fd68b" stroke-width="2"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">verify</text></g>
+            <g transform="translate(360,110)" opacity="0.35"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">tag</text></g>
+            <g transform="translate(600,112)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">announce</text></g>
+          </g>
+          <text x="506" y="204" fill="#8e8e96" font-size="10" text-anchor="end">копия 2 · сейчас verify</text>
+        </svg>
+      </div>
+      <p class="note">Копий сотня — вместо кнопок список с поиском и фильтром «идут / упали / готовы». Вложенные копии — путь выбора: «копия 2 › сборка 1».</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="badge" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Через цифру на шаге</h3>
+      <p>Клик по зелёной цифре на шаге — список копий, которые сейчас на нём; выбор копии делает то же, что в A. Удобно, когда интересна копия, застрявшая на конкретном шаге.</p>
+      <div class="canvas">
+        <svg viewBox="0 0 720 230" font-family="-apple-system, system-ui, sans-serif">
+          <defs><marker id="b-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8e8e96"/></marker></defs>
+          <rect x="152" y="32" width="380" height="150" rx="12" fill="none" stroke="#3a3a40"/>
+          <rect x="146" y="38" width="380" height="150" rx="12" fill="none" stroke="#45454b"/>
+          <rect x="140" y="44" width="380" height="150" rx="12" fill="#1e1e21" stroke="#5a5a62"/>
+          <text x="156" y="64" fill="#d6d6dc" font-size="12" font-weight="600">каждый pkg в packages</text>
+          <text x="506" y="64" fill="#a9a9b2" font-size="12" text-anchor="end">×3 · одновременно</text>
+          <g fill="none" stroke="#8e8e96" stroke-width="1.5" marker-end="url(#b-arr)">
+            <path d="M76 122 L138 122"/><path d="M216 116 L258 116"/><path d="M316 116 L358 116"/><path d="M520 122 L598 122"/>
+          </g>
+          <g font-size="12" text-anchor="middle">
+            <g transform="translate(20,94)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">plan</text></g>
+            <g transform="translate(160,88)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">upload</text></g>
+            <g transform="translate(260,88)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#6fd68b" stroke-width="2"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">verify</text><circle cx="54" cy="2" r="10" fill="#6fd68b" stroke="#ffffff" stroke-width="1.5"/><text x="54" y="6" fill="#1e1e21" font-size="10" font-weight="700">2</text></g>
+            <g transform="translate(360,88)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">tag</text></g>
+            <g transform="translate(600,94)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">announce</text></g>
+          </g>
+          <!-- popover -->
+          <g transform="translate(300,96)">
+            <rect width="150" height="70" rx="8" fill="#2d2d31" stroke="#5a5a62"/>
+            <text x="10" y="18" fill="#8e8e96" font-size="10">на verify сейчас:</text>
+            <text x="10" y="38" fill="#f0f0f3" font-size="12">копия 2 · tool</text>
+            <text x="10" y="58" fill="#f0f0f3" font-size="12">копия 3 · cli</text>
+          </g>
+        </svg>
+      </div>
+      <p class="note">Дополняет A, а не заменяет: в A можно выбрать и уже закончившуюся копию.</p>
+    </div>
+  </div>
+
+</div>

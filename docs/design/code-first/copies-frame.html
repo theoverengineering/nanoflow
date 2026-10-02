@@ -1,0 +1,96 @@
+<h2>Параллельные копии на графе</h2>
+<p class="subtitle">Код: <code>await Future.wait([for (pkg in packages) () async { upload → verify → tag }()]); announce</code>. Тело цикла выполняется копиями одновременно, по одной на пакет, потом все сливаются.</p>
+
+<style>
+  .canvas { background:#1e1e21; border-radius:10px; padding:10px; }
+  .canvas svg { width:100%; height:auto; display:block; }
+  .note { font-size:13px; color: var(--text-secondary); margin-top:8px; }
+</style>
+
+<div class="section">
+  <h3>Сейчас — путается с if</h3>
+  <div class="canvas">
+    <svg viewBox="0 0 640 190" font-family="-apple-system, system-ui, sans-serif">
+      <defs><marker id="c-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8e8e96"/></marker></defs>
+      <g fill="none" stroke="#8e8e96" stroke-width="1.5" marker-end="url(#c-arr)">
+        <path d="M76 82 L158 82"/><path d="M216 88 L268 88"/><path d="M326 88 L378 88"/><path d="M436 88 L518 88"/>
+        <path d="M76 98 C110 98 110 160 300 160 L480 160 C505 160 505 104 518 100"/>
+      </g>
+      <g font-size="10" fill="#b9a9ff" font-family="ui-monospace, monospace"><text x="86" y="74">true</text><text x="120" y="152">else</text></g>
+      <g font-size="12" text-anchor="middle">
+        <g transform="translate(20,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="35" fill="#cfcfd4">◇</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">for pkg in …</text></g>
+        <g transform="translate(160,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">upload</text></g>
+        <g transform="translate(270,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">verify</text></g>
+        <g transform="translate(380,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">tag</text></g>
+        <g transform="translate(520,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">announce</text></g>
+      </g>
+    </svg>
+  </div>
+  <p class="note">Не видно, что upload → verify → tag идут одновременно в нескольких копиях; «true / else» читается как условие.</p>
+</div>
+
+<div class="options">
+
+  <div class="option" data-choice="stack" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Рамка-стопка</h3>
+      <p>Тело цикла — в рамке, за которой видны ещё две: «это несколько копий». Сверху — над чем копии и сколько их. Из рамки одна стрелка дальше: когда все копии готовы. Во время прогона — сколько копий где.</p>
+      <div class="canvas">
+        <svg viewBox="0 0 720 230" font-family="-apple-system, system-ui, sans-serif">
+          <defs><marker id="a-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8e8e96"/></marker></defs>
+          <!-- the stack: two outlines behind the frame -->
+          <rect x="152" y="32" width="380" height="150" rx="12" fill="none" stroke="#3a3a40"/>
+          <rect x="146" y="38" width="380" height="150" rx="12" fill="none" stroke="#45454b"/>
+          <rect x="140" y="44" width="380" height="150" rx="12" fill="#1e1e21" stroke="#5a5a62"/>
+          <text x="156" y="64" fill="#d6d6dc" font-size="12" font-weight="600">каждый pkg в packages</text>
+          <text x="506" y="64" fill="#a9a9b2" font-size="12" text-anchor="end">×3 · одновременно</text>
+          <text x="506" y="184" fill="#8e8e96" font-size="10" text-anchor="end">готово 1 из 3</text>
+          <g fill="none" stroke="#8e8e96" stroke-width="1.5" marker-end="url(#a-arr)">
+            <path d="M76 122 L138 122"/>
+            <path d="M216 116 L258 116"/><path d="M316 116 L358 116"/>
+            <path d="M520 122 L598 122"/>
+          </g>
+          <text x="530" y="112" fill="#b9a9ff" font-size="10" font-family="ui-monospace, monospace">все готовы</text>
+          <g font-size="12" text-anchor="middle">
+            <g transform="translate(20,94)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">plan</text></g>
+            <g transform="translate(160,88)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">upload</text></g>
+            <g transform="translate(260,88)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#6fd68b" stroke-width="2"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">verify</text><circle cx="54" cy="2" r="9" fill="#6fd68b"/><text x="54" y="6" fill="#1e1e21" font-size="10" font-weight="700">1</text></g>
+            <g transform="translate(360,88)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#6fd68b" stroke-width="2"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">tag</text><circle cx="54" cy="2" r="9" fill="#6fd68b"/><text x="54" y="6" fill="#1e1e21" font-size="10" font-weight="700">1</text></g>
+            <g transform="translate(600,94)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">announce</text></g>
+          </g>
+        </svg>
+      </div>
+      <p class="note">Как свёрнутая функция: рамку можно свернуть в плитку-стопку «×3» и провалиться внутрь. Зелёные цифры — сколько копий сейчас на шаге.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="gates" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Узлы «разделиться» и «собраться»</h3>
+      <p>Отдельный узел, где поток делится на копии, и отдельный узел, где они собираются. Рамки нет; пустой список — стрелка «пусто» сразу к сборке.</p>
+      <div class="canvas">
+        <svg viewBox="0 0 760 200" font-family="-apple-system, system-ui, sans-serif">
+          <defs><marker id="b-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#8e8e96"/></marker></defs>
+          <g fill="none" stroke="#8e8e96" stroke-width="1.5" marker-end="url(#b-arr)">
+            <path d="M76 88 L118 88"/><path d="M176 88 L228 88"/><path d="M286 88 L328 88"/><path d="M386 88 L428 88"/><path d="M486 88 L538 88"/><path d="M596 88 L648 88"/>
+            <path d="M148 116 L148 160 L566 160 L566 118"/>
+          </g>
+          <g font-size="10" fill="#b9a9ff" font-family="ui-monospace, monospace"><text x="186" y="80">×3</text><text x="330" y="154">пусто</text></g>
+          <g font-size="12" text-anchor="middle">
+            <g transform="translate(20,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">plan</text></g>
+            <g transform="translate(120,60)"><rect width="56" height="56" rx="28" fill="#2b2b2f" stroke="#5a5a62"/><text x="28" y="35" fill="#cfcfd4" font-size="16">⇉</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">pkg in packages</text></g>
+            <g transform="translate(230,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">upload</text></g>
+            <g transform="translate(330,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#6fd68b" stroke-width="2"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">verify</text></g>
+            <g transform="translate(430,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#6fd68b" stroke-width="2"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">tag</text></g>
+            <g transform="translate(540,60)"><rect width="56" height="56" rx="28" fill="#2b2b2f" stroke="#5a5a62"/><text x="28" y="35" fill="#cfcfd4" font-size="16">⇶</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">все готовы</text></g>
+            <g transform="translate(650,60)"><rect width="56" height="56" rx="10" fill="#2b2b2f" stroke="#4a4a50"/><text x="28" y="34" fill="#cfcfd4" font-family="ui-monospace, monospace">&gt;_</text><text x="28" y="74" fill="#f0f0f3" font-weight="600">announce</text></g>
+          </g>
+        </svg>
+      </div>
+      <p class="note">Как в BPMN. Явно видно, где делится и где собирается, но то, что внутри идут копии, видно только по подписи «×3».</p>
+    </div>
+  </div>
+
+</div>
