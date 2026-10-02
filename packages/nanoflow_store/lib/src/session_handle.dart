@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -198,10 +199,10 @@ final class SessionHandle {
 
   /// Opens the command log of the step [stepId] of the run [runId] for
   /// appending: a step that runs again adds to the log it has.
-  StepLog openLog(String runId, String stepId) => StepLog._(
-    File(p.join(_stepDir(runId, stepId), logFileName))
-        .openWrite(mode: FileMode.append),
-  );
+  ///
+  /// The log throws no error of its file: [StepLog.failed] gives it.
+  StepLog openLog(String runId, String stepId) =>
+      StepLog._(File(p.join(_stepDir(runId, stepId), logFileName)));
 
   /// Builds the directory of a new step in [stepsDir].
   Future<Step> _buildStep(
@@ -249,19 +250,65 @@ final class SessionHandle {
 }
 
 /// The log of one step's command, open for appending.
+///
+/// Its file is written in the background, in the order the bytes were added.
+/// No error of the file is thrown, now or later: when the file cannot be
+/// opened, written or closed — its directory is gone, the disk is full —
+/// [failed] completes with why, and the log writes nothing more.
 final class StepLog {
-  StepLog._(this._sink);
+  StepLog._(File file) {
+    _writing = _guarded(() async {
+      _file = await file.open(mode: FileMode.append);
+    });
+  }
 
-  final IOSink _sink;
+  RandomAccessFile? _file;
+
+  /// Every write so far, one after another: completes after the last.
+  late Future<void> _writing;
+
+  final _failed = Completer<FileSystemException>();
+
+  bool _closed = false;
+
+  /// Completes with the error of the first open, write or close of the file
+  /// that failed.
+  Future<FileSystemException> get failed => _failed.future;
 
   /// Adds [bytes] to the end of the log.
-  void add(List<int> bytes) => _sink.add(bytes);
+  void add(List<int> bytes) {
+    if (_closed) throw StateError('the log is closed');
+    _writing = _writing.then(
+      (_) =>
+          _failed.isCompleted ? null : _guarded(() => _file!.writeFrom(bytes)),
+    );
+  }
 
-  /// Completes once everything added so far is written to the file.
-  Future<void> flush() => _sink.flush();
+  /// Completes once everything added so far is written to the file, or the
+  /// log has failed.
+  Future<void> flush() => _writing;
 
   /// Writes what is left and closes the log.
-  Future<void> close() => _sink.close();
+  Future<void> close() {
+    if (!_closed) {
+      _closed = true;
+      _writing = _writing.then((_) {
+        final file = _file;
+        _file = null;
+        return file == null ? null : _guarded(file.close);
+      });
+    }
+    return _writing;
+  }
+
+  /// Runs [io], an operation on the file; when it fails, [failed] gives why.
+  Future<void> _guarded(Future<void> Function() io) async {
+    try {
+      await io();
+    } on FileSystemException catch (e) {
+      if (!_failed.isCompleted) _failed.complete(e);
+    }
+  }
 }
 
 /// A journal has a complete line that is not a JSON object.

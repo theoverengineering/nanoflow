@@ -529,6 +529,28 @@ void main() {
 
       expect(read(logFile), 'line 1\n');
     });
+
+    test('a log it cannot open throws nothing, now or later: failed gives '
+        'why', () async {
+      final handle = await newSession();
+      final run = (await handle.runs()).single;
+      final step = (await handle.steps(run.id)).single;
+      // A directory where the file should be: it cannot be opened.
+      final logFile = p.join(stepDir(handle, run.id, step.id), 'command.log');
+      Directory(logFile).createSync();
+
+      final log = handle.openLog(run.id, step.id);
+      // Long enough for the open to have failed with nothing added.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      log.add(utf8.encode('lost\n'));
+      await log.flush();
+      await log.close();
+
+      expect(
+        await log.failed,
+        isA<FileSystemException>().having((e) => e.path, 'path', logFile),
+      );
+    });
   });
 
   group('a file that does not hold its model', () {

@@ -63,15 +63,20 @@ final class DrivenSession {
   Future<void> get failed => _failed.future;
 
   /// [driving], a run being driven, with a failure to write or read the
-  /// session caught: the first such failure becomes [storageFailure], and
-  /// the engine begins to stop. Other errors pass through.
-  Future<void> guard(Future<void> driving) =>
-      driving.catchError((Object error) {
-        if (_failed.isCompleted) return;
-        _storageFailure = error as FileSystemException;
-        stop();
-        _failed.complete();
-      }, test: (error) => error is FileSystemException);
+  /// session caught as [storageFailed]. Other errors pass through.
+  Future<void> guard(Future<void> driving) => driving.catchError(
+    (Object error) => storageFailed(error as FileSystemException),
+    test: (error) => error is FileSystemException,
+  );
+
+  /// The session could not be written or read because of [error]: the first
+  /// such error becomes [storageFailure], and the engine begins to stop.
+  void storageFailed(FileSystemException error) {
+    if (_failed.isCompleted) return;
+    _storageFailure = error;
+    stop();
+    _failed.complete();
+  }
 
   /// Appends [event] to the journal of its run and reports it, unless the
   /// engine is stopping; gives whether it did. [node] and [children] are for
@@ -276,6 +281,8 @@ final class RunDriver {
   Future<CallEnd?> _call(Step step, Node node) async {
     final input = await inputLine(_store, step);
     final log = _store.openLog(_runId, step.id);
+    // A log that cannot be written fails the session like any other write.
+    unawaited(log.failed.then(_session.storageFailed));
     try {
       final call = await StepCall.start(
         _session.program,

@@ -1005,6 +1005,19 @@ IFS= read -r line
     void restoreWrite(String path) =>
         addTearDown(() => Process.runSync('chmod', ['-R', 'u+rwx', path]));
 
+    /// Whether the process of the node script [node], which wrote its pid to
+    /// `<node>.pid`, still runs.
+    bool isRunning(FakeProgram fake, String node) {
+      final pid = File(p.join(fake.dir, '$node.pid')).readAsStringSync();
+      return Process.runSync('kill', ['-0', pid.trim()]).exitCode == 0;
+    }
+
+    /// A node script that writes its pid to `<node>.pid` and runs for 20 s,
+    /// should the engine not stop it.
+    const waitAndLoop =
+        'echo \$\$ > "\$(basename "\$0" .sh).pid"\n'
+        'i=0; while [ \$i -lt 400 ]; do sleep 0.05; i=\$((i + 1)); done';
+
     test('removed while steps run: every step stops, one line says why, '
         'exit 3', () async {
       final fake = FakeProgram(
@@ -1017,10 +1030,7 @@ IFS= read -r line
         },
         nodes: {
           'remove': '${waitForFile('wait.pid')}\nrm -rf runs',
-          // Ends on its own after 20 s, should the engine not stop it.
-          'wait':
-              'echo \$\$ > wait.pid\n'
-              'i=0; while [ \$i -lt 400 ]; do sleep 0.05; i=\$((i + 1)); done',
+          'wait': waitAndLoop,
         },
       );
       final result = await nanoflow(['run', '--', fake.path])
@@ -1034,12 +1044,7 @@ IFS= read -r line
         storeFailure(r'/log\.jsonl', 'No such file or directory'),
       );
       expect(lines.where((line) => line.startsWith('cannot ')), hasLength(1));
-      final pid = File(p.join(fake.dir, 'wait.pid')).readAsStringSync().trim();
-      expect(
-        Process.runSync('kill', ['-0', pid]).exitCode,
-        isNot(0),
-        reason: 'the wait step still runs',
-      );
+      expect(isRunning(fake, 'wait'), isFalse);
       expect(Directory(fake.runsDir).existsSync(), isFalse);
     });
 
@@ -1066,6 +1071,58 @@ IFS= read -r line
         'run-started make',
         'step-started make',
       ]);
+    });
+
+    test('a step log it cannot write, as on a full disk: every step stops, '
+        'one line says why, exit 3', () async {
+      final fake = FakeProgram(
+        {
+          'start': ['noisy', 'wait'],
+          'nodes': {
+            'noisy': {'command': 'noisy'},
+            'wait': {'command': 'wait'},
+          },
+        },
+        nodes: {
+          // 8 KB to its log once wait runs, and then it keeps running: the
+          // log fails while the step runs.
+          'noisy':
+              'echo \$\$ > noisy.pid\n'
+              '${waitForFile('wait.pid')}\n'
+              'i=0; while [ \$i -lt 40 ]; do '
+              'printf "%0200d\\n" 0 >&2; i=\$((i + 1)); done\n'
+              '$waitAndLoop',
+          'wait': waitAndLoop,
+        },
+      );
+      // No file may grow past 4 blocks of 512 bytes or more: the session's
+      // own files fit, the noisy step's log does not. A write past it fails
+      // with EFBIG instead of the signal killing the engine.
+      final engine = await Process.start('/bin/sh', [
+        '-c',
+        r'''trap '' XFSZ; ulimit -f 4; exec "$0" "$@"''',
+        Platform.resolvedExecutable,
+        'bin/nanoflow.dart',
+        'run',
+        '--',
+        fake.path,
+      ]);
+      addTearDown(() => engine.kill(ProcessSignal.sigkill));
+      final out = engine.stdout.transform(utf8.decoder).join();
+      final err = engine.stderr.transform(utf8.decoder).join();
+      final code = await engine.exitCode.timeout(const Duration(seconds: 30));
+
+      expect(code, 3, reason: await err);
+      expect(await out, matches(r'^[0-9a-f-]{36}\n$'));
+      final lines = const LineSplitter().convert(await err);
+      expect(
+        lines.last,
+        storeFailure(r'/command\.log', 'File too large'),
+        reason: await err,
+      );
+      expect(lines.where((line) => line.startsWith('cannot ')), hasLength(1));
+      expect(isRunning(fake, 'noisy'), isFalse);
+      expect(isRunning(fake, 'wait'), isFalse);
     });
 
     test('one that cannot be created: no session, one line says why, '
