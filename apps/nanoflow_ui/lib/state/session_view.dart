@@ -340,7 +340,7 @@ final class GraphMarks {
         (markers[node] ??= []).add(RunMarker(run.id, phase));
       }
     }
-    return GraphMarks._(states, visits, passes, markers);
+    return GraphMarks._(states, visits, Map.unmodifiable(passes), markers);
   }
 
   final Map<String, NodeState> _states;
