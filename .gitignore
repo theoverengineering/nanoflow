@@ -4,3 +4,4 @@ pubspec_overrides.yaml
 # Sessions created by running examples locally
 **/runs/
 .superpowers/
+.DS_Store
