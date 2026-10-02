@@ -335,6 +335,7 @@ class _LogViewState extends State<LogView> {
   }
 
   void _add(String text) {
+    _error = null;
     final parts = '$_partial$text'.split('\n');
     _partial = parts.removeLast();
     for (final line in parts) {
@@ -349,6 +350,7 @@ class _LogViewState extends State<LogView> {
     if (widget.following.value) _toEnd();
   }
 
+  /// A read that failed: reading goes on, and what was read stays.
   void _failed(Object error) => setState(() => _error = error);
 
   /// Holds on to the end once the lines are laid out.
@@ -388,7 +390,7 @@ class _LogViewState extends State<LogView> {
   @override
   Widget build(BuildContext context) {
     final error = _error;
-    if (error != null) {
+    if (error != null && _count == 0) {
       return TabNote(
         'Could not read the log: $error',
         color: AppColors.dangerText,

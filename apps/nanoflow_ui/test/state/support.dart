@@ -333,6 +333,14 @@ final class FakeFiles implements StepFiles {
     }
   }
 
+  /// Reading the step [stepId]'s log fails once with [error]; reading goes
+  /// on.
+  void fail(String stepId, Object error) {
+    for (final follower in [...?_followers[stepId]]) {
+      follower.addError(error);
+    }
+  }
+
   @override
   Stream<String> stepLog(String sessionId, String runId, String stepId) {
     late final StreamController<String> controller;

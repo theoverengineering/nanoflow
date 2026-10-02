@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/graph/logs/log_view.dart';
@@ -114,6 +116,22 @@ void main() {
       find.text('Could not read the log: Invalid argument(s): no such step'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('keeps the log it has when a later read fails, and goes on', (
+    tester,
+  ) async {
+    final files = await pumpLog(tester, notifyLog);
+
+    files.fail('e5f6-notify-0', const FileSystemException('busy'));
+    await tester.pump();
+    expect(line('2 findings, 3 subscribers'), findsOneWidget);
+    expect(find.textContaining('Could not read the log'), findsNothing);
+
+    files.append('e5f6-notify-0', 'subscriber 3: sent\n');
+    await tester.pump();
+    await tester.pump();
+    expect(line('subscriber 3: sent'), findsOneWidget);
   });
 
   testWidgets('stops reading the log of a step no longer shown', (
