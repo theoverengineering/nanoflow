@@ -24,12 +24,12 @@ final class FsStore {
   /// The session's lock is taken before anything is written to it: the
   /// handle holds it, so no other engine process can open the session (see
   /// [openSession]). Builds the whole session under `runs/.tmp-<id>/` and
-  /// renames it into place: `session.json`, the `documents` directory with the input document
-  /// (when [input] is given), and for every start node a run (`run.json`,
-  /// `log.jsonl` with `run-started`) with its first step, whose `inputId` is
-  /// the input document if the node takes input, else `null`. The session
-  /// directory's name holds the time the session is created; creates [runsDir]
-  /// when there is none.
+  /// renames it into place: `session.json`, the `documents` directory with
+  /// the input document (when [input] is given), and for every start node a
+  /// run (`run.json`, `log.jsonl` with `run-started`) with its first step,
+  /// whose `inputId` is the input document if the node takes input, else
+  /// `null`. The session directory's name holds the time the session is
+  /// created; creates [runsDir] when there is none.
   Future<SessionHandle> createSession({
     required String graphName,
     required Map<String, Object?> graph,
