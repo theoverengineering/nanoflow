@@ -32,12 +32,20 @@ final class LogsHeader {
   final String? parentId;
 
   /// `8 steps, 7 inherited from k7f2`; `7 steps` for a root run.
-  String get stepsText {
+  String get stepsText => '$stepsLead${inheritedFrom ?? ''}';
+
+  /// [stepsText] up to the id of the run the steps are inherited from:
+  /// `8 steps, 7 inherited from `; all of it when it names no run.
+  String get stepsLead {
     final all = count(steps, 'step');
+    return inheritedFrom == null ? all : '$all, $inherited inherited from ';
+  }
+
+  /// The short id that ends [stepsText]: the parent's, when steps are
+  /// inherited from it.
+  String? get inheritedFrom {
     final parent = parentId;
-    return inherited == 0 || parent == null
-        ? all
-        : '$all, $inherited inherited from ${texts.shortId(parent)}';
+    return inherited == 0 || parent == null ? null : texts.shortId(parent);
   }
 
   String get text => 'run $shortId · $stepsText';
@@ -151,6 +159,9 @@ final class EndRow extends LogRow {
   /// When the run ended.
   final DateTime at;
 
+  /// [at] as the `Started` column shows times: `14:13:51`.
+  String get atText => clockTime(at);
+
   /// `Run finished`, `Run failed: exited with code 1`, `Run split into`
   /// followed by the [children].
   String get text => switch (phase) {
@@ -173,6 +184,23 @@ final class TimeScale {
     final span = end.difference(start).inMicroseconds;
     if (span <= 0) return 0;
     return (t.difference(start).inMicroseconds / span).clamp(0.0, 1.0);
+  }
+
+  /// The labels under the timeline at its start, middle and end: the time
+  /// from [start], rounded down to the largest unit — hour, minute, second —
+  /// that the middle has a whole one of. `0m 6m 12m` for 12m 26s, `0m 1h 2h`
+  /// for 2h 54m, as the mockups have them; `0s 40s 80s` for 80 s.
+  List<String> get axis {
+    final span = end.difference(start);
+    final half = span ~/ 2;
+    final (unit, name) = half >= const Duration(hours: 1)
+        ? (const Duration(hours: 1), 'h')
+        : half >= const Duration(minutes: 1)
+        ? (const Duration(minutes: 1), 'm')
+        : (const Duration(seconds: 1), 's');
+    String label(Duration d) =>
+        '${d.inMicroseconds ~/ unit.inMicroseconds}$name';
+    return [name == 's' ? '0s' : '0m', label(half), label(span)];
   }
 }
 

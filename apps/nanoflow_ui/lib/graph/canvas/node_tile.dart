@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -7,6 +5,7 @@ import '../../layout/layout.dart' as layout;
 import '../../layout/layout.dart' show LabelKind;
 import '../../state/graph_marks.dart';
 import '../../state/runs.dart';
+import '../../widgets/spinner.dart';
 import 'canvas_style.dart';
 import 'layout_geometry.dart';
 
@@ -258,7 +257,11 @@ class NodeTile extends StatelessWidget {
       fill: Color(0xFFD9434A),
       failed: true,
     ),
-    NodeState.running => const _Spinner(),
+    NodeState.running => const Spinner(
+      size: 17,
+      strokeWidth: 2.2,
+      background: CanvasColors.background,
+    ),
     NodeState.notVisited || null => null,
   };
 }
@@ -461,78 +464,6 @@ class _MarkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_MarkPainter old) => old.failed != failed;
-}
-
-/// The turning sign of a running node. It repaints as it turns and builds
-/// nothing: a rebuild under the canvas's layout builder would lay the canvas
-/// out and paint it again on every frame.
-class _Spinner extends StatefulWidget {
-  const _Spinner();
-
-  @override
-  State<_Spinner> createState() => _SpinnerState();
-}
-
-class _SpinnerState extends State<_Spinner>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _turns = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _turns.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => RepaintBoundary(
-    child: CustomPaint(
-      size: const Size.square(17),
-      painter: _SpinnerPainter(_turns),
-    ),
-  );
-}
-
-/// A disc of the canvas's color, and on it a dim ring with a bright quarter
-/// turned by [turns]: 18 units.
-class _SpinnerPainter extends CustomPainter {
-  _SpinnerPainter(this.turns) : super(repaint: turns);
-
-  final Animation<double> turns;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas
-      ..scale(size.width / 18)
-      ..drawCircle(
-        const Offset(9, 9),
-        9,
-        Paint()..color = CanvasColors.background,
-      )
-      ..translate(9, 9)
-      ..rotate(turns.value * 2 * math.pi)
-      ..translate(-9, -9);
-    final ring = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..color = const Color(0xFF4A3A1E);
-    canvas
-      ..drawCircle(const Offset(9, 9), 6.5, ring)
-      ..drawArc(
-        Rect.fromCircle(center: const Offset(9, 9), radius: 6.5),
-        -math.pi / 2,
-        math.pi / 2,
-        false,
-        ring
-          ..color = const Color(0xFFF2A93B)
-          ..strokeCap = StrokeCap.round,
-      );
-  }
-
-  @override
-  bool shouldRepaint(_SpinnerPainter old) => old.turns != turns;
 }
 
 /// A run's short id over the tile, in the color of the run's state; its

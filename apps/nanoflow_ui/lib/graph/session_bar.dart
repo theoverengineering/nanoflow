@@ -9,7 +9,6 @@ import '../state/texts.dart' show shortId;
 import '../theme.dart';
 import '../widgets/dot.dart';
 import 'run_switcher.dart';
-import 'sessions_column.dart' show SessionStatusColors;
 
 /// The session bar floating over the top of the canvas (docs/ui-spec.md
 /// «Холст»): on the left `Session a1b2 · started 14:03:11 · ● running 12m

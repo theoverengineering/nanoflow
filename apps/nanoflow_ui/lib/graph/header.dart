@@ -7,6 +7,7 @@ import '../state/graph_source.dart';
 import '../theme.dart';
 import '../widgets/clickable.dart';
 import '../widgets/dot.dart';
+import '../widgets/failure_note.dart';
 
 /// The graph screen's header (docs/ui-spec.md «Экран графа»): `Graphs` back
 /// to the start screen, the graph file's name and its directory; on the
@@ -32,32 +33,13 @@ class GraphHeader extends StatelessWidget {
   /// Goes back to the start screen.
   final VoidCallback onBack;
 
-  /// How long a note about a failure stays.
-  static const _noteTime = Duration(seconds: 3);
-
   Future<void> _open(
     BuildContext context,
     Future<bool> Function(String path) open,
     String failure,
   ) async {
     if (await open(path) || !context.mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      SnackBar(
-        content: Text(
-          failure,
-          style: AppText.problemText.copyWith(color: AppColors.dangerText),
-        ),
-        duration: _noteTime,
-        behavior: SnackBarBehavior.floating,
-        width: 360,
-        backgroundColor: AppColors.dangerSurface,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          side: const BorderSide(color: AppColors.dangerBorder),
-          borderRadius: BorderRadius.circular(8),
-        ),
-      ),
-    );
+    showFailureNote(context, failure);
   }
 
   @override

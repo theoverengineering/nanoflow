@@ -7,23 +7,6 @@ import '../state/texts.dart' show count;
 import '../theme.dart';
 import '../widgets/clickable.dart';
 
-/// The colors a session's status is shown in.
-extension SessionStatusColors on SessionStatus {
-  /// The status bar of its card, the dot on the session bar.
-  Color get color => switch (this) {
-    SessionStatus.running => AppColors.running,
-    SessionStatus.failed => AppColors.failed,
-    SessionStatus.finished => AppColors.finished,
-  };
-
-  /// `Running for 12m 26s`, `failed in 6m 18s`.
-  Color get textColor => switch (this) {
-    SessionStatus.running => AppColors.running,
-    SessionStatus.failed => AppColors.dangerText,
-    SessionStatus.finished => AppColors.finishedText,
-  };
-}
-
 /// The sessions column (docs/ui-spec.md «Сессии»): `Current graph` on top,
 /// then the graph's sessions, newest first, each a card with its status bar;
 /// what is selected is highlighted, and a click selects. Without sessions,

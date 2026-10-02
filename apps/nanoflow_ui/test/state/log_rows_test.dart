@@ -33,6 +33,16 @@ void main() {
       );
     });
 
+    test('the header\'s steps part ends with the id of the run they are '
+        'inherited from', () {
+      final header = logsHeader(mockup.session, 'e5f6-run');
+      expect(header.stepsLead, '8 steps, 7 inherited from ');
+      expect(header.inheritedFrom, 'k7f2');
+      final root = logsHeader(mockup.session, 'k7f2-run');
+      expect(root.stepsLead, '7 steps');
+      expect(root.inheritedFrom, isNull);
+    });
+
     test('a root run\'s header has no inherited part', () {
       expect(logsHeader(mockup.session, 'k7f2-run').text, 'run k7f2 · 7 steps');
       final one = Journal('oone-run', node: 'collect', startedAt: 0)
@@ -193,6 +203,7 @@ void main() {
           logRows(session, runId, outcomes: noOutcomes, now: now).last
               as EndRow;
       expect(end(mockup.session, 'c3d4-run').text, 'Run finished');
+      expect(end(mockup.session, 'c3d4-run').atText, '14:13:51');
       final split = end(mockup.session, 'k7f2-run');
       expect(split.text, 'Run split into');
       expect(split.children, ['c3d4-run', 'e5f6-run']);
@@ -236,6 +247,18 @@ void main() {
       final ended = timeScale(sessionOf([run]), now);
       expect((ended.start, ended.end), (at(0), at(184)));
       expect(ended.fraction(at(92)), 0.5);
+    });
+
+    test('the timeline\'s axis reads the time from the session\'s start at '
+        'its start, middle and end, rounded down to the largest unit its '
+        'middle has a whole one of', () {
+      List<String> axis(num seconds) => TimeScale(at(0), at(seconds)).axis;
+      expect(axis(746), ['0m', '6m', '12m']);
+      expect(axis(2 * 3600 + 54 * 60 + 27), ['0m', '1h', '2h']);
+      expect(axis(90 * 60), ['0m', '45m', '90m']);
+      expect(axis(80), ['0s', '40s', '80s']);
+      expect(axis(31), ['0s', '15s', '31s']);
+      expect(axis(0), ['0s', '0s', '0s']);
     });
   });
 }

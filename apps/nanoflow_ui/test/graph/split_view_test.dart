@@ -24,17 +24,18 @@ void main() {
   );
 
   /// One over the other, the second pane 280 px with its border line, at
-  /// least 120, the first at least 200.
-  Widget rows() => const SplitView(
+  /// least 120, the first at least 200; [fixedExtent] while folded.
+  Widget rows({double? fixedExtent}) => SplitView(
     axis: Axis.vertical,
     sized: SplitPane.second,
     extent: 280,
     minExtent: 120,
     maxExtent: double.infinity,
     minOther: 200,
-    border: Color(0xFF34353A),
-    first: SizedBox.expand(key: first),
-    second: SizedBox.expand(key: second),
+    border: const Color(0xFF34353A),
+    fixedExtent: fixedExtent,
+    first: const SizedBox.expand(key: first),
+    second: const SizedBox.expand(key: second),
   );
 
   Future<void> drag(WidgetTester tester, Offset from, Offset by) =>
@@ -124,5 +125,24 @@ void main() {
       RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
       SystemMouseCursors.resizeColumn,
     );
+  });
+
+  testWidgets('a fixed extent holds the sized pane and the border; then it '
+      'comes back to where it was dragged', (tester) async {
+    await pumpScreen(tester, rows());
+    await drag(tester, const Offset(700, 620.5), const Offset(0, -100));
+    await tester.pump();
+
+    await pumpScreen(tester, rows(fixedExtent: 39));
+    expect(
+      tester.getRect(find.byKey(second)),
+      const Rect.fromLTRB(0, 862, 1440, 900),
+    );
+    await drag(tester, const Offset(700, 861.5), const Offset(0, -100));
+    await tester.pump();
+    expect(tester.getTopLeft(find.byKey(second)).dy, 862);
+
+    await pumpScreen(tester, rows());
+    expect(tester.getTopLeft(find.byKey(second)).dy, 521);
   });
 }

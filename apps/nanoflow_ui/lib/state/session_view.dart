@@ -13,11 +13,13 @@ import 'outcomes.dart';
 import 'runs.dart';
 import 'session_feed.dart';
 import 'sessions.dart';
+import 'step_details.dart';
 
 export 'graph_marks.dart';
 export 'log_rows.dart';
 export 'runs.dart';
 export 'sessions.dart';
+export 'step_details.dart';
 
 /// The selected run as the canvas and the `Logs` panel show it.
 final class RunView {
@@ -26,6 +28,7 @@ final class RunView {
     this.header,
     List<RunStep> steps,
     List<LogRow> rows,
+    this.scale,
     this.path,
   ) : steps = List.unmodifiable(steps),
       rows = List.unmodifiable(rows);
@@ -39,6 +42,9 @@ final class RunView {
 
   final List<LogRow> rows;
 
+  /// The time scale the [rows]' bars are on.
+  final TimeScale scale;
+
   final RunPath path;
 }
 
@@ -50,7 +56,7 @@ final class SessionView {
     required this.runs,
     required this.marks,
     required this.run,
-    required this.selectedNode,
+    required this.step,
   });
 
   /// [session] at [now], with the run [runId] and its step [stepId]
@@ -71,6 +77,7 @@ final class SessionView {
         logsHeader(session, run.id, steps: steps),
         steps,
         logRows(session, run.id, outcomes: outcomes, now: now),
+        timeScale(session, now),
         pathOf(session, run.id, outcomes, steps: steps),
       );
     }
@@ -80,10 +87,9 @@ final class SessionView {
       runs: List.unmodifiable(runChips(session, outcomes)),
       marks: GraphMarks.of(session, outcomes),
       run: runView,
-      selectedNode: runView?.steps
-          .where((step) => step.stepId == stepId)
-          .firstOrNull
-          ?.node,
+      step: run == null || stepId == null
+          ? null
+          : stepDetails(session, run.id, stepId, steps: runView?.steps),
     );
   }
 
@@ -101,6 +107,9 @@ final class SessionView {
   /// The selected run; `null` when none is.
   final RunView? run;
 
+  /// The selected step of the selected run; `null` when none is.
+  final StepDetails? step;
+
   /// The node of the selected step: ringed on the canvas.
-  final String? selectedNode;
+  String? get selectedNode => step?.node;
 }

@@ -14,7 +14,8 @@ enum SplitPane { first, second }
 /// The [sized] pane is [extent] long with the border line, as the mockups'
 /// boxes are; dragging moves the border with the pointer, but the sized pane
 /// stays within [minExtent] and [maxExtent], and the other keeps at least
-/// [minOther].
+/// [minOther]. While [fixedExtent] is set, the sized pane is that long and
+/// the border does not move; then it comes back to where it was dragged.
 class SplitView extends StatefulWidget {
   const SplitView({
     super.key,
@@ -27,6 +28,7 @@ class SplitView extends StatefulWidget {
     required this.border,
     required this.first,
     required this.second,
+    this.fixedExtent,
   });
 
   /// [Axis.horizontal]: [first] on the left of [second]; vertical: over it.
@@ -39,6 +41,9 @@ class SplitView extends StatefulWidget {
   final double minExtent;
   final double maxExtent;
   final double minOther;
+
+  /// The sized pane's extent, with the border, while it is folded.
+  final double? fixedExtent;
 
   /// The border line's color.
   final Color border;
@@ -91,7 +96,10 @@ class _SplitViewState extends State<SplitView> {
     builder: (context, constraints) {
       final horizontal = widget.axis == Axis.horizontal;
       _length = horizontal ? constraints.maxWidth : constraints.maxHeight;
-      final extent = _clamp(_extent);
+      final fixed = widget.fixedExtent;
+      final extent = fixed == null
+          ? _clamp(_extent)
+          : math.max(0.0, math.min(fixed, _length));
       final firstSized = widget.sized == SplitPane.first;
       // Where the border line starts, from the start of the first pane.
       final line = firstSized ? extent - 1 : _length - extent;
@@ -110,27 +118,28 @@ class _SplitViewState extends State<SplitView> {
                 ? [sized(widget.first), border, Expanded(child: widget.second)]
                 : [Expanded(child: widget.first), border, sized(widget.second)],
           ),
-          Positioned(
-            left: horizontal ? line + 0.5 - _grip : 0,
-            top: horizontal ? 0 : line + 0.5 - _grip,
-            width: horizontal ? 2 * _grip : null,
-            height: horizontal ? null : 2 * _grip,
-            right: horizontal ? null : 0,
-            bottom: horizontal ? 0 : null,
-            child: MouseRegion(
-              cursor: horizontal
-                  ? SystemMouseCursors.resizeColumn
-                  : SystemMouseCursors.resizeRow,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                dragStartBehavior: DragStartBehavior.down,
-                onHorizontalDragStart: horizontal ? _dragStarted : null,
-                onHorizontalDragUpdate: horizontal ? _dragged : null,
-                onVerticalDragStart: horizontal ? null : _dragStarted,
-                onVerticalDragUpdate: horizontal ? null : _dragged,
+          if (fixed == null)
+            Positioned(
+              left: horizontal ? line + 0.5 - _grip : 0,
+              top: horizontal ? 0 : line + 0.5 - _grip,
+              width: horizontal ? 2 * _grip : null,
+              height: horizontal ? null : 2 * _grip,
+              right: horizontal ? null : 0,
+              bottom: horizontal ? 0 : null,
+              child: MouseRegion(
+                cursor: horizontal
+                    ? SystemMouseCursors.resizeColumn
+                    : SystemMouseCursors.resizeRow,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  dragStartBehavior: DragStartBehavior.down,
+                  onHorizontalDragStart: horizontal ? _dragStarted : null,
+                  onHorizontalDragUpdate: horizontal ? _dragged : null,
+                  onVerticalDragStart: horizontal ? null : _dragStarted,
+                  onVerticalDragUpdate: horizontal ? null : _dragged,
+                ),
               ),
             ),
-          ),
         ],
       );
     },

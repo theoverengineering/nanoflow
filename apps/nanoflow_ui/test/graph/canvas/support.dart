@@ -96,28 +96,35 @@ GraphModel modelOf({
   Stream<Change> more = const Stream.empty(),
   Map<String, Object?> outcomes = const {},
   Graph? current,
+  FakeFiles? files,
 }) {
   final model = ownedModel(
     changes: changes,
     more: more,
     outcomes: outcomes,
     current: current,
+    files: files,
   );
   addTearDown(model.dispose);
   return model;
 }
 
 /// [modelOf] for whoever disposes it: the graph screen disposes its model.
+/// The steps' logs and documents are [files]; the graph is opened at
+/// [openedAt], by default after everything in the mockups of graph.png.
 GraphModel ownedModel({
   List<Change> changes = const [],
   Stream<Change> more = const Stream.empty(),
   Map<String, Object?> outcomes = const {},
   Graph? current,
+  FakeFiles? files,
+  DateTime? openedAt,
 }) => GraphModel(
   source: FixedSource(current),
   feed: SessionFeed(_concat(Stream.fromIterable(changes), more)),
   outcomes: Outcomes((_, documentId) async => outcomes[documentId]),
-  now: () => at(100000),
+  files: files ?? FakeFiles(),
+  now: () => openedAt ?? at(100000),
 );
 
 Stream<T> _concat<T>(Stream<T> first, Stream<T> then) async* {

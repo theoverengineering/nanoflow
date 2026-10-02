@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' show StepStatus;
+
+import 'state/sessions.dart' show SessionStatus;
 
 /// Colors of the mockups in docs/design/ (their HTML has the exact values).
 abstract final class AppColors {
@@ -61,6 +64,51 @@ abstract final class AppColors {
   static const finishedSurface = Color(0xFF1D3328);
   static const finishedBorder = Color(0xFF2F5E44);
   static const finishedText = Color(0xFF8FDDB0);
+
+  /// The running bar's darker stripes; the dim ring of the running sign.
+  static const runningStripe = Color(0xFFC98526);
+  static const runningRing = Color(0xFF4A3A1E);
+
+  /// `2 starts`, `following tail`: amber notes.
+  static const noteSurface = Color(0xFF3A2C16);
+  static const noteText = Color(0xFFF2C27A);
+
+  /// The selected step's row: its left bar, its name.
+  static const accentLine = Color(0xFF9C8CFF);
+  static const selectedText = Color(0xFFF7F3EA);
+
+  /// The open tab of the step details.
+  static const selectedTab = Color(0xFF34353A);
+
+  /// A log or a document: the area it is shown in, its text.
+  static const textArea = Color(0xFF1A1B1E);
+  static const textAreaText = Color(0xFFC9CACF);
+}
+
+/// The colors a session's status is shown in.
+extension SessionStatusColors on SessionStatus {
+  /// The status bar of its card, the dot on the session bar.
+  Color get color => switch (this) {
+    SessionStatus.running => AppColors.running,
+    SessionStatus.failed => AppColors.failed,
+    SessionStatus.finished => AppColors.finished,
+  };
+
+  /// `Running for 12m 26s`, `failed in 6m 18s`.
+  Color get textColor => switch (this) {
+    SessionStatus.running => AppColors.running,
+    SessionStatus.failed => AppColors.dangerText,
+    SessionStatus.finished => AppColors.finishedText,
+  };
+}
+
+/// The colors a step's status is shown in: its sign and its bar in `Logs`.
+extension StepStatusColors on StepStatus {
+  Color get color => switch (this) {
+    StepStatus.running => AppColors.running,
+    StepStatus.failed => AppColors.failed,
+    StepStatus.finished => AppColors.finished,
+  };
 }
 
 /// Text of the mockups: UI text in Geist; ids, paths, commands and logs in
@@ -196,6 +244,46 @@ abstract final class AppText {
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
+  static final logsRun = _style(sans, 12, color: AppColors.textMuted);
+  static final logsRunId = _style(mono, 12, color: AppColors.textMuted);
+
+  /// `Step`, `Started`, `Took`; the timeline's axis.
+  static final columnTitle = _style(sans, 10.5, color: AppColors.textFaint);
+  static final axisLabel = _style(mono, 9.5, color: AppColors.textFaint);
+  static final stepName = _style(sans, 12, color: AppColors.textPrimary);
+
+  /// A fork's `returned → fix`, a failure's error.
+  static final stepDetail = _style(mono, 10.5, color: AppColors.textMuted);
+  static final stepTime = _style(mono, 10.5, color: AppColors.textMuted);
+  static final stepTook = _style(mono, 10.5, color: AppColors.textSecondary);
+  static final startsNote = _style(sans, 10, color: AppColors.noteText);
+
+  /// `split · run e5f6`, `↑ 8 earlier steps`, the end of a run.
+  static final listNote = _style(sans, 10.5, color: AppColors.textMuted);
+  static final runLink = _style(mono, 10.5, color: AppColors.accentText);
+
+  // The selected step's details.
+  static final detailsTitle = _style(
+    sans,
+    12.5,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
+  static final tab = _style(sans, 12, color: AppColors.textMuted);
+  static final noteBadge = _style(sans, 11, color: AppColors.noteText);
+  static final smallButton = _style(sans, 11.5, color: AppColors.textSecondary);
+
+  /// A line of a log or a document: the mockups' 1.7 line height.
+  static final textLine = _style(
+    mono,
+    11.5,
+    color: AppColors.textAreaText,
+  ).copyWith(height: 1.7);
+
+  /// What a tab says instead of data.
+  static final textAreaNote = _style(sans, 12, color: AppColors.textMuted);
+  static final filePath = _style(mono, 10.5, color: AppColors.textFaint);
+  static final fileButton = _style(sans, 11, color: AppColors.textSecondary);
 }
 
 /// The app's dark theme.

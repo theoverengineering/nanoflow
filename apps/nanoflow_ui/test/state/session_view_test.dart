@@ -28,6 +28,8 @@ void main() {
       expect(view.run!.rows, hasLength(9));
       expect(view.run!.path.inputs, contains('notify'));
       expect(view.selectedNode, 'fix');
+      expect(view.step!.stepId, 'k7f2-fix-4');
+      expect(view.run!.scale.axis, ['0m', '6m', '12m']);
     });
 
     test('without a selected run shows no logs', () {
@@ -38,6 +40,7 @@ void main() {
       );
       expect(view.run, isNull);
       expect(view.selectedNode, isNull);
+      expect(view.step, isNull);
     });
 
     test('cannot be changed by the widgets that draw it', () {

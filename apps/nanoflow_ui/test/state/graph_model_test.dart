@@ -39,6 +39,7 @@ void main() {
           'verdict-outcome-2': 'accepted',
         }[documentId];
       }),
+      files: FakeFiles(),
       // The graph is opened at 14:20, after everything in the mockup.
       now: () => at(1009),
     );

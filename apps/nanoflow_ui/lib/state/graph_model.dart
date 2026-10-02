@@ -10,6 +10,7 @@ import 'outcomes.dart';
 import 'selection.dart';
 import 'session_feed.dart';
 import 'session_view.dart';
+import 'step_files.dart';
 
 /// The graph the canvas shows (docs/ui-spec.md «Что это»: «Граф двух
 /// видов»).
@@ -80,6 +81,7 @@ class GraphModel extends ChangeNotifier {
     required this.source,
     required this.feed,
     required this.outcomes,
+    required this.files,
     DateTime Function()? now,
   }) : selection = Selection(now: now) {
     feed.addListener(_fed);
@@ -102,6 +104,7 @@ class GraphModel extends ChangeNotifier {
       source: GraphSource(file: file, shell: shell),
       feed: SessionFeed.read(reader),
       outcomes: Outcomes.read(reader),
+      files: ReaderFiles(reader),
     );
     unawaited(model.source.start());
     return model;
@@ -111,6 +114,9 @@ class GraphModel extends ChangeNotifier {
   final SessionFeed feed;
   final Outcomes outcomes;
   final Selection selection;
+
+  /// The logs and documents of steps, read when the step details show them.
+  final StepFiles files;
 
   late final StreamSubscription<DocumentAdded> _documents;
 

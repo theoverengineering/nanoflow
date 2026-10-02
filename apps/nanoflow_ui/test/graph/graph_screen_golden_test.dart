@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/state/graph_source.dart';
@@ -13,6 +14,18 @@ void main() {
   ) async {
     await pumpGraphScreen(tester);
     await expectGolden(tester, 'graph_review');
+  });
+
+  testWidgets('the task graph waiting on a person '
+      '(docs/design/task-graph.png)', (tester) async {
+    await pumpGraphScreen(
+      tester,
+      path: taskFile,
+      model: taskMockupModel(),
+      now: () => taskNow,
+      size: const Size(2000, 1000),
+    );
+    await expectGolden(tester, 'graph_task');
   });
 
   testWidgets('Current graph failing check, its program exited', (
@@ -66,6 +79,8 @@ void main() {
         outcomes: const {'empty': false, 'verdict': 'accepted'},
       ),
     );
+    // The failed step's log is empty, and says so after a moment.
+    await tester.pump(const Duration(milliseconds: 300));
     await expectGolden(tester, 'graph_failed');
   });
 }

@@ -1,32 +1,90 @@
 // Sessions written as journals, the way the engine writes them, for the
 // tests of what the app derives from them.
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/outcomes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
+import 'package:nanoflow_ui/state/step_files.dart';
 
 /// The README's review graph, as a session holds it.
 const reviewGraph = <String, Object?>{
   'start': 'collect',
+  'types': {
+    'Request': {
+      'type': 'object',
+      'required': ['branch'],
+      'properties': {
+        'branch': {'type': 'string'},
+      },
+    },
+    'Change': {
+      'type': 'object',
+      'required': ['id', 'path'],
+      'properties': {
+        'id': {'type': 'string'},
+        'path': {'type': 'string'},
+      },
+    },
+    'Report': {
+      'type': 'object',
+      'required': ['change', 'findings'],
+      'properties': {
+        'change': {r'$ref': '#/Change'},
+        'findings': {
+          'type': 'array',
+          'items': {'type': 'string'},
+        },
+      },
+    },
+  },
   'nodes': {
-    'collect': {'command': 'nodes/collect/run.sh', 'then': 'is-empty'},
+    'collect': {
+      'command': 'nodes/collect/run.sh',
+      'in': {r'$ref': '#/Request'},
+      'out': {r'$ref': '#/Change'},
+      'then': 'is-empty',
+    },
     'is-empty': {
       'decide': 'nodes/is-empty/run.sh',
+      'in': {r'$ref': '#/Change'},
       'then': 'discard',
       'else': 'inspect',
     },
-    'inspect': {'command': 'nodes/inspect/run.sh', 'then': 'verdict'},
+    'inspect': {
+      'command': 'nodes/inspect/run.sh',
+      'in': {r'$ref': '#/Change'},
+      'out': {r'$ref': '#/Report'},
+      'then': 'verdict',
+    },
     'verdict': {
       'decide': 'nodes/verdict/run.sh',
+      'in': {r'$ref': '#/Report'},
       'then': {
         'accepted': ['publish', 'notify'],
         'returned': 'fix',
       },
     },
-    'fix': {'command': 'nodes/fix/run.sh', 'then': 'inspect'},
-    'publish': {'command': 'nodes/publish/run.sh'},
-    'discard': {'command': 'nodes/discard/run.sh'},
-    'notify': {'command': 'nodes/notify/run.sh'},
+    'fix': {
+      'command': 'nodes/fix/run.sh',
+      'in': {r'$ref': '#/Report'},
+      'out': {r'$ref': '#/Change'},
+      'then': 'inspect',
+    },
+    'publish': {
+      'command': 'nodes/publish/run.sh',
+      'in': {r'$ref': '#/Report'},
+    },
+    'discard': {
+      'command': 'nodes/discard/run.sh',
+      'in': {r'$ref': '#/Change'},
+    },
+    'notify': {
+      'command': 'nodes/notify/run.sh',
+      'in': {r'$ref': '#/Report'},
+    },
   },
 };
 
@@ -60,14 +118,15 @@ final class Journal {
   final List<Event> events = [];
   final List<Step> steps = [];
 
-  /// A step of [node] started at [start], again at each of [restarts], and
-  /// finished at [end] with [exit] and [output]; running without [end].
-  /// Returns its id.
+  /// A step of [node] given [input], started at [start], again at each of
+  /// [restarts], and finished at [end] with [exit] and [output]; running
+  /// without [end]. Returns its id.
   String step(
     String node,
     num start, {
     num? end,
     int exit = 0,
+    String? input,
     String? output,
     List<num> restarts = const [],
   }) {
@@ -76,7 +135,7 @@ final class Journal {
       Step(
         id: stepId,
         runId: id,
-        inputId: null,
+        inputId: input,
         outputId: output,
         log: 'command.log',
       ),
@@ -169,17 +228,44 @@ final class _Outcomes implements KnownOutcomes {
 /// finished publish, and e5f6, which runs notify.
 final class Mockup {
   Mockup() {
-    k7f2.step('collect', 0, end: 149, output: 'change-1');
-    k7f2.step('is-empty', 149, end: 150, output: 'is-empty-outcome');
-    k7f2.step('inspect', 150, end: 342, output: 'report-1');
-    k7f2.step('verdict', 342, end: 342.4, output: 'verdict-outcome-1');
-    k7f2.step('fix', 343, end: 369, output: 'change-2');
-    k7f2.step('inspect', 369, restarts: [400], end: 611, output: 'report-2');
-    k7f2.step('verdict', 611, end: 611.3, output: 'verdict-outcome-2');
-    k7f2.split(611.4);
-    c3d4.step('publish', 612, end: 640);
-    c3d4.finish(640);
-    e5f6.step('notify', 612);
+    k7f2
+      ..step('collect', 0, end: 149, input: 'request', output: 'change-1')
+      ..step(
+        'is-empty',
+        149,
+        end: 150,
+        input: 'change-1',
+        output: 'is-empty-outcome',
+      )
+      ..step('inspect', 150, end: 342, input: 'change-1', output: 'report-1')
+      ..step(
+        'verdict',
+        342,
+        end: 342.4,
+        input: 'report-1',
+        output: 'verdict-outcome-1',
+      )
+      ..step('fix', 343, end: 369, input: 'report-1', output: 'change-2')
+      ..step(
+        'inspect',
+        369,
+        restarts: [400],
+        end: 611,
+        input: 'change-2',
+        output: 'report-2',
+      )
+      ..step(
+        'verdict',
+        611,
+        end: 611.3,
+        input: 'report-2',
+        output: 'verdict-outcome-2',
+      )
+      ..split(611.4);
+    c3d4
+      ..step('publish', 612, end: 640, input: 'report-2')
+      ..finish(640);
+    e5f6.step('notify', 612, input: 'report-2');
   }
 
   /// 14:15:37: the session has been running for 12m 26s.
@@ -206,4 +292,81 @@ final class Mockup {
   });
 
   SessionData get session => sessionOf([k7f2, c3d4, e5f6]);
+}
+
+/// Step logs, documents and their files as a test sets them.
+final class FakeFiles implements StepFiles {
+  /// [logs] and [documents] by step and document id; [logErrors] are what
+  /// following a step's log fails with.
+  FakeFiles({
+    Map<String, String> logs = const {},
+    Map<String, Object?> documents = const {},
+    Map<String, String> logPaths = const {},
+    Map<String, String> documentPaths = const {},
+    Map<String, Object> logErrors = const {},
+  }) : logs = {...logs},
+       documents = {...documents},
+       logPaths = {...logPaths},
+       documentPaths = {...documentPaths},
+       logErrors = {...logErrors};
+
+  /// What each step's command has written to its log so far.
+  final Map<String, String> logs;
+  final Map<String, Object?> documents;
+  final Map<String, String> logPaths;
+  final Map<String, String> documentPaths;
+  final Map<String, Object> logErrors;
+  final Map<String, Set<StreamController<String>>> _followers = {};
+
+  /// How many times each document was read.
+  final Map<String, int> reads = {};
+
+  /// The steps whose logs are being followed now.
+  Iterable<String> get followed =>
+      _followers.entries.where((e) => e.value.isNotEmpty).map((e) => e.key);
+
+  /// The step [stepId]'s command writes [text] to its log.
+  void append(String stepId, String text) {
+    logs[stepId] = '${logs[stepId] ?? ''}$text';
+    for (final follower in [...?_followers[stepId]]) {
+      follower.add(text);
+    }
+  }
+
+  @override
+  Stream<String> stepLog(String sessionId, String runId, String stepId) {
+    late final StreamController<String> controller;
+    controller = StreamController<String>(
+      onListen: () {
+        if (logErrors[stepId] case final error?) {
+          controller.addError(error);
+          return;
+        }
+        final text = logs[stepId] ?? '';
+        if (text.isNotEmpty) controller.add(text);
+        (_followers[stepId] ??= {}).add(controller);
+      },
+      onCancel: () => _followers[stepId]?.remove(controller),
+    );
+    return controller.stream;
+  }
+
+  @override
+  Future<Object?> documentValue(String sessionId, String documentId) async {
+    reads[documentId] = (reads[documentId] ?? 0) + 1;
+    if (!documents.containsKey(documentId)) {
+      throw PathNotFoundException(
+        '$documentId.json',
+        const OSError('No such file or directory', 2),
+      );
+    }
+    return documents[documentId];
+  }
+
+  @override
+  String? logPath(String stepId) => logPaths[stepId];
+
+  @override
+  String? documentPath(String sessionId, String documentId) =>
+      documentPaths[documentId];
 }

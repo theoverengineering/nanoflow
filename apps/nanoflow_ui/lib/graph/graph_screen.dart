@@ -9,6 +9,7 @@ import '../theme.dart';
 import 'canvas/graph_canvas.dart';
 import 'graph_errors.dart';
 import 'header.dart';
+import 'logs/logs_panel.dart';
 import 'session_bar.dart';
 import 'sessions_column.dart';
 import 'split_view.dart';
@@ -60,7 +61,11 @@ class _GraphScreenState extends State<GraphScreen> {
   late final GraphModel _model;
   late final LiveClock _clock;
   late final AppLifecycleListener _lifecycle;
+  final _canvas = GraphCanvasController();
   bool _closed = false;
+
+  /// Whether the `Logs` panel is folded to its title.
+  bool _logsFolded = false;
 
   @override
   void initState() {
@@ -123,10 +128,15 @@ class _GraphScreenState extends State<GraphScreen> {
               maxExtent: double.infinity,
               minOther: 200,
               border: AppColors.panelBorder,
+              fixedExtent: _logsFolded ? LogsPanel.foldedExtent : null,
               first: Stack(
                 children: [
                   Positioned.fill(
-                    child: GraphCanvas(model: _model, now: _clock.now),
+                    child: GraphCanvas(
+                      model: _model,
+                      now: _clock.now,
+                      controller: _canvas,
+                    ),
                   ),
                   Positioned(
                     left: 16,
@@ -144,33 +154,18 @@ class _GraphScreenState extends State<GraphScreen> {
                   ),
                 ],
               ),
-              second: const _Logs(key: GraphScreen.logsKey),
+              second: LogsPanel(
+                key: GraphScreen.logsKey,
+                model: _model,
+                clock: _clock,
+                shell: widget.shell,
+                graphFile: widget.path,
+                collapsed: _logsFolded,
+                onToggle: () => setState(() => _logsFolded = !_logsFolded),
+                onRevealNode: _canvas.revealNode,
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
-}
-
-/// The `Logs` panel under the canvas: for now only its title.
-class _Logs extends StatelessWidget {
-  const _Logs({super.key});
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: AppColors.panel,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          alignment: Alignment.centerLeft,
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: AppColors.divider)),
-          ),
-          child: Text('Logs', style: AppText.logsTitle),
         ),
       ],
     ),
