@@ -64,11 +64,12 @@ void main() {
   void printLine(String line) =>
       lines.writeAsStringSync('$line\n', mode: FileMode.append);
 
-  GraphSource source() {
+  GraphSource source({Duration restartDelay = const Duration(seconds: 1)}) {
     final source = GraphSource(
       file: graphFile,
       shell: Shell(environment: {'PATH': '$bin:/usr/bin:/bin'}),
       fileCheckInterval: const Duration(milliseconds: 20),
+      restartDelay: restartDelay,
     );
     addTearDown(source.dispose);
     return source;
@@ -279,6 +280,86 @@ exit 3
       await until(graph, () => graph.graph != null);
     },
   );
+
+  test(
+    'starts nanoflow-yaml again after it exits, and the problem goes once it '
+    'describes the graph again',
+    () async {
+      // Exits at its first start; describes the graph and runs after that.
+      program('nanoflow-yaml', '''
+echo start >> "\$(dirname "\$0")/starts"
+if [ "\$(wc -l < "\$(dirname "\$0")/starts")" -eq 1 ]; then
+  echo 'review.yaml: cannot be read' >&2
+  exit 3
+fi
+echo '${_description(graphFile, ['collect'])}'
+exec tail -f /dev/null
+''');
+      program('nanoflow', _nanoflowCheck);
+      final graph = source(restartDelay: const Duration(milliseconds: 20));
+      final problems = <String?>[];
+      graph.addListener(() {
+        if (problems.lastOrNull != graph.programProblem?.message) {
+          problems.add(graph.programProblem?.message);
+        }
+      });
+      await graph.start();
+
+      await until(graph, () => graph.graph != null);
+      expect(problems, ['nanoflow-yaml exited with code 3', null]);
+      expect(File(p.join(bin, 'starts')).readAsLinesSync(), hasLength(2));
+    },
+  );
+
+  test('starts nanoflow-yaml again only once the graph file is back', () async {
+    // Describes the graph, then exits once the file is gone.
+    program('nanoflow-yaml', '''
+echo start >> "\$(dirname "\$0")/starts"
+[ -f "\$1" ] || exit 1
+echo '${_description(graphFile, ['collect'])}'
+while [ -f "\$1" ]; do sleep 0.02; done
+exit 1
+''');
+    program('nanoflow', _nanoflowCheck);
+    final starts = File(p.join(bin, 'starts'));
+    final graph = source(restartDelay: const Duration(milliseconds: 20));
+    await graph.start();
+    await until(graph, () => graph.graph != null);
+
+    File(graphFile).deleteSync();
+    await until(graph, () => graph.fileMissing);
+    await until(graph, () => graph.programProblem != null);
+    final whileGone = starts.readAsLinesSync().length;
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(starts.readAsLinesSync(), hasLength(whileGone));
+
+    File(graphFile).writeAsStringSync('start: collect\n');
+    await until(graph, () => graph.programProblem == null);
+    expect(starts.readAsLinesSync().length, greaterThan(whileGone));
+    expect(graph.fileMissing, isFalse);
+  });
+
+  test('waits longer after each exit in a row, up to a limit', () {
+    final graph = GraphSource(
+      file: graphFile,
+      shell: Shell(environment: const {}),
+      restartDelay: const Duration(seconds: 1),
+      maxRestartDelay: const Duration(seconds: 30),
+    );
+    addTearDown(graph.dispose);
+    expect(
+      [for (var exits = 1; exits <= 7; exits++) graph.restartDelayAfter(exits)],
+      const [
+        Duration(seconds: 1),
+        Duration(seconds: 2),
+        Duration(seconds: 4),
+        Duration(seconds: 8),
+        Duration(seconds: 16),
+        Duration(seconds: 30),
+        Duration(seconds: 30),
+      ],
+    );
+  });
 
   test(
     'says the file is unavailable while it is gone, and keeps the graph',

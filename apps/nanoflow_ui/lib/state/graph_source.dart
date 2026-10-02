@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
@@ -36,11 +37,18 @@ final class SourceProblem {
 /// prints to `nanoflow check` on stdin. The last description check passed is
 /// the [graph]; the errors of the latest one are [errors]. Both programs are
 /// found on the user's PATH.
+///
+/// A `nanoflow-yaml` that exits is started again: after [restartDelay], twice
+/// as long after each exit in a row, up to [maxRestartDelay]; while the graph
+/// file is gone, once it is back. The [programProblem] stays until it
+/// describes the graph again.
 class GraphSource extends ChangeNotifier {
   GraphSource({
     required this.file,
     required this.shell,
     this.fileCheckInterval = const Duration(seconds: 1),
+    this.restartDelay = const Duration(seconds: 1),
+    this.maxRestartDelay = const Duration(seconds: 30),
   });
 
   /// The graph file.
@@ -48,6 +56,12 @@ class GraphSource extends ChangeNotifier {
 
   /// How often [fileMissing] is looked at again.
   final Duration fileCheckInterval;
+
+  /// How long after it exits `nanoflow-yaml` is started again.
+  final Duration restartDelay;
+
+  /// The longest wait before `nanoflow-yaml` is started again.
+  final Duration maxRestartDelay;
 
   /// How many of the last lines of stderr a program that exited shows.
   static const stderrLines = 20;
@@ -61,12 +75,23 @@ class GraphSource extends ChangeNotifier {
   String? _checkProblem;
   bool _fileMissing = false;
 
+  String? _yaml;
   String? _nanoflow;
   Process? _watch;
   Process? _check;
   Timer? _fileTimer;
   final List<StreamSubscription<Object?>> _subscriptions = [];
   final List<String> _stderr = [];
+
+  /// How many times in a row `nanoflow-yaml` has exited without describing
+  /// the graph in between.
+  int _exits = 0;
+
+  /// Starts `nanoflow-yaml` again, while it waits to.
+  Timer? _restart;
+
+  /// Whether `nanoflow-yaml` is to start again once the graph file is back.
+  bool _awaitingFile = false;
 
   /// The latest description not yet checked, and whether one is being
   /// checked.
@@ -83,7 +108,7 @@ class GraphSource extends ChangeNotifier {
   List<String> get errors => _errors;
 
   /// Why there is no live graph: `nanoflow-yaml` is not on the PATH, or it
-  /// exited.
+  /// exited and has not described the graph since.
   SourceProblem? get programProblem => _programProblem;
 
   /// Why descriptions go unchecked: `nanoflow` is not on the PATH.
@@ -91,6 +116,13 @@ class GraphSource extends ChangeNotifier {
 
   /// Whether the graph file is gone; the last [graph] stays.
   bool get fileMissing => _fileMissing;
+
+  /// How long `nanoflow-yaml` waits to start again after it has exited
+  /// [exits] times in a row.
+  Duration restartDelayAfter(int exits) {
+    final delay = restartDelay * math.pow(2, math.min(exits - 1, 30));
+    return delay < maxRestartDelay ? delay : maxRestartDelay;
+  }
 
   /// Finds the programs and starts `nanoflow-yaml`.
   Future<void> start() async {
@@ -107,9 +139,16 @@ class GraphSource extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _yaml = yaml;
+    await _run();
+  }
+
+  /// Starts `nanoflow-yaml` and follows what it prints until it exits.
+  Future<void> _run() async {
+    _stderr.clear();
     final Process watch;
     try {
-      watch = await shell.start(yaml, [
+      watch = await shell.start(_yaml!, [
         file,
         '--graph',
         '--watch',
@@ -120,6 +159,7 @@ class GraphSource extends ChangeNotifier {
         'nanoflow-yaml could not start',
         e.message,
       );
+      _startAgainLater();
       notifyListeners();
       return;
     }
@@ -128,17 +168,20 @@ class GraphSource extends ChangeNotifier {
       return;
     }
     _watch = watch;
-    _subscriptions
-      ..add(_lines(watch.stdout).listen(_described))
-      ..add(_lines(watch.stderr).listen(_keepStderr));
+    final output = [
+      _lines(watch.stdout).listen(_described),
+      _lines(watch.stderr).listen(_keepStderr),
+    ];
+    _subscriptions.addAll(output);
     final printed = Future.wait([
-      for (final subscription in _subscriptions) subscription.asFuture<void>(),
+      for (final subscription in output) subscription.asFuture<void>(),
     ]).then<void>((_) {}, onError: (Object _) {});
     unawaited(
       watch.exitCode.then((code) async {
         // Its last description and its last words count: they are read
         // before the exit is told, unless something it started holds them.
         await printed.timeout(const Duration(seconds: 1), onTimeout: () {});
+        output.forEach(_subscriptions.remove);
         _exited(code);
       }),
     );
@@ -154,6 +197,12 @@ class GraphSource extends ChangeNotifier {
     }
     // A line that is not a description is something else the program printed.
     if (json is! Map<String, Object?>) return;
+    // It works again.
+    _exits = 0;
+    if (_programProblem != null) {
+      _programProblem = null;
+      notifyListeners();
+    }
     _pending = line;
     if (!_checking) unawaited(_checkPending());
   }
@@ -244,13 +293,36 @@ class GraphSource extends ChangeNotifier {
       'nanoflow-yaml exited with code $code',
       _stderr.join('\n'),
     );
+    _startAgainLater();
     notifyListeners();
+  }
+
+  /// Starts `nanoflow-yaml` again after a while, longer after each exit in a
+  /// row; once the graph file is back, if it is gone by then.
+  void _startAgainLater() {
+    _exits++;
+    _restart = Timer(restartDelayAfter(_exits), () async {
+      _restart = null;
+      final there = await File(file).exists();
+      if (_disposed) return;
+      if (there) {
+        unawaited(_run());
+      } else {
+        _awaitingFile = true;
+      }
+    });
   }
 
   Future<void> _lookAtFile() async {
     final missing = !await File(file).exists();
     if (_disposed || missing == _fileMissing) return;
     _fileMissing = missing;
+    if (!missing && _awaitingFile) {
+      // What made it exit may have been the file being gone.
+      _awaitingFile = false;
+      _exits = 0;
+      unawaited(_run());
+    }
     notifyListeners();
   }
 
@@ -262,6 +334,7 @@ class GraphSource extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _fileTimer?.cancel();
+    _restart?.cancel();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }
