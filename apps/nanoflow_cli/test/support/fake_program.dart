@@ -7,8 +7,9 @@ import 'package:test/test.dart';
 /// A graph program for engine tests: a POSIX `sh` script in a temporary
 /// directory, deleted after the test. No Dart VM starts for a step.
 ///
-/// - `--graph` prints a description of the graph whose `file` is
-///   `graph.yaml` in the directory, so the engine keeps the sessions in
+/// - `--graph` runs the shell snippet `onGraph`, which does nothing unless
+///   the test gives one, then prints a description of the graph whose `file`
+///   is `graph.yaml` in the directory, so the engine keeps the sessions in
 ///   [runsDir].
 /// - `--input` runs the shell snippet `input`, which echoes stdin unless the
 ///   test gives another.
@@ -27,6 +28,7 @@ final class FakeProgram {
     Map<String, Object?> graph, {
     Map<String, String> nodes = const {},
     String input = 'cat',
+    String onGraph = '',
     bool relativeFile = false,
   }) : dir = Directory.systemTemp.createTempSync('nanoflow_fake_').path {
     addTearDown(() => Directory(dir).deleteSync(recursive: true));
@@ -40,6 +42,7 @@ final class FakeProgram {
 here=\$(cd "\$(dirname "\$0")" && pwd)
 case "\$1" in
 --graph)
+  $onGraph
   cat <<'JSON'
 $description
 JSON

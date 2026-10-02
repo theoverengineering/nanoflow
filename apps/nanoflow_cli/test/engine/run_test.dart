@@ -823,35 +823,67 @@ IFS= read -r line
       final fake = FakeProgram(takesInput, nodes: {'a': 'true'});
       final result = await nanoflowProcess(
         ['run', '--', fake.path],
-        stdin: '{"branch": "main"}',
+        input: '{"branch": "main"}',
         script: 'test/support/fd0_after_cli.dart',
       );
       expect(result.code, 0, reason: result.err);
       expect(const LineSplitter().convert(result.err).last, 'fd 0 open');
     });
 
-    test('an engine started with its stdin closed has none: exit 2 and no '
-        'session', () async {
-      final fake = FakeProgram(takesInput, nodes: {'a': 'true'});
-      final result = await nanoflowProcess(['run', '--', fake.path]);
-      expect(result, (code: 2, out: '', err: 'no input on stdin\n'));
-      expect(Directory(fake.runsDir).existsSync(), isFalse);
-    });
+    group('on the engine\'s own stdin,', () {
+      for (final stdin in [
+        StdinKind.pipe,
+        StdinKind.file,
+        StdinKind.socket,
+        StdinKind.nonBlocking,
+      ]) {
+        test('${stdin.name}: goes through --input to the start node', () async {
+          final fake = FakeProgram(
+            takesInput,
+            nodes: {'a': logInput},
+            onGraph: 'touch "\$here/described"',
+          );
+          final result = await nanoflowProcess(
+            ['run', '--', fake.path],
+            stdin: stdin,
+            input: '{"branch": "main"}',
+            writeAfter: p.join(fake.dir, 'described'),
+          );
+          expect(result.code, 0, reason: result.err);
+          final session = await onlySession(fake, result);
+          final a = (await session.steps((await onlyRun(session)).id)).single;
+          expect(await session.documentValue(a.inputId!), {'branch': 'main'});
+        });
+      }
 
-    test('a stdin that cannot be read: exit 2, one line says why, and no '
-        'session', () async {
-      final fake = FakeProgram(takesInput, nodes: {'a': 'true'});
-      final result = await nanoflow([
-        'run',
-        '--',
-        fake.path,
-      ], stdinStream: Stream.error(unreadableStdin));
-      expect(result, (
-        code: 2,
-        out: '',
-        err: 'cannot read stdin: Resource temporarily unavailable\n',
-      ));
-      expect(Directory(fake.runsDir).existsSync(), isFalse);
+      for (final stdin in [StdinKind.devNull, StdinKind.closed]) {
+        test('${stdin.name}: no input, exit 2 and no session', () async {
+          final fake = FakeProgram(takesInput, nodes: {'a': 'true'});
+          final result = await nanoflowProcess([
+            'run',
+            '--',
+            fake.path,
+          ], stdin: stdin);
+          expect(result, (code: 2, out: '', err: 'no input on stdin\n'));
+          expect(Directory(fake.runsDir).existsSync(), isFalse);
+        });
+      }
+
+      test('a directory, which cannot be read: exit 2, one line says why, '
+          'and no session', () async {
+        final fake = FakeProgram(takesInput, nodes: {'a': 'true'});
+        final result = await nanoflowProcess([
+          'run',
+          '--',
+          fake.path,
+        ], stdin: StdinKind.directory);
+        expect(result, (
+          code: 2,
+          out: '',
+          err: 'cannot read stdin: Is a directory\n',
+        ));
+        expect(Directory(fake.runsDir).existsSync(), isFalse);
+      });
     });
   });
 

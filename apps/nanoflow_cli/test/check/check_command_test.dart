@@ -118,33 +118,46 @@ void main() {
       }
     });
 
-    test('the stdin of the process, as the UI gives it', () async {
-      final result = await nanoflowProcess([
-        'check',
-      ], stdin: describe(typoGraph));
-      expect(result, (code: 1, out: 'nodes.a: unknown key "thn"\n', err: ''));
-    });
+    group('of the process,', () {
+      for (final (stdin, how) in [
+        (StdinKind.pipe, 'as the UI gives it'),
+        (StdinKind.socket, 'as a Node.js parent gives it'),
+      ]) {
+        test('a ${stdin.name}, $how', () async {
+          final result = await nanoflowProcess(
+            ['check'],
+            stdin: stdin,
+            input: describe(typoGraph),
+          );
+          expect(result, (
+            code: 1,
+            out: 'nodes.a: unknown key "thn"\n',
+            err: '',
+          ));
+        });
+      }
 
-    test('a stdin closed when check starts is empty', () async {
-      final result = await nanoflowProcess(['check']);
-      expect(result, (
-        code: 1,
-        out: 'cannot read the graph: stdin: not JSON\n',
-        err: '',
-      ));
-    });
+      test('closed when check starts: empty', () async {
+        final result = await nanoflowProcess([
+          'check',
+        ], stdin: StdinKind.closed);
+        expect(result, (
+          code: 1,
+          out: 'cannot read the graph: stdin: not JSON\n',
+          err: '',
+        ));
+      });
 
-    test('a stdin that cannot be read: one line says why', () async {
-      final result = await nanoflow([
-        'check',
-      ], stdinStream: Stream.error(unreadableStdin));
-      expect(result, (
-        code: 1,
-        out:
-            'cannot read the graph: stdin: '
-            'Resource temporarily unavailable\n',
-        err: '',
-      ));
+      test('a directory, which cannot be read: one line says why', () async {
+        final result = await nanoflowProcess([
+          'check',
+        ], stdin: StdinKind.directory);
+        expect(result, (
+          code: 1,
+          out: 'cannot read the graph: stdin: Is a directory\n',
+          err: '',
+        ));
+      });
     });
   });
 
