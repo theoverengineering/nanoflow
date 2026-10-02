@@ -1,10 +1,6 @@
 include: package:lints/recommended.yaml
 
 analyzer:
-  exclude:
-    # Programs that must not compile; packages/nanoflow/test/compile_errors_test.dart
-    # analyzes them and checks their errors line by line.
-    - packages/nanoflow/test/fixtures/compile_errors/**
   language:
     strict-casts: true
     strict-inference: true

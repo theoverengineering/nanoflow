@@ -7,8 +7,6 @@ workspace:
   - packages/nanoflow_store
   - packages/nanoflow_reader
   - packages/nanoflow
-  - apps/nanoflow_cli
-  - examples/review
   - tests/e2e
 dev_dependencies:
   lints: ^6.1.0

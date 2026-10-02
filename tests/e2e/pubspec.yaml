@@ -1,5 +1,5 @@
 name: e2e
-description: End-to-end tests - nanoflow run on the example and on graph programs, and the store and the reader on one session.
+description: End-to-end tests - the store and the reader on one session.
 publish_to: none
 resolution: workspace
 environment:

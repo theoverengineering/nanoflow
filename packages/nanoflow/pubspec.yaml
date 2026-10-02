@@ -1,12 +1,9 @@
 name: nanoflow
-description: Library for writing a nanoflow graph in Dart - nodes, arrows and the types of the data between them.
+description: Library for writing nanoflow workflows in Dart; being rewritten, for now it gives exec, which runs an external program.
 publish_to: none
 resolution: workspace
 environment:
   sdk: ^3.13.0
-dependencies:
-  path: ^1.9.0
 dev_dependencies:
-  nanoflow_model:
-    path: ../nanoflow_model
+  path: ^1.9.0
   test: ^1.25.0
