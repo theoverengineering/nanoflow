@@ -18,11 +18,14 @@ import 'watch.dart';
 ///   the program file and the graph. A graph that does not build gives its
 ///   errors on stderr, one per line, and exit code 1.
 /// - `--graph --watch` prints the description, and then a new one each time
-///   a `.dart` file in the program's directory changes the graph. It runs
-///   until it is killed. The program watches itself, so it must compile to
-///   start: a compile error at start is the compiler's, on stderr, with a
-///   non-zero exit code. After the start, while the program does not
-///   compile or the graph does not build, it prints nothing.
+///   a `.dart` file in the program's package changes the graph: under the
+///   nearest directory above the program with a `pubspec.yaml`, or the
+///   program's directory when there is none, except in `build/` and in
+///   directories whose names start with `.` that do not hold the program.
+///   It runs until it is killed. The program watches itself, so it must
+///   compile to start: a compile error at start is the compiler's, on
+///   stderr, with a non-zero exit code. After the start, while the program
+///   does not compile or the graph does not build, it prints nothing.
 /// - `--input` reads the launch input from stdin and prints, as JSON, what
 ///   [input] makes of it. When [input] throws, the error goes to stderr and
 ///   the exit code is 1; the same when a start node takes input and there is

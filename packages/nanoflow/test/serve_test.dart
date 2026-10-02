@@ -153,6 +153,58 @@ bool isRunning(int pid) {
   return ps.exitCode == 0 && !(ps.stdout as String).trim().startsWith('Z');
 }
 
+/// A pub package `graph_package` in a fresh directory, which depends on
+/// nanoflow and holds [files] — their contents by path — with its
+/// dependencies got. Gives the package's directory, deleted after the test.
+Future<String> graphPackage(Map<String, String> files) async {
+  final package = Directory.systemTemp
+      .createTempSync('nanoflow_package_')
+      .resolveSymbolicLinksSync();
+  addTearDown(() => Directory(package).deleteSync(recursive: true));
+  File(p.join(package, 'pubspec.yaml')).writeAsStringSync(
+    'name: graph_package\n'
+    'environment:\n'
+    '  sdk: ^3.13.0\n'
+    'dependencies:\n'
+    '  nanoflow:\n'
+    '    path: ${jsonEncode(p.absolute('.'))}\n',
+  );
+  for (final MapEntry(key: path, value: contents) in files.entries) {
+    File(p.join(package, path))
+      ..createSync(recursive: true)
+      ..writeAsStringSync(contents);
+  }
+  final got = await Process.run(Platform.resolvedExecutable, [
+    'pub',
+    'get',
+    '--offline',
+  ], workingDirectory: package);
+  expect(got.exitCode, 0, reason: '${got.stdout}${got.stderr}');
+  return package;
+}
+
+/// Starts `dart run :graph --graph --watch` in [package], killed after the
+/// test: the program `bin/graph.dart` as a package executable, which runs
+/// a snapshot pub builds under `.dart_tool`. Gives its stdout and the lines
+/// printed there so far.
+Future<({Output stdout, List<String> Function() lines})> watchPackage(
+  String package,
+) async {
+  final process = await Process.start(Platform.resolvedExecutable, [
+    'run',
+    ':graph',
+    '--graph',
+    '--watch',
+  ], workingDirectory: package);
+  addTearDown(process.kill);
+  final stdout = Output(process.stdout);
+  Output(process.stderr);
+  return (
+    stdout: stdout,
+    lines: () => const LineSplitter().convert(stdout.text),
+  );
+}
+
 /// The names of the nodes in [description], a line `--graph` printed.
 List<String> nodesOf(String description) {
   final json = jsonDecode(description) as Map<String, Object?>;
@@ -478,39 +530,9 @@ void main() {
       'file, places commands next to it and watches it', () async {
     final original = File(fixture('program_without_input.dart'))
         .readAsStringSync();
-    final package = Directory.systemTemp
-        .createTempSync('nanoflow_package_')
-        .resolveSymbolicLinksSync();
-    addTearDown(() => Directory(package).deleteSync(recursive: true));
-    File(p.join(package, 'pubspec.yaml')).writeAsStringSync(
-      'name: graph_package\n'
-      'environment:\n'
-      '  sdk: ^3.13.0\n'
-      'dependencies:\n'
-      '  nanoflow:\n'
-      '    path: ${jsonEncode(p.absolute('.'))}\n',
-    );
-    final source = File(p.join(package, 'bin', 'graph.dart'))
-      ..createSync(recursive: true)
-      ..writeAsStringSync(original);
-    final got = await Process.run(Platform.resolvedExecutable, [
-      'pub',
-      'get',
-      '--offline',
-    ], workingDirectory: package);
-    expect(got.exitCode, 0, reason: '${got.stdout}${got.stderr}');
-
-    // `dart run :graph` runs a snapshot pub builds under .dart_tool.
-    final process = await Process.start(Platform.resolvedExecutable, [
-      'run',
-      ':graph',
-      '--graph',
-      '--watch',
-    ], workingDirectory: package);
-    addTearDown(process.kill);
-    final stdout = Output(process.stdout);
-    Output(process.stderr);
-    List<String> lines() => const LineSplitter().convert(stdout.text);
+    final package = await graphPackage({'bin/graph.dart': original});
+    final source = File(p.join(package, 'bin', 'graph.dart'));
+    final (:stdout, :lines) = await watchPackage(package);
 
     await stdout.until((text) => text.endsWith('\n'));
     final first = jsonDecode(lines().single) as Map<String, Object?>;
@@ -524,6 +546,34 @@ void main() {
 
     source.writeAsStringSync(
       '${original.replaceFirst('Graph.start(length)', 'Graph.start(length).next(half)')}\n'
+      'final half = node((int n) async => n ~/ 2);\n',
+    );
+    await stdout.until((text) => lines().length >= 2);
+    expect(nodesOf(lines().last), ['length', 'half']);
+  }, timeout: const Timeout(Duration(minutes: 1)));
+
+  test('run as a package executable, watches the whole package: a graph in '
+      'lib behind main in bin', () async {
+    const main = 'void main(List<String> args) => serve(args, graph);\n';
+    final original = File(fixture('program_without_input.dart'))
+        .readAsStringSync();
+    expect(original, contains(main));
+    final package = await graphPackage({
+      'lib/graph.dart': original.replaceFirst(main, ''),
+      'bin/graph.dart':
+          "import 'package:graph_package/graph.dart';\n"
+          "import 'package:nanoflow/nanoflow.dart';\n"
+          '\n'
+          '$main',
+    });
+    final library = File(p.join(package, 'lib', 'graph.dart'));
+    final (:stdout, :lines) = await watchPackage(package);
+
+    await stdout.until((text) => text.endsWith('\n'));
+    expect(nodesOf(lines().single), ['length']);
+
+    library.writeAsStringSync(
+      '${library.readAsStringSync().replaceFirst('Graph.start(length)', 'Graph.start(length).next(half)')}\n'
       'final half = node((int n) async => n ~/ 2);\n',
     );
     await stdout.until((text) => lines().length >= 2);
