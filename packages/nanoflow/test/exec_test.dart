@@ -165,10 +165,9 @@ void main() {
   );
 
   test('runs programs through bash when there is one', () async {
-    expect(
-      (await exec('/bin/sh', ['-c', r'ps -o comm= -p $PPID'])).trim(),
-      '/bin/bash',
-    );
+    // ps prints the path of the program on macOS, only its name on Linux.
+    final parent = await exec('/bin/sh', ['-c', r'ps -o comm= -p $PPID']);
+    expect(p.basename(parent.trim()), 'bash');
   }, skip: File('/bin/bash').existsSync() ? null : 'no /bin/bash');
 
   group(
