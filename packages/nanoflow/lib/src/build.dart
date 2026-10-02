@@ -46,9 +46,10 @@ final class BuiltGraph {
 ///
 /// Throws a [GraphBuildException] with every problem found: no
 /// `Graph.start`, an exit declared twice, a node that is not a top-level
-/// variable or is held by two of them, two nodes of the same name, a data
-/// type with no JSON form or that lets the data be null, `Object` where
-/// `Object?` makes a node without data.
+/// variable or is held by two of them, two nodes of the same name, a node
+/// that no arrow leads to from a `Graph.start`, a data type with no JSON
+/// form or that lets the data be null, `Object` where `Object?` makes a node
+/// without data.
 BuiltGraph buildGraph(Graph<Object?> graph) => _Build(chainsOf(graph)).run();
 
 /// What keeps [graph] from building, one line per problem, as `--graph`
@@ -108,6 +109,7 @@ final class _Build {
     if (!chains.any((c) => c.isStart)) errors.add('graph has no Graph.start');
     _name();
     _checkExits();
+    _checkReachable();
     _describeData();
     if (errors.isNotEmpty) throw GraphBuildException(errors);
 
@@ -182,6 +184,30 @@ final class _Build {
       final error = '${_nameOf(arrow.from)}: $exit is declared twice';
       if (!(declared[arrow.from] ??= {}).add(exit) && !errors.contains(error)) {
         errors.add(error);
+      }
+    }
+  }
+
+  /// Checks that a path of arrows leads to each node from the node of some
+  /// `Graph.start`, as `nanoflow check` does. A graph without a
+  /// `Graph.start` gets no line here: `graph has no Graph.start` says it.
+  void _checkReachable() {
+    final pending = [
+      for (final chain in chains)
+        if (chain.isStart) chain.head,
+    ];
+    if (pending.isEmpty) return;
+    final reached = HashSet<_Vertex>.identity();
+    while (pending.isNotEmpty) {
+      final vertex = pending.removeLast();
+      if (!reached.add(vertex)) continue;
+      for (final arrow in exits[vertex] ?? const <Arrow>[]) {
+        pending.addAll(arrow.targets);
+      }
+    }
+    for (final vertex in ordered) {
+      if (!reached.contains(vertex)) {
+        errors.add('${_nameOf(vertex)}: unreachable from Graph.start');
       }
     }
   }

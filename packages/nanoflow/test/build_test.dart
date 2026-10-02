@@ -513,6 +513,15 @@ void main() {
       expect(buildErrors(errors.sameName), ['node name "twin" is not unique']);
     });
 
+    test('a part that no arrow leads to from a Graph.start, nor to the '
+        'nodes after it', () {
+      expect(buildErrors(errors.unreachable), [
+        'third: unreachable from Graph.start',
+        'check: unreachable from Graph.start',
+        'lost: unreachable from Graph.start',
+      ]);
+    });
+
     test('and reports every error at once', () {
       expect(buildErrors(errors.severalErrors), [
         'graph has no Graph.start',

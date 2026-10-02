@@ -145,18 +145,22 @@ final failsUncaught = node((String pidFile) async {
   await sleeping;
 });
 
+/// Leads to the steps that take the path of a pid file, which no other node
+/// gives: the tests call each of them on its own.
+final givesPidFile = node((Object? _) => 'sleep.pid');
+
+/// The steps the tests call on their own are starts, or a start leads to
+/// them: every node must be reachable for the graph to build.
 final graph = Graph([
   Graph.start(collect).next(isEmpty).otherwise(inspect),
   Graph.part(inspect)
       .next(verdict)
       .then({Verdict.accepted: notify, Verdict.returned: fix}),
-  Graph.part(hang),
-  Graph.part(hangHard),
-  Graph.part(logsWhenStopped),
-  Graph.part(leavesChild),
-  Graph.part(timesOut),
-  Graph.part(returnsEarly),
-  Graph.part(failsUncaught),
+  Graph.start(hang),
+  Graph.start(hangHard),
+  Graph.start(logsWhenStopped),
+  Graph.start(leavesChild),
+  Graph.start(givesPidFile).next({timesOut, returnsEarly, failsUncaught}),
 ]);
 
 void main(List<String> args) => serve(

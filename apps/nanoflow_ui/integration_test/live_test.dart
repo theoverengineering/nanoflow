@@ -212,7 +212,7 @@ void main() {
 
     // A description check rejects: its errors, the last good graph stays.
     await File(program)
-        .writeAsString(_withOrphan(await File(program).readAsString()));
+        .writeAsString(_printingOrphan(await File(program).readAsString()));
     await _until(tester, find.text('nanoflow check found 1 error'));
     expect(find.textContaining('nodes.orphan: unreachable'), findsOneWidget);
     expect(find.byKey(NodeTile.keyOf('archive')), findsOneWidget);
@@ -285,18 +285,36 @@ final archive = node((Report r) async {});
 final graph = Graph([''',
 );
 
-/// [source] with a node `orphan` no arrow leads to: the Dart library builds
-/// the graph, `nanoflow check` finds the node unreachable.
-String _withOrphan(String source) => _replace(
-  _replace(source, 'final graph = Graph([', '''
-final orphan = node((Report r) async => r);
-
-final graph = Graph(['''),
-  'Graph.part(fix).next(inspect),',
-  '''
-Graph.part(fix).next(inspect),
-  Graph.part(orphan).next(publish),''',
-);
+/// [source] with a `main` that, for `--graph`, prints a description of its
+/// own with a node `orphan` no arrow leads to, which `nanoflow check` finds
+/// unreachable. The Dart library never prints such a graph: its build
+/// refuses one, as check does.
+String _printingOrphan(String source) {
+  final serving = _replace(
+    source,
+    'void main(List<String> args) => serve(',
+    'void _serve(List<String> args) => serve(',
+  );
+  return '''
+$serving
+void main(List<String> args) {
+  if (args case ['--graph']) {
+    print(jsonEncode({
+      'file': Platform.script.toFilePath(),
+      'graph': {
+        'start': 'collect',
+        'nodes': {
+          'collect': {'command': 'graph.dart:1'},
+          'orphan': {'command': 'graph.dart:2'},
+        },
+      },
+    }));
+    return;
+  }
+  _serve(args);
+}
+''';
+}
 
 String _replace(String source, String from, String to) {
   if (!source.contains(from)) fail('the review example has no `$from`');

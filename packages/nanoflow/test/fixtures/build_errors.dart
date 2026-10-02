@@ -42,6 +42,17 @@ final severalErrors = Graph([
   Graph.part(first).next(third),
 ]);
 
+final lost = node((Object? x) {});
+
+/// A part that no arrow leads to, as a refactoring that drops the only
+/// arrow to it leaves one: its nodes are unreachable, while `second`, which
+/// a start leads to as well, is not.
+final unreachable = Graph([
+  Graph.start(first).next(second),
+  Graph.part(third).next(check).then(second).otherwise(lost),
+  Graph.part(lost).next(third),
+]);
+
 class Opaque {}
 
 class OnlyFromJson {
