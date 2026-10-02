@@ -61,3 +61,27 @@ final unsupported = Graph([
   Graph.start(takesIntKeys),
   Graph.start(takesAnyList),
 ]);
+
+class Report {
+  Report.fromJson(Object? json);
+
+  Object? toJson() => null;
+}
+
+final takesNullable = node((Report? r) {});
+final givesNullable = node((Object? x) async => x is String ? x : null);
+final decidesOnNullable = fork((String? s) => s == null);
+final takesNullableItems = node((List<String?> l) {});
+final givesNullableValues = node((Object? x) => <String, List<int?>>{});
+final takesObject = node((Object o) {});
+final givesObject = node((Object? x) => Object());
+
+final nullable = Graph([
+  Graph.start(takesNullable),
+  Graph.start(givesNullable),
+  Graph.start(decidesOnNullable),
+  Graph.start(takesNullableItems),
+  Graph.start(givesNullableValues),
+  Graph.start(takesObject),
+  Graph.start(givesObject),
+]);

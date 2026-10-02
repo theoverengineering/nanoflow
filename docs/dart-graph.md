@@ -185,7 +185,9 @@ analyzer:
    находит его через `dart:mirrors`. Подходят и примитивы JSON (`String`,
    `int`, `double`, `num`, `bool`), `List<T>`, `Map<String, T>` и `enum` —
    по имени. Параметр `Object?` или `dynamic` — узел без `in`; результат
-   `void`, `Null`, `Object?` или `dynamic` — без `out`.
+   `void`, `Null`, `Object?` или `dynamic` — без `out`. Данные не бывают
+   `null`: тип данных с `?` — `Report?`, `List<String?>` — и `Object` без
+   `?` сборка отклоняет.
 3. **Типы Dart в описании графа.** Данные проверяет Dart, поэтому схема
    класса — только его имя:
 

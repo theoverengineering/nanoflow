@@ -47,7 +47,8 @@ final class BuiltGraph {
 /// Throws a [GraphBuildException] with every problem found: no
 /// `Graph.start`, an exit declared twice, a node that is not a top-level
 /// variable or is held by two of them, two nodes of the same name, a data
-/// type with no JSON form.
+/// type with no JSON form or that lets the data be null, `Object` where
+/// `Object?` makes a node without data.
 BuiltGraph buildGraph(Graph<Object?> graph) => _Build(chainsOf(graph)).run();
 
 typedef _Vertex = Vertex<Object?, Object?>;
@@ -174,19 +175,41 @@ final class _Build {
   /// The schemas of each node's `in` and `out`, and the types they name.
   void _describeData() {
     for (final vertex in ordered) {
-      try {
-        inputs[vertex] = schemaOf(reflectType(inputTypeOf(vertex)), types);
-      } on UnsupportedTypeException catch (e) {
-        errors.add('${_nameOf(vertex)}: in: ${e.message}');
-      }
+      inputs[vertex] = _schemaOf(
+        vertex,
+        'in',
+        reflectType(inputTypeOf(vertex)),
+        nullable: inputTakesNull(vertex),
+      );
       if (vertex is! Worker<Object?, Object?>) continue;
-      try {
-        final output = awaited(reflectType(outputTypeOf(vertex)));
-        outputs[vertex] = schemaOf(output, types);
-      } on UnsupportedTypeException catch (e) {
-        errors.add('${_nameOf(vertex)}: out: ${e.message}');
-      }
+      outputs[vertex] = _schemaOf(
+        vertex,
+        'out',
+        awaited(reflectType(outputTypeOf(vertex))),
+        nullable: outputTakesNull(vertex),
+      );
     }
+  }
+
+  /// The schema of [type], the type of [vertex]'s [side], `in` or `out`;
+  /// [nullable] tells whether [type] is nullable. `null` for a type that
+  /// carries no data, and for one that cannot be the node's: then the error
+  /// is added.
+  Map<String, Object?>? _schemaOf(
+    _Vertex vertex,
+    String side,
+    TypeMirror type, {
+    required bool nullable,
+  }) {
+    try {
+      final schema = schemaOf(type, types);
+      final error = nullError(type, nullable: nullable);
+      if (error == null) return schema;
+      errors.add('${_nameOf(vertex)}: $side: $error');
+    } on UnsupportedTypeException catch (e) {
+      errors.add('${_nameOf(vertex)}: $side: ${e.message}');
+    }
+    return null;
   }
 
   String _nameOf(_Vertex vertex) => named[vertex]!.name;

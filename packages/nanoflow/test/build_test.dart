@@ -439,5 +439,21 @@ void main() {
         'takesAnyList: in: List<dynamic>: dynamic is not a JSON type',
       ]);
     });
+
+    test('data that may be null, and Object for a node without data', () {
+      const nullHint =
+          'data cannot be null; use a class or Object? for a node without '
+          'in/out';
+      const objectHint = 'use Object? for a node without in/out';
+      expect(buildErrors(errors.nullable), [
+        'takesNullable: in: Report? — $nullHint',
+        'givesNullable: out: String? — $nullHint',
+        'decidesOnNullable: in: String? — $nullHint',
+        'takesNullableItems: in: List<String?> — $nullHint',
+        'givesNullableValues: out: Map<String, List<int?>> — $nullHint',
+        'takesObject: in: Object — $objectHint',
+        'givesObject: out: Object — $objectHint',
+      ]);
+    });
   });
 }

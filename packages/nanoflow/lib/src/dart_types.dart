@@ -34,6 +34,26 @@ Map<String, Object?>? schemaOf(TypeMirror type, Map<String, Object?> types) {
   }
 }
 
+/// What is wrong with [type], which [schemaOf] takes, as the type of a
+/// node's `in` or `out` when it comes to `null`; `null` when nothing is.
+/// [nullable] tells whether [type] is nullable, which a mirror does not:
+/// `Report?` and `Report` have the same one.
+///
+/// The data between nodes cannot be null: a data type must not be nullable,
+/// nor may the items of its lists and the values of its maps. A type that
+/// carries no data must be: `Object` is not `Object?`.
+String? nullError(TypeMirror type, {required bool nullable}) {
+  if (_kindOf(type) == _Kind.none) {
+    return nullable
+        ? null
+        : '${_nameOf(type)} — use Object? for a node without in/out';
+  }
+  final (:name, :holdsNull) = _withNulls(type);
+  if (!nullable && !holdsNull) return null;
+  return '$name${nullable ? '?' : ''} — data cannot be null; use a class or '
+      'Object? for a node without in/out';
+}
+
 /// What a function returning [type] gives once awaited: [type] without
 /// `Future` and `FutureOr`.
 TypeMirror awaited(TypeMirror type) {
@@ -227,6 +247,38 @@ Object? _decode(TypeMirror type, Object? json, String place) {
           _at(place, '${_nameOf(type)}.fromJson failed: $e'),
         );
       }
+  }
+}
+
+/// [type] named as Dart writes it, with `?` on the items of its lists and
+/// the values of its maps that may be null — a mirror leaves `?` out — and
+/// whether any may.
+({String name, bool holdsNull}) _withNulls(TypeMirror type) {
+  final kind = _kindOf(type);
+  if (kind != _Kind.list && kind != _Kind.map) {
+    return (name: _nameOf(type), holdsNull: false);
+  }
+  final item = _withNulls(type.typeArguments.last);
+  final takesNull = _itemsTakeNull(type as ClassMirror, kind);
+  final itemName = takesNull ? '${item.name}?' : item.name;
+  return (
+    name: kind == _Kind.list ? 'List<$itemName>' : 'Map<String, $itemName>',
+    holdsNull: takesNull || item.holdsNull,
+  );
+}
+
+/// Whether a list or a map of [type] takes a `null` item: an empty one is
+/// made and given one.
+bool _itemsTakeNull(ClassMirror type, _Kind kind) {
+  final list = kind == _Kind.list;
+  final empty = type.newInstance(#from, [
+    if (list) <Object?>[] else <String, Object?>{},
+  ]);
+  try {
+    list ? empty.invoke(#add, [null]) : empty.invoke(#[]=, ['', null]);
+    return true;
+  } on TypeError {
+    return false;
   }
 }
 
