@@ -15,6 +15,11 @@ dart_members=()
 while IFS= read -r member; do
   [[ $member == "$ui" ]] || dart_members+=("$member")
 done < <(sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml)
+# Nothing found would pass with nothing checked.
+((${#dart_members[@]})) || {
+  echo 'no workspace members found' >&2
+  exit 1
+}
 
 # A workspace with a Flutter member resolves only through flutter.
 if has_ui; then
