@@ -7,7 +7,8 @@ import 'package:nanoflow_store/nanoflow_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
-import 'support/engine.dart' show waitFor;
+import 'support/feed.dart';
+import 'support/wait.dart';
 
 /// A graph whose session has every kind of event: `collect`, then `verdict`,
 /// which splits the run into `publish` and `notify`.
@@ -59,15 +60,14 @@ void main() {
       collect.inputId!: {'branch': 'main'},
     };
 
-    final reader = FsReader(
-      runsDir: runsDir,
-      graphName: 'review',
-      pollInterval: const Duration(milliseconds: 20),
+    final feed = Feed(
+      FsReader(
+        runsDir: runsDir,
+        graphName: 'review',
+        pollInterval: const Duration(milliseconds: 20),
+      ),
     );
-    final changes = <Change>[];
-    final errors = <Object>[];
-    final feed = reader.changes().listen(changes.add, onError: errors.add);
-    addTearDown(feed.cancel);
+    final reader = feed.reader;
 
     final created = <Step>[collect];
     final finished = <Step>[];
@@ -98,9 +98,10 @@ void main() {
       );
       await append(event);
       await waitFor(
+        'the reader to give step ${step.id} and its step-finished',
         () =>
-            changes.contains(StepAdded(step)) &&
-            changes.contains(EventAdded(event)),
+            feed.changes.contains(StepAdded(step)) &&
+            feed.changes.contains(EventAdded(event)),
       );
       finished.add(await session.setStepOutput(step, outputId));
     }
@@ -190,20 +191,20 @@ void main() {
       for (final id in documents.keys)
         DocumentAdded(sessionId: sessionId, documentId: id),
     ];
-    // As many changes as the store made, and a moment for any it did not
-    // make; the comparisons below name what is missing or extra.
-    final expected =
-        others.length + journals.values.fold(0, (n, e) => n + e.length);
-    for (var i = 0; i < 200 && changes.length < expected; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await feed.settle();
 
-    expect(errors, isEmpty);
-    expect(changes.where((c) => c is! EventAdded), unorderedEquals(others));
+    expect(feed.errors, isEmpty);
+    expect(
+      feed.changes.where((c) => c is! EventAdded),
+      unorderedEquals(others),
+    );
+    expect(
+      feed.changes.whereType<EventAdded>(),
+      hasLength(journals.values.fold<int>(0, (n, events) => n + events.length)),
+    );
     for (final run in runs) {
       expect([
-        for (final change in changes)
+        for (final change in feed.changes)
           if (change case EventAdded(event: KnownEvent(:final runId))
               when runId == run.id)
             change.event,

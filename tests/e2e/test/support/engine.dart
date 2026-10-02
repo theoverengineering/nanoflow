@@ -151,12 +151,3 @@ String _dirOf(String parent, String id) =>
         .listSync()
         .singleWhere((entity) => entity.path.endsWith(id))
         .path;
-
-/// Waits until [condition] holds; fails the test after 20 s.
-Future<void> waitFor(bool Function() condition) async {
-  for (var i = 0; i < 400; i++) {
-    if (condition()) return;
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-  }
-  fail('timed out');
-}

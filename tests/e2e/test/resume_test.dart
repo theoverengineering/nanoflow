@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'support/engine.dart';
+import 'support/wait.dart';
 
 /// Whether the process [pid] runs.
 bool isAlive(int pid) => Process.runSync('kill', ['-0', '$pid']).exitCode == 0;
@@ -16,7 +17,7 @@ bool isAlive(int pid) => Process.runSync('kill', ['-0', '$pid']).exitCode == 0;
 /// killed when the test ends, if it still runs.
 Future<int> pidIn(String dir, String name) async {
   final file = File(p.join(dir, name));
-  await waitFor(file.existsSync);
+  await waitFor('$name in $dir', file.existsSync);
   final pid = int.parse(file.readAsStringSync().trim());
   addTearDown(() => Process.killPid(pid, ProcessSignal.sigkill));
   file.deleteSync();
@@ -42,7 +43,10 @@ void main() {
     engine.process.kill(ProcessSignal.sigkill);
     expect(await engine.exitCode, -ProcessSignal.sigkill.signalNumber);
     // The end of its stdin stops the call, and the call stops its command.
-    await waitFor(() => !isAlive(call) && !isAlive(command));
+    await waitFor(
+      'the call $call and its command $command to exit',
+      () => !isAlive(call) && !isAlive(command),
+    );
 
     final id = (await engine.out).trim();
     final session = await sessionIn(dir, id);
