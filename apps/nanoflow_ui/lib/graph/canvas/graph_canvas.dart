@@ -324,17 +324,20 @@ class _GraphCanvasState extends State<GraphCanvas> {
                       onZoomOut: () => _zoom(1 / _zoomStep),
                     ),
                   ),
-                  Positioned(
-                    right: 16,
-                    bottom: 14,
-                    child: Legend(
-                      runId: _marks.runId,
-                      backEdges: _marks.backEdges(
-                        graph.edges.where((edge) => edge.isDashed),
+                  // For Current graph only the zoom buttons remain
+                  // (ui-spec «Холст»).
+                  if (_canvas.ofSession)
+                    Positioned(
+                      right: 16,
+                      bottom: 14,
+                      child: Legend(
+                        runId: _marks.runId,
+                        backEdges: _marks.backEdges(
+                          graph.edges.where((edge) => edge.isDashed),
+                        ),
+                        emptyTargets: graph.exits.any((exit) => exit.isEmpty),
                       ),
-                      emptyTargets: graph.exits.any((exit) => exit.isEmpty),
                     ),
-                  ),
                 ],
               ],
             ),

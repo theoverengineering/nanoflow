@@ -493,7 +493,8 @@ void main() {
   });
 
   group('Current graph', () {
-    testWidgets('has no states, counters or run markers', (tester) async {
+    testWidgets('has no states, counters, run markers or legend: only the '
+        'zoom buttons', (tester) async {
       final model = reviewModel(current: Graph.fromJson(reviewGraph));
       await pumpCanvas(tester, model);
       expect(find.text('e5f6'), findsOneWidget);
@@ -511,9 +512,9 @@ void main() {
         expect(node.state, isNull);
         expect(node.selected, isFalse);
       }
-      expect(find.text('taken by run e5f6'), findsNothing);
-      expect(find.text('back edge'), findsOneWidget);
-      expect(tester.widget<Legend>(find.byType(Legend)).backEdges, Tone.plain);
+      // ui-spec «Холст»: for Current graph only the zoom buttons remain.
+      expect(find.byType(Legend), findsNothing);
+      expect(find.byTooltip('Zoom to fit'), findsOneWidget);
     });
 
     testWidgets('says No valid graph yet until a graph passes check', (
