@@ -4,16 +4,37 @@ publish_to: none
 environment:
   sdk: ^3.13.0
 dependencies:
+  file_selector: ^1.1.0
   flutter:
     sdk: flutter
   nanoflow_model:
     path: ../../packages/nanoflow_model
   nanoflow_reader:
     path: ../../packages/nanoflow_reader
+  path: ^1.9.1
+  shared_preferences: ^2.5.5
 dev_dependencies:
+  file_selector_platform_interface: ^2.7.0
   flutter_test:
     sdk: flutter
   lints: ^6.1.0
+  plugin_platform_interface: ^2.1.8
   test: ^1.25.0
 flutter:
   uses-material-design: true
+  # Geist and Geist Mono, the mockups' fonts (SIL OFL, assets/fonts/OFL.txt).
+  fonts:
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/Geist-Regular.ttf
+        - asset: assets/fonts/Geist-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Geist-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Geist-Bold.ttf
+          weight: 700
+    - family: Geist Mono
+      fonts:
+        - asset: assets/fonts/GeistMono-Regular.ttf
+        - asset: assets/fonts/GeistMono-Medium.ttf
+          weight: 500

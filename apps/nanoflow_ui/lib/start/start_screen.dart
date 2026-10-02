@@ -1,0 +1,385 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+
+import '../platform/home_path.dart';
+import '../theme.dart';
+import '../widgets/dashed_border.dart';
+import 'icons.dart';
+import 'recent_graphs.dart';
+import 'relative_time.dart';
+
+/// Asks the user for a graph file; null when they cancel.
+typedef PickFile = Future<String?> Function();
+
+/// The system open dialog for a graph file: `.yaml` or `.yml`.
+Future<String?> pickGraphFile() async {
+  final file = await openFile(
+    acceptedTypeGroups: const [
+      XTypeGroup(label: 'YAML', extensions: ['yaml', 'yml']),
+    ],
+  );
+  return file?.path;
+}
+
+/// Whether a file is still at [path].
+bool fileExists(String path) => File(path).existsSync();
+
+/// The screen the app starts on: `Open graph` and the graphs opened before
+/// (docs/ui-spec.md «Стартовый экран», docs/design/start.html).
+class StartScreen extends StatefulWidget {
+  const StartScreen({
+    super.key,
+    required this.recent,
+    required this.onOpen,
+    required this.pickFile,
+    required this.exists,
+    required this.now,
+  });
+
+  final RecentGraphs recent;
+
+  /// Opens the graph file at the given path.
+  final ValueChanged<String> onOpen;
+  final PickFile pickFile;
+  final bool Function(String path) exists;
+  final DateTime Function() now;
+
+  @override
+  State<StartScreen> createState() => _StartScreenState();
+}
+
+class _StartScreenState extends State<StartScreen> {
+  late final Timer _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    // Keeps `Opened 5 minutes ago` true while the screen stays open.
+    _clock = Timer.periodic(const Duration(minutes: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _clock.cancel();
+    super.dispose();
+  }
+
+  Future<void> _openFromDialog() async {
+    final path = await widget.pickFile();
+    if (path != null) widget.onOpen(path);
+  }
+
+  void _openRecent(String path) {
+    if (widget.exists(path)) {
+      widget.onOpen(path);
+    } else {
+      // Gone since the list was drawn: show it as missing instead.
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Padding(
+      padding: const EdgeInsets.fromLTRB(56, 40, 56, 0),
+      child: ListenableBuilder(
+        listenable: widget.recent,
+        builder: (context, _) {
+          final graphs = widget.recent.graphs;
+          final now = widget.now();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Title(onOpen: _openFromDialog),
+              if (graphs.isNotEmpty) ...[
+                const SizedBox(height: 34),
+                Row(
+                  children: [
+                    const Text('Recently opened', style: AppText.sectionTitle),
+                    const SizedBox(width: 10),
+                    Text('${graphs.length}', style: AppText.count),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 40),
+                    itemCount: graphs.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) {
+                      final path = graphs[i].path;
+                      return widget.exists(path)
+                          ? _RecentCard(
+                              path: path,
+                              opened: openedAgo(graphs[i].openedAt, now),
+                              onTap: () => _openRecent(path),
+                            )
+                          : _MissingCard(
+                              path: path,
+                              onRemove: () =>
+                                  unawaited(widget.recent.remove(path)),
+                            );
+                    },
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    ),
+  );
+}
+
+/// `Graphs`, the line about what to open, and `Open graph`.
+class _Title extends StatelessWidget {
+  const _Title({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      const Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Graphs', style: AppText.pageTitle),
+            SizedBox(height: 6),
+            Text(
+              'Open a graph file to watch its runs live.',
+              style: AppText.pageHint,
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(width: 16),
+      _Clickable(
+        onTap: onOpen,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.accent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FolderIcon(color: AppColors.onAccent),
+              SizedBox(width: 8),
+              Text('Open graph', style: AppText.primaryButton),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+/// A graph whose file is there: a click opens it.
+class _RecentCard extends StatefulWidget {
+  const _RecentCard({
+    required this.path,
+    required this.opened,
+    required this.onTap,
+  });
+
+  final String path;
+  final String opened;
+  final VoidCallback onTap;
+
+  @override
+  State<_RecentCard> createState() => _RecentCardState();
+}
+
+class _RecentCardState extends State<_RecentCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: GestureDetector(
+      onTap: widget.onTap,
+      child: Container(
+        padding: _cardPadding,
+        decoration: BoxDecoration(
+          color: _hovered ? AppColors.accentSurface : AppColors.card,
+          border: Border.all(
+            color: _hovered ? AppColors.accentBorder : AppColors.cardBorder,
+          ),
+          borderRadius: BorderRadius.circular(_cardRadius),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: _tileSize,
+              height: _tileSize,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.tile,
+                border: Border.all(color: AppColors.tileBorder),
+                borderRadius: BorderRadius.circular(_tileRadius),
+              ),
+              child: const GraphIcon(color: AppColors.textSecondary),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: _NameAndPath(
+                name: Text(
+                  p.basename(widget.path),
+                  style: AppText.cardTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                path: widget.path,
+                pathStyle: AppText.cardPath,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Text(widget.opened, style: AppText.cardMeta),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// A graph whose file is gone: dimmed, struck through, `Missing`; a click
+/// does nothing, `Remove` takes it off the list.
+class _MissingCard extends StatelessWidget {
+  const _MissingCard({required this.path, required this.onRemove});
+
+  final String path;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) => DashedBorder(
+    color: AppColors.controlBorder,
+    radius: _cardRadius,
+    child: Padding(
+      // The dashed line takes the 1 px a border would.
+      padding: _cardPadding.add(const EdgeInsets.all(1)),
+      child: Row(
+        children: [
+          const DashedBorder(
+            color: AppColors.tileBorder,
+            radius: _tileRadius,
+            child: SizedBox.square(
+              dimension: _tileSize,
+              child: Center(
+                child: GraphIcon(color: AppColors.textDim, linked: false),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: _NameAndPath(
+              name: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      p.basename(path),
+                      style: AppText.cardTitle.copyWith(
+                        color: AppColors.textFaint,
+                        decoration: TextDecoration.lineThrough,
+                        decorationColor: AppColors.textFaint,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.dangerSurface,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Missing',
+                      style: AppText.badge.copyWith(
+                        color: AppColors.dangerText,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              path: path,
+              pathStyle: AppText.cardPath.copyWith(color: AppColors.textFaint),
+            ),
+          ),
+          const SizedBox(width: 14),
+          _Clickable(
+            onTap: onRemove,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.control,
+                border: Border.all(color: AppColors.controlBorder),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: const Text('Remove', style: AppText.button),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// The file name over its full path, `~` for the home directory.
+class _NameAndPath extends StatelessWidget {
+  const _NameAndPath({
+    required this.name,
+    required this.path,
+    required this.pathStyle,
+  });
+
+  final Widget name;
+  final String path;
+  final TextStyle pathStyle;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      name,
+      const SizedBox(height: 3),
+      Text(
+        abbreviateHome(path),
+        style: pathStyle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ],
+  );
+}
+
+class _Clickable extends StatelessWidget {
+  const _Clickable({required this.onTap, required this.child});
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(onTap: onTap, child: child),
+  );
+}
+
+const _cardPadding = EdgeInsets.symmetric(horizontal: 16, vertical: 14);
+const _cardRadius = 10.0;
+// start.html's 40 px tile has its 1 px border outside.
+const _tileSize = 42.0;
+const _tileRadius = 9.0;
