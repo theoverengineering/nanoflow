@@ -21,7 +21,8 @@ const reviewCanvas = Size(1440 - 272, 900 - 48 - 280);
 /// The size of the canvas in docs/design/task-graph.html.
 const taskCanvas = Size(2000 - 272, 1000 - 48 - 280);
 
-/// A current graph that stays as it is given; no programs are started.
+/// A current graph, its errors and its problems as the test sets them; no
+/// programs are started.
 final class FixedSource extends GraphSource {
   FixedSource(this._graph)
     : super(
@@ -30,6 +31,13 @@ final class FixedSource extends GraphSource {
       );
 
   Graph? _graph;
+  List<String> _errors = const [];
+  SourceProblem? _programProblem;
+  String? _checkProblem;
+  bool _fileMissing = false;
+
+  /// Whether the source has been disposed.
+  bool disposed = false;
 
   @override
   Graph? get graph => _graph;
@@ -38,6 +46,44 @@ final class FixedSource extends GraphSource {
   set graph(Graph? graph) {
     _graph = graph;
     notifyListeners();
+  }
+
+  @override
+  List<String> get errors => _errors;
+
+  set errors(List<String> errors) {
+    _errors = errors;
+    notifyListeners();
+  }
+
+  @override
+  SourceProblem? get programProblem => _programProblem;
+
+  set programProblem(SourceProblem? problem) {
+    _programProblem = problem;
+    notifyListeners();
+  }
+
+  @override
+  String? get checkProblem => _checkProblem;
+
+  set checkProblem(String? problem) {
+    _checkProblem = problem;
+    notifyListeners();
+  }
+
+  @override
+  bool get fileMissing => _fileMissing;
+
+  set fileMissing(bool missing) {
+    _fileMissing = missing;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    disposed = true;
+    super.dispose();
   }
 }
 
@@ -51,15 +97,28 @@ GraphModel modelOf({
   Map<String, Object?> outcomes = const {},
   Graph? current,
 }) {
-  final model = GraphModel(
-    source: FixedSource(current),
-    feed: SessionFeed(_concat(Stream.fromIterable(changes), more)),
-    outcomes: Outcomes((_, documentId) async => outcomes[documentId]),
-    now: () => at(100000),
+  final model = ownedModel(
+    changes: changes,
+    more: more,
+    outcomes: outcomes,
+    current: current,
   );
   addTearDown(model.dispose);
   return model;
 }
+
+/// [modelOf] for whoever disposes it: the graph screen disposes its model.
+GraphModel ownedModel({
+  List<Change> changes = const [],
+  Stream<Change> more = const Stream.empty(),
+  Map<String, Object?> outcomes = const {},
+  Graph? current,
+}) => GraphModel(
+  source: FixedSource(current),
+  feed: SessionFeed(_concat(Stream.fromIterable(changes), more)),
+  outcomes: Outcomes((_, documentId) async => outcomes[documentId]),
+  now: () => at(100000),
+);
 
 Stream<T> _concat<T>(Stream<T> first, Stream<T> then) async* {
   yield* first;

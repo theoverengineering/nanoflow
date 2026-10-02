@@ -6,6 +6,7 @@ import 'graph/graph_screen.dart';
 import 'platform/shell.dart';
 import 'start/recent_graphs.dart';
 import 'start/start_screen.dart';
+import 'state/graph_model.dart';
 import 'theme.dart';
 
 /// The MaterialApp around every screen; golden tests show screens in it too.
@@ -26,6 +27,7 @@ class NanoflowApp extends StatelessWidget {
     this.pickFile = pickGraphFile,
     this.exists = fileExists,
     this.now = DateTime.now,
+    this.openModel = GraphModel.open,
   });
 
   final RecentGraphs recent;
@@ -33,6 +35,9 @@ class NanoflowApp extends StatelessWidget {
   final PickFile pickFile;
   final bool Function(String path) exists;
   final DateTime Function() now;
+
+  /// Opens the model of a graph the user opens.
+  final OpenModel openModel;
 
   @override
   Widget build(BuildContext context) => appFrame(home: _Screens(this));
@@ -74,6 +79,7 @@ class _ScreensState extends State<_Screens> {
       path: graph,
       shell: app.shell,
       onBack: () => setState(() => _graph = null),
+      openModel: app.openModel,
     );
   }
 }

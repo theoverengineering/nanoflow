@@ -27,14 +27,40 @@ abstract final class AppColors {
   static const accent = Color(0xFF6D5DE8);
   static const onAccent = Color(0xFFFFFFFF);
 
+  /// The selected session's id.
+  static const accentText = Color(0xFFBDB3FF);
+
+  /// The sessions column, the `Logs` panel, the bars over the canvas.
+  static const panel = Color(0xFF202125);
+
+  /// Round the bars over the canvas; over the `Logs` panel.
+  static const panelBorder = Color(0xFF34353A);
+
+  /// The `·` between the parts of the session bar.
+  static const separator = Color(0xFF55565C);
+
   static const textPrimary = Color(0xFFECECEE);
   static const textSecondary = Color(0xFFD5D6DA);
   static const textMuted = Color(0xFFA7A8AE);
   static const textFaint = Color(0xFF8E8F96);
   static const textDim = Color(0xFF6E6F76);
 
+  /// Something running: its status bar, dot and text.
+  static const running = Color(0xFFF2A93B);
+  static const runningSurface = Color(0xFF33291B);
+  static const runningBorder = Color(0xFF5E4825);
+
+  /// Something failed: its status bar and dot; its text is [dangerText].
+  static const failed = Color(0xFFF0555C);
   static const dangerSurface = Color(0xFF3A1D20);
+  static const dangerBorder = Color(0xFF6A2F34);
   static const dangerText = Color(0xFFF7878C);
+
+  /// Something finished, or live: its status bar and dot, its text.
+  static const finished = Color(0xFF3CC47C);
+  static const finishedSurface = Color(0xFF1D3328);
+  static const finishedBorder = Color(0xFF2F5E44);
+  static const finishedText = Color(0xFF8FDDB0);
 }
 
 /// Text of the mockups: UI text in Geist; ids, paths, commands and logs in
@@ -121,6 +147,55 @@ abstract final class AppText {
     color: AppColors.textPrimary,
   );
   static final headerPath = _style(mono, 11.5, color: AppColors.textFaint);
+  static final liveBadge = _style(sans, 11.5);
+
+  // Sessions column.
+  static final panelTitle = _style(
+    sans,
+    13.5,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
+  static final sessionTitle = _style(
+    sans,
+    13,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
+  static final sessionId = _style(mono, 11);
+  static final sessionStatus = _style(sans, 12);
+  static final sessionRuns = _style(sans, 11.5, color: AppColors.textMuted);
+
+  /// `1 failed`, `2 errors`.
+  static final smallBadge = _style(sans, 10.5);
+  static final hint = _style(sans, 12, color: AppColors.textMuted);
+
+  // The session bar and the run switcher over the canvas.
+  static final barLabel = _style(sans, 12, color: AppColors.textMuted);
+  static final barId = _style(
+    mono,
+    12,
+    fontWeight: FontWeight.w500,
+    color: AppColors.textPrimary,
+  );
+
+  /// The `·` between the bar's parts: the mockup's 16 px default.
+  static final barSeparator = _style(sans, 16, color: AppColors.separator);
+  static final runId = _style(mono, 11.5);
+  static final runWord = _style(sans, 11.5);
+
+  // What is wrong with the current graph, over the canvas.
+  static final problemTitle = _style(sans, 12, fontWeight: FontWeight.w600);
+  static final problemText = _style(sans, 12, color: AppColors.textMuted);
+  static final problemCode = _style(mono, 11, color: AppColors.textSecondary);
+
+  // The Logs panel.
+  static final logsTitle = _style(
+    sans,
+    13,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
 }
 
 /// The app's dark theme.

@@ -8,6 +8,7 @@ import 'package:nanoflow_ui/start/recent_graphs.dart';
 import 'package:nanoflow_ui/start/start_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'graph/canvas/support.dart';
 import 'support/golden.dart';
 
 void main() {
@@ -31,6 +32,7 @@ void main() {
         pickFile: () async => null,
         exists: (_) => true,
         now: () => now,
+        openModel: (_, _) => ownedModel(),
       ),
     );
     expect(find.byType(StartScreen), findsOneWidget);
