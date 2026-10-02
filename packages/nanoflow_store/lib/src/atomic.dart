@@ -24,16 +24,18 @@ Future<void> writeJsonAtomically(String path, Object? json) async {
 /// Builds directory [name] in [parent] whole: [build] fills
 /// `<parent>/.tmp-<id>`, which is then renamed to `<parent>/<name>`.
 ///
-/// Creates [parent] when there is none. Returns the path of the built
-/// directory.
+/// With [createParent], creates [parent] when there is none; otherwise a
+/// missing [parent] is a [FileSystemException], so that nothing is built
+/// in a session that was removed. Returns the path of the built directory.
 Future<String> buildDirAtomically(
   String parent, {
   required String id,
   required String name,
   required Future<void> Function(String dir) build,
+  bool createParent = false,
 }) async {
-  final temporary = await Directory(p.join(parent, '.tmp-$id'))
-      .create(recursive: true);
+  if (createParent) await Directory(parent).create(recursive: true);
+  final temporary = await Directory(p.join(parent, '.tmp-$id')).create();
   await build(temporary.path);
   return (await temporary.rename(p.join(parent, name))).path;
 }

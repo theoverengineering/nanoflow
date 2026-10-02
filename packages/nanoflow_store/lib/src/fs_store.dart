@@ -43,6 +43,7 @@ final class FsStore {
       runsDir,
       id: session.id,
       name: sessionDirName(graphName, createdAt, session.id),
+      createParent: true,
       build: (dir) async {
         // A lock on an open file outlives the rename of its directory.
         final lock = await lockSession(dir, session.id);

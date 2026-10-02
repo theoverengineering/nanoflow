@@ -103,6 +103,9 @@ final class SessionHandle {
   /// the clock, but is at least a millisecond after the time of the run
   /// created before it, so that runs sort by name in the order they were
   /// created. The step's directory is named the same way.
+  ///
+  /// Throws a [FileSystemException], having built nothing, when the
+  /// session's directory is gone.
   Future<(Run, Step)> createRun({
     required String? parentId,
     required String node,
@@ -121,8 +124,9 @@ final class SessionHandle {
           p.join(runDir, eventsFileName),
           RunStarted(runId: run.id, time: createdAt, node: node),
         );
+        final stepsDir = await Directory(p.join(runDir, stepsDirName)).create();
         step = await _buildStep(
-          p.join(runDir, stepsDirName),
+          stepsDir.path,
           runId: run.id,
           node: node,
           inputId: inputId,
@@ -138,6 +142,9 @@ final class SessionHandle {
   /// time from the clock, but at least a millisecond after the time of the
   /// run's step created before it, so that steps sort by name in the order
   /// they were created. No event is written.
+  ///
+  /// Throws a [FileSystemException], having built nothing, when the run's
+  /// directory is gone.
   Future<Step> createStep({
     required String runId,
     required String node,

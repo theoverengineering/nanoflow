@@ -584,4 +584,27 @@ void main() {
       expect(() => handle.openLog(unknown, newId()), throwsArgumentError);
     });
   });
+
+  group('a session whose directory is gone', () {
+    // Removed while an engine drives it. Building the directories again
+    // would leave a session without session.json and runs without run.json
+    // or run-started.
+    test('createStep and createRun fail and make nothing', () async {
+      final handle = await newSession();
+      final run = (await handle.runs()).single;
+      // An engine has the run's directory looked up by now.
+      await handle.events(run.id);
+      await Directory(handle.dir).delete(recursive: true);
+
+      await expectLater(
+        handle.createStep(runId: run.id, node: 'publish', inputId: null),
+        throwsA(isA<FileSystemException>()),
+      );
+      await expectLater(
+        handle.createRun(parentId: run.id, node: 'publish', inputId: null),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(Directory(handle.dir).existsSync(), isFalse);
+    });
+  });
 }
