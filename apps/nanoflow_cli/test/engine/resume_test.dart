@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import '../support/fake_program.dart';
@@ -699,5 +701,50 @@ void main() {
         err: 'cannot read the graph: --graph exited with code 3\n',
       ));
     });
+  });
+  test('a run that cannot go on after its finished step, as its steps '
+      'directory may not be written: the engine stops, exit 3', () async {
+    final (:fake, :session) = await created(
+      {
+        'start': ['a', 'wait'],
+        'nodes': {
+          'a': {'command': 'a', 'then': 'b'},
+          'b': {'command': 'b'},
+          'wait': {'command': 'wait'},
+        },
+      },
+      nodes: {
+        'a': 'true',
+        'b': 'true',
+        // Runs for 20 s, should the engine not stop it.
+        'wait':
+            'i=0; while [ \$i -lt 400 ]; do sleep 0.05; i=\$((i + 1)); done',
+      },
+    );
+    final run = await runAt(session, 'a');
+    await ran(session, await firstStep(session, run.id), 'a');
+    // The step of b cannot be made.
+    final steps = p.join(dirOf(session.dir, run.id), 'steps');
+    Process.runSync('chmod', ['500', steps]);
+    addTearDown(() => Process.runSync('chmod', ['700', steps]));
+
+    final result = await resume(
+      fake,
+      session,
+    ).timeout(const Duration(seconds: 15));
+
+    expect(result.code, 3, reason: result.err);
+    expect(
+      const LineSplitter().convert(result.err).last,
+      matches(
+        r'^cannot store the session: Creation failed \S*/steps/\.tmp-\S+: '
+        r'Permission denied$',
+      ),
+    );
+    expect(await journal(session, run.id), [
+      'run-started a',
+      'step-started a',
+      'step-finished 0',
+    ]);
   });
 }

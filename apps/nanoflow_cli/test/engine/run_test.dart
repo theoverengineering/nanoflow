@@ -1048,7 +1048,8 @@ IFS= read -r line
       expect(Directory(fake.runsDir).existsSync(), isFalse);
     });
 
-    test('a document it cannot write: no event after it, exit 3', () async {
+    test('a document it cannot write: no event after it, exit 3; once it '
+        'can, --resume finishes the session', () async {
       final fake = FakeProgram(
         {
           'start': 'make',
@@ -1056,7 +1057,14 @@ IFS= read -r line
             'make': {'command': 'make', 'out': object},
           },
         },
-        nodes: {'make': "chmod 500 runs/*/documents\necho '{}'"},
+        nodes: {
+          // Only the first time: the step that runs again on --resume
+          // leaves the directory as it is.
+          'make':
+              '[ -e chmodded ] || { touch chmodded; '
+              'chmod 500 runs/*/documents; }\n'
+              "echo '{}'",
+        },
       );
       restoreWrite(fake.runsDir);
       final result = await nanoflow(['run', '--', fake.path])
@@ -1065,12 +1073,54 @@ IFS= read -r line
       expect(result.code, 3, reason: result.err);
       final lines = const LineSplitter().convert(result.err);
       expect(lines.last, storeFailure(r'/documents/\S+', 'Permission denied'));
-      final session = (await FsStore(fake.runsDir)
-          .openSession(result.out.trim()))!;
-      expect(await journal(session, (await onlyRun(session)).id), [
+      final id = result.out.trim();
+      final session = (await FsStore(fake.runsDir).openSession(id))!;
+      final run = await onlyRun(session);
+      expect(await journal(session, run.id), [
         'run-started make',
         'step-started make',
       ]);
+
+      Process.runSync('chmod', ['-R', 'u+rwx', fake.runsDir]);
+      final resumed = await nanoflow(['run', '--resume', id, '--', fake.path]);
+      expect(resumed.code, 0, reason: resumed.err);
+      expect(await journal(session, run.id), [
+        'run-started make',
+        'step-started make',
+        'step-started make',
+        'step-finished 0',
+        'run-finished',
+      ]);
+    });
+
+    test('in a run a split made: every step stops, exit 3', () async {
+      final fake = FakeProgram(
+        {
+          'start': 'split',
+          'nodes': {
+            'split': {
+              'command': 'split',
+              'then': ['remove', 'wait'],
+            },
+            'remove': {'command': 'remove'},
+            'wait': {'command': 'wait'},
+          },
+        },
+        nodes: {
+          'split': 'true',
+          'remove': '${waitForFile('wait.pid')}\nrm -rf runs',
+          'wait': waitAndLoop,
+        },
+      );
+      final result = await nanoflow(['run', '--', fake.path])
+          .timeout(const Duration(seconds: 15));
+
+      expect(result.code, 3, reason: result.err);
+      expect(
+        const LineSplitter().convert(result.err).last,
+        storeFailure(r'/log\.jsonl', 'No such file or directory'),
+      );
+      expect(isRunning(fake, 'wait'), isFalse);
     });
 
     test('a step log it cannot write, as on a full disk: every step stops, '
