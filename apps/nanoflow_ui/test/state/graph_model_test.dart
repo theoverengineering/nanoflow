@@ -533,6 +533,34 @@ void main() {
     expect(graphFile.disposed, isTrue);
   });
 
+  test('close stops its feed and completes once the feed has stopped; '
+      'dispose may follow', () {
+    fakeAsync((async) {
+      final stopped = Completer<void>();
+      final changes = StreamController<Change>(onCancel: () => stopped.future);
+      final graphFile = FixedGraphFile();
+      final model = GraphModel(
+        graphFile: graphFile,
+        freshness: FixedFreshness(graphFile),
+        feed: SessionFeed(changes.stream),
+        outcomes: Outcomes((_, _) async => null),
+        files: FakeFiles(),
+      );
+      var closed = false;
+
+      unawaited(model.close().then((_) => closed = true));
+      async.flushMicrotasks();
+      expect(changes.hasListener, isFalse);
+      expect(closed, isFalse);
+
+      stopped.complete();
+      async.flushMicrotasks();
+      expect(closed, isTrue);
+      model.dispose();
+      expect(graphFile.disposed, isTrue);
+    });
+  });
+
   group('the canvas of Current graph', () {
     test('draws the selected workflow of the graph file', () {
       final canvas = fileCanvas(

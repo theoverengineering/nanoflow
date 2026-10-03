@@ -44,7 +44,7 @@ typedef OpenModel = GraphModel Function(String file);
 ///
 /// The screen owns the [GraphModel] of its file: it opens it as it opens,
 /// and disposes it, with what follows the files, when it is left or the
-/// app quits.
+/// app quits; the app quits once the model has closed.
 class GraphScreen extends StatefulWidget {
   const GraphScreen({
     super.key,
@@ -110,7 +110,11 @@ class _GraphScreenState extends State<GraphScreen> {
     _lifecycle = AppLifecycleListener(onExitRequested: _quitting);
   }
 
+  /// Lets the app quit once the model's feed has stopped: the Dart VM ends
+  /// with the app and waits for what still runs in it, and the reader's
+  /// watch of the processes that own sessions runs until the feed stops.
   Future<AppExitResponse> _quitting() async {
+    await _model.close();
     _close();
     return AppExitResponse.exit;
   }

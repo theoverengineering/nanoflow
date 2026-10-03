@@ -290,9 +290,14 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
 
   void _changed() => notifyLater();
 
+  /// Stops listening to the changes; completes once their source has
+  /// stopped: a reader's feed, once it no longer watches the processes that
+  /// own sessions. [dispose] may come before or after it.
+  Future<void> close() => _subscription.cancel();
+
   @override
   void dispose() {
-    unawaited(_subscription.cancel());
+    unawaited(close());
     unawaited(_documentsAdded.close());
     super.dispose();
   }

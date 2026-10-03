@@ -433,6 +433,28 @@ void main() {
         expect(changes.hasListener, isFalse);
       });
     });
+
+    test('close stops listening to the changes and completes once they have '
+        'stopped; dispose may follow', () {
+      fakeAsync((async) {
+        final stopped = Completer<void>();
+        final changes = StreamController<Change>(
+          onCancel: () => stopped.future,
+        );
+        final feed = SessionFeed(changes.stream);
+        var closed = false;
+
+        unawaited(feed.close().then((_) => closed = true));
+        async.flushMicrotasks();
+        expect(changes.hasListener, isFalse);
+        expect(closed, isFalse);
+
+        stopped.complete();
+        async.flushMicrotasks();
+        expect(closed, isTrue);
+        feed.dispose();
+      });
+    });
   });
 
   test(

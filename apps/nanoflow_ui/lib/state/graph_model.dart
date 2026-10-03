@@ -502,6 +502,10 @@ class GraphModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Stops the [feed]; completes once it has stopped (`SessionFeed.close`).
+  /// [dispose] may follow.
+  Future<void> close() => feed.close();
+
   @override
   void dispose() {
     unawaited(_documents.cancel());

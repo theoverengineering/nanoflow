@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -352,10 +353,28 @@ void main() {
     expect(graphFileOf(model).disposed, isTrue);
   });
 
-  testWidgets('disposes its model when the app is quit', (tester) async {
-    final model = await pumpGraphScreen(tester);
+  testWidgets('lets the app quit once its feed has stopped, and disposes '
+      'its model then', (tester) async {
+    // A reader's feed stops once it no longer watches the processes that own
+    // sessions; the app may not end before that.
+    final stopped = Completer<void>();
+    final more = StreamController<Change>(onCancel: () => stopped.future);
+    final model = await pumpGraphScreen(
+      tester,
+      model: ownedModel(file: releaseFile, more: more.stream),
+    );
 
-    await tester.binding.handleRequestAppExit();
+    AppExitResponse? response;
+    unawaited(tester.binding.handleRequestAppExit().then((r) => response = r));
+    await tester.pump();
+    expect(more.hasListener, isFalse);
+    expect(response, isNull);
+    // The screen still draws it meanwhile.
+    expect(graphFileOf(model).disposed, isFalse);
+
+    stopped.complete();
+    await tester.pump();
+    expect(response, AppExitResponse.exit);
     expect(graphFileOf(model).disposed, isTrue);
 
     // Leaving after that disposes nothing twice.
