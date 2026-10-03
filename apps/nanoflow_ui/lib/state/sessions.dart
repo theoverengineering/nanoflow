@@ -123,10 +123,62 @@ List<SessionData> sessionsNewestFirst(Iterable<SessionData> sessions) {
   return [for (final (session, _) in started) session];
 }
 
-/// Those of [sessions] that ran the workflow [workflowId] of [graph]: whose
-/// workflow name the graph file finds it by (`GraphFile.workflowNamed`).
-/// Every session while no graph file has been read: nothing tells the
-/// workflows apart.
+/// A workflow whose sessions the screen can show: one of the graph file's,
+/// or one that sessions ran which the graph file does not have — run
+/// before the graph file was written again, or renamed or removed since.
+final class WorkflowChoice {
+  const WorkflowChoice._(this.id, this.name, this.function);
+
+  /// Its function's id in the graph file; for a workflow the graph file
+  /// does not have, its name.
+  final String id;
+
+  /// The name of the workflow function: what sessions record.
+  final String name;
+
+  /// Its function in the graph file; `null` when the file does not have it.
+  final GraphFunction? function;
+
+  bool get inGraphFile => function != null;
+}
+
+/// The id the sessions of the workflow [name] are listed under: its
+/// function's in [graph] (`GraphFile.workflowNamed`), else [name] itself.
+String workflowIdOf(GraphFile graph, String name) =>
+    graph.workflowNamed(name)?.id ?? name;
+
+/// The workflows of [graph] in its order, then by name those [sessions] ran
+/// that it does not have.
+List<WorkflowChoice> workflowChoices(
+  GraphFile graph,
+  Iterable<SessionData> sessions,
+) => [
+  for (final id in graph.workflows)
+    if (graph.functions[id] case final function?)
+      WorkflowChoice._(id, function.name, function),
+  for (final name in sessionsNotInGraph(graph, sessions).keys)
+    WorkflowChoice._(name, name, null),
+];
+
+/// How many of [sessions] ran each workflow [graph] does not have, by its
+/// name, in the order of the names.
+Map<String, int> sessionsNotInGraph(
+  GraphFile graph,
+  Iterable<SessionData> sessions,
+) {
+  final counts = <String, int>{};
+  for (final session in sessions) {
+    final name = session.session.workflow;
+    if (graph.workflowNamed(name) == null) {
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
+  }
+  return {for (final name in counts.keys.toList()..sort()) name: counts[name]!};
+}
+
+/// Those of [sessions] that ran the workflow [workflowId] of [graph] (a
+/// [WorkflowChoice.id]). Every session while no graph file has been read:
+/// nothing tells the workflows apart.
 List<SessionData> sessionsOfWorkflow(
   Iterable<SessionData> sessions,
   GraphFile? graph,
@@ -135,6 +187,6 @@ List<SessionData> sessionsOfWorkflow(
   for (final session in sessions)
     if (graph == null ||
         (workflowId != null &&
-            graph.workflowNamed(session.session.workflow)?.id == workflowId))
+            workflowIdOf(graph, session.session.workflow) == workflowId))
       session,
 ];

@@ -126,7 +126,11 @@ void main() {
     );
     expect(colorOf(tester, fileUnavailable), AppColors.dangerText);
     expect(
-      inNotes(find.text(fileUnavailableDetail('nanoflow.graph.json'))),
+      inNotes(
+        find.text(
+          fileUnavailableDetail('nanoflow.graph.json', graphKept: true),
+        ),
+      ),
       findsOneWidget,
     );
     expect(
@@ -138,6 +142,59 @@ void main() {
       findsOneWidget,
     );
     expect(inNotes(find.text(lastGraphShown)), findsOneWidget);
+  });
+
+  testWidgets('sessions of workflows the graph file does not have: amber, '
+      'with the workflows', (tester) async {
+    await pumpNotes(
+      tester,
+      fileCanvas(
+        file: file,
+        graph: reviewGraphFile(),
+        workflowId: 'lib/review.dart#review',
+        extraNotes: workflowNotes(
+          file: file,
+          workflow: null,
+          notInGraph: const {'backup': 1, 'deploy': 2},
+        ),
+      ).notes,
+    );
+    expect(
+      colorOf(tester, '3 sessions of workflows not in nanoflow.graph.json'),
+      AppColors.running,
+    );
+    expect(inNotes(find.text('backup')), findsOneWidget);
+    expect(inNotes(find.text('deploy')), findsOneWidget);
+    expect(inNotes(find.text(notInGraphFileDetail)), findsOneWidget);
+  });
+
+  testWidgets('a workflow the graph file does not have, chosen', (
+    tester,
+  ) async {
+    await pumpNotes(
+      tester,
+      fileCanvas(
+        file: file,
+        graph: reviewGraphFile(),
+        workflowId: 'deploy',
+        extraNotes: workflowNotes(
+          file: file,
+          workflow: workflowChoices(reviewGraphFile(), [
+            Journal('d1d1-session', workflow: 'deploy').data,
+          ]).last,
+          notInGraph: const {'deploy': 1},
+        ),
+      ).notes,
+    );
+    expect(
+      colorOf(tester, workflowNotInFile('deploy', 'nanoflow.graph.json')),
+      AppColors.running,
+    );
+    expect(inNotes(find.text(graphFileMayBeStale)), findsOneWidget);
+    expect(
+      inNotes(find.text('1 session of workflows not in nanoflow.graph.json')),
+      findsNothing,
+    );
   });
 
   testWidgets('a session that ran on other code', (tester) async {

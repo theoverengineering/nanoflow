@@ -126,6 +126,110 @@ void main() {
         expect(model.selection.sessionId, 'a1b2-session');
       });
     });
+
+    test('a chosen session that leaves the workflow as the graph file '
+        'changes gives way to the newest session of the workflow', () {
+      run((async) {
+        give(async, twoWorkflows());
+        model.showSession('a1b2-session');
+        graphFile.graph = GraphFile.fromJson({
+          ...graphFileJson(),
+          'workflows': ['lib/release.dart#release'],
+        });
+        expect(model.workflow!.name, 'release');
+        expect(model.selection.sessionId, 'c3d4-session');
+      });
+    });
+  });
+
+  group('workflows the graph file does not have', () {
+    /// A snapshot of a graph file that had the deploy workflow.
+    final withDeploy = {
+      ...graphFileJson(),
+      'workflows': ['lib/deploy.dart#deploy'],
+      'functions': {
+        'lib/deploy.dart#deploy': {
+          'name': 'deploy',
+          'place': 'lib/deploy.dart:3',
+          'body': {'nodes': <Object?>[], 'edges': <Object?>[]},
+        },
+      },
+    };
+
+    /// Review session a1b2, and deploy sessions d1 (with a snapshot that has
+    /// deploy) and the newer d2 (without a snapshot).
+    List<Change> sessions() => changesOf([
+      Journal('a1b2-session'),
+      Journal(
+        'd1d1-session',
+        workflow: 'deploy',
+        graph: withDeploy,
+        startedAt: 20,
+      ),
+      Journal(
+        'd2d2-session',
+        workflow: 'deploy',
+        snapshot: false,
+        startedAt: 30,
+      ),
+    ]);
+
+    const unknownNote = GraphNote(
+      '2 sessions of workflows not in nanoflow.graph.json',
+      lines: ['deploy'],
+      text: notInGraphFileDetail,
+    );
+    final notInFile = GraphNote(
+      workflowNotInFile('deploy', 'nanoflow.graph.json'),
+      text: graphFileMayBeStale,
+    );
+
+    test('are noted over any other workflow, and listed after the file\'s '
+        'own', () {
+      run((async) {
+        give(async, sessions());
+        expect(
+          [for (final w in model.workflows) (w.name, w.inGraphFile)],
+          [('review', true), ('release', true), ('deploy', false)],
+        );
+        expect(
+          [for (final s in model.sessions(at(746))) s.id],
+          ['a1b2-session'],
+        );
+        expect(model.canvas.notes, [unknownNote]);
+        model.selection.showCurrentGraph();
+        expect(model.canvas.notes, [unknownNote]);
+      });
+    });
+
+    test('chosen, list their sessions; each is drawn on its own snapshot, '
+        'else not at all', () {
+      run((async) {
+        give(async, sessions());
+        model.selectWorkflow('deploy');
+        expect(
+          [for (final s in model.sessions(at(746))) s.id],
+          ['d2d2-session', 'd1d1-session'],
+        );
+        expect(model.selection.sessionId, 'd2d2-session');
+        expect(model.canvas.workflow, isNull);
+        expect(model.canvas.placeholder, noWorkflowNamed('deploy'));
+        expect(model.canvas.notes, [
+          const GraphNote(sessionHasNoSnapshot, text: noSnapshotDetail),
+          notInFile,
+        ]);
+
+        model.showSession('d1d1-session');
+        expect(model.canvas.workflow!.id, 'lib/deploy.dart#deploy');
+        expect(model.canvas.placeholder, isNull);
+        expect(model.canvas.notes, [notInFile]);
+
+        model.selection.showCurrentGraph();
+        expect(model.canvas.workflow, isNull);
+        expect(model.canvas.placeholder, noWorkflowNamed('deploy'));
+        expect(model.canvas.notes, [notInFile]);
+      });
+    });
   });
 
   test('without sessions selects Current graph', () {
@@ -287,6 +391,22 @@ void main() {
       ]);
     });
 
+    test('a file gone before any graph was read keeps none', () {
+      final canvas = fileCanvas(
+        file: '/p/nanoflow.graph.json',
+        graph: null,
+        workflowId: null,
+        fileMissing: true,
+      );
+      expect(canvas.notes, [
+        const GraphNote(
+          fileUnavailable,
+          danger: true,
+          text: 'nanoflow.graph.json is gone.',
+        ),
+      ]);
+    });
+
     test('says so when the graph file has no workflows', () {
       final graph = GraphFile.fromJson({...graphFileJson(), 'workflows': []});
       final canvas = fileCanvas(
@@ -434,6 +554,66 @@ void main() {
       expect(canvas.workflow, isNull);
       expect(canvas.placeholder, noWorkflowNamed('deploy'));
     });
+  });
+
+  test('opens a graph file whose runs/ has a session of a workflow it does '
+      'not have: noted, and reachable', () async {
+    final dir = await Directory.systemTemp.createTemp('nanoflow_model_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = p.join(dir.path, graphFileName);
+    File(file).writeAsStringSync(jsonEncode(graphFileJson()));
+    final review = newId();
+    final deploy = newId();
+    for (final (id, workflow) in [(review, 'review'), (deploy, 'deploy')]) {
+      final sessionDir = p.join(
+        runsDirOf(dir.path),
+        sessionDirName(workflow, t0, id),
+      );
+      Directory(sessionDir).createSync(recursive: true);
+      File(p.join(sessionDir, sessionFileName)).writeAsStringSync(
+        jsonEncode(
+          Session(
+            id: id,
+            workflow: workflow,
+            graph: graphFileJson(),
+            inputId: null,
+          ).toJson(),
+        ),
+      );
+      File(p.join(sessionDir, eventsFileName)).writeAsStringSync(
+        '${jsonEncode(SessionStarted(time: t0, code: reviewCode).toJson())}\n',
+      );
+    }
+
+    final model = GraphModel.open(file);
+    addTearDown(model.dispose);
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    bool started(String id) => model.feed.session(id)?.state.startedAt != null;
+    while (!started(review) ||
+        !started(deploy) ||
+        model.selection.sessionId == null ||
+        model.workflow == null) {
+      if (DateTime.now().isAfter(deadline)) fail('waited too long');
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(model.selection.sessionId, review);
+    expect(model.canvas.notes, [
+      const GraphNote(
+        '1 session of workflows not in nanoflow.graph.json',
+        lines: ['deploy'],
+        text: notInGraphFileDetail,
+      ),
+    ]);
+
+    model.selectWorkflow('deploy');
+    expect(model.selection.sessionId, deploy);
+    expect(model.canvas.placeholder, noWorkflowNamed('deploy'));
+    expect(model.canvas.notes, [
+      GraphNote(
+        workflowNotInFile('deploy', graphFileName),
+        text: graphFileMayBeStale,
+      ),
+    ]);
   });
 
   test('opens a graph file: its graph, and the sessions in runs/ next to '

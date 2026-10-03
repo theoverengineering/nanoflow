@@ -164,5 +164,47 @@ void main() {
     test('are all sessions while no graph file has been read', () {
       expect(sessionsOfWorkflow(all, null, null), all);
     });
+
+    test('of a workflow the graph file does not have are listed under its '
+        'name', () {
+      final later = Journal('renm-session', workflow: 'renamed').data;
+      expect(
+        sessionsOfWorkflow([...all, later], reviewGraphFile(), 'renamed'),
+        [gone, later],
+      );
+    });
+  });
+
+  group('the workflows to choose from', () {
+    final sessions = [
+      Journal('revi-session').data,
+      Journal('depl-session', workflow: 'deploy').data,
+      Journal('dep2-session', workflow: 'deploy').data,
+      Journal('back-session', workflow: 'backup').data,
+    ];
+
+    test('are those of the graph file in its order, then those sessions ran '
+        'that it does not have, by name', () {
+      final choices = workflowChoices(reviewGraphFile(), sessions);
+      expect(
+        [for (final w in choices) (w.id, w.name, w.inGraphFile)],
+        [
+          ('lib/review.dart#review', 'review', true),
+          ('lib/release.dart#release', 'release', true),
+          ('backup', 'backup', false),
+          ('deploy', 'deploy', false),
+        ],
+      );
+      expect(choices.first.function, reviewGraphFile().functions.values.first);
+      expect(choices.last.function, isNull);
+    });
+
+    test('count the sessions of workflows the graph file does not have', () {
+      expect(sessionsNotInGraph(reviewGraphFile(), sessions), {
+        'backup': 1,
+        'deploy': 2,
+      });
+      expect(sessionsNotInGraph(reviewGraphFile(), sessions.take(1)), isEmpty);
+    });
   });
 }

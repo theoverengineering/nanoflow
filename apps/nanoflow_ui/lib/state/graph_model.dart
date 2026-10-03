@@ -62,16 +62,20 @@ const unreadableSessionGraph = 'Graph of this session cannot be read';
 /// What the canvas says for a graph file without workflows.
 const noWorkflows = 'The graph file has no workflows';
 
-/// What the canvas says for a session whose graph has no function of its
-/// workflow [name].
+/// What the canvas says for a workflow [name] whose graph has no function
+/// of it: a workflow the graph file does not have, or a session whose
+/// snapshot does not.
 String noWorkflowNamed(String name) => 'The graph has no workflow $name';
 
 /// The graph file is gone: the last graph read from it stays.
 const fileUnavailable = 'File unavailable';
 
-/// Said under [fileUnavailable]: what was read of [fileName] stays.
-String fileUnavailableDetail(String fileName) =>
-    '$fileName is gone; the canvas keeps the last graph read from it.';
+/// Said under [fileUnavailable]: [fileName] is gone, and what was read of it
+/// stays when [graphKept].
+String fileUnavailableDetail(String fileName, {required bool graphKept}) =>
+    graphKept
+    ? '$fileName is gone; the canvas keeps the last graph read from it.'
+    : '$fileName is gone.';
 
 /// The graph file [fileName] is not one the app can read.
 String fileUnreadable(String fileName) => '$fileName cannot be read';
@@ -105,6 +109,21 @@ const sessionCodeNotChecked = 'Session code not checked';
 /// Said under [sessionCodeNotChecked].
 const notCheckedDetail = 'The session recorded no hash of the code it ran on.';
 
+/// The chosen workflow [workflow] is not in the graph file [fileName]: its
+/// sessions ran it, the file does not have it.
+String workflowNotInFile(String workflow, String fileName) =>
+    'Workflow $workflow is not in $fileName';
+
+/// Said under [workflowNotInFile].
+const graphFileMayBeStale =
+    'The graph file may be stale: run describe to write it again.';
+
+/// Said under the workflows that sessions ran and the graph file does not
+/// have.
+const notInGraphFileDetail =
+    'The graph file may be stale: run describe to write it again. '
+    'Choose such a workflow to see its sessions.';
+
 /// The graph the canvas shows (spec §9 «Граф», «Сессия»): a workflow of the
 /// graph file for `Current graph`, the session's own graph for a session.
 final class CanvasGraph {
@@ -136,9 +155,10 @@ final class CanvasGraph {
   final List<GraphNote> notes;
 }
 
-/// The canvas of `Current graph`: the workflow [workflowId] of [graph], the
-/// graph file [file] last read; noted when the file is gone, its latest
-/// [error], its [freshness] and its warnings.
+/// The canvas of `Current graph`: the workflow [workflowId] (a
+/// `WorkflowChoice.id`) of [graph], the graph file [file] last read; noted
+/// when the file is gone, its latest [error], its [freshness], its warnings,
+/// then [extraNotes] ([workflowNotes]).
 CanvasGraph fileCanvas({
   required String file,
   required GraphFile? graph,
@@ -146,6 +166,7 @@ CanvasGraph fileCanvas({
   String? error,
   bool fileMissing = false,
   Freshness? freshness,
+  List<GraphNote> extraNotes = const [],
 }) {
   final name = p.basename(file);
   final workflow = graph?.functions[workflowId];
@@ -156,15 +177,17 @@ CanvasGraph fileCanvas({
     ofSession: false,
     placeholder: graph == null
         ? noValidGraphYet
-        : workflow == null
+        : workflow != null
+        ? null
+        : workflowId == null
         ? noWorkflows
-        : null,
+        : noWorkflowNamed(workflowId),
     notes: List.unmodifiable([
       if (fileMissing)
         GraphNote(
           fileUnavailable,
           danger: true,
-          text: fileUnavailableDetail(name),
+          text: fileUnavailableDetail(name, graphKept: graph != null),
         ),
       if (error != null)
         GraphNote(
@@ -187,14 +210,19 @@ CanvasGraph fileCanvas({
               place == null ? message : '$place  $message',
           ],
         ),
+      ...extraNotes,
     ]),
   );
 }
 
 /// The canvas of [session], shown on [graph]: its workflow on it; noted
-/// when the session has no snapshot, and when its code is not that of the
-/// graph or was not recorded.
-CanvasGraph sessionCanvas(SessionData session, SessionGraph graph) {
+/// when the session has no snapshot, when its code is not that of the graph
+/// or was not recorded, then [extraNotes] ([workflowNotes]).
+CanvasGraph sessionCanvas(
+  SessionData session,
+  SessionGraph graph, {
+  List<GraphNote> extraNotes = const [],
+}) {
   final file = graph.graph;
   final name = session.session.workflow;
   final workflow = file?.workflowNamed(name);
@@ -216,8 +244,38 @@ CanvasGraph sessionCanvas(SessionData session, SessionGraph graph) {
         const GraphNote(sessionRanOnOtherCode, text: otherCodeDetail),
       if (graph.code == CodeCheck.notChecked)
         const GraphNote(sessionCodeNotChecked, text: notCheckedDetail),
+      ...extraNotes,
     ]),
   );
+}
+
+/// What to know of the workflows of the graph file [file], over any canvas:
+/// that the chosen [workflow] is not in the file; else, how many sessions
+/// ran workflows the file does not have ([notInGraph], by name), which are
+/// otherwise easy to miss: only the workflow picker lists them.
+List<GraphNote> workflowNotes({
+  required String file,
+  required WorkflowChoice? workflow,
+  required Map<String, int> notInGraph,
+}) {
+  final name = p.basename(file);
+  if (workflow != null && !workflow.inGraphFile) {
+    return [
+      GraphNote(
+        workflowNotInFile(workflow.name, name),
+        text: graphFileMayBeStale,
+      ),
+    ];
+  }
+  if (notInGraph.isEmpty) return const [];
+  final sessions = notInGraph.values.fold(0, (sum, n) => sum + n);
+  return [
+    GraphNote(
+      '${count(sessions, 'session')} of workflows not in $name',
+      lines: [...notInGraph.keys],
+      text: notInGraphFileDetail,
+    ),
+  ];
 }
 
 /// The state of one graph screen: the graph file and how it stands against
@@ -297,23 +355,26 @@ class GraphModel extends ChangeNotifier {
   int? _canvasKey;
   CanvasGraph? _canvas;
 
-  /// The workflows of the graph file, in its order; none while no graph file
-  /// has been read.
-  List<GraphFunction> get workflows {
+  /// The workflows to choose from: the graph file's in its order, then
+  /// those sessions ran that it does not have (`workflowChoices`); none
+  /// while no graph file has been read.
+  List<WorkflowChoice> get workflows {
     final graph = graphFile.graph;
-    if (graph == null) return const [];
-    return [for (final id in graph.workflows) ?graph.functions[id]];
+    return graph == null
+        ? const []
+        : workflowChoices(graph, feed.sessions.values);
   }
 
-  /// The selected workflow: the one chosen while the graph file has it,
-  /// else its first; `null` without workflows.
-  GraphFunction? get workflow {
+  /// The selected workflow: the one chosen while it is listed, else the
+  /// first; `null` without workflows.
+  WorkflowChoice? get workflow {
     final all = workflows;
     return all.where((w) => w.id == _workflowId).firstOrNull ?? all.firstOrNull;
   }
 
-  /// Selects the workflow [id], and opens its sessions as on opening the
-  /// graph: its newest session started before now is selected.
+  /// Selects the workflow [id] (a [WorkflowChoice.id]), and opens its
+  /// sessions as on opening the graph: its newest session started before
+  /// now is selected.
   void selectWorkflow(String id) {
     if (id == workflow?.id) return;
     _workflowId = id;
@@ -367,22 +428,29 @@ class GraphModel extends ChangeNotifier {
   CanvasGraph get canvas {
     if (_canvasKey == _changes) return _canvas!;
     final session = _readSelected();
+    final graph = graphFile.graph;
+    final workflow = this.workflow;
+    final notes = graph == null
+        ? const <GraphNote>[]
+        : workflowNotes(
+            file: graphFile.file,
+            workflow: workflow,
+            notInGraph: sessionsNotInGraph(graph, feed.sessions.values),
+          );
     final canvas = session == null
         ? fileCanvas(
             file: graphFile.file,
-            graph: graphFile.graph,
+            graph: graph,
             workflowId: workflow?.id,
             error: graphFile.error,
             fileMissing: graphFile.fileMissing,
             freshness: freshness.freshness,
+            extraNotes: notes,
           )
         : sessionCanvas(
             session,
-            sessionGraphOf(
-              session,
-              documents: outcomes,
-              graphFile: graphFile.graph,
-            ),
+            sessionGraphOf(session, documents: outcomes, graphFile: graph),
+            extraNotes: notes,
           );
     _canvasKey = _changes;
     return _canvas = canvas;
@@ -423,9 +491,18 @@ class GraphModel extends ChangeNotifier {
     _changed();
   }
 
+  /// Gives the [selection] the sessions of the workflow. A selected session
+  /// that is no longer one of them — the graph file changed which workflow
+  /// it ran, or which workflow is selected — gives way as on opening the
+  /// graph.
   void _feedSelection() {
     _feeding = true;
-    selection.update(workflowSessions);
+    final sessions = workflowSessions;
+    final selected = selection.sessionId;
+    if (selected != null && sessions.every((s) => s.id != selected)) {
+      selection.reopen();
+    }
+    selection.update(sessions);
     _feeding = false;
   }
 
