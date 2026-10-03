@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:nanoflow_model/nanoflow_model.dart'
-    show SessionStatus, StepStatus;
+import 'package:nanoflow_model/nanoflow_model.dart' show SessionStatus;
+
+import 'state/sessions.dart' show SessionSummary;
+import 'state/visits.dart' show StartOutcome;
 
 /// Colors of the mockups in docs/design/ (their HTML has the exact values).
 abstract final class AppColors {
@@ -72,6 +74,11 @@ abstract final class AppColors {
   static const noteSurface = Color(0xFF3A2C16);
   static const noteText = Color(0xFFF2C27A);
 
+  /// Something interrupted — its process stopped before it ended: its
+  /// status bar, dot, sign and text. The amber of notes, as the step
+  /// details window says `interrupted — the process stopped`.
+  static const interrupted = noteText;
+
   /// The selected step's row: its left bar, its name.
   static const accentLine = Color(0xFF9C8CFF);
   static const selectedText = Color(0xFFF7F3EA);
@@ -121,12 +128,26 @@ extension SessionStatusColors on SessionStatus {
   };
 }
 
-/// The colors a step's status is shown in: its sign and its bar in `Logs`.
-extension StepStatusColors on StepStatus {
+/// The colors of a session's card and bar: those of its status, but an
+/// interrupted session's are [AppColors.interrupted].
+extension SessionSummaryColors on SessionSummary {
+  /// The status bar of its card, the dot on the session bar.
+  Color get statusColor => interrupted ? AppColors.interrupted : status.color;
+
+  /// `Running for 12m 26s`, `Interrupted after 3m 20s`.
+  Color get statusTextColor =>
+      interrupted ? AppColors.interrupted : status.textColor;
+}
+
+/// The colors a step's state — how its last start stands — is shown in: its
+/// sign and its bar in `Logs`, the frame of its icon in the step details
+/// window.
+extension StartOutcomeColors on StartOutcome {
   Color get color => switch (this) {
-    StepStatus.running => AppColors.running,
-    StepStatus.failed => AppColors.failed,
-    StepStatus.finished => AppColors.finished,
+    StartOutcome.running => AppColors.running,
+    StartOutcome.interrupted => AppColors.interrupted,
+    StartOutcome.failed => AppColors.failed,
+    StartOutcome.finished => AppColors.finished,
   };
 }
 

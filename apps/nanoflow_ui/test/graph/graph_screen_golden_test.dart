@@ -66,6 +66,24 @@ void main() {
     await expectGolden(tester, 'graph_review');
   });
 
+  testWidgets('a session whose process is gone: Interrupted on its card and '
+      'bar, the step that was running interrupted on its node and in Logs '
+      '(owner spec §6)', (tester) async {
+    await pumpReview(
+      tester,
+      model: reviewModel(
+        more: [
+          OwnerChanged(
+            sessionId: 'a1b2-session',
+            owner: testOwner,
+            alive: false,
+          ),
+        ],
+      ),
+    );
+    await expectGolden(tester, 'graph_interrupted');
+  });
+
   testWidgets('the body of copies, all of them: how many are on each step, '
       'done 1 of 3 (docs/design/code-first/copies-frame.html)', (tester) async {
     final model = await pumpGraphScreen(

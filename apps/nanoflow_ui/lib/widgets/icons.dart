@@ -209,6 +209,39 @@ class CloseIcon extends StatelessWidget {
   );
 }
 
+/// Two upright bars, a pause: a step or a copy interrupted — its process
+/// stopped, a resume goes on with it. 10 units, as wide as the cross of a
+/// failed step.
+class PauseIcon extends StatelessWidget {
+  const PauseIcon({
+    super.key,
+    required this.size,
+    required this.color,
+    this.strokeWidth = 1.7,
+  });
+
+  final double size;
+  final Color color;
+  final double strokeWidth;
+
+  @override
+  Widget build(BuildContext context) => _LineIcon(
+    kind: 'pause',
+    units: 10,
+    size: size,
+    color: color,
+    strokeWidth: strokeWidth,
+    draw: (canvas, stroke) => canvas.drawPath(
+      Path()
+        ..moveTo(3.6, 2.6)
+        ..lineTo(3.6, 7.4)
+        ..moveTo(6.4, 2.6)
+        ..lineTo(6.4, 7.4),
+      stroke,
+    ),
+  );
+}
+
 /// Two links of a chain: where data came from. 12 units.
 class LinkIcon extends StatelessWidget {
   const LinkIcon({super.key, required this.size, required this.color});

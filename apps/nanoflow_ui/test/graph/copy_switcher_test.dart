@@ -8,6 +8,7 @@ import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/copies.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
+import 'package:nanoflow_ui/widgets/icons.dart' show PauseIcon;
 
 import '../state/support.dart';
 import 'canvas/support.dart';
@@ -191,6 +192,68 @@ void main() {
     expect(textIn(tester, find.byType(CopySwitcher)), 'pkg 5 20 copies');
     expect(textIn(tester, footer()), 'pkg 5 · failed at upload');
     expect(model.selection.stepId, 'm4ny-upload-4');
+  });
+
+  testWidgets('in a session whose process is gone, a copy that was running '
+      'is interrupted: its pause, where it stopped (owner spec §6)', (
+    tester,
+  ) async {
+    final model = await pumpCopies(
+      tester,
+      model: ownedModel(
+        graph: graphFileNamed('inline'),
+        file: inlineFile,
+        changes: (copiesSession()..processGone()).changes,
+      ),
+    );
+    expect(
+      find.descendant(of: chip(2), matching: find.byType(PauseIcon)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: chip(1), matching: find.byType(PauseIcon)),
+      findsNothing,
+    );
+    await tap(tester, chip(2));
+    expect(textIn(tester, footer()), 'pkg 2 · interrupted at verify');
+    expect(model.selection.stepId, 'c0c0-verify-4');
+  });
+
+  testWidgets('more copies than chips, their process gone: the list filters '
+      'the interrupted ones (owner spec §6)', (tester) async {
+    final graph = graphFileNamed('inline');
+    final many = Journal(
+      'm4ny-session',
+      workflow: 'inPlace',
+      graph: graph.toJson(),
+      code: graph.fingerprint,
+    );
+    for (var i = 0; i < 20; i++) {
+      many.step(
+        'upload',
+        10 + i,
+        end: i.isEven ? 100 : null,
+        place: 'lib/inline.dart:10',
+        key: 'upload#${i + 1}@e3b0',
+        after: null,
+      );
+    }
+    many.processGone();
+    await pumpCopies(
+      tester,
+      model: ownedModel(graph: graph, file: inlineFile, changes: many.changes),
+    );
+    await tap(tester, find.byKey(CopySwitcher.listKey));
+    expect(
+      find.byKey(CopySwitcher.filterKey(CopyStatus.running)),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(CopySwitcher.filterKey(CopyStatus.interrupted)),
+    );
+    await tester.pump();
+    expect(find.byKey(CopySwitcher.rowKey(2)), findsOneWidget);
+    expect(find.byKey(CopySwitcher.rowKey(1)), findsNothing);
   });
 
   testWidgets('copies in copies: the path of the copies chosen', (

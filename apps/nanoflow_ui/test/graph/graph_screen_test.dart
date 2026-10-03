@@ -1,15 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
+import 'package:nanoflow_ui/graph/canvas/tile_marks.dart' show StateBadge;
 import 'package:nanoflow_ui/graph/graph_notes.dart';
 import 'package:nanoflow_ui/graph/graph_screen.dart';
 import 'package:nanoflow_ui/graph/header.dart';
+import 'package:nanoflow_ui/graph/logs/step_bar.dart' show StepIcon;
+import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
+import 'package:nanoflow_ui/state/graph_marks.dart' show NodeState;
+import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
+import 'package:nanoflow_ui/widgets/spinner.dart';
 
 import '../state/support.dart';
 import '../support/golden.dart';
@@ -205,6 +213,97 @@ void main() {
     model.selection.showCurrentGraph();
     await settle(tester);
     expect(names(tester), contains('publish()'));
+  });
+
+  group('a session whose process is gone (owner spec §6)', () {
+    Finder inCard(Finder finder) => find.descendant(
+      of: find.byKey(SessionsColumn.cardKey('a1b2-session')),
+      matching: finder,
+    );
+    Finder inBar(Finder finder) =>
+        find.descendant(of: find.byType(SessionBar), matching: finder);
+    Finder notify() => find.byKey(NodeTile.keyOf('7'));
+    Finder notifyRow() => find.byKey(StepList.rowKey('a1b2-notify-5'));
+    Finder inside(Finder of, Type type) =>
+        find.descendant(of: of, matching: find.byType(type));
+    NodeState? notifyState(WidgetTester tester) =>
+        tester.widget<NodeTile>(notify()).marks?.state;
+    StartOutcome notifyIcon(WidgetTester tester) =>
+        tester.widget<StepIcon>(inside(notifyRow(), StepIcon)).status;
+
+    void expectRunning(WidgetTester tester) {
+      expect(inCard(find.text('Running for 12m 26s')), findsOneWidget);
+      expect(inBar(find.text('running 12m 26s')), findsOneWidget);
+      expect(notifyState(tester), NodeState.running);
+      expect(inside(notify(), Spinner), findsOneWidget);
+      expect(notifyIcon(tester), StartOutcome.running);
+      expect(find.text('following tail'), findsOneWidget);
+    }
+
+    void expectInterrupted(WidgetTester tester) {
+      expect(inCard(find.text('Interrupted after 10m 12s')), findsOneWidget);
+      expect(inBar(find.text('interrupted after 10m 12s')), findsOneWidget);
+      expect(notifyState(tester), NodeState.interrupted);
+      expect(inside(notify(), Spinner), findsNothing);
+      expect(inside(notify(), StateBadge), findsOneWidget);
+      expect(notifyIcon(tester), StartOutcome.interrupted);
+      expect(inside(notifyRow(), Spinner), findsNothing);
+      // Its log grows no more: nothing to follow.
+      expect(find.text('following tail'), findsNothing);
+    }
+
+    testWidgets('is interrupted on its card, its bar, the node of the step '
+        'that was running and its row in Logs', (tester) async {
+      await pumpReview(
+        tester,
+        model: reviewModel(
+          more: [
+            OwnerChanged(
+              sessionId: 'a1b2-session',
+              owner: testOwner,
+              alive: false,
+            ),
+          ],
+        ),
+      );
+      expectInterrupted(tester);
+    });
+
+    testWidgets('is interrupted the moment the reader tells, with nothing '
+        'else coming; runs again once a process owns it again', (tester) async {
+      final more = StreamController<Change>();
+      addTearDown(more.close);
+      await pumpReview(
+        tester,
+        model: ownedModel(
+          graph: graphFileNamed('review'),
+          file: reviewFile,
+          changes: reviewSession().changes,
+          more: more.stream,
+          documents: reviewDocuments,
+          files: reviewFiles(),
+        ),
+      );
+      expectRunning(tester);
+
+      Future<void> tell(Owner? owner, bool? alive) async {
+        more.add(
+          OwnerChanged(sessionId: 'a1b2-session', owner: owner, alive: alive),
+        );
+        await settle(tester);
+      }
+
+      await tell(testOwner, true);
+      expectRunning(tester);
+      await tell(testOwner, null);
+      expectRunning(tester);
+
+      await tell(testOwner, false);
+      expectInterrupted(tester);
+
+      await tell(Owner(pid: 4343, started: at(700)), true);
+      expectRunning(tester);
+    });
   });
 
   testWidgets('the notes over the canvas stay under the session bar', (

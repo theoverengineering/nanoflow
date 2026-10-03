@@ -3,7 +3,7 @@ import 'dart:ui' show PointMode;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show StepNode, StepStatus;
+import 'package:nanoflow_model/nanoflow_model.dart' show StepNode;
 
 import '../../platform/shell.dart';
 import '../../state/clock.dart';
@@ -347,7 +347,7 @@ class _NodeBadge extends StatelessWidget {
   const _NodeBadge({required this.status});
 
   /// `null` for the node's description alone.
-  final StepStatus? status;
+  final StartOutcome? status;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -437,7 +437,8 @@ class _VisitSwitcher extends StatelessWidget {
   );
 }
 
-/// `finished · 4m 02s` in green; failed in red, running in amber.
+/// `finished · 4m 02s` in green; failed in red, running in amber,
+/// interrupted in the amber of notes.
 class _ResultChip extends StatelessWidget {
   const _ResultChip(this.result);
 
@@ -446,17 +447,22 @@ class _ResultChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (surface, border, text) = switch (result.status) {
-      StepStatus.finished => (
+      StartOutcome.finished => (
         AppColors.finishedSurface,
         AppColors.finishedBorder,
         AppColors.finishedText,
       ),
-      StepStatus.running => (
+      StartOutcome.running => (
         AppColors.runningSurface,
         AppColors.runningBorder,
         AppColors.running,
       ),
-      StepStatus.failed => (
+      StartOutcome.interrupted => (
+        AppColors.noteSurface,
+        AppColors.runningBorder,
+        AppColors.interrupted,
+      ),
+      StartOutcome.failed => (
         AppColors.dangerSurface,
         AppColors.dangerBorder,
         AppColors.dangerText,
@@ -474,13 +480,18 @@ class _ResultChip extends StatelessWidget {
         spacing: 7,
         children: [
           switch (result.status) {
-            StepStatus.finished => const CheckIcon(
+            StartOutcome.finished => const CheckIcon(
               size: 10,
               color: AppColors.finished,
               strokeWidth: 1.9,
             ),
-            StepStatus.running => const Spinner(size: 10, strokeWidth: 2.6),
-            StepStatus.failed => const CloseIcon(
+            StartOutcome.running => const Spinner(size: 10, strokeWidth: 2.6),
+            StartOutcome.interrupted => const PauseIcon(
+              size: 10,
+              color: AppColors.interrupted,
+              strokeWidth: 1.9,
+            ),
+            StartOutcome.failed => const CloseIcon(
               size: 9,
               color: AppColors.failed,
             ),

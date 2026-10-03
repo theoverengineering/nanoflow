@@ -16,6 +16,7 @@ final class SessionSummary {
     required this.id,
     required this.startedAt,
     required this.status,
+    required this.interrupted,
     required this.duration,
     required this.steps,
     required this.failedSteps,
@@ -36,8 +37,13 @@ final class SessionSummary {
   /// `session-failed`.
   final SessionStatus status;
 
+  /// Whether the process that ran the session is gone though its journal
+  /// has not ended (`SessionData.interrupted`): [status] is running, but it
+  /// shows `Interrupted`.
+  final bool interrupted;
+
   /// From [startedAt] to the session's last event; for a running session,
-  /// to now.
+  /// to now — but for an [interrupted] one, to its last event.
   final Duration duration;
 
   /// How many steps the session has started.
@@ -89,12 +95,19 @@ final class SessionSummary {
     CodeCheck.matches || null => null,
   };
 
-  /// `Running for 12m 26s`, `Failed in 6m 18s`, `Finished in 3m 04s`.
+  /// `Running for 12m 26s`, `Interrupted after 3m 20s`, `Failed in 6m 18s`,
+  /// `Finished in 3m 04s`.
   String get statusText => switch (status) {
+    SessionStatus.running when interrupted =>
+      'Interrupted after ${formatDuration(duration)}',
     SessionStatus.running => 'Running for ${formatDuration(duration)}',
     SessionStatus.failed => 'Failed in ${formatDuration(duration)}',
     SessionStatus.finished => 'Finished in ${formatDuration(duration)}',
   };
+
+  /// The tooltip of the status: [interruptedWhy] for an [interrupted]
+  /// session; `null` for any other.
+  String? get statusWhy => interrupted ? interruptedWhy : null;
 
   /// `1 failed` next to the status of a running session with failed steps:
   /// the workflow caught what they threw, or has not yet.
@@ -108,9 +121,11 @@ final class SessionSummary {
   /// `started 14:03:11`, on the strip over the canvas.
   String get startedText => 'started ${clockTime(startedAt)}';
 
-  /// `running 12m 26s`, `failed in 6m 18s`, `finished in 3m 04s`, on the
-  /// strip over the canvas, to the second.
+  /// `running 12m 26s`, `interrupted after 3m 20s`, `failed in 6m 18s`,
+  /// `finished in 3m 04s`, on the strip over the canvas, to the second.
   String get stripStatus => switch (status) {
+    SessionStatus.running when interrupted =>
+      'interrupted after ${formatElapsed(duration)}',
     SessionStatus.running => 'running ${formatElapsed(duration)}',
     SessionStatus.failed => 'failed in ${formatElapsed(duration)}',
     SessionStatus.finished => 'finished in ${formatElapsed(duration)}',
@@ -132,7 +147,8 @@ SessionSummary? summarize(
     id: session.id,
     startedAt: start,
     status: state.status,
-    duration: (state.finishedAt ?? now).difference(start),
+    interrupted: session.interrupted,
+    duration: (state.finishedAt ?? session.timeAt(now)).difference(start),
     steps: state.steps.length,
     failedSteps: state.steps
         .where((step) => step.status == StepStatus.failed)
@@ -148,6 +164,10 @@ SessionSummary? summarize(
     problems: session.problems,
   );
 }
+
+/// Why a session is `Interrupted`, in the tooltip of its status.
+const interruptedWhy =
+    'The process that ran this session is gone; resume it to finish.';
 
 /// The mark of a session resumed on code other than it started on
 /// (decision 7), on its card and the session bar.

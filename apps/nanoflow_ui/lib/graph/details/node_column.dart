@@ -214,7 +214,7 @@ class _Facts extends StatelessWidget {
       StartOutcome.failed => ('failed', AppColors.dangerText),
       StartOutcome.interrupted => (
         'interrupted — the process stopped',
-        AppColors.noteText,
+        AppColors.interrupted,
       ),
     };
     return text == null

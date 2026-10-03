@@ -99,6 +99,38 @@ void main() {
     expect(barOf(tester, '4b8d-session'), AppColors.finished);
   });
 
+  testWidgets('a session whose process is gone is interrupted: Interrupted '
+      'after the time to its last event, why in a tooltip; its time stands '
+      'still (owner spec §6)', (tester) async {
+    var now = columnNow;
+    await pumpGraphScreen(
+      tester,
+      model: ownedModel(
+        file: releaseFile,
+        changes: changesOf([
+          Journal('a1b2-session', workflow: 'release')
+            ..step('plan', 1, end: 5)
+            ..step('build', 5)
+            ..processGone(),
+        ]),
+      ),
+      now: () => now,
+    );
+
+    final status = inCard('a1b2-session', find.text('Interrupted after 5s'));
+    expect(status, findsOneWidget);
+    expect(colorOf(tester, status), AppColors.interrupted);
+    expect(barOf(tester, 'a1b2-session'), AppColors.interrupted);
+    expect(
+      inCard('a1b2-session', find.byTooltip(interruptedWhy)),
+      findsOneWidget,
+    );
+
+    now = now.add(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(status, findsOneWidget);
+  });
+
   testWidgets('a running session with failed steps says 1 failed', (
     tester,
   ) async {

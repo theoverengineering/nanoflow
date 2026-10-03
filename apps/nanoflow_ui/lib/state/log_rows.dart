@@ -9,6 +9,7 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'session_feed.dart';
 import 'step_places.dart';
 import 'texts.dart';
+import 'visits.dart' show StartOutcome, outcomeOf;
 
 /// What a row says of a step that is on no node of the graph.
 const notOnGraph = 'not on the graph';
@@ -53,8 +54,9 @@ final class StepRow extends LogRow {
   /// The step's name.
   final String name;
 
-  /// The icon: finished, running, failed.
-  final StepStatus status;
+  /// The icon: finished, running, failed, or interrupted — the step was
+  /// running when the process of its session went.
+  final StartOutcome status;
 
   /// After the name: a failed step's error; [notOnGraph] for a step on no
   /// node of the graph.
@@ -70,7 +72,8 @@ final class StepRow extends LogRow {
   /// The time of the first `step-started`: `14:03:11`.
   final String started;
 
-  /// To the outcome of the last start, or to now while the step runs.
+  /// To the outcome of the last start, or to now while the step runs; to
+  /// the session's last event once it is interrupted.
   final Duration duration;
 
   /// [duration] as shown: `2m 29s`.
@@ -88,7 +91,7 @@ final class StepRow extends LogRow {
   final double barEnd;
 
   /// A running step's bar is striped.
-  bool get striped => status == StepStatus.running;
+  bool get striped => status == StartOutcome.running;
 }
 
 /// The last row of a session that has ended.
@@ -114,7 +117,8 @@ final class EndRow extends LogRow {
 }
 
 /// The common time scale of a session's step bars: from its start to its
-/// end, or to now while it runs.
+/// end, or to now while it runs — to its last event once its process is
+/// gone.
 final class TimeScale {
   TimeScale(this.start, this.end);
 
@@ -149,7 +153,10 @@ final class TimeScale {
 /// The time scale of [session] at [now].
 TimeScale timeScale(SessionData session, DateTime now) {
   final state = session.state;
-  return TimeScale(state.startedAt ?? now, state.finishedAt ?? now);
+  return TimeScale(
+    state.startedAt ?? now,
+    state.finishedAt ?? session.timeAt(now),
+  );
 }
 
 /// The rows of [steps] of [session], in their order; a step in copies
@@ -184,11 +191,11 @@ StepRow _stepRow(
 ) {
   final record = session.steps[step.stepId];
   final error = step.status == StepStatus.failed ? step.error : null;
-  final end = step.finishedAt ?? now;
+  final end = step.finishedAt ?? session.timeAt(now);
   return StepRow._(
     stepId: step.stepId,
     name: record?.name ?? '',
-    status: step.status,
+    status: outcomeOf(session, step),
     detail:
         error ?? (record == null || places.onGraph(record) ? null : notOnGraph),
     failure: error != null,

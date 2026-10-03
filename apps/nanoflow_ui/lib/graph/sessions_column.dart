@@ -94,8 +94,9 @@ class SessionsColumn extends StatelessWidget {
 }
 
 /// A session in the column: the day and time it started and its short id;
-/// its status with the time, `1 failed`, and how many steps it has; `other
-/// code` or `not checked` when its code is not its graph's, and `Log read
+/// its status with the time — `Interrupted`, why in a tooltip, when its
+/// process is gone — `1 failed`, and how many steps it has; `other code` or
+/// `not checked` when its code is not its graph's, and `Log read
 /// incompletely` when its journal was, why in a tooltip.
 class _SessionCard extends StatelessWidget {
   const _SessionCard({
@@ -114,7 +115,7 @@ class _SessionCard extends StatelessWidget {
     boxKey: SessionsColumn.cardKey(summary.id),
     selected: selected,
     onTap: onTap,
-    bar: summary.status.color,
+    bar: summary.statusColor,
     title: summary.firstLine,
     id: Tooltip(
       message: summary.id,
@@ -126,9 +127,8 @@ class _SessionCard extends StatelessWidget {
       ),
     ),
     status: summary.statusText,
-    statusStyle: AppText.sessionStatus.copyWith(
-      color: summary.status.textColor,
-    ),
+    statusWhy: summary.statusWhy,
+    statusStyle: AppText.sessionStatus.copyWith(color: summary.statusTextColor),
     badge: summary.failedBadge,
     note: summary.codeNote,
     noteMuted: summary.code == CodeCheck.notChecked,
@@ -157,13 +157,13 @@ class _CurrentGraphItem extends StatelessWidget {
 }
 
 /// A card of the column, a status [bar] on its left edge, the accent when
-/// [selected]: the [title] and the [id] on its first line; the [status], a
-/// red [badge] and the [end] on its second; an amber [note] — muted when
-/// [noteMuted] — the amber [resumedNote] and the `Log read incompletely`
-/// mark, [incompleteWhy] in its tooltip, on a line of their own, so that
-/// the status keeps its room; a mark goes under the one before when the
-/// line is too narrow for both. In a narrow column the title and the status
-/// give way first.
+/// [selected]: the [title] and the [id] on its first line; the [status],
+/// [statusWhy] in its tooltip, a red [badge] and the [end] on its second;
+/// an amber [note] — muted when [noteMuted] — the amber [resumedNote] and
+/// the `Log read incompletely` mark, [incompleteWhy] in its tooltip, on a
+/// line of their own, so that the status keeps its room; a mark goes under
+/// the one before when the line is too narrow for both. In a narrow column
+/// the title and the status give way first.
 class _Item extends StatelessWidget {
   const _Item({
     required this.boxKey,
@@ -172,6 +172,7 @@ class _Item extends StatelessWidget {
     required this.title,
     required this.status,
     required this.statusStyle,
+    this.statusWhy,
     this.id,
     this.badge,
     this.note,
@@ -191,6 +192,7 @@ class _Item extends StatelessWidget {
   final Widget? id;
   final String status;
   final TextStyle statusStyle;
+  final String? statusWhy;
   final String? badge;
   final String? note;
   final bool noteMuted;
@@ -254,7 +256,15 @@ class _Item extends StatelessWidget {
                     textBaseline: TextBaseline.alphabetic,
                     spacing: 8,
                     children: [
-                      Flexible(child: _text(status, statusStyle)),
+                      Flexible(
+                        child: switch (statusWhy) {
+                          final why? => Tooltip(
+                            message: why,
+                            child: _text(status, statusStyle),
+                          ),
+                          null => _text(status, statusStyle),
+                        },
+                      ),
                       if (badge case final text?) _DangerBadge(text),
                     ],
                   ),

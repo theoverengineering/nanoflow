@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/state/session_feed.dart';
 import 'package:nanoflow_ui/state/step_places.dart';
 import 'package:nanoflow_ui/state/visits.dart';
 
@@ -135,5 +136,45 @@ void main() {
       (at: at(9), outcome: StartOutcome.finished),
       (at: at(12), outcome: StartOutcome.running),
     ]);
+  });
+
+  group('in a session whose process is gone (owner spec §6)', () {
+    test('the last start of a step that was running was interrupted', () {
+      final j = Journal('a1b2-session', workflow: 'inPlace');
+      final done = j.step('plan', 0, end: 2);
+      final id = j.step('upload', 1, restarts: [3]);
+      j.processGone();
+      expect(startsOf(j.data, id), [
+        (at: at(1), outcome: StartOutcome.interrupted),
+        (at: at(3), outcome: StartOutcome.interrupted),
+      ]);
+      expect(startsOf(j.data, done), [
+        (at: at(0), outcome: StartOutcome.finished),
+      ]);
+    });
+
+    test('a step stands as its last start: interrupted while it was '
+        'running, else as its journal tells', () {
+      final j = Journal('a1b2-session', workflow: 'inPlace')
+        ..step('plan', 0, end: 2)
+        ..step('upload', 1, end: 3, failed: true)
+        ..step('verify', 4);
+      StartOutcome outcomeAt(SessionData session, int i) =>
+          outcomeOf(session, session.state.steps[i]);
+
+      final live = j.data;
+      expect(
+        [for (var i = 0; i < 3; i++) outcomeAt(live, i)],
+        [StartOutcome.finished, StartOutcome.failed, StartOutcome.running],
+      );
+      j.processGone();
+      final gone = j.data;
+      expect(
+        [for (var i = 0; i < 3; i++) outcomeAt(gone, i)],
+        [StartOutcome.finished, StartOutcome.failed, StartOutcome.interrupted],
+      );
+      j.owned(testOwner, alive: null);
+      expect(outcomeAt(j.data, 2), StartOutcome.running);
+    });
   });
 }

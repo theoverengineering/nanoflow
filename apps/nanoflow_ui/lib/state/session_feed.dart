@@ -10,7 +10,7 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 import 'batched_notifier.dart';
 
 /// A session as the feed has given it so far: the session, its steps, its
-/// journal, its documents.
+/// journal, its documents, its owner.
 ///
 /// The feed keeps adding to it; what it gives out are read-only views.
 final class SessionData {
@@ -20,6 +20,8 @@ final class SessionData {
     Iterable<Step> steps = const [],
     Iterable<String> documents = const [],
     Iterable<String> problems = const [],
+    this._owner,
+    this._alive,
   }) {
     events.forEach(_addEvent);
     steps.forEach(_addStep);
@@ -35,6 +37,8 @@ final class SessionData {
   final Map<String, Step> _steps = {};
   final Set<String> _documents = {};
   final List<String> _problems = [];
+  Owner? _owner;
+  bool? _alive;
   SessionState? _state;
   Map<String, StepState>? _statesById;
   List<Step>? _stepsInOrder;
@@ -70,6 +74,28 @@ final class SessionData {
 
   bool get incomplete => _problems.isNotEmpty;
 
+  /// The process that owns the session, as the last `owner-changed` tells;
+  /// `null` until one has come, and when the session records none.
+  Owner? get owner => _owner;
+
+  /// Whether the process of [owner] runs, as the last `owner-changed` tells:
+  /// `false` when there is no owner or it is gone; `null` until one has
+  /// come, and when that cannot be known.
+  bool? get alive => _alive;
+
+  /// Whether the process that ran the session is gone though its journal
+  /// has not ended (docs/superpowers/specs/2026-10-03-session-owner-design.md
+  /// §6): it shows `Interrupted`, and the step it was running was
+  /// interrupted. Resuming the session goes on with it.
+  bool get interrupted =>
+      _alive == false && state.status == SessionStatus.running;
+
+  /// The time the session's growing durations reach at [now]: [now], but the
+  /// time of its last event once it is [interrupted] — its time stopped
+  /// there.
+  DateTime timeAt(DateTime now) =>
+      interrupted ? _events.lastOrNull?.time ?? now : now;
+
   /// What replaying the journal says.
   SessionState get state => _state ??= replaySession(_events);
 
@@ -100,11 +126,16 @@ final class SessionData {
     _stepsInOrder = null;
     _stepsByKey = null;
   }
+
+  void _owned(OwnerChanged change) {
+    _owner = change.owner;
+    _alive = change.alive;
+  }
 }
 
 /// Everything a reader's change feed has given for the `runs` directory of
-/// a graph file, indexed: the sessions with their steps, journals and
-/// documents.
+/// a graph file, indexed: the sessions with their steps, journals,
+/// documents and owners.
 ///
 /// Changes may come in any order but one: a session's events come in the
 /// order of its journal. What comes before the session it belongs to waits
@@ -145,6 +176,7 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
   final Map<String, List<Event>> _waitingEvents = {};
   final Map<String, Set<String>> _waitingDocuments = {};
   final Map<String, List<String>> _waitingProblems = {};
+  final Map<String, OwnerChanged> _waitingOwners = {};
 
   /// Errors of the feed that no session claims.
   final List<String> _problems = [];
@@ -165,12 +197,15 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
   void _apply(Change change) {
     switch (change) {
       case SessionAdded(:final session):
+        final owned = _waitingOwners.remove(session.id);
         final data = _sessions[session.id] = SessionData(
           session,
           events: _waitingEvents.remove(session.id) ?? const [],
           steps: _waitingSteps.remove(session.id)?.values ?? const [],
           documents: _waitingDocuments.remove(session.id) ?? const {},
           problems: _waitingProblems.remove(session.id) ?? const [],
+          owner: owned?.owner,
+          alive: owned?.alive,
         );
         _claimProblems(data);
       case StepAdded(:final step) || StepChanged(:final step):
@@ -203,8 +238,13 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
         } else {
           (_waitingProblems[sessionId] ??= []).add(problem);
         }
-      case OwnerChanged():
-      // The feed does not keep owners yet.
+      case OwnerChanged(:final sessionId):
+        final session = _sessions[sessionId];
+        if (session != null) {
+          session._owned(change);
+        } else {
+          _waitingOwners[sessionId] = change;
+        }
     }
     _changed();
   }

@@ -11,6 +11,7 @@ import 'copies.dart';
 import 'session_feed.dart';
 import 'step_places.dart';
 import 'texts.dart' show timesText;
+import 'visits.dart' show StartOutcome, outcomeOf;
 
 /// A node's state over the steps on it; a later value wins over an earlier
 /// one (ui-spec «Граф»).
@@ -20,6 +21,10 @@ enum NodeState {
 
   /// Finished steps.
   visited,
+
+  /// A step was running when the process of its session went: it does not
+  /// run, and a resume would run it again.
+  interrupted,
 
   /// A step runs: no `step-finished` or `step-failed` after its last
   /// `step-started`.
@@ -45,7 +50,7 @@ final class NodeMarks {
   final int steps;
 
   /// How many of them run now: on a step node in copies, how many copies
-  /// are on the step.
+  /// are on the step. None of an interrupted session's do.
   final int running;
 
   /// How many copies a `copies` node ran; `null` for any other node.
@@ -93,6 +98,7 @@ final class GraphMarks {
       {
         for (final node in nodes)
           node.id: _marksOf(
+            session,
             on[node.id]!,
             copies: node is CopiesNode
                 ? copiesOf(
@@ -124,18 +130,20 @@ final class GraphMarks {
   List<String> nodesOf(String stepId) => _nodesOf(stepId);
 }
 
-NodeMarks _marksOf(List<StepState> steps, {int? copies}) {
+NodeMarks _marksOf(SessionData session, List<StepState> steps, {int? copies}) {
   var state = NodeState.notVisited;
   var running = 0;
   for (final step in steps) {
     final NodeState of;
-    switch (step.status) {
-      case StepStatus.running:
+    switch (outcomeOf(session, step)) {
+      case StartOutcome.running:
         running++;
         of = NodeState.running;
-      case StepStatus.failed:
+      case StartOutcome.interrupted:
+        of = NodeState.interrupted;
+      case StartOutcome.failed:
         of = NodeState.failed;
-      case StepStatus.finished:
+      case StartOutcome.finished:
         of = NodeState.visited;
     }
     if (of.index > state.index) state = of;

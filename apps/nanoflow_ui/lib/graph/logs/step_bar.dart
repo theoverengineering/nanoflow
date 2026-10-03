@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show StepStatus;
 
 import '../../state/log_rows.dart' show StepRow;
+import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
+import '../../widgets/icons.dart';
 import '../../widgets/spinner.dart';
 
 /// A step's timeline: the track, and on it the step's bar from where it
@@ -65,7 +66,7 @@ class StepBar extends StatelessWidget {
     required this.radius,
   });
 
-  final StepStatus status;
+  final StartOutcome status;
   final bool striped;
   final double radius;
 
@@ -114,29 +115,34 @@ class _StripesPainter extends CustomPainter {
 }
 
 /// A step's sign: a green check finished, the turning sign running, a red
-/// cross failed.
+/// cross failed, an amber pause interrupted.
 class StepIcon extends StatelessWidget {
   const StepIcon(this.status, {super.key});
 
-  final StepStatus status;
+  final StartOutcome status;
 
   /// How wide and tall it is.
   static const size = 14.0;
 
   @override
-  Widget build(BuildContext context) => status == StepStatus.running
-      ? const Spinner(size: size, strokeWidth: 2.4)
-      : CustomPaint(
-          size: const Size.square(size),
-          painter: _StepSignPainter(status),
-        );
+  Widget build(BuildContext context) => switch (status) {
+    StartOutcome.running => const Spinner(size: size, strokeWidth: 2.4),
+    StartOutcome.interrupted => const PauseIcon(
+      size: size,
+      color: AppColors.interrupted,
+    ),
+    StartOutcome.finished || StartOutcome.failed => CustomPaint(
+      size: const Size.square(size),
+      painter: _StepSignPainter(status),
+    ),
+  };
 }
 
 /// The mockup's check, 10 units; a cross of the same weight.
 class _StepSignPainter extends CustomPainter {
   const _StepSignPainter(this.status);
 
-  final StepStatus status;
+  final StartOutcome status;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -148,7 +154,7 @@ class _StepSignPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(
-      status == StepStatus.failed
+      status == StartOutcome.failed
           ? (Path()
               ..moveTo(2.6, 2.6)
               ..lineTo(7.4, 7.4)

@@ -133,6 +133,64 @@ and 2 more''');
       );
     });
 
+    group(
+      'whose process is gone though its journal has not ended (owner spec §6)',
+      () {
+        test('is interrupted: Interrupted after the time to its last event, '
+            'why in a tooltip', () {
+          final summary = summarize((running()..processGone()).data, now)!;
+          expect(summary.interrupted, isTrue);
+          expect(summary.status, SessionStatus.running);
+          expect(summary.duration, const Duration(seconds: 150));
+          expect(summary.statusText, 'Interrupted after 2m 30s');
+          expect(summary.stripStatus, 'interrupted after 2m 30s');
+          expect(summary.statusWhy, interruptedWhy);
+          expect(
+            interruptedWhy,
+            'The process that ran this session is gone; resume it to finish.',
+          );
+        });
+
+        test('stops counting its time', () {
+          final session = (running()..processGone()).data;
+          expect(
+            summarize(session, at(2000))!.duration,
+            summarize(session, now)!.duration,
+          );
+          expect(
+            summarize(session, at(2000))!.stripStatus,
+            'interrupted after 2m 30s',
+          );
+        });
+
+        test('that has ended is not interrupted', () {
+          final finished = running()
+            ..finish(184)
+            ..processGone();
+          final summary = summarize(finished.data, now)!;
+          expect(summary.interrupted, isFalse);
+          expect(summary.statusText, 'Finished in 3m 04s');
+          expect(summary.statusWhy, isNull);
+        });
+      },
+    );
+
+    test('runs as before while its process runs, is not known to, or '
+        'nothing has been told of it', () {
+      for (final journal in [
+        running(),
+        running()..owned(testOwner, alive: true),
+        running()..owned(testOwner, alive: null),
+        running()..owned(null, alive: null),
+      ]) {
+        final summary = summarize(journal.data, now)!;
+        expect(summary.interrupted, isFalse);
+        expect(summary.statusText, 'Running for 12m 26s');
+        expect(summary.stripStatus, 'running 12m 26s');
+        expect(summary.statusWhy, isNull);
+      }
+    });
+
     test('that is running with failed steps is marked 1 failed', () {
       final failed = running()..step('notify', 160, end: 161, failed: true);
       expect(summarize(failed.data, now)!.failedBadge, '1 failed');

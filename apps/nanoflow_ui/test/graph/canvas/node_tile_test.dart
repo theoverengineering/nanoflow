@@ -4,11 +4,14 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
 import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
+import 'package:nanoflow_ui/graph/canvas/tile_marks.dart';
 import 'package:nanoflow_ui/layout/layout.dart'
     show LayoutOptions, NodeBox, endMarker, layoutBody, startMarker;
 import 'package:nanoflow_ui/state/graph_marks.dart';
+import 'package:nanoflow_ui/theme.dart';
 import 'package:nanoflow_ui/widgets/dashed_border.dart';
 import 'package:nanoflow_ui/widgets/icons.dart';
+import 'package:nanoflow_ui/widgets/spinner.dart';
 
 import '../../support/golden.dart';
 
@@ -200,6 +203,36 @@ void main() {
         const Color(0xFF45464C),
       );
       expect(find.text('2×'), findsNothing);
+    });
+
+    testWidgets('a step running turns its sign; one interrupted, its process '
+        'gone (owner spec §6), is framed as interrupted starts are said, a pause on its '
+        'corner that does not turn', (tester) async {
+      await pumpTile(
+        tester,
+        'step',
+        marks: const NodeMarks(state: NodeState.running, steps: 1, running: 1),
+      );
+      expect(find.byType(Spinner), findsOneWidget);
+      expect(
+        tileLook(tester, 'step').border!.top.color,
+        const Color(0xFFF2A93B),
+      );
+
+      await pumpTile(
+        tester,
+        'step',
+        marks: const NodeMarks(
+          state: NodeState.interrupted,
+          steps: 1,
+          running: 0,
+        ),
+      );
+      expect(find.byType(Spinner), findsNothing);
+      expect(tileLook(tester, 'step').border!.top.color, AppColors.interrupted);
+      final badge = tester.widget<StateBadge>(find.byType(StateBadge));
+      expect(badge.mark, BadgeMark.pause);
+      expect(badge.fill, AppColors.interrupted);
     });
 
     testWidgets('in the body of copies, all shown, a step says how many '

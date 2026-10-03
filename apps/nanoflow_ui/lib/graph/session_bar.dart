@@ -9,7 +9,8 @@ import '../widgets/dot.dart';
 
 /// The session bar floating over the top of the canvas (docs/ui-spec.md
 /// «Холст»): `Session a1b2 · started 14:03:11 · ● running 12m 26s`, whose
-/// time goes on with the [clock]; then `resumed on changed code` for a
+/// time goes on with the [clock] — `interrupted after 3m 20s`, why in a
+/// tooltip, once its process is gone; then `resumed on changed code` for a
 /// session resumed on other code than it started on. The canvas moves under
 /// it; it stays. With `Current graph` selected there is no session, and no
 /// bar.
@@ -74,26 +75,7 @@ class _Session extends StatelessWidget {
             separator,
             Text(summary.startedText, style: AppText.barLabel),
             separator,
-            Flexible(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                spacing: 6,
-                children: [
-                  Dot(summary.status.color),
-                  Flexible(
-                    child: Text(
-                      summary.stripStatus,
-                      style: AppText.barLabel.copyWith(
-                        color: summary.status.textColor,
-                      ),
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            Flexible(child: _status(summary)),
             if (summary.resumedNote case final mark?) ...[
               separator,
               Flexible(
@@ -110,5 +92,29 @@ class _Session extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// `● running 12m 26s`; why it is, in a tooltip, when the summary says.
+  static Widget _status(SessionSummary summary) {
+    final status = Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 6,
+      children: [
+        Dot(summary.statusColor),
+        Flexible(
+          child: Text(
+            summary.stripStatus,
+            style: AppText.barLabel.copyWith(color: summary.statusTextColor),
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+    return switch (summary.statusWhy) {
+      final why? => Tooltip(message: why, child: status),
+      null => status,
+    };
   }
 }

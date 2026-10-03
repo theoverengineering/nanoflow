@@ -197,6 +197,109 @@ void main() {
       });
     });
 
+    group('the owner of a session (owner spec §6)', () {
+      OwnerChanged owned(bool? alive, [Owner? owner]) => OwnerChanged(
+        sessionId: _session.id,
+        owner: owner ?? testOwner,
+        alive: alive,
+      );
+
+      test('is not known until an owner-changed comes', () {
+        run((async) {
+          give(async, [const SessionAdded(_session), _event(_started(0))]);
+          final session = feed.session(_session.id)!;
+          expect(session.owner, isNull);
+          expect(session.alive, isNull);
+          expect(session.interrupted, isFalse);
+        });
+      });
+
+      test('is what the last owner-changed tells, and the listeners hear '
+          'of it', () {
+        run((async) {
+          give(async, [const SessionAdded(_session), _event(_started(0))]);
+          async.elapse(const Duration(milliseconds: 50));
+          notified = 0;
+
+          give(async, [owned(true)]);
+          async.elapse(const Duration(milliseconds: 50));
+          final session = feed.session(_session.id)!;
+          expect(notified, 1);
+          expect(session.owner, testOwner);
+          expect(session.alive, isTrue);
+
+          give(async, [owned(false)]);
+          async.elapse(const Duration(milliseconds: 50));
+          expect(notified, 2);
+          expect(session.owner, testOwner);
+          expect(session.alive, isFalse);
+
+          final next = Owner(pid: 4343, started: at(30));
+          give(async, [
+            OwnerChanged(sessionId: _session.id, owner: null, alive: false),
+            owned(true, next),
+          ]);
+          expect(session.owner, next);
+          expect(session.alive, isTrue);
+        });
+      });
+
+      test('given before its session waits for it: the last one counts', () {
+        run((async) {
+          give(async, [owned(true), owned(false)]);
+          expect(feed.sessions, isEmpty);
+
+          give(async, [const SessionAdded(_session), _event(_started(0))]);
+          final session = feed.session(_session.id)!;
+          expect(session.owner, testOwner);
+          expect(session.alive, isFalse);
+        });
+      });
+
+      test('gone while its journal has not ended makes the session '
+          'interrupted; not known, alive or ended, it is not', () {
+        run((async) {
+          give(async, [
+            const SessionAdded(_session),
+            _event(_started(0)),
+            _event(_stepStarted(_collect.id, 1)),
+          ]);
+          final session = feed.session(_session.id)!;
+          give(async, [owned(false)]);
+          expect(session.interrupted, isTrue);
+          expect(session.state.status, SessionStatus.running);
+
+          give(async, [owned(null)]);
+          expect(session.interrupted, isFalse);
+          give(async, [owned(true)]);
+          expect(session.interrupted, isFalse);
+
+          give(async, [
+            owned(false),
+            _event(SessionFinished(time: at(5), outputId: null)),
+          ]);
+          expect(session.interrupted, isFalse);
+        });
+      });
+
+      test("an interrupted session's time stops at its last event; any "
+          "other's goes on", () {
+        run((async) {
+          give(async, [
+            const SessionAdded(_session),
+            _event(_started(0)),
+            _event(_stepStarted(_collect.id, 7)),
+          ]);
+          final session = feed.session(_session.id)!;
+          expect(session.timeAt(at(100)), at(100));
+
+          give(async, [owned(false)]);
+          expect(session.timeAt(at(100)), at(7));
+          expect(session.timeAt(at(200)), at(7));
+        });
+      });
+    });
+
     test('a journal line that is not an event marks its session Log read '
         'incompletely', () {
       run((async) {

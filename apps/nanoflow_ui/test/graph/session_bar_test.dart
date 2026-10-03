@@ -4,8 +4,10 @@ import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
-import 'package:nanoflow_ui/state/sessions.dart' show resumedOnChangedCode;
+import 'package:nanoflow_ui/state/sessions.dart'
+    show interruptedWhy, resumedOnChangedCode;
 import 'package:nanoflow_ui/theme.dart';
+import 'package:nanoflow_ui/widgets/dot.dart';
 
 import '../state/support.dart' show Journal, changesOf;
 import 'canvas/support.dart' show ownedModel;
@@ -51,6 +53,31 @@ void main() {
 
     final status = inBar(find.text('finished in 3m 04s'));
     expect(tester.widget<Text>(status).style!.color, AppColors.finishedText);
+  });
+
+  testWidgets('a session whose process is gone: interrupted after the time '
+      'to its last event, why in a tooltip (owner spec §6)', (tester) async {
+    await pumpGraphScreen(
+      tester,
+      model: ownedModel(
+        file: releaseFile,
+        changes: changesOf([
+          Journal('a1b2-session', workflow: 'release')
+            ..step('plan', 1, end: 5)
+            ..step('build', 5)
+            ..processGone(),
+        ]),
+      ),
+      now: () => columnNow,
+    );
+
+    final status = inBar(find.text('interrupted after 5s'));
+    expect(tester.widget<Text>(status).style!.color, AppColors.interrupted);
+    expect(
+      tester.widget<Dot>(inBar(find.byType(Dot))).color,
+      AppColors.interrupted,
+    );
+    expect(inBar(find.byTooltip(interruptedWhy)), findsOneWidget);
   });
 
   testWidgets('a session resumed on changed code says so', (tester) async {

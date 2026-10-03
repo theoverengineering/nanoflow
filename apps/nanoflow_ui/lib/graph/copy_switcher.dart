@@ -279,7 +279,8 @@ class _Chip extends StatelessWidget {
   );
 }
 
-/// How a copy stands: a check done, a dot running, a cross failed.
+/// How a copy stands: a check done, a dot running, a cross failed, a pause
+/// interrupted.
 class _StatusSign extends StatelessWidget {
   const _StatusSign(this.status);
 
@@ -296,6 +297,11 @@ class _StatusSign extends StatelessWidget {
           strokeWidth: 2.2,
         ),
         CopyStatus.running => const Dot(AppColors.running),
+        CopyStatus.interrupted => const PauseIcon(
+          size: _Chip._icon,
+          color: AppColors.interrupted,
+          strokeWidth: 2.2,
+        ),
         CopyStatus.failed => const CloseIcon(size: 7, color: AppColors.failed),
       },
     ),
@@ -331,6 +337,14 @@ class _CopyListState extends State<_CopyList> {
 
   void _choose(String? id) => Navigator.of(context).pop((id: id));
 
+  /// The first filter: `interrupted` once the process of the session is
+  /// gone and its copies that ran were interrupted — none runs then — else
+  /// `running`.
+  (CopyStatus, String) get _runningOrInterrupted =>
+      widget.frame.copies.any((copy) => copy.status == CopyStatus.interrupted)
+      ? (CopyStatus.interrupted, 'interrupted')
+      : (CopyStatus.running, 'running');
+
   @override
   Widget build(BuildContext context) {
     final shown = widget.frame.copies.where(_shown).toList();
@@ -364,8 +378,8 @@ class _CopyListState extends State<_CopyList> {
             child: Row(
               spacing: 6,
               children: [
-                for (final (status, label) in const [
-                  (CopyStatus.running, 'running'),
+                for (final (status, label) in [
+                  _runningOrInterrupted,
                   (CopyStatus.failed, 'failed'),
                   (CopyStatus.finished, 'done'),
                 ])

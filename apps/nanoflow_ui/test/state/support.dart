@@ -396,15 +396,40 @@ final class Journal {
   void fail(num time, String error) =>
       events.add(SessionFailed(time: at(time), error: error, stack: '#0 main'));
 
-  SessionData get data => SessionData(session, events: events, steps: steps);
+  /// What the reader last told of the session's owner; `null` while it has
+  /// told nothing.
+  OwnerChanged? ownerChanged;
 
-  /// The changes a reader gives for this session.
+  /// The reader tells that [owner] owns the session, and whether its
+  /// process runs: [alive].
+  void owned(Owner? owner, {required bool? alive}) =>
+      ownerChanged = OwnerChanged(sessionId: id, owner: owner, alive: alive);
+
+  /// The process that ran the session is gone: the reader tells `alive:
+  /// false` of [testOwner].
+  void processGone() => owned(testOwner, alive: false);
+
+  SessionData get data => SessionData(
+    session,
+    events: events,
+    steps: steps,
+    owner: ownerChanged?.owner,
+    alive: ownerChanged?.alive,
+  );
+
+  /// The changes a reader gives for this session: what it tells of the
+  /// owner after the events.
   List<Change> get changes => [
     SessionAdded(session),
     for (final step in steps) StepAdded(step),
     for (final event in events) EventAdded(sessionId: id, event: event),
+    ?ownerChanged,
   ];
 }
+
+/// The process that owns the sessions of the tests: started a second
+/// before [t0].
+final testOwner = Owner(pid: 4242, started: at(-1));
 
 /// The changes a reader gives for [journals].
 List<Change> changesOf(List<Journal> journals) => [

@@ -32,6 +32,9 @@ enum CopyStatus {
   /// A step of it runs.
   running,
 
+  /// A step of it was running when the process of its session went.
+  interrupted,
+
   /// Its steps have finished.
   finished,
 
@@ -139,7 +142,7 @@ List<Copy> copiesOf(
         n + 1,
         started[i].first,
         started[i].chain,
-        _statusOf(started[i].chain),
+        _statusOf(started[i].chain, interrupted: session.interrupted),
       ),
   ];
 }
@@ -188,7 +191,8 @@ final class CopiesFrame {
   /// The copy shown; `null` for all.
   final Copy? selected;
 
-  /// Under the frame: `done 1 of 3` for all; `pkg 2 · now verify` for one.
+  /// Under the frame: `done 1 of 3` for all; `pkg 2 · now verify`, or
+  /// `pkg 2 · interrupted at verify` once the process is gone, for one.
   final String footer;
 
   /// Whether one of [copies] can be chosen: no frame around shows all.
@@ -462,7 +466,8 @@ String _progress(List<Copy> copies) {
       '${failed == 0 ? '' : ' · $failed failed'}';
 }
 
-/// Where [copy] is: `now verify`, `done`, `failed at verify`.
+/// Where [copy] is: `now verify`, `done`, `failed at verify`,
+/// `interrupted at verify`.
 String _now(Copy copy, SessionData session) {
   String names(StepStatus status) => {
     for (final step in copy.steps)
@@ -470,18 +475,22 @@ String _now(Copy copy, SessionData session) {
   }.join(', ');
   return switch (copy.status) {
     CopyStatus.running => 'now ${names(StepStatus.running)}',
+    CopyStatus.interrupted => 'interrupted at ${names(StepStatus.running)}',
     CopyStatus.failed => 'failed at ${names(StepStatus.failed)}',
     CopyStatus.finished => 'done',
   };
 }
 
-CopyStatus _statusOf(List<StepState> steps) {
+/// How the copy of [steps] stands; a running one is [interrupted] when the
+/// process of its session is gone.
+CopyStatus _statusOf(List<StepState> steps, {required bool interrupted}) {
   if (steps.any((step) => step.status == StepStatus.failed)) {
     return CopyStatus.failed;
   }
-  return steps.any((step) => step.status == StepStatus.running)
-      ? CopyStatus.running
-      : CopyStatus.finished;
+  if (steps.any((step) => step.status == StepStatus.running)) {
+    return interrupted ? CopyStatus.interrupted : CopyStatus.running;
+  }
+  return CopyStatus.finished;
 }
 
 /// The most characters of a hint: a longer one is cut, `…` at its end.

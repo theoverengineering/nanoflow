@@ -327,6 +327,33 @@ void main() {
     ]);
   });
 
+  test('in a session whose process is gone, a copy that was running is '
+      'interrupted; failed and finished ones stay (owner spec §6)', () {
+    final j = Journal('a1b2-session', workflow: 'inPlace');
+    for (final (i, pkg) in ['core', 'tool', 'cli'].indexed) {
+      j.step(
+        'upload-$pkg',
+        1 + i,
+        end: pkg == 'tool' ? null : 4,
+        failed: pkg == 'cli',
+        place: copiesAt(7),
+        key: 'upload#${i + 1}@c',
+        after: null,
+      );
+    }
+    j.processGone();
+    final copies = copiesOf(
+      copiesNode('inPlace', '2'),
+      places: placesOf('inPlace'),
+      session: j.data,
+    );
+    expect(copies.map((copy) => copy.status), [
+      CopyStatus.finished,
+      CopyStatus.interrupted,
+      CopyStatus.failed,
+    ]);
+  });
+
   test('a step rerun after another step than before follows its record as '
       'it is now, whenever that step started', () {
     final j = Journal('a1b2-session', workflow: 'inPlace')
@@ -513,6 +540,31 @@ void main() {
       );
       expect(shown.copyOf(j.steps[2].id), 'pkg 2');
       expect(shown.copyOf(j.steps[0].id), 'pkg 1');
+    });
+
+    test('one copy whose process is gone: pkg 2 · interrupted at verify '
+        '(owner spec §6)', () {
+      final j = Journal('a1b2-session', workflow: 'inPlace');
+      for (final (i, pkg) in ['core', 'tool'].indexed) {
+        j.step(
+          'upload',
+          1 + i,
+          end: 3,
+          place: copiesAt(7),
+          key: 'u$pkg',
+          after: null,
+        );
+      }
+      j
+        ..step('verify', 4, place: copiesAt(8), key: 'v', after: 'utool')
+        ..processGone();
+      final shown = framesOf(
+        bodyLevels(inPlace, file.functions, const [Opened('2')]),
+        places: placesOf('inPlace'),
+        session: j.data,
+        selected: {1: j.steps[1].id},
+      );
+      expect(shown.frames.single.footer, 'pkg 2 · interrupted at verify');
     });
 
     test('a copy done says so; one that failed, where', () {

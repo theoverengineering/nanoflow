@@ -48,7 +48,7 @@ void main() {
         'finished', () {
       final details = detailsOf(journal(), 0);
       expect(details.result!.text, 'finished · 4m 02s');
-      expect(details.result!.status, StepStatus.finished);
+      expect(details.result!.status, StartOutcome.finished);
       final facts = details.facts!;
       expect(facts.started, '14:03:20.118');
       expect(facts.finished, '14:07:22.524');
@@ -61,6 +61,29 @@ void main() {
       expect(details.result!.text, 'running · 2m 14s');
       expect(details.facts!.finished, isNull);
       expect(details.facts!.took, isNull);
+    });
+
+    test('of a step that was running when the process of its session went: '
+        'interrupted, its time stopped at the last event (owner spec §6)', () {
+      final j = journal()..processGone();
+      for (final time in [now, at(2000)]) {
+        final session = j.data;
+        final details = visitDetails(
+          session: session,
+          steps: session.state.steps,
+          places: places,
+          stepId: j.steps[1].id,
+          now: time,
+        );
+        expect(details.result!.status, StartOutcome.interrupted);
+        expect(details.result!.text, 'interrupted · 1m 28s');
+        expect(details.facts!.finished, isNull);
+        expect(details.facts!.took, isNull);
+        expect(details.facts!.starts, [
+          (time: '14:13:23', outcome: StartOutcome.interrupted),
+        ]);
+        expect(details.step!.running, isFalse);
+      }
     });
 
     test('of a failed step: its error and stack', () {

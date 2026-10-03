@@ -9,7 +9,9 @@ import 'package:nanoflow_ui/graph/logs/step_bar.dart';
 import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/state/log_rows.dart' show notOnGraph;
+import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 import 'package:nanoflow_ui/theme.dart';
+import 'package:nanoflow_ui/widgets/spinner.dart';
 
 import '../../state/support.dart';
 import '../canvas/support.dart';
@@ -19,7 +21,7 @@ import 'support.dart';
 void main() {
   Finder row(String stepId) => find.byKey(StepList.rowKey(stepId));
 
-  Finder icon(String stepId, StepStatus status) => find.descendant(
+  Finder icon(String stepId, StartOutcome status) => find.descendant(
     of: row(stepId),
     matching: find.byWidgetPredicate(
       (w) => w is StepIcon && w.status == status,
@@ -88,10 +90,10 @@ void main() {
         ),
       );
 
-      expect(icon('a1b2-collect-0', StepStatus.finished), findsOneWidget);
-      expect(icon('a1b2-notify-5', StepStatus.running), findsOneWidget);
+      expect(icon('a1b2-collect-0', StartOutcome.finished), findsOneWidget);
+      expect(icon('a1b2-notify-5', StartOutcome.running), findsOneWidget);
       final failed = row('a1b2-inspect-6');
-      expect(icon('a1b2-inspect-6', StepStatus.failed), findsOneWidget);
+      expect(icon('a1b2-inspect-6', StartOutcome.failed), findsOneWidget);
       expect(
         textIn(tester, failed),
         startsWith('inspect StateError: inspect failed'),
@@ -109,6 +111,42 @@ void main() {
         return true;
       });
       expect(colors['StateError: inspect failed'], AppColors.dangerText);
+    });
+
+    testWidgets('in a session whose process is gone, the step that was '
+        'running is interrupted: its pause, a plain bar, a Took that took '
+        'until the last event and stands still (owner spec §6)', (
+      tester,
+    ) async {
+      var now = columnNow;
+      await pumpReview(
+        tester,
+        model: endedModel(
+          (session) => session
+            ..step('archive', 620, end: 700)
+            ..processGone(),
+        ),
+        now: () => now,
+      );
+
+      expect(icon('a1b2-notify-5', StartOutcome.interrupted), findsOneWidget);
+      expect(
+        find.descendant(
+          of: row('a1b2-notify-5'),
+          matching: find.byType(Spinner),
+        ),
+        findsNothing,
+      );
+      final bar = tester.widget<StepBar>(
+        find.byKey(StepTrack.barKey('a1b2-notify-5')),
+      );
+      expect(bar.status, StartOutcome.interrupted);
+      expect(bar.striped, isFalse);
+      expect(textIn(tester, row('a1b2-notify-5')), endsWith('1m 28s'));
+
+      now = now.add(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(textIn(tester, row('a1b2-notify-5')), endsWith('1m 28s'));
     });
 
     testWidgets('says of a step that is on no node: not on the graph', (

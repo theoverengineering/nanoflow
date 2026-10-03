@@ -171,6 +171,55 @@ void main() {
     expect(marks.of('1')!.visitsText, '2×');
   });
 
+  group('in a session whose process is gone (owner spec §6)', () {
+    test('a step that was running is interrupted: it outweighs finished '
+        'ones on its node, and does not run', () {
+      final j = Journal('a1b2-session', workflow: 'inPlace')
+        ..step('plan', 1, end: 2, place: copiesAt(4))
+        ..step('plan', 3, place: copiesAt(4))
+        ..processGone();
+      final marks = GraphMarks.of(
+        workflow('inPlace').body,
+        places: placesOf('inPlace'),
+        session: j.data,
+      );
+      expect(marks.of('1')!.state, NodeState.interrupted);
+      expect(marks.of('1')!.running, 0);
+      expect(marks.of('1')!.steps, 2);
+    });
+
+    test('a failed step outweighs it', () {
+      final j = inPlace()..processGone();
+      final frame = workflow('inPlace').body.node('2')! as CopiesNode;
+      final places = placesOf('inPlace');
+      final all = GraphMarks.of(frame.body, places: places, session: j.data);
+      expect(all.of('3')!.state, NodeState.interrupted);
+      expect(all.of('3')!.running, 0);
+      final copies = GraphMarks.of(
+        workflow('inPlace').body,
+        places: places,
+        session: j.data,
+      ).of('2')!;
+      expect(copies.state, NodeState.failed);
+      expect(copies.running, 0);
+    });
+
+    test('runs as before while the process runs or is not known to', () {
+      for (final alive in [true, null]) {
+        final j = Journal('a1b2-session', workflow: 'inPlace')
+          ..step('plan', 3, place: copiesAt(4))
+          ..owned(testOwner, alive: alive);
+        final marks = GraphMarks.of(
+          workflow('inPlace').body,
+          places: placesOf('inPlace'),
+          session: j.data,
+        );
+        expect(marks.of('1')!.state, NodeState.running);
+        expect(marks.of('1')!.running, 1);
+      }
+    });
+  });
+
   test('a call holds the steps of its functions', () {
     final j = Journal('e5f6-session', workflow: 'viaCall')
       ..step('upload', 1, end: 2, place: copiesAt(20), key: 'u', after: null)

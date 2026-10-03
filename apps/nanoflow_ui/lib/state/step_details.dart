@@ -7,10 +7,11 @@ library;
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'session_feed.dart';
+import 'visits.dart' show StartOutcome, outcomeOf;
 
 /// Whether a step has its output.
 enum DocumentState {
-  /// Not there yet: the step is running.
+  /// Not there yet: the step is running, or was interrupted.
   notYet,
 
   /// The step has none: it failed, or finished without naming one.
@@ -57,9 +58,11 @@ final class StepDetails {
   /// known.
   final String? place;
 
-  final StepStatus status;
+  /// How its last start stands: interrupted when the process of its
+  /// session went while it ran.
+  final StartOutcome status;
 
-  bool get running => status == StepStatus.running;
+  bool get running => status == StartOutcome.running;
 
   final StepDocument output;
 
@@ -83,29 +86,34 @@ StepDetails? stepDetails(SessionData session, String stepId) {
           (event) => event.stepId == stepId,
         )
       : null;
+  final status = outcomeOf(session, state);
   return StepDetails._(
     sessionId: session.id,
     stepId: stepId,
     name: record.name,
     place: record.place,
-    status: state.status,
-    output: _output(state),
+    status: status,
+    output: _output(status, state.outputId),
     error: failure?.error,
     stack: failure?.stack,
   );
 }
 
-/// `step-finished` names the output before `step.json` does.
-StepDocument _output(StepState state) => switch (state.status) {
-  StepStatus.running => const StepDocument._(
+/// `step-finished` names the output, [outputId], before `step.json` does.
+StepDocument _output(StartOutcome status, String? outputId) => switch (status) {
+  StartOutcome.running => const StepDocument._(
     DocumentState.notYet,
     message: 'Not yet: the step is still running',
   ),
-  StepStatus.failed => const StepDocument._(
+  StartOutcome.interrupted => const StepDocument._(
+    DocumentState.notYet,
+    message: 'Not yet: the step was interrupted — the process stopped',
+  ),
+  StartOutcome.failed => const StepDocument._(
     DocumentState.missing,
     message: 'No output: the step failed',
   ),
-  StepStatus.finished => switch (state.outputId) {
+  StartOutcome.finished => switch (outputId) {
     final id? => StepDocument._(DocumentState.present, documentId: id),
     null => const StepDocument._(
       DocumentState.missing,

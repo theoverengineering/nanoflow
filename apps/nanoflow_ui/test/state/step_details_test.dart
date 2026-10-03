@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
 import 'package:nanoflow_ui/state/step_details.dart';
+import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 
 import 'support.dart';
 
@@ -15,7 +16,7 @@ void main() {
       expect(details.stepId, id);
       expect(details.name, 'plan');
       expect(details.place, copiesAt(4));
-      expect(details.status, StepStatus.finished);
+      expect(details.status, StartOutcome.finished);
       expect(details.running, isFalse);
       expect(details.error, isNull);
     });
@@ -35,6 +36,21 @@ void main() {
       expect(details.running, isTrue);
       expect(details.output.state, DocumentState.notYet);
       expect(details.output.message, 'Not yet: the step is still running');
+    });
+
+    test('a step that was running when the process of its session went '
+        'is interrupted: no output yet (owner spec §6)', () {
+      final j = Journal('a1b2-session', workflow: 'inPlace');
+      final id = j.step('plan', 0);
+      j.processGone();
+      final details = stepDetails(j.data, id)!;
+      expect(details.status, StartOutcome.interrupted);
+      expect(details.running, isFalse);
+      expect(details.output.state, DocumentState.notYet);
+      expect(
+        details.output.message,
+        'Not yet: the step was interrupted — the process stopped',
+      );
     });
 
     test('a failed step has no output: its error and stack instead', () {

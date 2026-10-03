@@ -1,11 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:nanoflow_model/nanoflow_model.dart'
-    show SessionStatus, StepStatus;
+import 'package:nanoflow_model/nanoflow_model.dart' show SessionStatus;
 
 import '../../state/log_rows.dart';
 import '../../state/texts.dart' show count;
+import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
 import 'step_bar.dart';
@@ -292,7 +292,7 @@ class _StepRowView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final running = row.status == StepStatus.running;
+    final running = row.status == StartOutcome.running;
     final detail = row.detail;
     final starts = row.startsText;
     final copy = row.copy;
@@ -438,7 +438,7 @@ class _EndRowView extends StatelessWidget {
     return KeyedSubtree(
       key: StepList.endKey,
       child: columns.row(
-        sign: StepIcon(failed ? StepStatus.failed : StepStatus.finished),
+        sign: StepIcon(failed ? StartOutcome.failed : StartOutcome.finished),
         step: failed ? Tooltip(message: row.text, child: text) : text,
         started: Text(row.atText, style: AppText.stepTime),
         took: const SizedBox.shrink(),

@@ -75,7 +75,8 @@ Visit? visitToOpen(
   StepNode node,
 ) => visitsTo(session, steps, places, node).lastOrNull;
 
-/// How a start of a step ended.
+/// How a start of a step ended; how a step stands is how its last start
+/// did ([outcomeOf]).
 enum StartOutcome {
   /// It goes on: nothing came after it yet.
   running,
@@ -86,16 +87,28 @@ enum StartOutcome {
   /// `step-failed`.
   failed,
 
-  /// Another start of the step came first: the process running it stopped,
-  /// and a resume ran the step again.
+  /// The process running it stopped: another start of the step came first,
+  /// a resume ran the step again; or nothing came after it, and the
+  /// process of its session is gone (`SessionData.interrupted`).
   interrupted,
 }
+
+/// How [step] of [session] stands: as its journal tells, but interrupted
+/// while it runs in a session whose process is gone.
+StartOutcome outcomeOf(SessionData session, StepState step) =>
+    switch (step.status) {
+      StepStatus.running when session.interrupted => StartOutcome.interrupted,
+      StepStatus.running => StartOutcome.running,
+      StepStatus.finished => StartOutcome.finished,
+      StepStatus.failed => StartOutcome.failed,
+    };
 
 /// A start of a step, and how it ended.
 typedef StepStart = ({DateTime at, StartOutcome outcome});
 
 /// Every start of the step [stepId] of [session], in the order of its
-/// journal.
+/// journal; the last one interrupted when it was running and the process
+/// of the session is gone.
 List<StepStart> startsOf(SessionData session, String stepId) {
   final starts = <StepStart>[];
   void end(StartOutcome outcome) {
@@ -118,5 +131,6 @@ List<StepStart> startsOf(SessionData session, String stepId) {
         break;
     }
   }
+  if (session.interrupted) end(StartOutcome.interrupted);
   return starts;
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../layout/layout.dart' show badgeHeight;
 import '../../state/graph_marks.dart';
+import '../../theme.dart';
 import '../../widgets/spinner.dart';
 import 'canvas_style.dart';
 
@@ -9,14 +10,25 @@ import 'canvas_style.dart';
 // in the state of its steps, the state's badge, and the badges over it.
 
 /// The badge on the bottom right corner of a tile in [state]: a check
-/// visited, `!` failed, the turning sign running; none otherwise.
+/// visited, `!` failed, the turning sign running, a pause interrupted; none
+/// otherwise.
 Widget? stateBadge(NodeState? state) => switch (state) {
-  NodeState.visited => const StateBadge(fill: Color(0xFF2A9D61), failed: false),
-  NodeState.failed => const StateBadge(fill: Color(0xFFD9434A), failed: true),
+  NodeState.visited => const StateBadge(
+    fill: Color(0xFF2A9D61),
+    mark: BadgeMark.check,
+  ),
+  NodeState.failed => const StateBadge(
+    fill: Color(0xFFD9434A),
+    mark: BadgeMark.exclamation,
+  ),
   NodeState.running => const Spinner(
     size: 17,
     strokeWidth: 2.2,
     background: CanvasColors.background,
+  ),
+  NodeState.interrupted => const StateBadge(
+    fill: AppColors.interrupted,
+    mark: BadgeMark.pause,
   ),
   NodeState.notVisited || null => null,
 };
@@ -50,6 +62,7 @@ final class TileLook {
     NodeState.notVisited => notVisited,
     NodeState.visited => visited,
     NodeState.running => running,
+    NodeState.interrupted => interrupted,
     NodeState.failed => failed,
   };
 
@@ -95,6 +108,18 @@ final class TileLook {
     place: Color(0xFFC9A36A),
   );
 
+  /// A step that was running when the process of its session went: framed
+  /// in the amber that says so in the step details window.
+  static const interrupted = TileLook(
+    fill: CanvasColors.tileFill,
+    border: AppColors.interrupted,
+    borderWidth: 2,
+    icon: AppColors.interrupted,
+    name: CanvasColors.name,
+    nameWeight: FontWeight.w600,
+    place: CanvasColors.place,
+  );
+
   static const failed = TileLook(
     fill: Color(0xFF382A2C),
     border: Color(0xFFF0555C),
@@ -106,13 +131,25 @@ final class TileLook {
   );
 }
 
-/// The check of a visited node, or the `!` of a failed one: a 17 px disc in
-/// a ring of the canvas's color.
+/// What a [StateBadge] has on it.
+enum BadgeMark {
+  /// A visited node's check.
+  check,
+
+  /// A failed node's `!`.
+  exclamation,
+
+  /// An interrupted node's pause.
+  pause,
+}
+
+/// The check of a visited node, the `!` of a failed one, or the pause of an
+/// interrupted one: a 17 px disc in a ring of the canvas's color.
 class StateBadge extends StatelessWidget {
-  const StateBadge({required this.fill, required this.failed});
+  const StateBadge({super.key, required this.fill, required this.mark});
 
   final Color fill;
-  final bool failed;
+  final BadgeMark mark;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -124,49 +161,51 @@ class StateBadge extends StatelessWidget {
       border: Border.all(color: CanvasColors.background, width: 2),
     ),
     alignment: Alignment.center,
-    child: CustomPaint(
-      size: const Size.square(9),
-      painter: _MarkPainter(failed: failed),
-    ),
+    child: CustomPaint(size: const Size.square(9), painter: _MarkPainter(mark)),
   );
 }
 
-/// A check, or an exclamation mark, in white: 10 units.
+/// A check or an exclamation mark in white, or a pause dark on the light
+/// amber, as [RunningBadge] writes on the amber of running: 10 units.
 class _MarkPainter extends CustomPainter {
-  _MarkPainter({required this.failed});
+  _MarkPainter(this.mark);
 
-  final bool failed;
+  final BadgeMark mark;
+
+  static const _white = Color(0xFFFFFFFF);
+  static const _dark = Color(0xFF1F1606);
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.scale(size.width / 10);
     final stroke = Paint()
-      ..color = const Color(0xFFFFFFFF)
+      ..color = mark == BadgeMark.pause ? _dark : _white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.9
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    if (failed) {
-      canvas
-        ..drawLine(const Offset(5, 1.2), const Offset(5, 5.6), stroke)
-        ..drawCircle(
-          const Offset(5, 8.4),
-          1.15,
-          Paint()..color = const Color(0xFFFFFFFF),
+    switch (mark) {
+      case BadgeMark.exclamation:
+        canvas
+          ..drawLine(const Offset(5, 1.2), const Offset(5, 5.6), stroke)
+          ..drawCircle(const Offset(5, 8.4), 1.15, Paint()..color = _white);
+      case BadgeMark.check:
+        canvas.drawPath(
+          Path()
+            ..moveTo(1.6, 5.2)
+            ..lineTo(3.8, 7.4)
+            ..lineTo(8.4, 2.8),
+          stroke,
         );
-    } else {
-      canvas.drawPath(
-        Path()
-          ..moveTo(1.6, 5.2)
-          ..lineTo(3.8, 7.4)
-          ..lineTo(8.4, 2.8),
-        stroke,
-      );
+      case BadgeMark.pause:
+        canvas
+          ..drawLine(const Offset(3.4, 1.8), const Offset(3.4, 8.2), stroke)
+          ..drawLine(const Offset(6.6, 1.8), const Offset(6.6, 8.2), stroke);
     }
   }
 
   @override
-  bool shouldRepaint(_MarkPainter old) => old.failed != failed;
+  bool shouldRepaint(_MarkPainter old) => old.mark != mark;
 }
 
 /// How many copies are on a step now, in the color of running steps

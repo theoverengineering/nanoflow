@@ -3,6 +3,7 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/log_rows.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
 import 'package:nanoflow_ui/state/step_places.dart';
+import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 
 import 'support.dart';
 
@@ -16,30 +17,25 @@ void main() {
 
   /// review's steps as docs/design/graph.png has them, at [places] of
   /// inPlace: collect and inspect done, inspect again, then notify running.
-  SessionData mockup() =>
-      (Journal('a1b2-session', workflow: 'inPlace')
-            ..step('collect', 0, end: 149, place: copiesAt(4))
-            ..step('inspect', 149, end: 341, place: copiesAt(7))
-            ..step(
-              'inspect',
-              341,
-              end: 612,
-              place: copiesAt(7),
-              restarts: [400],
-            )
-            ..step('notify', 612, place: copiesAt(8)))
-          .data;
+  Journal mockupJournal() => Journal('a1b2-session', workflow: 'inPlace')
+    ..step('collect', 0, end: 149, place: copiesAt(4))
+    ..step('inspect', 149, end: 341, place: copiesAt(7))
+    ..step('inspect', 341, end: 612, place: copiesAt(7), restarts: [400])
+    ..step('notify', 612, place: copiesAt(8));
+
+  SessionData mockup() => mockupJournal().data;
 
   List<StepRow> stepRows(
     SessionData session, {
     String? Function(String stepId)? copyOf,
+    DateTime? time,
   }) => [
     for (final row in logRows(
       session,
       steps: session.state.steps,
       places: places,
       copyOf: copyOf,
-      now: now,
+      now: time ?? now,
     ))
       if (row is StepRow) row,
   ];
@@ -65,7 +61,7 @@ void main() {
     final first = rows.first;
     expect(first.started, '14:03:11');
     expect(first.took, '2m 29s');
-    expect(first.status, StepStatus.finished);
+    expect(first.status, StartOutcome.finished);
     expect(first.detail, isNull);
     expect(first.startsText, isNull);
   });
@@ -78,6 +74,57 @@ void main() {
     final last = stepRows(mockup()).last;
     expect(last.duration, const Duration(seconds: 746 - 612));
     expect(last.striped, isTrue);
+  });
+
+  group('a session whose process is gone (owner spec §6)', () {
+    /// [mockupJournal], tag run beside notify until 700 s, then the process
+    /// gone.
+    SessionData interrupted() =>
+        (mockupJournal()
+              ..step('tag', 620, end: 700, place: copiesAt(9), after: null)
+              ..processGone())
+            .data;
+
+    test('its running step is interrupted: not striped, and took until the '
+        'last event, whenever it is now', () {
+      for (final time in [now, at(2000)]) {
+        final rows = stepRows(interrupted(), time: time);
+        final notify = rows[3];
+        expect(notify.name, 'notify');
+        expect(notify.status, StartOutcome.interrupted);
+        expect(notify.striped, isFalse);
+        expect(notify.duration, const Duration(seconds: 700 - 612));
+        expect(notify.barEnd, 1);
+        expect(rows.last.status, StartOutcome.finished);
+      }
+    });
+
+    test('its time scale ends at its last event, and it has no end row: '
+        'its journal has not ended', () {
+      final session = interrupted();
+      final scale = timeScale(session, at(2000));
+      expect((scale.start, scale.end), (at(0), at(700)));
+      expect(
+        logRows(
+          session,
+          steps: session.state.steps,
+          places: places,
+          now: now,
+        ).last,
+        isA<StepRow>(),
+      );
+    });
+
+    test('runs as before while its process runs or is not known to', () {
+      for (final alive in [true, null]) {
+        final session = (mockupJournal()..owned(testOwner, alive: alive)).data;
+        final last = stepRows(session).last;
+        expect(last.status, StartOutcome.running);
+        expect(last.striped, isTrue);
+        expect(last.duration, const Duration(seconds: 746 - 612));
+        expect(timeScale(session, now).end, now);
+      }
+    });
   });
 
   test("a failed step's row shows its error, took until it failed", () {

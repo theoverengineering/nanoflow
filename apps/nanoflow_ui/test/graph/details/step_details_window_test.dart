@@ -12,6 +12,8 @@ import 'package:nanoflow_ui/graph/details/step_details_window.dart';
 import 'package:nanoflow_ui/graph/logs/step_details_pane.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
+import 'package:nanoflow_ui/widgets/icons.dart';
+import 'package:nanoflow_ui/widgets/spinner.dart';
 import 'package:path/path.dart' as p;
 
 import '../canvas/support.dart';
@@ -285,6 +287,47 @@ void main() {
         findsOneWidget,
       );
     });
+  });
+
+  testWidgets('on a step that was running when the process of its session '
+      'went: interrupted, nothing turning, its start interrupted, no output '
+      'yet (owner spec §6)', (tester) async {
+    await pumpReview(
+      tester,
+      model: ownedModel(
+        graph: graphFileNamed('review'),
+        file: reviewFile,
+        changes:
+            (reviewSession()
+                  ..step('archive', 620, end: 700)
+                  ..processGone())
+                .changes,
+        documents: reviewDocuments,
+        files: reviewFiles(),
+      ),
+    );
+    await doubleClick(tester, '7');
+
+    expect(topBar(tester), endsWith('Visit 1 of 1 interrupted · 1m 28s'));
+    expect(
+      find.descendant(of: window(), matching: find.byType(Spinner)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: window(), matching: find.byType(PauseIcon)),
+      findsOneWidget,
+    );
+    expect(
+      textIn(tester, find.byKey(NodeColumn.descriptionKey)),
+      endsWith('Finished — Starts 14:13:23 interrupted — the process stopped'),
+    );
+    expect(
+      inColumn(
+        OutputColumn,
+        find.text('Not yet: the step was interrupted — the process stopped'),
+      ),
+      findsOneWidget,
+    );
   });
 
   group('the step column', () {
