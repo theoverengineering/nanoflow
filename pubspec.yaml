@@ -5,6 +5,7 @@ environment:
 workspace:
   - packages/nanoflow_model
   - packages/nanoflow_store
+  - packages/nanoflow_process
   - packages/nanoflow_reader
   - packages/nanoflow
   - packages/nanoflow_describe
