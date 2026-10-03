@@ -1399,6 +1399,245 @@ void main() {
     );
   });
 
+  test('takes a caught throw on after the try, ends the path of a throw arm '
+      'and warns once per place', () async {
+    expectFile(
+      await describeFixture('throws'),
+      await expectedFile(
+        'throws',
+        workflows: [],
+        functions: {
+          // finally is drawn twice, its step name warns once.
+          'lib/throws.dart#cleanUp': {
+            'name': 'cleanUp',
+            'place': 'lib/throws.dart:7',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'acquire',
+                  'place': 'lib/throws.dart:9',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': 'early',
+                  'place': 'lib/throws.dart:10',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'use',
+                  'place': 'lib/throws.dart:11',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': r"'release-$lock'",
+                  'place': 'lib/throws.dart:13',
+                },
+                {
+                  'id': '5',
+                  'kind': 'step',
+                  'name': r"'release-$lock'",
+                  'place': 'lib/throws.dart:13',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '2', 'to': '3', 'label': 'false'},
+                {'from': '2', 'to': '5', 'label': 'true'},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': null, 'label': null},
+                {'from': '5', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // The throw is in a catch clause, which is not drawn: the loop
+          // has no steps and nothing that leaves it, so it is left out.
+          'lib/throws.dart#importLines': {
+            'name': 'importLines',
+            'place': 'lib/throws.dart:17',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'import',
+                  'place': 'lib/throws.dart:25',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // A throw arm of a switch expression or of ?: has no edge.
+          'lib/throws.dart#measure': {
+            'name': 'measure',
+            'place': 'lib/throws.dart:54',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'switch (kind)',
+                  'place': 'lib/throws.dart:55',
+                },
+                {
+                  'id': '2',
+                  'kind': 'step',
+                  'name': 'stat',
+                  'place': 'lib/throws.dart:56',
+                },
+                {
+                  'id': '3',
+                  'kind': 'fork',
+                  'label': 'size > 50',
+                  'place': 'lib/throws.dart:59',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'unit',
+                  'place': 'lib/throws.dart:60',
+                },
+                {
+                  'id': '5',
+                  'kind': 'step',
+                  'name': 'record',
+                  'place': 'lib/throws.dart:62',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': "'disk'"},
+                {'from': '2', 'to': '3', 'label': null},
+                {'from': '3', 'to': '4', 'label': 'true'},
+                {'from': '4', 'to': '5', 'label': null},
+                {'from': '5', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // The throw leaves the inner try through its finally, then the
+          // outer catch takes it on after the outer try.
+          'lib/throws.dart#mirror': {
+            'name': 'mirror',
+            'place': 'lib/throws.dart:39',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'fetch',
+                  'place': 'lib/throws.dart:42',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': '!ok',
+                  'place': 'lib/throws.dart:43',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'write',
+                  'place': 'lib/throws.dart:44',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'close',
+                  'place': 'lib/throws.dart:46',
+                },
+                {
+                  'id': '5',
+                  'kind': 'step',
+                  'name': 'close',
+                  'place': 'lib/throws.dart:46',
+                },
+                {
+                  'id': '6',
+                  'kind': 'step',
+                  'name': 'report',
+                  'place': 'lib/throws.dart:51',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '2', 'to': '3', 'label': 'false'},
+                {'from': '2', 'to': '5', 'label': 'true'},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': '6', 'label': null},
+                {'from': '5', 'to': '6', 'label': null},
+                {'from': '6', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // The catch takes the throw on after the try.
+          'lib/throws.dart#sync': {
+            'name': 'sync',
+            'place': 'lib/throws.dart:28',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'ping',
+                  'place': 'lib/throws.dart:30',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': '!reachable',
+                  'place': 'lib/throws.dart:31',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'pull',
+                  'place': 'lib/throws.dart:32',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'log',
+                  'place': 'lib/throws.dart:36',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '2', 'to': '3', 'label': 'false'},
+                {'from': '2', 'to': '4', 'label': 'true'},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': null, 'label': null},
+              ],
+            },
+          },
+        },
+        warnings: [
+          {
+            'place': 'lib/throws.dart:13',
+            'message': 'step name is not a string literal',
+          },
+          {
+            'place': 'lib/throws.dart:33',
+            'message': 'catch clauses are not drawn',
+          },
+          {
+            'place': 'lib/throws.dart:48',
+            'message': 'catch clauses are not drawn',
+          },
+        ],
+      ),
+    );
+  });
+
   test('writes the same file every time', () async {
     final first = await describePackage(fixture('release'), packageName: 'x');
     final second = await describePackage(fixture('release'), packageName: 'x');

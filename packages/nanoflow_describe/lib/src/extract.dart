@@ -84,7 +84,10 @@ final class _Package {
   final _stepsOutside = <ExecutableElement>{};
 
   final _stepsMemo = <AstNode, bool>{};
-  final _warnings = <GraphWarning>[];
+
+  /// A set: a `finally` drawn once per way out of its try would repeat the
+  /// warnings of its steps.
+  final _warnings = <GraphWarning>{};
 
   /// Reads the functions outside the sources that the sources call with a
   /// `Flow`, to warn that their steps are not drawn.
@@ -140,7 +143,7 @@ final class _Package {
     return (
       workflows: [for (final d in workflows) d.id]..sort(),
       functions: functions,
-      warnings: _warnings..sort(_byPlace),
+      warnings: _warnings.toList()..sort(_byPlace),
     );
   }
 
@@ -530,12 +533,14 @@ final class _Copies extends _Drawn {
 /// it is taken on when the point is a fork.
 typedef _Out = (_V, String?);
 
-/// Where `return`, `break` and `continue` lead from the current statement.
+/// Where `return`, `break`, `continue` and `throw` lead from the current
+/// statement.
 final class _Scope {
   const _Scope({
     this.returns,
     this.breaks = const {},
     this.continues = const {},
+    this.throws,
   });
 
   /// Ways out of a `return`; `null` in the body itself, where a `return`
@@ -548,16 +553,29 @@ final class _Scope {
   /// Where a `continue` goes by the loop it continues.
   final Map<AstNode, _V> continues;
 
+  /// Ways out of a `throw` that a `catch` around it takes, to go on after
+  /// its `try`; `null` where nothing catches it and the path ends.
+  final List<_Out>? throws;
+
   _Scope loop(AstNode loop, List<_Out> breaks, _V continues) => _Scope(
     returns: returns,
     breaks: {...this.breaks, loop: breaks},
     continues: {...this.continues, loop: continues},
+    throws: throws,
   );
 
   _Scope breaking(AstNode statement, List<_Out> breaks) => _Scope(
     returns: returns,
     breaks: {...this.breaks, statement: breaks},
     continues: continues,
+    throws: throws,
+  );
+
+  _Scope catching(List<_Out> throws) => _Scope(
+    returns: returns,
+    breaks: breaks,
+    continues: continues,
+    throws: throws,
   );
 }
 
@@ -630,9 +648,7 @@ final class _Body {
         expression: final Expression e &&
             (ThrowExpression() || RethrowExpression()),
       ):
-        // The flow ends here, as a failure: no edge leaves.
-        _children(e, into, scope);
-        return const [];
+        return _throw(_children(e, into, scope), scope);
       case IfStatement():
         final condition = _expression(s.expression, into, scope);
         final label = switch (s.caseClause) {
@@ -722,27 +738,44 @@ final class _Body {
     }
   }
 
+  /// Throws from [exits]: a `catch` around them takes them on after its
+  /// `try`; otherwise the flow ends here, as a failure, and no edge leaves.
+  List<_Out> _throw(List<_Out> exits, _Scope scope) {
+    scope.throws?.addAll(exits);
+    return const [];
+  }
+
   /// The body, then `finally`: every way out of the body, a `return`, a
   /// `break` or a `continue` too, goes through `finally` before it goes on.
-  /// `finally` is drawn once for each way out the body takes.
+  /// `finally` is drawn once for each way out the body takes. A `throw` in
+  /// the body goes on after the `try` when it has `catch` clauses (they are
+  /// not drawn), and through `finally` to a `catch` around it otherwise.
   List<_Out> _try(TryStatement s, List<_Out> into, _Scope scope) {
     if (s.catchClauses.isNotEmpty &&
         (_package._hasSteps(s.body) ||
             s.catchClauses.any((c) => _package._hasSteps(c.body)))) {
       _package._warn(s.catchClauses.first, 'catch clauses are not drawn');
     }
+    final caught = s.catchClauses.isEmpty ? null : <_Out>[];
     final finallyBlock = s.finallyBlock;
-    if (finallyBlock == null) return _statement(s.body, into, scope);
+    if (finallyBlock == null) {
+      if (caught == null) return _statement(s.body, into, scope);
+      return [..._statement(s.body, into, scope.catching(caught)), ...caught];
+    }
     // The jumps out of the body stop here first.
     final jumps = _Scope(
       returns: [],
       breaks: {for (final target in scope.breaks.keys) target: []},
       continues: {for (final target in scope.continues.keys) target: _join()},
+      throws: caught ?? (scope.throws == null ? null : []),
     );
     final exits = _statement(s.body, into, jumps);
-    final after = _statement(finallyBlock, exits, scope);
+    final after = _statement(finallyBlock, [...exits, ...?caught], scope);
     if (jumps.returns!.isNotEmpty) {
       _return(_statement(finallyBlock, jumps.returns!, scope), scope);
+    }
+    if (caught == null && (jumps.throws?.isNotEmpty ?? false)) {
+      _throw(_statement(finallyBlock, jumps.throws!, scope), scope);
     }
     for (final MapEntry(key: target, value: breaks) in jumps.breaks.entries) {
       if (breaks.isNotEmpty) {
@@ -871,28 +904,39 @@ final class _Body {
     return [...exits, ...breaks];
   }
 
-  /// Whether [s] has a `return`, a `throw`, or a `break` or `continue` that
-  /// leaves it.
+  /// Whether [s] has a `return`, a `throw` that no `catch` in [s] takes, or a
+  /// `break` or `continue` that leaves it. `catch` clauses are not drawn, so
+  /// what they do does not count.
   bool _jumpsOut(Statement s) {
     var jumps = false;
-    void visit(AstNode node) {
+    void visit(AstNode node, {required bool caught}) {
       if (jumps) return;
       switch (node) {
-        case FunctionExpression():
-          return; // a return in it leaves the closure
-        case ReturnStatement() ||
-            ExpressionStatement(
-              expression: ThrowExpression() || RethrowExpression(),
-            ):
+        case FunctionExpression() || CatchClause():
+          return; // a return in a closure leaves the closure, not s
+        case TryStatement(
+          :final body,
+          :final catchClauses,
+          :final finallyBlock,
+        ):
+          visit(body, caught: caught || catchClauses.isNotEmpty);
+          if (finallyBlock != null) visit(finallyBlock, caught: caught);
+        case ExpressionStatement(
+          expression: ThrowExpression() || RethrowExpression(),
+        ):
+          jumps = !caught;
+        case ReturnStatement():
           jumps = true;
         case BreakStatement(:final target) || ContinueStatement(:final target):
           jumps = target == null || !_isWithin(target, s);
         default:
-          node.childEntities.whereType<AstNode>().forEach(visit);
+          for (final child in node.childEntities.whereType<AstNode>()) {
+            visit(child, caught: caught);
+          }
       }
     }
 
-    visit(s);
+    visit(s, caught: false);
     return jumps;
   }
 
@@ -916,7 +960,11 @@ final class _Body {
         final closure = function.unParenthesized as FunctionExpression;
         final arguments = _expression(e.argumentList, into, scope);
         final returns = <_Out>[];
-        final exits = _body(closure.body, arguments, _Scope(returns: returns));
+        final exits = _body(
+          closure.body,
+          arguments,
+          _Scope(returns: returns, throws: scope.throws),
+        );
         return [...exits, ...returns];
       case PropertyAccess(target: RecordLiteral(:final fields))
           when _package._isRecordWait(e):
@@ -930,8 +978,8 @@ final class _Body {
         final fork = _fork(_source(e.condition), e.condition, _ifOutcomes);
         _connect(condition, fork);
         return [
-          ..._expression(e.thenExpression, [(fork, 'true')], scope),
-          ..._expression(e.elseExpression, [(fork, 'false')], scope),
+          ..._arm(e.thenExpression, [(fork, 'true')], scope),
+          ..._arm(e.elseExpression, [(fork, 'false')], scope),
         ];
       case SwitchExpression(:final cases):
         // Exhaustive by the language: no default.
@@ -945,7 +993,7 @@ final class _Body {
         _connect(value, fork);
         return [
           for (final (i, c) in cases.indexed)
-            ..._expression(c.expression, [(fork, labels[i])], scope),
+            ..._arm(c.expression, [(fork, labels[i])], scope),
         ];
       case BinaryExpression(:final operator)
           when (operator.type == TokenType.AMPERSAND_AMPERSAND ||
@@ -980,6 +1028,15 @@ final class _Body {
         _connect(current, call);
         return [(call, null)];
     }
+  }
+
+  /// An arm of `?:` or of a switch expression: one that is a `throw` ends
+  /// its path, as a `throw` statement does.
+  List<_Out> _arm(Expression arm, List<_Out> into, _Scope scope) {
+    final exits = _expression(arm, into, scope);
+    return arm.unParenthesized is ThrowExpression
+        ? _throw(exits, scope)
+        : exits;
   }
 
   /// What `Future.wait` over [futures] runs: each element of a list starts
