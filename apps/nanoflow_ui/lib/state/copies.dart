@@ -395,12 +395,24 @@ List<LevelCopies> _levelCopies(
   // none): a function many calls call is walked once.
   final indexes = Map<CopiesNode, int>.identity();
   final walked = <(String, int)>{};
+  // Whether [node] is [within] or around it.
+  bool holds(CopiesNode? within, CopiesNode node) {
+    for (var outer = within; outer != null; outer = around[outer]) {
+      if (identical(outer, node)) return true;
+    }
+    return false;
+  }
+
   void walk(GraphBody body, CopiesNode? within, Set<String> entered) {
     for (final node in body.nodes) {
       switch (node) {
         case CopiesNode():
           final reached = around.containsKey(node);
-          if (!reached || around[node] == null) around[node] = within;
+          // Never the node itself, nor one inside it: a function that calls
+          // itself from inside the node reaches the node again.
+          if (!reached || around[node] == null && !holds(within, node)) {
+            around[node] = within;
+          }
           if (reached) continue;
           indexes[node] = indexes.length;
           walk(node.body, node, entered);
@@ -417,7 +429,9 @@ List<LevelCopies> _levelCopies(
     }
   }
 
-  walk(body, null, const {});
+  // The function the level is the body of is entered: a call of it from
+  // inside the level holds nothing new.
+  walk(body, null, {?places.ownerOf(body)});
   final levelCopies = <LevelCopies>[];
   final copiesOfNode = Map<CopiesNode, List<Copy>>.identity();
   List<Copy> copiesAt(CopiesNode node) {

@@ -76,6 +76,26 @@ final class StepPlaces {
     CallNode() => _inNode(node, const {}),
   };
 
+  /// The id of the function whose body [body] is, or holds as the body of
+  /// copies; `null` for a body of no function of the graph.
+  String? ownerOf(GraphBody body) => _owners[body];
+
+  /// The function of each body of the graph, by the body.
+  late final Map<GraphBody, String> _owners = () {
+    final owners = Map<GraphBody, String>.identity();
+    void own(GraphBody body, String id) {
+      owners[body] = id;
+      for (final copies in body.nodes.whereType<CopiesNode>()) {
+        own(copies.body, id);
+      }
+    }
+
+    for (final function in _functions.values) {
+      own(function.body, function.id);
+    }
+    return owners;
+  }();
+
   /// The functions [call] calls that the graph has.
   List<GraphFunction> calledBy(CallNode call) => [
     for (final id in call.functions) ?_functions[id],

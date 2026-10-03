@@ -176,6 +176,17 @@ void main() {
       );
     });
 
+    test('the owner of a body: the function it is the body of, or holds it '
+        'as the body of copies', () {
+      final places = stepPlacesOf('nested');
+      final nested = file.functions['lib/copies.dart#nested']!;
+      final outer = nested.body.node('1')! as CopiesNode;
+      final inner = outer.body.node('2')! as CopiesNode;
+      expect(places.ownerOf(nested.body), nested.id);
+      expect(places.ownerOf(inner.body), nested.id);
+      expect(places.ownerOf(const GraphBody(nodes: [], edges: [])), isNull);
+    });
+
     test('a function calling itself holds its steps once', () {
       final recursive = GraphFunction(
         id: 'lib/r.dart#crawl',

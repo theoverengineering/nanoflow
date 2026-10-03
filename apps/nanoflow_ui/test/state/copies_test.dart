@@ -850,6 +850,66 @@ void main() {
       expect(tagOf('ub'), 'r 2 › s 1');
       expect(shown.levelCopies, hasLength(2));
     });
+
+    test('copies in a workflow that calls itself from inside them keep '
+        'their names', () {
+      // A parallel crawler: `crawl(f, url)` fetches the page, then
+      // `Future.wait([for (l in links) () async { await f.step('visit', …);
+      // await crawl(f, l); }()])`.
+      final crawl = GraphFunction(
+        id: 'lib/c.dart#crawl',
+        name: 'crawl',
+        place: 'lib/c.dart:1',
+        body: const GraphBody(
+          nodes: [
+            StepNode(id: '1', place: 'lib/c.dart:2', name: 'fetch'),
+            CopiesNode(
+              id: '2',
+              place: 'lib/c.dart:3',
+              label: 'l in links',
+              body: GraphBody(
+                nodes: [
+                  StepNode(id: '1', place: 'lib/c.dart:4', name: 'visit'),
+                  CallNode(
+                    id: '2',
+                    place: 'lib/c.dart:5',
+                    functions: ['lib/c.dart#crawl'],
+                  ),
+                ],
+                edges: [],
+              ),
+            ),
+          ],
+          edges: [],
+        ),
+      );
+      final functions = {crawl.id: crawl};
+      final j = Journal('c4d5-session', workflow: 'crawl')
+        ..step('fetch', 1, end: 2, place: 'lib/c.dart:2', key: 'f', after: null)
+        ..step('visit', 3, end: 4, place: 'lib/c.dart:4', key: 'a', after: null)
+        ..step(
+          'visit',
+          5,
+          end: 6,
+          place: 'lib/c.dart:4',
+          key: 'b',
+          after: null,
+        );
+      final shown = framesOf(
+        bodyLevels(crawl, functions, const []),
+        places: StepPlaces.of(crawl, functions),
+        session: j.data,
+      );
+
+      // By place the fetch of a crawl called in a copy is in the copies too
+      // (spec §9): the fetch here, which follows nothing, is a copy of its
+      // own.
+      expect(
+        [for (final step in j.steps) shown.tagOf(step.id)],
+        ['l 1', 'l 2', 'l 3'],
+      );
+      expect(shown.levelCopies.single.copies, hasLength(3));
+    });
   });
 
   group('over sessions the real library wrote (recordedCopies)', () {
