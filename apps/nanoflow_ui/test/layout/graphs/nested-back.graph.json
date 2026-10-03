@@ -1,0 +1,108 @@
+{
+  "format": 1,
+  "package": "nested-back",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/nested-back.dart#nested-back"
+  ],
+  "functions": {
+    "lib/nested-back.dart#nested-back": {
+      "name": "nested-back",
+      "place": "lib/nested-back.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "draft",
+            "kind": "step",
+            "name": "draft",
+            "place": "lib/nested-back.dart:10"
+          },
+          {
+            "id": "spell",
+            "kind": "fork",
+            "label": "spell",
+            "place": "lib/nested-back.dart:11"
+          },
+          {
+            "id": "style",
+            "kind": "fork",
+            "label": "style",
+            "place": "lib/nested-back.dart:12"
+          },
+          {
+            "id": "facts",
+            "kind": "fork",
+            "label": "facts",
+            "place": "lib/nested-back.dart:13"
+          },
+          {
+            "id": "approve",
+            "kind": "step",
+            "name": "approve",
+            "place": "lib/nested-back.dart:14"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "draft",
+            "label": null
+          },
+          {
+            "from": "draft",
+            "to": "spell",
+            "label": null
+          },
+          {
+            "from": "spell",
+            "to": "style",
+            "label": "ok"
+          },
+          {
+            "from": "spell",
+            "to": "draft",
+            "label": "else"
+          },
+          {
+            "from": "style",
+            "to": "facts",
+            "label": "ok"
+          },
+          {
+            "from": "style",
+            "to": "spell",
+            "label": "rewrite"
+          },
+          {
+            "from": "style",
+            "to": "draft",
+            "label": "else"
+          },
+          {
+            "from": "facts",
+            "to": "approve",
+            "label": "ok"
+          },
+          {
+            "from": "facts",
+            "to": "style",
+            "label": "recheck"
+          },
+          {
+            "from": "facts",
+            "to": "spell",
+            "label": "redo"
+          },
+          {
+            "from": "facts",
+            "to": "draft",
+            "label": "else"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

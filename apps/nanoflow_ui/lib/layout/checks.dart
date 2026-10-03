@@ -9,14 +9,14 @@ import 'layout_graph.dart';
 ///
 /// - Arrows run only horizontally, vertically or at 45°.
 /// - Parallel pieces of different arrows are at least a lane gap apart.
-/// - No arrow passes through a tile or a node's name or command.
-/// - An arrow leaves its exit going right, straight for at least its key
+/// - No arrow passes through a tile or a node's name or place.
+/// - An arrow leaves its exit going right, straight for at least its label
 ///   with the counter's room, and enters its input going right, straight for
 ///   at least the least input straight.
 /// - The arrowhead's tip points at the bar, an arrow gap before it.
 /// - A bar is in the middle of its tile's side, off the rounded corners;
 ///   inputs on it are at least a port gap apart.
-/// - Loops cross nothing. (A loop in a list target with other targets
+/// - Loops cross nothing. (A loop in a capsule with other arrows
 ///   leaves its capsule off the edge and may cross its neighbours: the one
 ///   rule a layout cannot always keep.)
 /// - Chips do not cover tiles, arrowheads or each other; nodes do not
@@ -50,7 +50,7 @@ List<String> checkLayout(GraphLayout layout) {
         first.length - firstTurn < exit.reach - 1e-6) {
       problems.add(
         '${name(edge)}: straight piece at the exit '
-        '${_n(first.length - firstTurn)} is shorter than its key and counter '
+        '${_n(first.length - firstTurn)} is shorter than its label and counter '
         '${_n(exit.reach)}',
       );
     }
@@ -91,10 +91,10 @@ List<String> checkLayout(GraphLayout layout) {
     }
     // Through nodes.
     for (final node in layout.nodes.values) {
-      for (final rect in [node.tile, node.nameRect, node.commandRect]) {
+      for (final rect in [node.tile, node.nameRect, node.placeRect]) {
         for (final s in segments) {
           if (s.entersInterior(rect)) {
-            problems.add('${name(edge)}: piece $s passes through ${node.name}');
+            problems.add('${name(edge)}: piece $s passes through ${node.id}');
           }
         }
       }
@@ -129,15 +129,6 @@ List<String> checkLayout(GraphLayout layout) {
         problems.add('${name(loop)}: loop crosses ${name(other)}');
       }
     }
-    for (final exit in layout.exits.where((x) => x.isEmpty)) {
-      final stub = [exit.anchor, Point(exit.stubEnd!, exit.anchor.y)];
-      if (crossingsBetween(loop.points, stub) > 0) {
-        problems.add(
-          '${name(loop)}: loop crosses the stub of '
-          '${exit.node}#${exit.index}',
-        );
-      }
-    }
   }
 
   // Bars.
@@ -146,20 +137,20 @@ List<String> checkLayout(GraphLayout layout) {
     if (bar == null) continue;
     final middle = (node.tile.top + node.tile.bottom) / 2;
     if (((bar.rect.top + bar.rect.bottom) / 2 - middle).abs() > 1e-6) {
-      problems.add('${node.name}: bar is not in the middle of the tile');
+      problems.add('${node.id}: bar is not in the middle of the tile');
     }
     if (bar.rect.top < node.tile.top + o.tileRadius - 1e-6 ||
         bar.rect.bottom > node.tile.bottom - o.tileRadius + 1e-6) {
-      problems.add('${node.name}: bar runs onto the tile\'s corners');
+      problems.add('${node.id}: bar runs onto the tile\'s corners');
     }
     for (var i = 1; i < bar.inputs.length; i++) {
       if (bar.inputs[i] - bar.inputs[i - 1] < o.portGap - 1e-6) {
-        problems.add('${node.name}: inputs closer than ${_n(o.portGap)}');
+        problems.add('${node.id}: inputs closer than ${_n(o.portGap)}');
       }
     }
     for (final y in bar.inputs) {
       if (y < bar.rect.top || y > bar.rect.bottom) {
-        problems.add('${node.name}: input at ${_n(y)} is off the bar');
+        problems.add('${node.id}: input at ${_n(y)} is off the bar');
       }
     }
   }
@@ -172,7 +163,7 @@ List<String> checkLayout(GraphLayout layout) {
   for (final (owner, chip) in chips) {
     for (final node in layout.nodes.values) {
       if (chip.overlaps(node.tile)) {
-        problems.add('$owner: key chip covers the tile of ${node.name}');
+        problems.add('$owner: label chip covers the tile of ${node.id}');
       }
     }
     for (final edge in edges) {
@@ -183,14 +174,16 @@ List<String> checkLayout(GraphLayout layout) {
         edge.tip.y + 4.5,
       );
       if (chip.overlaps(head)) {
-        problems.add('$owner: key chip covers the arrowhead of ${name(edge)}');
+        problems.add(
+          '$owner: label chip covers the arrowhead of ${name(edge)}',
+        );
       }
     }
   }
   for (var i = 0; i < chips.length; i++) {
     for (var j = i + 1; j < chips.length; j++) {
       if (chips[i].$2.overlaps(chips[j].$2)) {
-        problems.add('${chips[i].$1} and ${chips[j].$1}: key chips overlap');
+        problems.add('${chips[i].$1} and ${chips[j].$1}: label chips overlap');
       }
     }
   }
@@ -199,10 +192,10 @@ List<String> checkLayout(GraphLayout layout) {
     for (var j = i + 1; j < boxes.length; j++) {
       final a = boxes[i];
       final b = boxes[j];
-      for (final ra in [a.tile, a.nameRect, a.commandRect]) {
-        for (final rb in [b.tile, b.nameRect, b.commandRect]) {
+      for (final ra in [a.tile, a.nameRect, a.placeRect]) {
+        for (final rb in [b.tile, b.nameRect, b.placeRect]) {
           if (ra.overlaps(rb)) {
-            problems.add('${a.name} and ${b.name} overlap');
+            problems.add('${a.id} and ${b.id} overlap');
           }
         }
       }
@@ -211,13 +204,9 @@ List<String> checkLayout(GraphLayout layout) {
   return problems;
 }
 
-/// How many times arrows cross each other and the stubs of empty targets.
+/// How many times arrows cross each other.
 int countCrossings(GraphLayout layout) {
-  final lines = [
-    for (final edge in layout.edges) edge.points,
-    for (final exit in layout.exits)
-      if (exit.isEmpty) [exit.anchor, Point(exit.stubEnd!, exit.anchor.y)],
-  ];
+  final lines = [for (final edge in layout.edges) edge.points];
   var count = 0;
   for (var i = 0; i < lines.length; i++) {
     for (var j = i + 1; j < lines.length; j++) {

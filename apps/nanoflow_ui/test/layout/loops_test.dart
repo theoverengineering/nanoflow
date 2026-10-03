@@ -5,7 +5,7 @@ import 'support.dart';
 
 void main() {
   late GraphLayout layout;
-  setUpAll(() => layout = layoutGraph(loadGraph('loops')));
+  setUpAll(() => layout = layoutOf('loops'));
 
   /// The highest and lowest y of [edge].
   (double, double) heights(EdgePath edge) {
@@ -45,7 +45,7 @@ void main() {
     expect(left(wait), lessThan(left(retry)));
   });
 
-  test('a loop clears the start caption and the badges over its tile', () {
+  test('a loop clears the badges over its tile', () {
     final node = layout.nodes['fetch-check']!;
     expect(
       heights(edgeOf(layout, 'fetch-check', 0)).$1,
@@ -53,7 +53,7 @@ void main() {
     );
   });
 
-  test('a loop goes under its tile, round its name and command, when over '
+  test('a loop goes under its tile, round its name and place, when over '
       'it it would cross another arrow', () {
     // build's capsule sends its first arrow on and loops with its second:
     // over the tile the loop would cross the first.
@@ -61,7 +61,7 @@ void main() {
     expect(loop.kind, EdgeKind.loop);
     final node = layout.nodes['build']!;
     expect(heights(loop).$1, greaterThan(node.tile.top));
-    expect(heights(loop).$2, greaterThan(node.commandRect.bottom));
+    expect(heights(loop).$2, greaterThan(node.placeRect.bottom));
     expect(loop.points.last.y, node.bar!.inputs.last);
     expect(checkLayout(layout), isEmpty);
   });

@@ -1,0 +1,104 @@
+{
+  "format": 1,
+  "package": "starts",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/starts.dart#starts"
+  ],
+  "functions": {
+    "lib/starts.dart#starts": {
+      "name": "starts",
+      "place": "lib/starts.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "watch-mail",
+            "kind": "step",
+            "name": "watch-mail",
+            "place": "lib/starts.dart:10"
+          },
+          {
+            "id": "watch-chat",
+            "kind": "step",
+            "name": "watch-chat",
+            "place": "lib/starts.dart:11"
+          },
+          {
+            "id": "nightly",
+            "kind": "step",
+            "name": "nightly",
+            "place": "lib/starts.dart:12"
+          },
+          {
+            "id": "classify",
+            "kind": "fork",
+            "label": "classify",
+            "place": "lib/starts.dart:13"
+          },
+          {
+            "id": "page",
+            "kind": "step",
+            "name": "page",
+            "place": "lib/starts.dart:14"
+          },
+          {
+            "id": "digest",
+            "kind": "step",
+            "name": "digest",
+            "place": "lib/starts.dart:15"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "watch-mail",
+            "label": null
+          },
+          {
+            "from": null,
+            "to": "watch-chat",
+            "label": null
+          },
+          {
+            "from": null,
+            "to": "nightly",
+            "label": null
+          },
+          {
+            "from": "watch-mail",
+            "to": "classify",
+            "label": null
+          },
+          {
+            "from": "watch-chat",
+            "to": "classify",
+            "label": null
+          },
+          {
+            "from": "nightly",
+            "to": "digest",
+            "label": null
+          },
+          {
+            "from": "classify",
+            "to": "page",
+            "label": "urgent"
+          },
+          {
+            "from": "classify",
+            "to": "digest",
+            "label": "normal"
+          },
+          {
+            "from": "classify",
+            "to": null,
+            "label": "else"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

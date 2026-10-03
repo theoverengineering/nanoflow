@@ -1,0 +1,92 @@
+{
+  "format": 1,
+  "package": "empty",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/empty.dart#empty"
+  ],
+  "functions": {
+    "lib/empty.dart#empty": {
+      "name": "empty",
+      "place": "lib/empty.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "receive",
+            "kind": "step",
+            "name": "receive",
+            "place": "lib/empty.dart:10"
+          },
+          {
+            "id": "valid",
+            "kind": "fork",
+            "label": "valid",
+            "place": "lib/empty.dart:11"
+          },
+          {
+            "id": "route",
+            "kind": "fork",
+            "label": "route",
+            "place": "lib/empty.dart:12"
+          },
+          {
+            "id": "store",
+            "kind": "step",
+            "name": "store",
+            "place": "lib/empty.dart:13"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "receive",
+            "label": null
+          },
+          {
+            "from": "receive",
+            "to": "valid",
+            "label": null
+          },
+          {
+            "from": "valid",
+            "to": "route",
+            "label": "true"
+          },
+          {
+            "from": "valid",
+            "to": null,
+            "label": "else"
+          },
+          {
+            "from": "route",
+            "to": "store",
+            "label": "store"
+          },
+          {
+            "from": "route",
+            "to": null,
+            "label": "drop"
+          },
+          {
+            "from": "route",
+            "to": null,
+            "label": "ignore"
+          },
+          {
+            "from": "route",
+            "to": null,
+            "label": "else"
+          },
+          {
+            "from": "store",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

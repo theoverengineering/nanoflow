@@ -1,0 +1,134 @@
+{
+  "format": 1,
+  "package": "review_example",
+  "fingerprint": "sha256:e53a8a6bf5251b30840e7fb70730d6a0bc44de2891761ca9442d16ec3dfc88e6",
+  "sources": {
+    "bin/main.dart": "sha256:fc75e28f8b4640e5f5c1441dd0aff0edbee5ba2eb9f67ae9cf835bc3b46d0389",
+    "lib/review.dart": "sha256:674831a612b4f3dfe30200e808ed3d928b62da6002168a2034a981fdf17fc40b"
+  },
+  "builds": {},
+  "workflows": [
+    "lib/review.dart#review"
+  ],
+  "functions": {
+    "lib/review.dart#review": {
+      "name": "review",
+      "place": "lib/review.dart:48",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "collect",
+            "place": "lib/review.dart:49"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "change.path.isEmpty",
+            "place": "lib/review.dart:50"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "discard",
+            "place": "lib/review.dart:51"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "inspect",
+            "place": "lib/review.dart:55"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "report.findings.isEmpty",
+            "place": "lib/review.dart:56"
+          },
+          {
+            "id": "6",
+            "kind": "step",
+            "name": "publish",
+            "place": "lib/review.dart:58"
+          },
+          {
+            "id": "7",
+            "kind": "step",
+            "name": "notify",
+            "place": "lib/review.dart:59"
+          },
+          {
+            "id": "8",
+            "kind": "step",
+            "name": "fix",
+            "place": "lib/review.dart:63"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "4",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": null
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "7",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "8",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": "4",
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

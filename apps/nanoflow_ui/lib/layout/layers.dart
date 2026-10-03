@@ -2,7 +2,7 @@ import 'layout_graph.dart';
 
 /// Step 2: puts every node in the layer of the longest forward path to it.
 ///
-/// Nodes with no forward arrow into them — the `start` nodes among them — are
+/// Nodes with no forward arrow into them — the start marker among them — are
 /// layer 0, so every forward arrow goes right. Sets [GNode.layer].
 void assignLayers(LayoutGraph graph) {
   final done = <GNode>{};

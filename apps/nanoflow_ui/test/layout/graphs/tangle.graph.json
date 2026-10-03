@@ -1,0 +1,140 @@
+{
+  "format": 1,
+  "package": "tangle",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/tangle.dart#tangle"
+  ],
+  "functions": {
+    "lib/tangle.dart#tangle": {
+      "name": "tangle",
+      "place": "lib/tangle.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "n0",
+            "kind": "fork",
+            "label": "n0",
+            "place": "lib/tangle.dart:10"
+          },
+          {
+            "id": "n1",
+            "kind": "step",
+            "name": "n1",
+            "place": "lib/tangle.dart:11"
+          },
+          {
+            "id": "n2",
+            "kind": "step",
+            "name": "n2",
+            "place": "lib/tangle.dart:12"
+          },
+          {
+            "id": "n3",
+            "kind": "fork",
+            "label": "n3",
+            "place": "lib/tangle.dart:13"
+          },
+          {
+            "id": "n4",
+            "kind": "step",
+            "name": "n4",
+            "place": "lib/tangle.dart:14"
+          },
+          {
+            "id": "n5",
+            "kind": "step",
+            "name": "n5",
+            "place": "lib/tangle.dart:15"
+          },
+          {
+            "id": "n6",
+            "kind": "step",
+            "name": "n6",
+            "place": "lib/tangle.dart:16"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "n0",
+            "label": null
+          },
+          {
+            "from": null,
+            "to": "n4",
+            "label": null
+          },
+          {
+            "from": "n0",
+            "to": "n2",
+            "label": "k0"
+          },
+          {
+            "from": "n0",
+            "to": "n2",
+            "label": "k1"
+          },
+          {
+            "from": "n0",
+            "to": "n3",
+            "label": "k1"
+          },
+          {
+            "from": "n0",
+            "to": "n6",
+            "label": "k2"
+          },
+          {
+            "from": "n0",
+            "to": "n0",
+            "label": "k3"
+          },
+          {
+            "from": "n0",
+            "to": "n4",
+            "label": "else"
+          },
+          {
+            "from": "n1",
+            "to": "n5",
+            "label": null
+          },
+          {
+            "from": "n2",
+            "to": "n2",
+            "label": null
+          },
+          {
+            "from": "n3",
+            "to": "n2",
+            "label": "k0"
+          },
+          {
+            "from": "n3",
+            "to": null,
+            "label": "else"
+          },
+          {
+            "from": "n4",
+            "to": "n3",
+            "label": null
+          },
+          {
+            "from": "n5",
+            "to": "n6",
+            "label": null
+          },
+          {
+            "from": "n6",
+            "to": "n6",
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

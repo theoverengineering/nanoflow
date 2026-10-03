@@ -1,0 +1,148 @@
+{
+  "format": 1,
+  "package": "capsules",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/capsules.dart#capsules"
+  ],
+  "functions": {
+    "lib/capsules.dart#capsules": {
+      "name": "capsules",
+      "place": "lib/capsules.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "release",
+            "kind": "fork",
+            "label": "release",
+            "place": "lib/capsules.dart:10"
+          },
+          {
+            "id": "build-mac",
+            "kind": "step",
+            "name": "build-mac",
+            "place": "lib/capsules.dart:11"
+          },
+          {
+            "id": "build-linux",
+            "kind": "step",
+            "name": "build-linux",
+            "place": "lib/capsules.dart:12"
+          },
+          {
+            "id": "build-windows",
+            "kind": "step",
+            "name": "build-windows",
+            "place": "lib/capsules.dart:13"
+          },
+          {
+            "id": "notes",
+            "kind": "step",
+            "name": "notes",
+            "place": "lib/capsules.dart:14"
+          },
+          {
+            "id": "sign",
+            "kind": "step",
+            "name": "sign",
+            "place": "lib/capsules.dart:15"
+          },
+          {
+            "id": "upload",
+            "kind": "step",
+            "name": "upload",
+            "place": "lib/capsules.dart:16"
+          },
+          {
+            "id": "announce",
+            "kind": "step",
+            "name": "announce",
+            "place": "lib/capsules.dart:17"
+          },
+          {
+            "id": "archive",
+            "kind": "step",
+            "name": "archive",
+            "place": "lib/capsules.dart:18"
+          },
+          {
+            "id": "wait",
+            "kind": "step",
+            "name": "wait",
+            "place": "lib/capsules.dart:19"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "release",
+            "label": null
+          },
+          {
+            "from": "release",
+            "to": "build-mac",
+            "label": "go"
+          },
+          {
+            "from": "release",
+            "to": "build-linux",
+            "label": "go"
+          },
+          {
+            "from": "release",
+            "to": "build-windows",
+            "label": "go"
+          },
+          {
+            "from": "release",
+            "to": "notes",
+            "label": "go"
+          },
+          {
+            "from": "release",
+            "to": "wait",
+            "label": "hold"
+          },
+          {
+            "from": "build-mac",
+            "to": "sign",
+            "label": null
+          },
+          {
+            "from": "build-linux",
+            "to": "upload",
+            "label": null
+          },
+          {
+            "from": "build-windows",
+            "to": "sign",
+            "label": null
+          },
+          {
+            "from": "notes",
+            "to": "upload",
+            "label": null
+          },
+          {
+            "from": "notes",
+            "to": "announce",
+            "label": null
+          },
+          {
+            "from": "notes",
+            "to": "archive",
+            "label": null
+          },
+          {
+            "from": "sign",
+            "to": "upload",
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

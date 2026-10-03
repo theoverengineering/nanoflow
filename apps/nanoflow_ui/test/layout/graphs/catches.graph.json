@@ -1,0 +1,492 @@
+{
+  "format": 1,
+  "package": "catches",
+  "fingerprint": "sha256:291e6c6e099165c30724f472718973facddc22404575457c35ed1f10f2b47074",
+  "sources": {
+    "lib/catches.dart": "sha256:de5f767964d1c14a73038f2249f5862340a976d0b19c10c9c032e0d91ccfb1cd"
+  },
+  "builds": {},
+  "workflows": [],
+  "functions": {
+    "lib/catches.dart#backup": {
+      "name": "backup",
+      "place": "lib/catches.dart:23",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "measure",
+            "place": "lib/catches.dart:25"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "free == 0",
+            "place": "lib/catches.dart:26"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "copy",
+            "place": "lib/catches.dart:27"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "verify",
+            "place": "lib/catches.dart:32"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/catches.dart#convert": {
+      "name": "convert",
+      "place": "lib/catches.dart:73",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "unit == 'km'",
+            "place": "lib/catches.dart:75"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "scale",
+            "place": "lib/catches.dart:76"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "apply",
+            "place": "lib/catches.dart:78"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "report",
+            "place": "lib/catches.dart:82"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "true"
+          },
+          {
+            "from": "1",
+            "to": "4",
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/catches.dart#deploy": {
+      "name": "deploy",
+      "place": "lib/catches.dart:47",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "prepare",
+            "place": "lib/catches.dart:49"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "!ready",
+            "place": "lib/catches.dart:50"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "ship",
+            "place": "lib/catches.dart:51"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "unlock",
+            "place": "lib/catches.dart:55"
+          },
+          {
+            "id": "5",
+            "kind": "step",
+            "name": "announce",
+            "place": "lib/catches.dart:57"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": "4",
+            "label": "true"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": null
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/catches.dart#fetch": {
+      "name": "fetch",
+      "place": "lib/catches.dart:35",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "download",
+            "place": "lib/catches.dart:37"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "page.isEmpty",
+            "place": "lib/catches.dart:38"
+          },
+          {
+            "id": "3",
+            "kind": "fork",
+            "label": "page == 'busy'",
+            "place": "lib/catches.dart:39"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "parse",
+            "place": "lib/catches.dart:40"
+          },
+          {
+            "id": "5",
+            "kind": "step",
+            "name": "store",
+            "place": "lib/catches.dart:44"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "5",
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": null
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/catches.dart#importAll": {
+      "name": "importAll",
+      "place": "lib/catches.dart:85",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "for name in names",
+            "place": "lib/catches.dart:86"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "name.isEmpty",
+            "place": "lib/catches.dart:88"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "import",
+            "place": "lib/catches.dart:94"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "each"
+          },
+          {
+            "from": "1",
+            "to": "3",
+            "label": "done"
+          },
+          {
+            "from": "2",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/catches.dart#rotate": {
+      "name": "rotate",
+      "place": "lib/catches.dart:60",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "read",
+            "place": "lib/catches.dart:63"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "old.isEmpty",
+            "place": "lib/catches.dart:64"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "replace",
+            "place": "lib/catches.dart:65"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "audit",
+            "place": "lib/catches.dart:70"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": "4",
+            "label": "true"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/catches.dart#upload": {
+      "name": "upload",
+      "place": "lib/catches.dart:11",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "check",
+            "place": "lib/catches.dart:13"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "!ok",
+            "place": "lib/catches.dart:14"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "send",
+            "place": "lib/catches.dart:15"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "confirm",
+            "place": "lib/catches.dart:20"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": [
+    {
+      "place": "lib/catches.dart:16",
+      "message": "catch clauses are not drawn"
+    },
+    {
+      "place": "lib/catches.dart:28",
+      "message": "catch clauses are not drawn"
+    },
+    {
+      "place": "lib/catches.dart:41",
+      "message": "catch clauses are not drawn"
+    },
+    {
+      "place": "lib/catches.dart:52",
+      "message": "catch clauses are not drawn"
+    },
+    {
+      "place": "lib/catches.dart:67",
+      "message": "catch clauses are not drawn"
+    },
+    {
+      "place": "lib/catches.dart:79",
+      "message": "catch clauses are not drawn"
+    }
+  ]
+}

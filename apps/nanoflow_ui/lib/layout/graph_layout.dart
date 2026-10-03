@@ -1,3 +1,5 @@
+import 'package:nanoflow_model/nanoflow_model.dart';
+
 import 'geometry.dart';
 import 'layout_graph.dart';
 
@@ -12,14 +14,15 @@ final class GraphLayout {
     required this.options,
   });
 
-  /// Every node by name, in declaration order.
+  /// Every node by id: the start marker, the body's nodes in its order, the
+  /// end markers.
   final Map<String, NodeBox> nodes;
 
-  /// Every exit of every node, node by node in declaration order, each node's
-  /// exits in declaration order.
+  /// Every exit of every node, node by node in [nodes]' order, each node's
+  /// exits in the order of their first edges.
   final List<ExitBox> exits;
 
-  /// Every arrow, in declaration order.
+  /// Every arrow, in the body's order.
   final List<EdgePath> edges;
 
   /// Everything drawn: tiles, texts, marks, arrows.
@@ -32,30 +35,39 @@ final class GraphLayout {
 /// Where a node is drawn.
 final class NodeBox {
   NodeBox({
+    required this.id,
+    required this.kind,
+    required this.node,
     required this.name,
-    required this.command,
-    required this.isFork,
-    required this.isStart,
+    required this.place,
+    required this.inside,
     required this.layer,
     required this.tile,
     required this.nameRect,
-    required this.commandRect,
-    required this.startRect,
+    required this.placeRect,
     required this.marks,
     required this.status,
     required this.bar,
   });
 
-  final String name;
+  /// The body node's id, [startMarker], or an end marker's ([endMarkerAt]).
+  final String id;
 
-  /// What the node runs, shown under its name: its `command` or `decide`.
-  final String command;
+  final NodeKind kind;
 
-  /// A fork (a fork icon), not a worker (a terminal icon).
-  final bool isFork;
+  /// The body's node; `null` for a marker.
+  final GraphNode? node;
 
-  /// Whether `start` names the node.
-  final bool isStart;
+  /// The name under the tile; `null` for a marker.
+  final String? name;
+
+  /// The place in the code under the name: `review.dart:49`; `null` for a
+  /// marker, or when unknown.
+  final String? place;
+
+  /// What is written inside the tile instead of an icon: `start`, `end`,
+  /// `{ 3 }` on a call, `×` on copies.
+  final String? inside;
 
   /// The node's layer, 0 for the leftmost.
   final int layer;
@@ -63,17 +75,14 @@ final class NodeBox {
   /// The tile.
   final Rect tile;
 
-  /// The name, centred under the tile.
+  /// The name, centred under the tile; empty without a name.
   final Rect nameRect;
 
-  /// The command, centred under the name.
-  final Rect commandRect;
+  /// The place, centred under the name; empty without a place.
+  final Rect placeRect;
 
-  /// The `start` caption over the tile, for a `start` node.
-  final Rect? startRect;
-
-  /// The room kept for badges over the tile's top right corner: the id of a
-  /// run on the node, the count of visits.
+  /// The room kept over the tile: for the tiles stacked behind a call or
+  /// copies, and for badges over its top right corner.
   final Rect marks;
 
   /// The room kept for the state badge on the tile's bottom right corner.
@@ -99,11 +108,8 @@ enum ExitShape {
   /// A dot an arrow leaves from.
   dot,
 
-  /// A capsule, for a list target: an arrow per node.
+  /// A capsule, for edges side by side: an arrow per edge.
   capsule,
-
-  /// A short line with a cross bar, for an empty target.
-  stub,
 }
 
 /// Where an exit is drawn.
@@ -112,50 +118,40 @@ final class ExitBox {
     required this.node,
     required this.index,
     required this.label,
-    required this.isElse,
     required this.shape,
     required this.anchor,
     required this.handle,
-    required this.stubEnd,
     required this.labelRect,
     required this.counterAt,
     required this.reach,
   });
 
-  /// The node the exit belongs to.
+  /// The id of the node the exit belongs to.
   final String node;
 
-  /// The exit's index in the node's exits, in declaration order.
+  /// The exit's index in the node's exits.
   final int index;
 
-  /// The exit's key; `null` for a worker's exit.
+  /// The label of the exit's edges; `null` for unlabelled edges.
   final String? label;
-
-  /// Whether this is the `else` of a fork.
-  final bool isElse;
 
   final ExitShape shape;
 
-  /// The middle of the dot or the capsule; where a stub starts.
+  /// The middle of the dot or the capsule.
   final Point anchor;
 
-  /// The dot or the capsule; for a stub, its line.
+  /// The dot or the capsule.
   final Rect handle;
 
-  /// Where a stub ends, at its cross bar; `null` for other shapes.
-  final double? stubEnd;
-
-  /// The opaque chip of the key; `null` when there is no key.
+  /// The opaque chip of the label; `null` when there is no label.
   final Rect? labelRect;
 
-  /// The top left corner of the counter's chip: right after the key, or in
+  /// The top left corner of the counter's chip: right after the label, or in
   /// its place.
   final Point counterAt;
 
-  /// How far right of the anchor the key with the counter's room ends.
+  /// How far right of the anchor the label with the counter's room ends.
   final double reach;
-
-  bool get isEmpty => shape == ExitShape.stub;
 }
 
 /// Where an arrow is drawn.
@@ -171,16 +167,16 @@ final class EdgePath {
     required this.pieces,
   });
 
-  /// The node the arrow leaves.
+  /// The id of the node the arrow leaves.
   final String from;
 
   /// The index of the exit it leaves by, in the node's exits.
   final int exitIndex;
 
-  /// The arrow's index in the exit's target list; 0 for a single target.
+  /// The arrow's index among the arrows of its exit.
   final int listIndex;
 
-  /// The node the arrow enters.
+  /// The id of the node the arrow enters.
   final String to;
 
   final EdgeKind kind;

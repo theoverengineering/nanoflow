@@ -1,18 +1,15 @@
-// migrated in Task 12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
 import 'package:flutter/material.dart';
 
 import '../state/clock.dart';
 import '../state/graph_model.dart';
 import '../state/sessions.dart';
-import '../state/texts.dart' show count;
 import '../theme.dart';
 import '../widgets/clickable.dart';
 
 /// The sessions column (docs/ui-spec.md «Сессии»): `Current graph` on top,
 /// then the graph's sessions, newest first, each a card with its status bar;
 /// what is selected is highlighted, and a click selects. Without sessions,
-/// `No runs yet` and how to start one. A running session's time goes on with
+/// `No sessions yet` and where they come from. A running session's time goes on with
 /// the [clock].
 class SessionsColumn extends StatelessWidget {
   const SessionsColumn({
@@ -52,7 +49,6 @@ class SessionsColumn extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
               child: _CurrentGraphItem(
                 selected: selection.currentGraph,
-                errors: model.source.errors.length,
                 onTap: selection.showCurrentGraph,
               ),
             ),
@@ -71,7 +67,7 @@ class SessionsColumn extends StatelessWidget {
             ),
             Expanded(
               child: sessions.isEmpty
-                  ? _NoRuns(graphFile)
+                  ? _NoSessions(graphFile)
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
                       itemCount: sessions.length,
@@ -97,7 +93,7 @@ class SessionsColumn extends StatelessWidget {
 }
 
 /// A session in the column: the day and time it started and its short id;
-/// its status with the time, `1 failed`, and how many runs it has.
+/// its status with the time, `1 failed`, and how many steps it has.
 class _SessionCard extends StatelessWidget {
   const _SessionCard({
     super.key,
@@ -131,21 +127,15 @@ class _SessionCard extends StatelessWidget {
       color: summary.status.textColor,
     ),
     badge: summary.failedBadge,
-    end: Text(summary.runsText, style: AppText.sessionRuns),
+    end: Text(summary.stepsText, style: AppText.sessionRuns),
   );
 }
 
-/// `Current graph`: the graph file as it is now, without a session; how
-/// many errors `nanoflow check` finds in it.
+/// `Current graph`: the graph file as it is now, without a session.
 class _CurrentGraphItem extends StatelessWidget {
-  const _CurrentGraphItem({
-    required this.selected,
-    required this.errors,
-    required this.onTap,
-  });
+  const _CurrentGraphItem({required this.selected, required this.onTap});
 
   final bool selected;
-  final int errors;
   final VoidCallback onTap;
 
   @override
@@ -156,7 +146,6 @@ class _CurrentGraphItem extends StatelessWidget {
     title: 'Current graph',
     status: 'The graph file as it is now',
     statusStyle: AppText.hint,
-    badge: errors > 0 ? count(errors, 'error') : null,
   );
 }
 
@@ -290,8 +279,8 @@ class _DangerBadge extends StatelessWidget {
 }
 
 /// What the column says without sessions.
-class _NoRuns extends StatelessWidget {
-  const _NoRuns(this.graphFile);
+class _NoSessions extends StatelessWidget {
+  const _NoSessions(this.graphFile);
 
   final String graphFile;
 
@@ -303,10 +292,10 @@ class _NoRuns extends StatelessWidget {
       spacing: 6,
       children: [
         Text(
-          noRunsYet,
+          noSessionsYet,
           style: AppText.sessionTitle.copyWith(color: AppColors.textSecondary),
         ),
-        Text(noRunsHint(graphFile), style: AppText.hint),
+        Text(noSessionsHint(graphFile), style: AppText.hint),
       ],
     ),
   );

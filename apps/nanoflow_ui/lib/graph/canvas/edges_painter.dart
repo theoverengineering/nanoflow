@@ -7,8 +7,8 @@ import 'layout_geometry.dart';
 
 /// Paints the arrows of a layout and the input bars they point at
 /// (docs/ui-spec.md «Граф»): rounded corners, one arrowhead size, dashed
-/// back arrows, darker where no run went, the selected run's path in the
-/// accent color and over the rest. Under the exits and the tiles: a tile
+/// back arrows, in the tones the marks give them, the lighter over the
+/// darker. Under the exits and the tiles: a tile
 /// covers the half of its bar on its side, as in the mockups.
 class EdgesPainter extends CustomPainter {
   EdgesPainter(this.graph, this.marks);
@@ -36,7 +36,7 @@ class EdgesPainter extends CustomPainter {
     for (final node in graph.nodes.values) {
       final bar = node.bar;
       if (bar == null) continue;
-      final tone = marks.bar(node.name, into[node.name] ?? const []);
+      final tone = marks.bar(node.id, into[node.id] ?? const []);
       canvas.drawRRect(
         RRect.fromRectAndRadius(bar.rect.toRect(), const Radius.circular(2)),
         Paint()..color = CanvasColors.line(tone),

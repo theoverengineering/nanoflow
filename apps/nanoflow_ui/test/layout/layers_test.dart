@@ -7,14 +7,14 @@ import 'support.dart';
 
 void main() {
   LayoutGraph layered(Map<String, Object?> json) {
-    final graph = LayoutGraph.of(graphOf(json));
+    final graph = LayoutGraph.ofBody(bodyOf(json));
     findBackEdges(graph);
     assignLayers(graph);
     return graph;
   }
 
   Map<String, int> layers(LayoutGraph graph) => {
-    for (final node in graph.nodes) node.name: node.layer,
+    for (final node in graph.nodes) node.id: node.layer,
   };
 
   test('a node\'s layer is the longest forward path to it; back arrows do '
@@ -29,13 +29,22 @@ void main() {
         'b': {'command': 'b', 'then': 'c'},
         'c': {'command': 'c', 'then': 'd'},
         'd': {'decide': 'd', 'then': 'e', 'else': 'a'},
-        'e': {'command': 'e'},
+        'e': {'command': 'e', 'then': <String>[]},
       },
     });
-    expect(layers(graph), {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4});
+    expect(layers(graph), {
+      startMarker: 0,
+      'a': 1,
+      'b': 2,
+      'c': 3,
+      'd': 4,
+      'e': 5,
+      endMarker: 6,
+    });
   });
 
-  test('a start node another start leads to takes the layer after it', () {
+  test('a node the start and another node both lead to takes the layer '
+      'after that node', () {
     final graph = layered({
       'start': ['a', 'b'],
       'nodes': {
@@ -44,19 +53,19 @@ void main() {
         'c': {'command': 'c'},
       },
     });
-    expect(layers(graph), {'a': 0, 'b': 1, 'c': 2});
+    expect(layers(graph), {startMarker: 0, 'a': 1, 'b': 2, 'c': 3});
   });
 
-  test('start nodes and nodes nothing forward reaches are layer 0', () {
+  test('the start marker and nodes nothing forward reaches are layer 0', () {
     final graph = layered({
-      'start': ['a', 'b'],
+      'start': 'a',
       'nodes': {
         'a': {'command': 'a', 'then': 'c'},
-        'b': {'command': 'b', 'then': 'c'},
+        'lost': {'command': 'lost', 'then': 'c'},
         'c': {'command': 'c', 'then': 'a'},
       },
     });
-    expect(layers(graph), {'a': 0, 'b': 0, 'c': 1});
+    expect(layers(graph), {startMarker: 0, 'a': 1, 'lost': 0, 'c': 2});
   });
 
   test('a long arrow gets a pass point in every layer it crosses', () {
@@ -73,18 +82,19 @@ void main() {
       },
     });
     final items = buildLayers(graph);
-    String name(Item item) => item.isPass ? 'pass' : item.node!.name;
+    String name(Item item) => item.isPass ? 'pass' : item.node!.id;
     // The walk looks at a's arrow to d before it reaches b.
     expect(
       [for (final layer in items) layer.map(name).toList()],
       [
+        [startMarker],
         ['a'],
         ['pass', 'b'],
         ['pass', 'c'],
         ['d'],
       ],
     );
-    final far = graph.edges.first;
+    final far = graph.edges[1];
     expect(far.segs.map((s) => '${name(s.from)}->${name(s.to)}'), [
       'a->pass',
       'pass->pass',

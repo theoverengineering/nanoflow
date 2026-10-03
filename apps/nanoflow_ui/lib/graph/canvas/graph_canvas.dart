@@ -1,5 +1,3 @@
-// migrated in Task 11: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' show PointMode;
@@ -7,9 +5,11 @@ import 'dart:ui' show PointMode;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show Graph;
+import 'package:nanoflow_model/nanoflow_model.dart'
+    show CallNode, GraphBody, GraphFunction, GraphNode;
 
 import '../../layout/layout.dart' as layout;
+import '../../state/body_path.dart';
 import '../../state/graph_model.dart';
 import '../../widgets/clickable.dart';
 import 'canvas_marks.dart';
@@ -30,15 +30,18 @@ class GraphCanvasController {
   /// Where the layout's origin is on the canvas.
   Offset get offset => _state?._offset ?? Offset.zero;
 
-  /// Pans the view so that the node [name] is in it, unless it already is
+  /// Pans the view so that the node [id] is in it, unless it already is
   /// (docs/ui-spec.md «Выбор»: «Шаг в ленте прокручивает холст к своему
   /// узлу, если тот не виден»).
-  void revealNode(String name) => _state?._reveal(name);
+  void revealNode(String id) => _state?._reveal(id);
 }
 
-/// The graph canvas (docs/ui-spec.md «Холст», «Граф»): the graph of the
-/// selected session, or the current graph, with what the session's runs
-/// put on it, over a dotted grid that pans and zooms with it.
+/// What a double click on [node] opens, at [position] on the screen.
+typedef OpenNode = void Function(GraphNode node, Offset position);
+
+/// The graph canvas (docs/ui-spec.md «Холст», «Граф»; spec §9 «Граф»): one
+/// level of the graph of the selected session, or of the current graph
+/// (`CanvasGraph.levels`), over a dotted grid that pans and zooms with it.
 ///
 /// A drag or a two-finger trackpad swipe pans, as does the scroll wheel; a
 /// pinch, or the wheel with ⌘ or Ctrl, zooms; the buttons in the bottom
@@ -46,15 +49,14 @@ class GraphCanvasController {
 /// fitted when first shown and when another graph replaces it, but not when
 /// new data comes for the same graph.
 ///
-/// A click on a node selects its last step in the selected run; a double
-/// click is [onOpenStep].
+/// A double click on a call or on copies is [onOpenNode]: what it opens
+/// (`openings`) is drawn instead.
 class GraphCanvas extends StatefulWidget {
   const GraphCanvas({
     super.key,
     required this.model,
-    this.now = DateTime.now,
     this.controller,
-    this.onOpenStep,
+    this.onOpenNode,
     this.topInset = sessionBarRoom,
   });
 
@@ -64,13 +66,10 @@ class GraphCanvas extends StatefulWidget {
 
   final GraphModel model;
 
-  /// The time to show the selected session at.
-  final DateTime Function() now;
-
   final GraphCanvasController? controller;
 
-  /// Opens the details of the step of a node: on a double click on it.
-  final ValueChanged<String>? onOpenStep;
+  /// Opens a call or copies: on a double click on it.
+  final OpenNode? onOpenNode;
 
   /// The room over the graph that fitting keeps free, for what floats over
   /// the top of the canvas; at most half the canvas. When it changes, the
@@ -99,12 +98,12 @@ class _GraphCanvasState extends State<GraphCanvas> {
   static const _options = layout.LayoutOptions(measure: measureLabel);
 
   late CanvasGraph _canvas;
-  CanvasMarks _marks = CanvasMarks.plain;
+  final CanvasMarks _marks = CanvasMarks.plain;
 
-  /// The graph laid out, and its JSON: another graph object with the same
-  /// JSON keeps the layout and the view.
-  Graph? _graph;
-  String? _graphJson;
+  /// The body laid out, and what it is drawn with in JSON: another body
+  /// drawn the same keeps the layout and the view.
+  GraphBody? _body;
+  String? _bodyJson;
   layout.GraphLayout? _layout;
 
   /// The graph drawn with its marks, made when they change: moving the view
@@ -160,27 +159,35 @@ class _GraphCanvasState extends State<GraphCanvas> {
 
   void _changed() => setState(_read);
 
-  /// Takes in what the model shows now; lays out a graph of another shape.
+  /// Takes in what the model shows now; lays out a body drawn otherwise.
   void _read() {
-    final model = widget.model;
-    _canvas = model.canvas;
-    _marks = _canvas.ofSession
-        ? CanvasMarks.of(model.sessionView(widget.now()))
-        : CanvasMarks.plain;
-    _layOut(_canvas.graph);
+    _canvas = widget.model.canvas;
+    _layOut(_canvas.body, _canvas.file?.functions ?? const {});
     final graph = _layout;
     _drawing = graph == null ? null : _draw(graph);
   }
 
-  void _layOut(Graph? graph) {
-    if (identical(graph, _graph)) return;
-    _graph = graph;
-    final json = graph == null ? null : jsonEncode(graph.json);
-    if (json == _graphJson) return;
-    _graphJson = json;
-    _layout = graph == null
+  void _layOut(GraphBody? body, Map<String, GraphFunction> functions) {
+    // A body read once is drawn with the functions of its own file.
+    if (identical(body, _body)) return;
+    _body = body;
+    // A call is drawn with its function's name and steps.
+    final json = body == null
         ? null
-        : layout.layoutGraph(graph, options: _options);
+        : jsonEncode([
+            body.toJson(),
+            for (final node in body.nodes)
+              if (node is CallNode)
+                [
+                  layout.nodeName(node, functions),
+                  layout.insideText(node, functions),
+                ],
+          ]);
+    if (json == _bodyJson) return;
+    _bodyJson = json;
+    _layout = body == null
+        ? null
+        : layout.layoutBody(body, functions: functions, options: _options);
     _needsFit = true;
   }
 
@@ -223,13 +230,13 @@ class _GraphCanvasState extends State<GraphCanvas> {
   void _zoom(double factor) =>
       setState(() => _zoomAt(_room(_size).center, factor));
 
-  void _reveal(String name) {
-    final node = _layout?.nodes[name];
+  void _reveal(String id) {
+    final node = _layout?.nodes[id];
     if (node == null || _size.isEmpty) return;
     final area = node.tile
         .toRect()
         .expandToInclude(node.nameRect.toRect())
-        .expandToInclude(node.commandRect.toRect());
+        .expandToInclude(node.placeRect.toRect());
     final shown = Rect.fromLTRB(
       area.left * _scale + _offset.dx,
       area.top * _scale + _offset.dy,
@@ -333,11 +340,10 @@ class _GraphCanvasState extends State<GraphCanvas> {
                       right: 16,
                       bottom: 14,
                       child: Legend(
-                        runId: _marks.runId,
+                        runId: null,
                         backEdges: _marks.backEdges(
                           graph.edges.where((edge) => edge.isDashed),
                         ),
-                        emptyTargets: graph.exits.any((exit) => exit.isEmpty),
                       ),
                     ),
                 ],
@@ -363,7 +369,8 @@ class _GraphCanvasState extends State<GraphCanvas> {
     ),
   );
 
-  /// The arrows, the exits and the nodes of [graph], with the marks.
+  /// The arrows, the exits and the nodes of [graph], with the marks; calls
+  /// and copies open on a double click.
   Widget _draw(layout.GraphLayout graph) => RepaintBoundary(
     child: SizedBox(
       width: graph.bounds.width,
@@ -380,21 +387,22 @@ class _GraphCanvasState extends State<GraphCanvas> {
           for (final node in graph.nodes.values)
             Positioned.fromRect(
               rect: NodeTile.areaOf(node),
-              child: NodeTile(
-                node: node,
-                state: _marks.state(node.name),
-                selected: _marks.selectedNode == node.name,
-                markers: _marks.markers(node.name),
-                visits: _marks.visits(node.name),
-                selectedRun: _marks.runId,
-                onTap: () => widget.model.clickNode(node.name),
-                onDoubleTap: () => widget.onOpenStep?.call(node.name),
-              ),
+              child: NodeTile(node: node, onDoubleTap: _opener(node)),
             ),
         ],
       ),
     ),
   );
+
+  /// What a double click on [node] does: opens it, when it opens anything.
+  ValueChanged<Offset>? _opener(layout.NodeBox node) {
+    final graphNode = node.node;
+    final open = widget.onOpenNode;
+    if (graphNode == null || open == null) return null;
+    final functions = _canvas.file?.functions ?? const {};
+    if (openings(graphNode, functions).isEmpty) return null;
+    return (position) => open(graphNode, position);
+  }
 }
 
 /// The canvas's dots, 22 px apart at full size, moving with the graph.

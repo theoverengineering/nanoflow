@@ -137,29 +137,40 @@ class CopyIcon extends StatelessWidget {
   );
 }
 
-/// A chevron pointing left, or right when [right]: back, the visit before
-/// or after. 16 units.
+/// A chevron pointing left, or right when [right], or down when [down]:
+/// back, the visit before or after, a list to open. 16 units.
 class ChevronIcon extends StatelessWidget {
   const ChevronIcon({
     super.key,
     required this.size,
     required this.color,
     this.right = false,
+    this.down = false,
   });
 
   final double size;
   final Color color;
   final bool right;
+  final bool down;
 
   @override
   Widget build(BuildContext context) => _LineIcon(
-    kind: right ? 'chevron right' : 'chevron',
+    kind: down
+        ? 'chevron down'
+        : right
+        ? 'chevron right'
+        : 'chevron',
     units: 16,
     size: size,
     color: color,
     strokeWidth: 1.7,
     draw: (canvas, stroke) => canvas.drawPath(
-      right
+      down
+          ? (Path()
+              ..moveTo(3, 6)
+              ..lineTo(8, 11)
+              ..lineTo(13, 6))
+          : right
           ? (Path()
               ..moveTo(6, 3)
               ..lineTo(11, 8)
@@ -229,7 +240,7 @@ class LinkIcon extends StatelessWidget {
   );
 }
 
-/// A worker's terminal, or a fork's fork when [fork]. 28 units.
+/// A step's terminal, or a condition's diamond when [fork]. 28 units.
 class NodeIcon extends StatelessWidget {
   const NodeIcon({
     super.key,
@@ -246,7 +257,7 @@ class NodeIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _LineIcon(
-    kind: fork ? 'fork' : 'worker',
+    kind: fork ? 'condition' : 'step',
     units: 28,
     size: size,
     color: color,
@@ -254,23 +265,15 @@ class NodeIcon extends StatelessWidget {
     draw: fork ? _fork : _terminal,
   );
 
-  static void _fork(Canvas canvas, Paint stroke) => canvas
-    ..drawCircle(const Offset(8, 14), 2.6, stroke)
-    ..drawPath(
-      Path()
-        ..moveTo(10.6, 14)
-        ..lineTo(13.6, 14)
-        ..cubicTo(15.4, 14, 16, 13, 16, 11.6)
-        ..lineTo(16, 9.8)
-        ..cubicTo(16, 8.6, 16.8, 7.8, 18, 7.8)
-        ..lineTo(21.2, 7.8)
-        ..moveTo(13.6, 14)
-        ..cubicTo(15.4, 14, 16, 15, 16, 16.4)
-        ..lineTo(16, 18.2)
-        ..cubicTo(16, 19.4, 16.8, 20.2, 18, 20.2)
-        ..lineTo(21.2, 20.2),
-      stroke,
-    );
+  static void _fork(Canvas canvas, Paint stroke) => canvas.drawPath(
+    Path()
+      ..moveTo(14, 4.5)
+      ..lineTo(23.5, 14)
+      ..lineTo(14, 23.5)
+      ..lineTo(4.5, 14)
+      ..close(),
+    stroke,
+  );
 
   static void _terminal(Canvas canvas, Paint stroke) => canvas
     ..drawRRect(

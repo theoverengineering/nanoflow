@@ -1,21 +1,17 @@
-// migrated in Task 11/12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
 import 'dart:math' as math;
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' show GraphNode;
 
 import '../platform/shell.dart';
+import '../state/body_path.dart';
 import '../state/clock.dart';
 import '../state/graph_model.dart';
-import '../state/step_details.dart';
-import '../state/visits.dart';
 import '../theme.dart';
 import 'canvas/graph_canvas.dart';
-import 'details/step_details_window.dart';
 import 'graph_notes.dart';
 import 'header.dart';
-import 'logs/logs_panel.dart';
 import 'session_bar.dart';
 import 'sessions_column.dart';
 import 'split_view.dart';
@@ -23,18 +19,15 @@ import 'split_view.dart';
 /// Opens the model of the graph file [file].
 typedef OpenModel = GraphModel Function(String file);
 
-/// One graph file's screen (docs/ui-spec.md «Экран графа»): the header, the
-/// sessions column, and the canvas over the `Logs` panel, the session bar
-/// and the notes on the graph (`GraphNotes`) floating over the canvas. The
-/// borders of the column and of the panel move.
+/// One graph file's screen (docs/ui-spec.md «Экран графа», spec §9): the
+/// header with the crumbs of the levels drawn, the sessions column, and the
+/// canvas with the session bar and the notes on the graph (`GraphNotes`)
+/// floating over it, the notes under the bar. The border of the column
+/// moves.
 ///
-/// `Open` in `Logs` opens the step details window over it all on the
-/// selected step; a double click on a node, on the node's last visit in the
-/// selected run, else its latest in the session, else on its description
-/// alone. The visit the window shows is selected, so the canvas and `Logs`
-/// are on it once the window closes — or, when it is the last step of a
-/// running run, on that run's newest step: following goes on under the
-/// window, which stays on its visit.
+/// A double click on a call draws its function's body, on copies the body
+/// of a copy (`openings`); a call of an interface method first offers its
+/// implementations.
 ///
 /// The screen owns the [GraphModel] of its file: it opens it as it opens,
 /// and disposes it, with what follows the files, when it is left or the
@@ -64,9 +57,6 @@ class GraphScreen extends StatefulWidget {
   /// The time; by default the wall clock.
   final DateTime Function()? now;
 
-  /// The key of the `Logs` panel.
-  static const logsKey = ValueKey('logs');
-
   @override
   State<GraphScreen> createState() => _GraphScreenState();
 }
@@ -78,18 +68,15 @@ class _GraphScreenState extends State<GraphScreen> {
   final _canvas = GraphCanvasController();
   bool _closed = false;
 
-  /// Whether the `Logs` panel is folded to its title.
-  bool _logsFolded = false;
-
   /// How tall the notes over the canvas are; 0 without any.
   double _notesHeight = 0;
 
-  /// Where the notes and the session bar float over the canvas.
+  /// Where the session bar and the notes float over the canvas: clear of
+  /// the zoom buttons at the bottom.
   static const _overCanvas = EdgeInsets.fromLTRB(16, 12, 16, 60);
 
-  /// What the step details window shows, while it is open: a node, at the
-  /// visit of a step or without one.
-  ({String node, String? stepId})? _details;
+  /// The gap between the session bar and the notes under it.
+  static const _barGap = 8.0;
 
   @override
   void initState() {
@@ -111,25 +98,39 @@ class _GraphScreenState extends State<GraphScreen> {
     _model.dispose();
   }
 
-  /// `Open` in `Logs`: the window on the selected [step].
-  void _openStep(StepDetails step) =>
-      setState(() => _details = (node: step.node, stepId: step.stepId));
-
-  /// A double click on [node]: the window on the visit it opens on, which is
-  /// selected; on the node's description when it has none.
-  void _openNode(String node) {
-    final visit = _model.visitToOpen(node);
-    if (visit != null) _model.showVisit(visit.stepId);
-    setState(() => _details = (node: node, stepId: visit?.stepId));
+  /// A double click on [node] at [position]: draws what it opens; for a
+  /// call of several functions, the one chosen from a menu there.
+  Future<void> _openNode(GraphNode node, Offset position) async {
+    final choices = openings(node, _model.canvas.file?.functions ?? const {});
+    if (choices.isEmpty) return;
+    if (choices.length == 1) return _model.open(choices.single);
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final at = overlay.globalToLocal(position);
+    final functionId = await showMenu<String>(
+      context: context,
+      color: AppColors.control,
+      position: RelativeRect.fromLTRB(
+        at.dx,
+        at.dy,
+        overlay.size.width - at.dx,
+        overlay.size.height - at.dy,
+      ),
+      items: [
+        for (final choice in choices)
+          PopupMenuItem<String>(
+            value: choice.functionId,
+            height: 34,
+            child: Text(
+              functionTitle(choice.functionId!),
+              style: AppText.button.copyWith(color: AppColors.textPrimary),
+            ),
+          ),
+      ],
+    );
+    if (functionId == null || !mounted) return;
+    _model.open(Opened(node.id, functionId: functionId));
   }
-
-  /// Shows [visit] in the window, and selects it.
-  void _showVisit(Visit visit) {
-    _model.showVisit(visit.stepId);
-    setState(() => _details = (node: visit.node, stepId: visit.stepId));
-  }
-
-  void _closeDetails() => setState(() => _details = null);
 
   @override
   void dispose() {
@@ -140,115 +141,77 @@ class _GraphScreenState extends State<GraphScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final details = _details;
-    return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(child: _screen()),
-          if (details != null)
-            Positioned.fill(
-              child: StepDetailsWindow(
-                model: _model,
-                clock: _clock,
-                shell: widget.shell,
-                graphFile: widget.path,
-                node: details.node,
-                stepId: details.stepId,
-                onVisit: _showVisit,
-                onClose: _closeDetails,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _screen() => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      GraphHeader(
-        path: widget.path,
-        source: _model.source,
-        shell: widget.shell,
-        onBack: widget.onBack,
-      ),
-      Expanded(
-        child: SplitView(
-          axis: Axis.horizontal,
-          sized: SplitPane.first,
-          extent: 272,
-          minExtent: 200,
-          maxExtent: 480,
-          minOther: 480,
-          border: AppColors.divider,
-          first: SessionsColumn(
-            model: _model,
-            clock: _clock,
-            graphFile: widget.path,
-          ),
-          second: SplitView(
-            axis: Axis.vertical,
-            sized: SplitPane.second,
-            extent: 280,
-            minExtent: 120,
-            maxExtent: double.infinity,
-            minOther: 200,
-            border: AppColors.panelBorder,
-            fixedExtent: _logsFolded ? LogsPanel.foldedExtent : null,
-            first: Stack(
-              children: [
-                Positioned.fill(
-                  child: GraphCanvas(
-                    model: _model,
-                    now: _clock.now,
-                    controller: _canvas,
-                    onOpenStep: _openNode,
-                    // The graph is fitted clear of the notes too.
-                    topInset: math.max(
-                      GraphCanvas.sessionBarRoom,
-                      _notesHeight == 0
-                          ? 0
-                          : _overCanvas.top * 2 + _notesHeight,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: _overCanvas.left,
-                  top: _overCanvas.top,
-                  right: _overCanvas.right,
-                  child: SessionBar(model: _model, clock: _clock),
-                ),
-                // Clear of the zoom buttons.
-                Positioned.fill(
-                  child: Padding(
-                    padding: _overCanvas,
-                    child: ListenableBuilder(
-                      listenable: _model,
-                      builder: (context, _) => GraphNotes(
-                        notes: _model.canvas.notes,
-                        onHeight: (height) =>
-                            setState(() => _notesHeight = height),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            second: LogsPanel(
-              key: GraphScreen.logsKey,
+  Widget build(BuildContext context) => Scaffold(
+    body: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GraphHeader(
+          path: widget.path,
+          model: _model,
+          shell: widget.shell,
+          onBack: widget.onBack,
+        ),
+        Expanded(
+          child: SplitView(
+            axis: Axis.horizontal,
+            sized: SplitPane.first,
+            extent: 272,
+            minExtent: 200,
+            maxExtent: 480,
+            minOther: 480,
+            border: AppColors.divider,
+            first: SessionsColumn(
               model: _model,
               clock: _clock,
-              shell: widget.shell,
               graphFile: widget.path,
-              collapsed: _logsFolded,
-              onToggle: () => setState(() => _logsFolded = !_logsFolded),
-              onRevealNode: _canvas.revealNode,
-              onOpenStep: _openStep,
+            ),
+            second: ListenableBuilder(
+              listenable: _model,
+              builder: (context, _) => _overlaidCanvas(),
             ),
           ),
         ),
-      ),
-    ],
+      ],
+    ),
   );
+
+  /// The canvas with the session bar over its top, and the notes under the
+  /// bar; the graph is fitted clear of both.
+  Widget _overlaidCanvas() {
+    final notesTop =
+        _overCanvas.top +
+        (_model.selectedSession == null ? 0 : SessionBar.height + _barGap);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GraphCanvas(
+            model: _model,
+            controller: _canvas,
+            onOpenNode: _openNode,
+            topInset: _notesHeight == 0
+                ? GraphCanvas.sessionBarRoom
+                : math.max(
+                    GraphCanvas.sessionBarRoom,
+                    notesTop + _notesHeight + _overCanvas.top,
+                  ),
+          ),
+        ),
+        Positioned(
+          left: _overCanvas.left,
+          top: _overCanvas.top,
+          right: _overCanvas.right,
+          child: SessionBar(model: _model, clock: _clock),
+        ),
+        Positioned.fill(
+          child: Padding(
+            padding: _overCanvas.copyWith(top: notesTop),
+            child: GraphNotes(
+              notes: _model.canvas.notes,
+              onHeight: (height) => setState(() => _notesHeight = height),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

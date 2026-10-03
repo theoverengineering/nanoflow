@@ -5,7 +5,7 @@ import 'support.dart';
 
 void main() {
   late GraphLayout good;
-  setUpAll(() => good = layoutGraph(loadGraph('review')));
+  setUpAll(() => good = layoutOf('review'));
 
   /// [good] with the points of the arrow from [from]'s exit [exit] replaced.
   GraphLayout withPoints(String from, int exit, List<Point> points) =>
@@ -37,9 +37,10 @@ void main() {
   });
 
   test('an arrow through a tile', () {
-    // collect -> is-empty, straight through discard's column instead.
-    final edge = edgeOf(good, 'is-empty', 1);
-    final discard = good.nodes['discard']!.tile;
+    // The false arrow of change.path.isEmpty, straight through discard's
+    // column instead.
+    final edge = edgeOf(good, '2', 1);
+    final discard = good.nodes['3']!.tile;
     final y = discard.center.y;
     final points = [
       edge.points.first,
@@ -50,13 +51,13 @@ void main() {
       edge.points.last,
     ];
     expect(
-      checkLayout(withPoints('is-empty', 1, points)),
-      contains(contains('passes through discard')),
+      checkLayout(withPoints('2', 1, points)),
+      contains(contains('passes through 3')),
     );
   });
 
   test('pieces that are not horizontal, vertical or at 45°', () {
-    final edge = edgeOf(good, 'is-empty', 0);
+    final edge = edgeOf(good, '2', 0);
     final points = [
       edge.points.first,
       Point(edge.points.first.x + 80, edge.points.first.y),
@@ -64,15 +65,16 @@ void main() {
       edge.points.last,
     ];
     expect(
-      checkLayout(withPoints('is-empty', 0, points)),
+      checkLayout(withPoints('2', 0, points)),
       contains(contains('not horizontal, vertical or at 45°')),
     );
   });
 
   test('parallel pieces closer than a lane gap', () {
-    // Lay is-empty's true arrow along its else arrow, 5 px over it.
-    final other = edgeOf(good, 'is-empty', 1);
-    final edge = edgeOf(good, 'is-empty', 0);
+    // Lay change.path.isEmpty's true arrow along its false arrow, 5 px
+    // over it.
+    final other = edgeOf(good, '2', 1);
+    final edge = edgeOf(good, '2', 0);
     final y = other.points.first.y - 5;
     final points = [
       edge.points.first,
@@ -83,13 +85,13 @@ void main() {
       edge.points.last,
     ];
     expect(
-      checkLayout(withPoints('is-empty', 0, points)),
+      checkLayout(withPoints('2', 0, points)),
       contains(contains('5.0 apart')),
     );
   });
 
-  test('a turn before the key and counter, or too close to the input', () {
-    final edge = edgeOf(good, 'is-empty', 0);
+  test('a turn before the label and counter, or too close to the input', () {
+    final edge = edgeOf(good, '2', 0);
     final first = edge.points.first;
     final last = edge.points.last;
     final early = [
@@ -99,8 +101,8 @@ void main() {
       last,
     ];
     expect(
-      checkLayout(withPoints('is-empty', 0, early)),
-      contains(contains('shorter than its key and counter')),
+      checkLayout(withPoints('2', 0, early)),
+      contains(contains('shorter than its label and counter')),
     );
     final late = [
       first,
@@ -109,22 +111,22 @@ void main() {
       last,
     ];
     expect(
-      checkLayout(withPoints('is-empty', 0, late)),
+      checkLayout(withPoints('2', 0, late)),
       contains(contains('straight piece at the input')),
     );
   });
 
   test('an arrowhead that does not point at the bar with a gap', () {
-    final edge = edgeOf(good, 'collect', 0);
+    final edge = edgeOf(good, '1', 0);
     final points = [edge.points.first, edge.points.last + const Point(6, 0)];
     expect(
-      checkLayout(withPoints('collect', 0, points)),
+      checkLayout(withPoints('1', 0, points)),
       contains(contains('is not an arrow gap before the bar')),
     );
   });
 
   test('a loop that crosses another arrow', () {
-    final loops = layoutGraph(loadGraph('loops'));
+    final loops = layoutOf('loops');
     final retry = edgeOf(loops, 'fetch-check', 0);
     final skip = edgeOf(loops, 'fetch-check', 2);
     // Move the retry loop's far side down through skip's vertical.
@@ -161,11 +163,11 @@ void main() {
     expect(checkLayout(broken), contains(contains('loop crosses')));
   });
 
-  test('crossings count every pair of crossing pieces, stubs included', () {
+  test('crossings count every pair of crossing pieces', () {
     expect(countCrossings(good), 0);
-    final edge = edgeOf(good, 'is-empty', 0);
-    final other = edgeOf(good, 'is-empty', 1);
-    // Swap the true arrow's end below the else arrow: it crosses it once.
+    final edge = edgeOf(good, '2', 0);
+    final other = edgeOf(good, '2', 1);
+    // Swap the true arrow's end below the false arrow: it crosses it.
     final below = other.points.first.y + 20;
     final points = [
       edge.points.first,
@@ -175,6 +177,6 @@ void main() {
       Point(edge.points.last.x - 40, edge.points.last.y),
       edge.points.last,
     ];
-    expect(countCrossings(withPoints('is-empty', 0, points)), 2);
+    expect(countCrossings(withPoints('2', 0, points)), 2);
   });
 }

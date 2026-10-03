@@ -100,9 +100,9 @@ const double clearance = 8;
 /// A turn in a gap takes a lane: its own x, a lane gap right of the turn
 /// before it. Lanes are ordered for the fewest crossings — a ladder down
 /// turns further right the higher it starts, a ladder up the lower it starts,
-/// back arrows and loops nest — and start right of every key, counter room
-/// and stub they pass. A small change of height becomes a 45° diagonal where
-/// that fits in the gap. A gap is as wide as its keys, lanes, the straight
+/// back arrows and loops nest — and start right of every label and counter
+/// room they pass. A small change of height becomes a 45° diagonal where
+/// that fits in the gap. A gap is as wide as its labels, lanes, the straight
 /// piece before an input and the arrowhead need.
 ///
 /// [frames] are the nodes' frames with tiles at x = 0; [depth] is the y of
@@ -144,7 +144,7 @@ Lanes assignLanes(
 
     final turns = <Turn>[];
     void setRoom(Turn turn, {required double reach}) {
-      // Left: past the own key and every mark the turn's heights pass.
+      // Left: past the own label and every mark the turn's heights pass.
       var least = reach;
       for (final rect in leftObstacles) {
         if (_spans(turn, rect)) {
@@ -182,7 +182,7 @@ Lanes assignLanes(
     double reachOf(GEdge edge) =>
         leftEdge + frames[edge.from]!.exits[edge.exit]!.reach;
 
-    // Pieces that keep their height still need room for their key, the
+    // Pieces that keep their height still need room for their label, the
     // straight piece and the arrowhead.
     var needed = gap < 0 ? 0.0 : right + minLayerGap;
     if (gap >= 0) {

@@ -1,0 +1,171 @@
+{
+  "format": 1,
+  "package": "recursion",
+  "fingerprint": "sha256:56d52e597f7b07f2cd5c5b0941c8615e91c56edf81d589b5a0c619f2f7510216",
+  "sources": {
+    "bin/main.dart": "sha256:9dea7998b773db12dd9dfcc53d21c17cd55a88031d43fee0f3b83ce042d76fba",
+    "lib/crawl.dart": "sha256:8e5b626472e5da65908ec35da3c1c4f8449e06594252cd9b1470e1b1cda30457"
+  },
+  "builds": {},
+  "workflows": [
+    "lib/crawl.dart#crawl",
+    "lib/crawl.dart#deploy"
+  ],
+  "functions": {
+    "lib/crawl.dart#crawl": {
+      "name": "crawl",
+      "place": "lib/crawl.dart:22",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "fetch",
+            "place": "lib/crawl.dart:23"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "for link in links",
+            "place": "lib/crawl.dart:24"
+          },
+          {
+            "id": "3",
+            "kind": "call",
+            "functions": [
+              "lib/crawl.dart#visit"
+            ],
+            "place": "lib/crawl.dart:25"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "each"
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": "done"
+          },
+          {
+            "from": "3",
+            "to": "2",
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/crawl.dart#deploy": {
+      "name": "deploy",
+      "place": "lib/crawl.dart:6",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "try-deploy",
+            "place": "lib/crawl.dart:7"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "!ok",
+            "place": "lib/crawl.dart:8"
+          },
+          {
+            "id": "3",
+            "kind": "call",
+            "functions": [
+              "lib/crawl.dart#deploy"
+            ],
+            "place": "lib/crawl.dart:10"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/crawl.dart#visit": {
+      "name": "visit",
+      "place": "lib/crawl.dart:31",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "url.endsWith('/')",
+            "place": "lib/crawl.dart:32"
+          },
+          {
+            "id": "2",
+            "kind": "call",
+            "functions": [
+              "lib/crawl.dart#crawl"
+            ],
+            "place": "lib/crawl.dart:32"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "true"
+          },
+          {
+            "from": "1",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

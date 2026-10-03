@@ -1,13 +1,16 @@
 // Renders graph layouts in the mockups' style, to look at them.
 //
-//   dart run tool/render_layout.dart [--out <dir>] [--png] <graph.json>...
+//   dart run tool/render_layout.dart [--out <dir>] [--png] <graph file>
+//       [<function>[/<copies node>...]]...
 //
-// Each graph file (the README graph format as JSON) becomes <dir>/<name>.svg,
-// the default <dir> being the current directory; the layout's crossings and
-// any broken rules are printed. With --png, headless Google Chrome ($CHROME,
-// or its usual place on macOS) also renders <dir>/<name>.png at twice the
-// size. (`qlmanage -t` renders SVG too, but into a square of about 800 px,
-// cutting off wider graphs.)
+// Each function of the graph file named — by its id, or by what follows `#`
+// in it — and each copies body named after it by its node's id becomes
+// <dir>/<package>-<function>[-<node>...].svg; with no function named, every
+// function and every copies body in it. The default <dir> is the current
+// directory; the layout's crossings and any broken rules are printed. With
+// --png, headless Google Chrome ($CHROME, or its usual place on macOS) also
+// renders the PNG at twice the size. (`qlmanage -t` renders SVG too, but
+// into a square of about 800 px, cutting off wider graphs.)
 import 'dart:convert';
 import 'dart:io';
 
@@ -19,24 +22,25 @@ String get _chrome =>
     Platform.environment['CHROME'] ??
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
+const _usage =
+    'usage: dart run tool/render_layout.dart [--out <dir>] [--png] '
+    '<graph file> [<function>[/<copies node>...]]...';
+
 Future<void> main(List<String> args) async {
   var out = '.';
   var png = false;
-  final files = <String>[];
+  final rest = <String>[];
   for (var i = 0; i < args.length; i++) {
     if (args[i] == '--out' && i + 1 < args.length) {
       out = args[++i];
     } else if (args[i] == '--png') {
       png = true;
     } else {
-      files.add(args[i]);
+      rest.add(args[i]);
     }
   }
-  if (files.isEmpty) {
-    stderr.writeln(
-      'usage: dart run tool/render_layout.dart [--out <dir>] [--png] '
-      '<graph.json>...',
-    );
+  if (rest.isEmpty) {
+    stderr.writeln(_usage);
     exitCode = 2;
     return;
   }
@@ -48,17 +52,34 @@ Future<void> main(List<String> args) async {
     exitCode = 1;
     return;
   }
+  final json = jsonDecode(File(rest.first).readAsStringSync());
+  final file = GraphFile.fromJson(json as Map<String, Object?>);
+  final bodies = <String, GraphBody>{};
+  try {
+    if (rest.length == 1) {
+      for (final function in file.functions.values) {
+        _addAll(bodies, _short(function.id), function.body);
+      }
+    } else {
+      for (final path in rest.skip(1)) {
+        final (name, body) = _bodyAt(file, path);
+        bodies[name] = body;
+      }
+    }
+  } on FormatException catch (e) {
+    stderr.writeln(e.message);
+    exitCode = 2;
+    return;
+  }
   Directory(out).createSync(recursive: true);
-  for (final file in files) {
-    final json = jsonDecode(File(file).readAsStringSync());
-    final graph = Graph.fromJson(json as Map<String, Object?>);
-    final layout = layoutGraph(graph);
-    final name = file.split('/').last.replaceAll(RegExp(r'\.json$'), '');
+  for (final MapEntry(key: name, value: body) in bodies.entries) {
+    final layout = layoutBody(body, functions: file.functions);
+    final stem = '${file.package}-$name';
     final problems = checkLayout(layout);
     final caption =
-        '$name · ${countCrossings(layout)} crossings · '
+        '$stem · ${countCrossings(layout)} crossings · '
         '${problems.length} problems';
-    final svg = File('$out/$name.svg')
+    final svg = File('$out/$stem.svg')
       ..writeAsStringSync(renderSvg(layout, caption));
     stdout.writeln(caption);
     for (final problem in problems) {
@@ -72,15 +93,53 @@ Future<void> main(List<String> args) async {
         '--hide-scrollbars',
         '--force-device-scale-factor=2',
         '--window-size=${width.ceil()},${height.ceil()}',
-        '--screenshot=${File('$out/$name.png').absolute.path}',
+        '--screenshot=${File('$out/$stem.png').absolute.path}',
         svg.absolute.uri.toString(),
       ]);
       if (result.exitCode != 0) {
-        stderr.writeln('$name: chrome failed: ${result.stderr}');
+        stderr.writeln('$stem: chrome failed: ${result.stderr}');
         exitCode = 1;
       }
     }
   }
+}
+
+/// A function's id without its path: `release`, `MailNotifier.notify`.
+String _short(String id) => id.substring(id.indexOf('#') + 1);
+
+/// [body] by [name], and every copies body in it after it.
+void _addAll(Map<String, GraphBody> bodies, String name, GraphBody body) {
+  bodies[name] = body;
+  for (final node in body.nodes) {
+    if (node is CopiesNode) _addAll(bodies, '$name-${node.id}', node.body);
+  }
+}
+
+/// The body [path] names in [file]: a function, by its id or what follows
+/// `#` in it, then the copies nodes down to the body, by their ids.
+(String, GraphBody) _bodyAt(GraphFile file, String path) {
+  // A function's id has slashes of its own: the nodes start after `#`.
+  final hash = path.indexOf('#');
+  final slash = path.indexOf('/', hash < 0 ? 0 : hash);
+  final name = slash < 0 ? path : path.substring(0, slash);
+  final nodes = slash < 0
+      ? const <String>[]
+      : path.substring(slash + 1).split('/');
+  final function =
+      file.functions[name] ??
+      file.functions.values.where((f) => _short(f.id) == name).firstOrNull;
+  if (function == null) throw FormatException('no function $name');
+  var body = function.body;
+  var stem = _short(function.id);
+  for (final id in nodes) {
+    final node = body.node(id);
+    if (node is! CopiesNode) {
+      throw FormatException('$id in $stem is not a copies node');
+    }
+    body = node.body;
+    stem = '$stem-$id';
+  }
+  return (stem, body);
 }
 
 /// The size of the SVG of [layout]: the layout, its margin and the caption.
@@ -94,16 +153,19 @@ const _canvas = '#27282C';
 const _dots = '#3A3B41';
 const _tileFill = '#323338';
 const _tileBorder = '#5A5B62';
+const _stackFill = '#2C2D32';
+const _stackBorder = '#55565C';
+const _markerBorder = '#5A5B62';
+const _markerText = '#A7A8AE';
 const _icon = '#C9CACF';
 const _name = '#ECECEE';
-const _command = '#9A9BA2';
+const _place = '#9A9BA2';
 const _caption = '#7E7F86';
 const _edge = '#8E8F96';
 const _back = '#9C8CFF';
 const _label = '#BDB3FF';
 const _counter = '#7E7F86';
 const _bar = '#8E8F96';
-const _stub = '#55565C';
 
 const _pad = 40.0;
 const _captionRoom = 24.0;
@@ -160,22 +222,7 @@ String renderSvg(GraphLayout layout, String caption) {
     );
   }
 
-  // Stubs of empty targets.
-  for (final exit in layout.exits.where((e) => e.isEmpty)) {
-    final y = exit.anchor.y;
-    final end = exit.stubEnd!;
-    svg
-      ..writeln(
-        '<path d="M${_p(exit.anchor)} L${_n(end)} ${_n(y)}" '
-        'stroke="$_stub" stroke-width="1.6"/>',
-      )
-      ..writeln(
-        '<path d="M${_n(end)} ${_n(y - 6)} L${_n(end)} ${_n(y + 6)}" '
-        'stroke="$_stub" stroke-width="2.4" stroke-linecap="round"/>',
-      );
-  }
-
-  // Keys and counters on opaque chips.
+  // Labels and counters on opaque chips.
   final options = layout.options;
   for (final exit in layout.exits) {
     final label = exit.label;
@@ -200,40 +247,68 @@ String renderSvg(GraphLayout layout, String caption) {
   // Nodes.
   for (final node in layout.nodes.values) {
     final t = node.tile;
-    svg.writeln(
-      '<rect x="${_n(t.left + 1)}" y="${_n(t.top + 1)}" '
-      'width="${_n(t.width - 2)}" height="${_n(t.height - 2)}" rx="11" '
-      'fill="$_tileFill" stroke="$_tileBorder" stroke-width="2"/>',
-    );
     final c = t.center;
-    svg.writeln(
-      '<g transform="translate(${_n(c.x - 14)} ${_n(c.y - 14)})" '
-      'fill="none" stroke="$_icon" stroke-width="1.6" '
-      'stroke-linecap="round" stroke-linejoin="round">'
-      '${node.isFork ? _forkIcon : _workerIcon}</g>',
-    );
-    if (node.startRect case final start?) {
+    switch (node.kind) {
+      case NodeKind.start || NodeKind.end:
+        svg
+          ..writeln(
+            '<rect x="${_n(t.left + 1)}" y="${_n(t.top + 1)}" '
+            'width="${_n(t.width - 2)}" height="${_n(t.height - 2)}" '
+            'rx="11" fill="$_canvas" stroke="$_markerBorder" '
+            'stroke-width="1.5" stroke-dasharray="4 3"/>',
+          )
+          ..writeln(
+            _inside(c, node.inside!, _markerText, size: 12, mono: false),
+          );
+      case NodeKind.step ||
+          NodeKind.condition ||
+          NodeKind.call ||
+          NodeKind.copies:
+        for (var k = tilesBehind(node.kind); k >= 1; k--) {
+          svg.writeln(
+            '<rect x="${_n(t.left + k * stackInset + 0.75)}" '
+            'y="${_n(t.top - k * stackStep + 0.75)}" '
+            'width="${_n(t.width - 2 * k * stackInset - 1.5)}" '
+            'height="${_n(t.height - 1.5)}" rx="11" fill="$_stackFill" '
+            'stroke="$_stackBorder" stroke-width="1.5"/>',
+          );
+        }
+        svg.writeln(
+          '<rect x="${_n(t.left + 1)}" y="${_n(t.top + 1)}" '
+          'width="${_n(t.width - 2)}" height="${_n(t.height - 2)}" rx="11" '
+          'fill="$_tileFill" stroke="$_tileBorder" stroke-width="2"/>',
+        );
+        if (node.inside case final text?) {
+          // Alone, the × of copies is drawn larger.
+          final size = node.kind == NodeKind.copies ? 22.0 : 15.0;
+          svg.writeln(_inside(c, text, _icon, size: size, mono: true));
+        } else {
+          svg.writeln(
+            '<g transform="translate(${_n(c.x - 14)} ${_n(c.y - 14)})" '
+            'fill="none" stroke="$_icon" stroke-width="1.6" '
+            'stroke-linecap="round" stroke-linejoin="round">'
+            '${node.kind == NodeKind.condition ? _conditionIcon : _stepIcon}'
+            '</g>',
+          );
+        }
+    }
+    if (node.name case final name?) {
+      final n = node.nameRect;
       svg.writeln(
-        '<text x="${_n(start.left)}" y="${_n(start.bottom - 2)}" '
-        'font-family="Geist, Helvetica, sans-serif" font-size="9.5" '
-        'font-weight="600" letter-spacing="0.76" fill="$_caption">'
-        '$startCaption</text>',
+        '<text x="${_n(n.center.x)}" y="${_n(n.bottom - 3)}" '
+        'text-anchor="middle" font-family="Geist, Helvetica, sans-serif" '
+        'font-size="12.5" font-weight="600" fill="$_name">'
+        '${_escape(name)}</text>',
       );
     }
-    final n = node.nameRect;
-    svg.writeln(
-      '<text x="${_n(n.center.x)}" y="${_n(n.bottom - 3)}" '
-      'text-anchor="middle" font-family="Geist, Helvetica, sans-serif" '
-      'font-size="12.5" font-weight="600" fill="$_name">'
-      '${_escape(node.name)}</text>',
-    );
-    final cmd = node.commandRect;
-    svg.writeln(
-      '<text x="${_n(cmd.center.x)}" y="${_n(cmd.bottom - 3)}" '
-      'text-anchor="middle" font-family="Geist Mono, Menlo, monospace" '
-      'font-size="10.5" fill="$_command">${_escape(node.command)}'
-      '</text>',
-    );
+    if (node.place case final place?) {
+      final p = node.placeRect;
+      svg.writeln(
+        '<text x="${_n(p.center.x)}" y="${_n(p.bottom - 3)}" '
+        'text-anchor="middle" font-family="Geist Mono, Menlo, monospace" '
+        'font-size="10.5" fill="$_place">${_escape(place)}</text>',
+      );
+    }
     if (node.bar case final bar?) {
       final r = bar.rect;
       svg.writeln(
@@ -258,11 +333,6 @@ String renderSvg(GraphLayout layout, String caption) {
           'height="${_n(h.height)}" rx="5.5" fill="$_edge" '
           'stroke="$_canvas" stroke-width="2"/>',
         );
-      case ExitShape.stub:
-        svg.writeln(
-          '<circle cx="${_n(exit.anchor.x)}" cy="${_n(exit.anchor.y)}" '
-          'r="5.5" fill="$_stub" stroke="$_canvas" stroke-width="2"/>',
-        );
     }
   }
 
@@ -285,14 +355,23 @@ String _chip(Rect rect, String text, String colour, double padding) =>
     'font-family="Geist Mono, Menlo, monospace" font-size="10" '
     'fill="$colour">${_escape(text)}</text>';
 
-const _workerIcon =
+/// [text] in the middle of a tile whose middle is [c], [size] px high.
+String _inside(
+  Point c,
+  String text,
+  String colour, {
+  required double size,
+  required bool mono,
+}) =>
+    '<text x="${_n(c.x)}" y="${_n(c.y + size * 0.35)}" text-anchor="middle" '
+    'font-family="${mono ? 'Geist Mono, Menlo, monospace' : 'Geist, Helvetica, sans-serif'}" '
+    'font-size="${_n(size)}" fill="$colour">${_escape(text)}</text>';
+
+const _stepIcon =
     '<rect x="3.5" y="5.5" width="21" height="17" rx="3.5"/>'
     '<path d="M9 11l3.2 3L9 17M14.5 17.5h4.5"/>';
 
-const _forkIcon =
-    '<circle cx="8" cy="14" r="2.6"/>'
-    '<path d="M10.6 14h3c1.8 0 2.4-1 2.4-2.4V9.8c0-1.2.8-2 2-2h3.2'
-    'M13.6 14c1.8 0 2.4 1 2.4 2.4v1.8c0 1.2.8 2 2 2h3.2"/>';
+const _conditionIcon = '<path d="M14 4.5L23.5 14L14 23.5L4.5 14z"/>';
 
 String _p(Point p) => '${_n(p.x)} ${_n(p.y)}';
 

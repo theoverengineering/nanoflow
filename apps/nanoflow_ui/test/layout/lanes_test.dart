@@ -6,7 +6,7 @@ import 'support.dart';
 void main() {
   test('a ladder down turns further right the higher it starts; a ladder up '
       'the lower it starts', () {
-    final layout = layoutGraph(loadGraph('fork6'));
+    final layout = layoutOf('fork6');
     // triage's arrows that turn in the first gap: (start, turn x, going down).
     final turns = [
       for (final edge in layout.edges)
@@ -37,11 +37,12 @@ void main() {
 
   test('turns in a gap take their own lanes a lane gap apart, even at '
       'heights far apart', () {
-    // The review mockup: is-empty's true arrow turns up and the back arrow
-    // from fix turns up into inspect in the same gap, far below it.
-    final layout = layoutGraph(loadGraph('review'));
-    final up = verticals(edgeOf(layout, 'is-empty', 0)).single;
-    final back = verticals(edgeOf(layout, 'fix', 0)).last;
+    // The review example: change.path.isEmpty's true arrow turns up and the
+    // back arrow from fix turns up into inspect in the same gap, far below
+    // it.
+    final layout = layoutOf('review');
+    final up = verticals(edgeOf(layout, '2', 0)).single;
+    final back = verticals(edgeOf(layout, '8', 0)).last;
     expect(
       (up.$1 - back.$1).abs(),
       greaterThanOrEqualTo(layout.options.laneGap),
@@ -52,7 +53,7 @@ void main() {
       'do not run along each other', () {
     // A random graph whose lanes ran two such pieces 7 px apart before
     // lanes kept them in order.
-    final layout = layoutGraph(loadGraph('tangle'));
+    final layout = layoutOf('tangle');
     expect(
       checkLayout(layout).where((problem) => problem.contains('parallel')),
       isEmpty,
@@ -63,8 +64,8 @@ void main() {
       'make', () {
     // As in the review mockup: one arrow turns far up on a lane, which makes
     // the gap wide enough for a small change of height to slant.
-    final layout = layoutGraph(
-      graphOf({
+    final layout = layoutBody(
+      bodyOf({
         'start': 's',
         'nodes': {
           's': {
@@ -103,8 +104,8 @@ void main() {
 
   test('a change of height alone in its gap turns on a lane unless it is '
       'smaller than the lane\'s corners', () {
-    final layout = layoutGraph(
-      graphOf({
+    final layout = layoutBody(
+      bodyOf({
         'start': 's',
         'nodes': {
           's': {
@@ -121,14 +122,14 @@ void main() {
   });
 
   test('a big change of height turns on a vertical lane', () {
-    final layout = layoutGraph(loadGraph('review'));
-    final up = edgeOf(layout, 'is-empty', 0);
+    final layout = layoutOf('review');
+    final up = edgeOf(layout, '2', 0);
     expect(verticals(up), hasLength(1));
     expect(up.points.length, 4);
   });
 
   test('a long arrow runs straight through its corridor', () {
-    final layout = layoutGraph(loadGraph('task'));
+    final layout = layoutOf('task');
     // admit's human and review arrows go over the top, as in the mockup:
     // one height from their first turn to their last.
     for (final exit in [1, 2]) {
@@ -140,9 +141,9 @@ void main() {
   });
 
   test('back arrows run under every node, a wider one lower', () {
-    final layout = layoutGraph(loadGraph('task'));
+    final layout = layoutOf('task');
     final lowest = layout.nodes.values
-        .map((n) => n.commandRect.bottom)
+        .map((n) => n.placeRect.bottom)
         .reduce((a, b) => a > b ? a : b);
     final lanes = <String, double>{};
     for (final edge in layout.edges.where((e) => e.kind == EdgeKind.back)) {

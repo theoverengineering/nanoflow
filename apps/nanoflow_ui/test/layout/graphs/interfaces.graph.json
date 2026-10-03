@@ -1,0 +1,119 @@
+{
+  "format": 1,
+  "package": "interfaces",
+  "fingerprint": "sha256:1fcaf63a8d32bf045de27ae4874376b5b80b9ccd9b1c4cd0f54f9b30fa716ccb",
+  "sources": {
+    "bin/main.dart": "sha256:4890a4c16e366110bed8d9bbfc515216c009844a56f3a640ee4dbc3c373ae839",
+    "lib/deploy.dart": "sha256:29e8e68ea82f60bfc1a85d76c3c3abfdaf2edc1c512c3737b2576eca75aa1d63"
+  },
+  "builds": {},
+  "workflows": [
+    "lib/deploy.dart#deploy"
+  ],
+  "functions": {
+    "lib/deploy.dart#ChatNotifier.notify": {
+      "name": "notify",
+      "place": "lib/deploy.dart:11",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "post",
+            "place": "lib/deploy.dart:12"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/deploy.dart#MailNotifier.notify": {
+      "name": "notify",
+      "place": "lib/deploy.dart:18",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "find-owners",
+            "place": "lib/deploy.dart:19"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "send-mail",
+            "place": "lib/deploy.dart:20"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/deploy.dart#deploy": {
+      "name": "deploy",
+      "place": "lib/deploy.dart:30",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "roll-out",
+            "place": "lib/deploy.dart:31"
+          },
+          {
+            "id": "2",
+            "kind": "call",
+            "functions": [
+              "lib/deploy.dart#ChatNotifier.notify",
+              "lib/deploy.dart#MailNotifier.notify"
+            ],
+            "place": "lib/deploy.dart:32"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

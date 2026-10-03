@@ -1,0 +1,141 @@
+{
+  "format": 1,
+  "package": "fork6",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/fork6.dart#fork6"
+  ],
+  "functions": {
+    "lib/fork6.dart#fork6": {
+      "name": "fork6",
+      "place": "lib/fork6.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "triage",
+            "kind": "fork",
+            "label": "triage",
+            "place": "lib/fork6.dart:10"
+          },
+          {
+            "id": "fix-bug",
+            "kind": "step",
+            "name": "fix-bug",
+            "place": "lib/fork6.dart:11"
+          },
+          {
+            "id": "build-feature",
+            "kind": "step",
+            "name": "build-feature",
+            "place": "lib/fork6.dart:12"
+          },
+          {
+            "id": "write-docs",
+            "kind": "step",
+            "name": "write-docs",
+            "place": "lib/fork6.dart:13"
+          },
+          {
+            "id": "answer",
+            "kind": "step",
+            "name": "answer",
+            "place": "lib/fork6.dart:14"
+          },
+          {
+            "id": "escalate",
+            "kind": "step",
+            "name": "escalate",
+            "place": "lib/fork6.dart:15"
+          },
+          {
+            "id": "review",
+            "kind": "step",
+            "name": "review",
+            "place": "lib/fork6.dart:16"
+          },
+          {
+            "id": "close",
+            "kind": "step",
+            "name": "close",
+            "place": "lib/fork6.dart:17"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "triage",
+            "label": null
+          },
+          {
+            "from": "triage",
+            "to": "fix-bug",
+            "label": "bug"
+          },
+          {
+            "from": "triage",
+            "to": "build-feature",
+            "label": "feature"
+          },
+          {
+            "from": "triage",
+            "to": "write-docs",
+            "label": "docs"
+          },
+          {
+            "from": "triage",
+            "to": "answer",
+            "label": "question"
+          },
+          {
+            "from": "triage",
+            "to": "escalate",
+            "label": "security"
+          },
+          {
+            "from": "triage",
+            "to": "close",
+            "label": "duplicate"
+          },
+          {
+            "from": "triage",
+            "to": null,
+            "label": "spam"
+          },
+          {
+            "from": "triage",
+            "to": "answer",
+            "label": "else"
+          },
+          {
+            "from": "fix-bug",
+            "to": "review",
+            "label": null
+          },
+          {
+            "from": "build-feature",
+            "to": "review",
+            "label": null
+          },
+          {
+            "from": "write-docs",
+            "to": "review",
+            "label": null
+          },
+          {
+            "from": "answer",
+            "to": "close",
+            "label": null
+          },
+          {
+            "from": "review",
+            "to": "close",
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

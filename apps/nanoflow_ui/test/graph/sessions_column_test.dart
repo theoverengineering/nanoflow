@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
+import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/state/sessions.dart';
 import 'package:nanoflow_ui/theme.dart';
 
-import '../state/support.dart';
-import 'canvas/support.dart';
 import 'support.dart';
 
 void main() {
@@ -32,30 +30,31 @@ void main() {
   Color? fillOf(WidgetTester tester, Finder box) =>
       (tester.widget<Container>(box).decoration! as BoxDecoration).color;
 
+  Future<GraphModel> pump(WidgetTester tester) =>
+      pumpGraphScreen(tester, model: columnModel(), now: () => columnNow);
+
   testWidgets('lists the sessions newest first, by the day and time they '
       'started', (tester) async {
-    await pumpGraphScreen(tester);
+    await pump(tester);
 
     final lines = [
       'Today · 14:03:11',
       'Today · 13:27:40',
       'Today · 12:40:02',
       'Yesterday · 19:12:55',
-      'Yesterday · 11:40:17',
-      'Sep 18 · 16:05:33',
     ];
     final tops = [
       for (final line in lines) tester.getTopLeft(inColumn(find.text(line))).dy,
     ];
     expect(tops, orderedEquals([...tops]..sort()));
     expect(inColumn(find.text('Sessions')), findsOneWidget);
-    expect(inColumn(find.text('6')), findsOneWidget);
+    expect(inColumn(find.text('4')), findsOneWidget);
   });
 
   testWidgets('shows a session by its short id, the full id in a tooltip', (
     tester,
   ) async {
-    await pumpGraphScreen(tester);
+    await pump(tester);
 
     expect(inCard('a1b2-session', find.text('a1b2')), findsOneWidget);
     expect(
@@ -67,7 +66,7 @@ void main() {
   testWidgets('a running session is amber: Running for 12m 26s', (
     tester,
   ) async {
-    await pumpGraphScreen(tester);
+    await pump(tester);
 
     final status = inCard('a1b2-session', find.text('Running for 12m 26s'));
     expect(status, findsOneWidget);
@@ -76,46 +75,49 @@ void main() {
   });
 
   testWidgets('a failed session is red: Failed in 6m 18s', (tester) async {
-    await pumpGraphScreen(tester);
+    await pump(tester);
 
-    final status = inCard('7c3e-s', find.text('Failed in 6m 18s'));
+    final status = inCard('7c3e-session', find.text('Failed in 6m 18s'));
     expect(status, findsOneWidget);
     expect(colorOf(tester, status), AppColors.dangerText);
-    expect(barOf(tester, '7c3e-s'), AppColors.failed);
+    expect(barOf(tester, '7c3e-session'), AppColors.failed);
   });
 
   testWidgets('a finished session is green: Finished in 3m 04s', (
     tester,
   ) async {
-    await pumpGraphScreen(tester);
+    await pump(tester);
 
-    final status = inCard('4b8d-s', find.text('Finished in 3m 04s'));
+    final status = inCard('4b8d-session', find.text('Finished in 3m 04s'));
     expect(status, findsOneWidget);
     expect(colorOf(tester, status), AppColors.finishedText);
-    expect(barOf(tester, '4b8d-s'), AppColors.finished);
+    expect(barOf(tester, '4b8d-session'), AppColors.finished);
   });
 
-  testWidgets('a running session with failed runs says 1 failed', (
+  testWidgets('a running session with failed steps says 1 failed', (
     tester,
   ) async {
-    await pumpGraphScreen(tester);
+    await pump(tester);
 
-    expect(inCard('f0a5-s', find.text('Running for 47m 57s')), findsOneWidget);
-    expect(inCard('f0a5-s', find.text('1 failed')), findsOneWidget);
-    // A failed session's failed run is in its status already.
+    expect(
+      inCard('f0a5-session', find.text('Running for 47m 57s')),
+      findsOneWidget,
+    );
+    expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
+    // A failed session's failed step is in its status already.
     expect(find.text('1 failed'), findsOneWidget);
   });
 
-  testWidgets('counts the runs of each session', (tester) async {
-    await pumpGraphScreen(tester);
+  testWidgets('counts the steps of each session', (tester) async {
+    await pump(tester);
 
-    expect(inCard('a1b2-session', find.text('3 runs')), findsOneWidget);
-    expect(inCard('4b8d-s', find.text('1 run')), findsOneWidget);
+    expect(inCard('a1b2-session', find.text('2 steps')), findsOneWidget);
+    expect(inCard('4b8d-session', find.text('1 step')), findsOneWidget);
   });
 
   testWidgets('a running session goes on counting its time', (tester) async {
-    var now = Mockup.now;
-    await pumpGraphScreen(tester, now: () => now);
+    var now = columnNow;
+    await pumpGraphScreen(tester, model: columnModel(), now: () => now);
     expect(find.text('Running for 12m 26s'), findsOneWidget);
 
     now = now.add(const Duration(seconds: 1));
@@ -127,35 +129,35 @@ void main() {
 
   group('the selection', () {
     testWidgets('highlights the selected session', (tester) async {
-      await pumpGraphScreen(tester);
+      await pump(tester);
 
       expect(fillOf(tester, card('a1b2-session')), AppColors.accentSurface);
-      expect(fillOf(tester, card('f0a5-s')), AppColors.card);
+      expect(fillOf(tester, card('f0a5-session')), AppColors.card);
       expect(
         colorOf(tester, inCard('a1b2-session', find.text('a1b2'))),
         AppColors.accentText,
       );
       expect(
-        colorOf(tester, inCard('f0a5-s', find.text('f0a5'))),
+        colorOf(tester, inCard('f0a5-session', find.text('f0a5'))),
         AppColors.textFaint,
       );
     });
 
     testWidgets('a click on a session selects it', (tester) async {
-      final model = await pumpGraphScreen(tester);
+      final model = await pump(tester);
 
-      await tester.tap(card('7c3e-s'));
+      await tester.tap(card('7c3e-session'));
       await tester.pump();
 
-      expect(model.selection.sessionId, '7c3e-s');
-      expect(fillOf(tester, card('7c3e-s')), AppColors.accentSurface);
+      expect(model.selection.sessionId, '7c3e-session');
+      expect(fillOf(tester, card('7c3e-session')), AppColors.accentSurface);
       expect(fillOf(tester, card('a1b2-session')), AppColors.card);
     });
 
     testWidgets('Current graph is above the sessions; a click selects it', (
       tester,
     ) async {
-      final model = await pumpGraphScreen(tester);
+      final model = await pump(tester);
       final current = find.byKey(SessionsColumn.currentGraphKey);
       expect(
         tester.getTopLeft(current).dy,
@@ -174,35 +176,14 @@ void main() {
     });
   });
 
-  testWidgets('Current graph counts the errors of the current graph', (
+  testWidgets('without sessions: No sessions yet and where they come from', (
     tester,
   ) async {
     final model = await pumpGraphScreen(tester);
-    expect(find.text('2 errors'), findsNothing);
-
-    sourceOf(model).errors = const ['first', 'second'];
-    await tester.pump();
-
-    expect(
-      find.descendant(
-        of: find.byKey(SessionsColumn.currentGraphKey),
-        matching: find.text('2 errors'),
-      ),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('without sessions: No runs yet and how to start one', (
-    tester,
-  ) async {
-    final model = await pumpGraphScreen(
-      tester,
-      model: ownedModel(current: Graph.fromJson(reviewGraph)),
-    );
 
     expect(model.selection.currentGraph, isTrue);
-    expect(inColumn(find.text(noRunsYet)), findsOneWidget);
-    expect(inColumn(find.text(noRunsHint(reviewFile))), findsOneWidget);
+    expect(inColumn(find.text(noSessionsYet)), findsOneWidget);
+    expect(inColumn(find.text(noSessionsHint(releaseFile))), findsOneWidget);
     expect(find.byKey(SessionsColumn.currentGraphKey), findsOneWidget);
   });
 }

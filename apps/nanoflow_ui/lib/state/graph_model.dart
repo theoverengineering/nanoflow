@@ -5,6 +5,7 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_reader/nanoflow_reader.dart';
 import 'package:path/path.dart' as p;
 
+import 'body_path.dart';
 import 'freshness.dart';
 import 'graph_file_source.dart';
 import 'outcomes.dart';
@@ -125,15 +126,19 @@ const notInGraphFileDetail =
     'Choose such a workflow to see its sessions.';
 
 /// The graph the canvas shows (spec §9 «Граф», «Сессия»): a workflow of the
-/// graph file for `Current graph`, the session's own graph for a session.
+/// graph file for `Current graph`, the session's own graph for a session;
+/// one level of it at a time.
 final class CanvasGraph {
-  const CanvasGraph._({
+  CanvasGraph._({
     required this.file,
     required this.workflow,
     required this.ofSession,
+    required List<Opened> path,
     this.placeholder,
     this.notes = const [],
-  });
+  }) : levels = workflow == null
+           ? const []
+           : List.unmodifiable(bodyLevels(workflow, file!.functions, path));
 
   /// The graph file whose functions the canvas draws: the graph file, or
   /// the session's snapshot of it; `null` when there is none to draw.
@@ -153,16 +158,29 @@ final class CanvasGraph {
 
   /// What to know of the graph, over the canvas.
   final List<GraphNote> notes;
+
+  /// The levels down to the body drawn: the [workflow]'s, then those opened
+  /// in it as far as the graph has them (`bodyLevels`); none without a
+  /// [workflow].
+  final List<BodyLevel> levels;
+
+  /// The body drawn: that of the last of the [levels].
+  GraphBody? get body => levels.lastOrNull?.body;
+
+  /// The levels opened under the [workflow]'s body, as far as the graph has
+  /// them.
+  List<Opened> get path => [for (final level in levels.skip(1)) level.opened!];
 }
 
 /// The canvas of `Current graph`: the workflow [workflowId] (a
-/// `WorkflowChoice.id`) of [graph], the graph file [file] last read; noted
-/// when the file is gone, its latest [error], its [freshness], its warnings,
-/// then [extraNotes] ([workflowNotes]).
+/// `WorkflowChoice.id`) of [graph], the graph file [file] last read, down
+/// [path]; noted when the file is gone, its latest [error], its
+/// [freshness], its warnings, then [extraNotes] ([workflowNotes]).
 CanvasGraph fileCanvas({
   required String file,
   required GraphFile? graph,
   required String? workflowId,
+  List<Opened> path = const [],
   String? error,
   bool fileMissing = false,
   Freshness? freshness,
@@ -175,6 +193,7 @@ CanvasGraph fileCanvas({
     file: graph,
     workflow: workflow,
     ofSession: false,
+    path: path,
     placeholder: graph == null
         ? noValidGraphYet
         : workflow != null
@@ -215,12 +234,14 @@ CanvasGraph fileCanvas({
   );
 }
 
-/// The canvas of [session], shown on [graph]: its workflow on it; noted
-/// when the session has no snapshot, when its code is not that of the graph
-/// or was not recorded, then [extraNotes] ([workflowNotes]).
+/// The canvas of [session], shown on [graph]: its workflow on it, down
+/// [path]; noted when the session has no snapshot, when its code is not
+/// that of the graph or was not recorded, then [extraNotes]
+/// ([workflowNotes]).
 CanvasGraph sessionCanvas(
   SessionData session,
   SessionGraph graph, {
+  List<Opened> path = const [],
   List<GraphNote> extraNotes = const [],
 }) {
   final file = graph.graph;
@@ -230,6 +251,7 @@ CanvasGraph sessionCanvas(
     file: file,
     workflow: workflow,
     ofSession: true,
+    path: path,
     placeholder: graph.unreadable
         ? unreadableSessionGraph
         : file == null
@@ -269,9 +291,12 @@ List<GraphNote> workflowNotes({
   }
   if (notInGraph.isEmpty) return const [];
   final sessions = notInGraph.values.fold(0, (sum, n) => sum + n);
+  final workflows = notInGraph.length == 1
+      ? 'a workflow'
+      : '${notInGraph.length} workflows';
   return [
     GraphNote(
-      '${count(sessions, 'session')} of workflows not in $name',
+      '${count(sessions, 'session')} of $workflows not in $name',
       lines: [...notInGraph.keys],
       text: notInGraphFileDetail,
     ),
@@ -338,8 +363,15 @@ class GraphModel extends ChangeNotifier {
 
   late final StreamSubscription<DocumentAdded> _documents;
 
-  /// The workflow the user chose; [workflow] falls back to the first.
-  String? _workflowId;
+  /// The workflow the user chose, by its id and its name: [workflow] finds
+  /// it by its name when its id has changed, as when describe writes a
+  /// workflow its sessions ran to the graph file; it falls back to the
+  /// first.
+  ({String id, String name})? _chosen;
+
+  /// The levels opened under the workflow's body: the canvas goes down them
+  /// as far as the graph it draws has them.
+  List<Opened> _path = const [];
 
   /// Whether the [selection] changes because of new data: the change is told
   /// with the data.
@@ -365,21 +397,42 @@ class GraphModel extends ChangeNotifier {
         : workflowChoices(graph, feed.sessions.values);
   }
 
-  /// The selected workflow: the one chosen while it is listed, else the
-  /// first; `null` without workflows.
+  /// The selected workflow: the one chosen while it is listed, by its id or
+  /// else its name; else the first; `null` without workflows.
   WorkflowChoice? get workflow {
     final all = workflows;
-    return all.where((w) => w.id == _workflowId).firstOrNull ?? all.firstOrNull;
+    final chosen = _chosen;
+    return all.where((w) => w.id == chosen?.id).firstOrNull ??
+        all.where((w) => w.name == chosen?.name).firstOrNull ??
+        all.firstOrNull;
   }
 
-  /// Selects the workflow [id] (a [WorkflowChoice.id]), and opens its
-  /// sessions as on opening the graph: its newest session started before
-  /// now is selected.
+  /// Selects the workflow [id] (a [WorkflowChoice.id]), drawn from its top
+  /// level. Another workflow's sessions open as on opening the graph: its
+  /// newest session started before now is selected.
   void selectWorkflow(String id) {
-    if (id == workflow?.id) return;
-    _workflowId = id;
-    selection.reopen();
-    _feedSelection();
+    final choice = workflows.where((w) => w.id == id).firstOrNull;
+    if (choice == null) return;
+    _path = const [];
+    if (id != workflow?.id) {
+      _chosen = (id: choice.id, name: choice.name);
+      selection.reopen();
+      _feedSelection();
+    }
+    _changed();
+  }
+
+  /// Opens [opened], a node of the body drawn, one level down
+  /// (`openings`).
+  void open(Opened opened) {
+    _path = [...canvas.path, opened];
+    _changed();
+  }
+
+  /// Goes back to the level [depth] of the canvas's levels: 0 for the
+  /// workflow's body.
+  void openLevel(int depth) {
+    _path = canvas.path.take(depth).toList();
     _changed();
   }
 
@@ -442,6 +495,7 @@ class GraphModel extends ChangeNotifier {
             file: graphFile.file,
             graph: graph,
             workflowId: workflow?.id,
+            path: _path,
             error: graphFile.error,
             fileMissing: graphFile.fileMissing,
             freshness: freshness.freshness,
@@ -450,6 +504,7 @@ class GraphModel extends ChangeNotifier {
         : sessionCanvas(
             session,
             sessionGraphOf(session, documents: outcomes, graphFile: graph),
+            path: _path,
             extraNotes: notes,
           );
     _canvasKey = _changes;

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -8,15 +7,12 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
-import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
-import 'package:nanoflow_ui/graph/canvas/edges_painter.dart';
 import 'package:nanoflow_ui/graph/canvas/exit_labels.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
-import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/legend.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
-import 'package:nanoflow_ui/layout/layout.dart' show LayoutOptions, layoutGraph;
-import 'package:nanoflow_ui/state/graph_marks.dart';
+import 'package:nanoflow_ui/layout/layout.dart' show endMarker, startMarker;
+import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 
 import '../../state/support.dart';
@@ -26,29 +22,27 @@ import 'support.dart';
 void main() {
   final controller = GraphCanvasController();
 
+  /// The review example's graph file, its workflow drawn.
+  GraphFile review() => graphFileNamed('review');
+
+  /// The task mockup's graph: wider than any canvas.
+  GraphFile task() => graphFileNamed('task');
+
   Future<void> pumpCanvas(
     WidgetTester tester,
     GraphModel model, {
-    ValueChanged<String>? onOpenStep,
+    OpenNode? onOpenNode,
     Size size = reviewCanvas,
   }) async {
     await pumpScreen(
       tester,
-      GraphCanvas(
-        model: model,
-        now: () => Mockup.now,
-        controller: controller,
-        onOpenStep: onOpenStep,
-      ),
+      GraphCanvas(model: model, controller: controller, onOpenNode: onOpenNode),
       size: size,
     );
     await settle(tester);
   }
 
-  Finder tile(String node) => find.byKey(NodeTile.tileKeyOf(node));
-
-  NodeTile nodeTile(WidgetTester tester, String node) =>
-      tester.widget<NodeTile>(find.byKey(NodeTile.keyOf(node)));
+  Finder tile(String id) => find.byKey(NodeTile.tileKeyOf(id));
 
   /// The canvas on screen, under the room kept for the session bar.
   Rect viewport(WidgetTester tester) {
@@ -67,152 +61,112 @@ void main() {
       inner.right <= outer.right + 0.01 &&
       inner.bottom <= outer.bottom + 0.01;
 
-  group('a click on a node', () {
-    testWidgets('selects its last step in the selected run', (tester) async {
-      final model = reviewModel();
-      await pumpCanvas(tester, model);
-      expect(model.selection.runId, 'e5f6-run');
-      expect(model.selection.stepId, 'e5f6-notify-0');
+  Future<void> doubleTap(WidgetTester tester, Finder finder) async {
+    await tester.tap(finder);
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tap(finder);
+    await tester.pump(const Duration(milliseconds: 500));
+  }
 
-      await tester.tap(tile('inspect'));
-      await tester.pump(const Duration(milliseconds: 500));
-
-      // The run's second inspect step, inherited from k7f2.
-      expect(model.selection.stepId, 'k7f2-inspect-5');
-      expect(model.selection.following, isFalse);
+  group('the graph', () {
+    testWidgets('is one level: the workflow\'s body between its markers, a '
+        'tile for each node', (tester) async {
+      await pumpCanvas(tester, modelOf(graph: review()));
+      final tiles = tester.widgetList<NodeTile>(find.byType(NodeTile));
+      expect(
+        [for (final t in tiles) t.node.id],
+        [
+          startMarker,
+          for (var i = 1; i <= 8; i++) '$i',
+          endMarker,
+          '${endMarker}2',
+          '${endMarker}3',
+        ],
+      );
+      expect(find.text('start'), findsOneWidget);
+      expect(find.text('end'), findsNWidgets(3));
+      expect(find.text('collect'), findsOneWidget);
+      expect(find.text('review.dart:49'), findsOneWidget);
+      expect(find.text('change.path.isEmpty'), findsOneWidget);
+      expect(_chips(tester), containsAll(['true', 'false']));
     });
 
-    testWidgets('does nothing when the selected run has no step on the node', (
-      tester,
-    ) async {
-      final model = reviewModel();
-      await pumpCanvas(tester, model);
+    testWidgets('draws a call as a stack with its steps counted, copies as '
+        'one with ×', (tester) async {
+      await pumpCanvas(tester, modelOf());
+      expect(find.text('publish()'), findsOneWidget);
+      expect(find.text('{ 3 }'), findsOneWidget);
+      expect(_chips(tester), containsAll(['each', 'done', 'Channel.dev']));
 
-      // Never visited; and visited, but by c3d4, not by the selected e5f6.
-      for (final node in ['discard', 'publish']) {
-        await tester.tap(tile(node));
-        await tester.pump(const Duration(milliseconds: 500));
-        expect(model.selection.stepId, 'e5f6-notify-0');
-      }
+      await pumpCanvas(
+        tester,
+        modelOf(
+          graph: GraphFile.fromJson({
+            ...graphFileNamed('inline').toJson(),
+            'workflows': ['lib/inline.dart#inPlace'],
+          }),
+        ),
+      );
+      expect(find.text('pkg in packages'), findsOneWidget);
+      expect(find.text('×'), findsOneWidget);
     });
 
-    testWidgets('a double click opens the step details', (tester) async {
-      final model = reviewModel();
-      final opened = <String>[];
-      await pumpCanvas(tester, model, onOpenStep: opened.add);
+    testWidgets('a double click on a call or copies opens it, on another '
+        'node does nothing', (tester) async {
+      final opened = <(String, Offset)>[];
+      await pumpCanvas(
+        tester,
+        modelOf(),
+        onOpenNode: (node, at) => opened.add((node.id, at)),
+      );
 
-      await tester.tap(tile('verdict'));
-      await tester.pump(const Duration(milliseconds: 60));
-      await tester.tap(tile('verdict'));
-      await tester.pump(const Duration(milliseconds: 500));
+      await doubleTap(tester, tile('5'));
+      expect([for (final (id, _) in opened) id], ['5']);
+      expect(opened.single.$2, tester.getCenter(tile('5')));
 
-      expect(opened, ['verdict']);
-      expect(model.selection.stepId, 'k7f2-verdict-6');
+      await doubleTap(tester, tile('3'));
+      await doubleTap(tester, tile(startMarker));
+      expect(opened, hasLength(1));
 
       // Two clicks far apart in time are two clicks.
-      await tester.tap(tile('fix'));
+      await tester.tap(tile('5'));
       await tester.pump(const Duration(seconds: 1));
-      await tester.tap(tile('fix'));
+      await tester.tap(tile('5'));
       await tester.pump(const Duration(milliseconds: 500));
-      expect(opened, ['verdict']);
+      expect(opened, hasLength(1));
     });
 
-    testWidgets('a double click opens a node without steps too', (
-      tester,
-    ) async {
-      final model = reviewModel();
-      final opened = <String>[];
-      await pumpCanvas(tester, model, onOpenStep: opened.add);
-
-      await tester.tap(tile('discard'));
-      await tester.pump(const Duration(milliseconds: 60));
-      await tester.tap(tile('discard'));
-      await tester.pump(const Duration(milliseconds: 500));
-
-      expect(opened, ['discard']);
-    });
-
-    testWidgets('on the state badge over the tile\'s corner selects the node, '
-        'under the hand', (tester) async {
-      final model = reviewModel();
-      await pumpCanvas(tester, model);
-      // On the badge's disc, past the tile's corner.
-      final badge =
-          tester.getRect(tile('inspect')).bottomRight + const Offset(6, 6);
-
+    testWidgets('the pointer over a node that opens is a hand', (tester) async {
+      await pumpCanvas(tester, modelOf(), onOpenNode: (_, _) {});
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       addTearDown(mouse.removePointer);
-      await mouse.addPointer(location: badge);
-      await tester.pump();
-      expect(
-        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
-        SystemMouseCursors.click,
-      );
+      MouseCursor cursor() =>
+          RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1)!;
 
-      await tester.tapAt(badge);
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(model.selection.stepId, 'k7f2-inspect-5');
+      await mouse.addPointer(location: tester.getCenter(tile('5')));
+      await tester.pump();
+      expect(cursor(), SystemMouseCursors.click);
+
+      await mouse.moveTo(tester.getCenter(tile('3')));
+      await tester.pump();
+      expect(cursor(), isNot(SystemMouseCursors.click));
     });
 
-    testWidgets('selects the node drawn under it after zooming and panning', (
-      tester,
-    ) async {
-      final model = reviewModel();
+    testWidgets('draws what the model opens', (tester) async {
+      final model = modelOf();
       await pumpCanvas(tester, model);
-      final layout = layoutGraph(
-        Graph.fromJson(reviewGraph),
-        options: const LayoutOptions(measure: measureLabel),
-      );
-      final origin = tester.getTopLeft(find.byType(GraphCanvas));
-      // Where the view draws the tile's middle, from its scale and offset.
-      Offset drawnAt(String node) =>
-          origin +
-          controller.offset +
-          layout.nodes[node]!.tile.center.toOffset() * controller.scale;
-
-      await tester.tap(find.byTooltip('Zoom in'));
-      await tester.pump();
-      await tester.tapAt(drawnAt('verdict'));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(model.selection.stepId, 'k7f2-verdict-6');
-
-      await tester.dragFrom(
-        origin + const Offset(300, 80),
-        const Offset(-150, -60),
-      );
-      await tester.pump();
-      await tester.tapAt(drawnAt('inspect'));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(model.selection.stepId, 'k7f2-inspect-5');
+      model.open(_publish(model.canvas.body!.node('5')!));
+      await settle(tester);
+      expect(find.text('upload'), findsOneWidget);
+      expect(find.text('publish()'), findsNothing);
     });
-  });
-
-  testWidgets('the pointer over a node is a hand', (tester) async {
-    await pumpCanvas(tester, reviewModel());
-    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    addTearDown(mouse.removePointer);
-
-    await mouse.addPointer(location: tester.getCenter(tile('collect')));
-    await tester.pump();
-    expect(
-      RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
-      SystemMouseCursors.click,
-    );
-
-    final empty = tester.getRect(find.byType(GraphCanvas)).topLeft;
-    await mouse.moveTo(empty + const Offset(300, 70));
-    await tester.pump();
-    expect(
-      RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
-      isNot(SystemMouseCursors.click),
-    );
   });
 
   group('the view', () {
     testWidgets('fits the graph under the session bar when first shown', (
       tester,
     ) async {
-      await pumpCanvas(tester, taskModel(), size: taskCanvas);
+      await pumpCanvas(tester, modelOf(graph: task()));
 
       // The task graph is wider than the canvas: it is made smaller.
       expect(controller.scale, lessThan(1));
@@ -223,7 +177,7 @@ void main() {
 
     testWidgets('fits again when the canvas is resized, until the view is '
         'moved', (tester) async {
-      await pumpCanvas(tester, taskModel(), size: taskCanvas);
+      await pumpCanvas(tester, modelOf(graph: task()));
       final fitted = controller.scale;
 
       tester.view.physicalSize = const Size(2400, 672) * 2;
@@ -233,7 +187,7 @@ void main() {
       await tester.tap(find.byTooltip('Zoom out'));
       await tester.pump();
       final zoomed = controller.scale;
-      tester.view.physicalSize = taskCanvas * 2;
+      tester.view.physicalSize = reviewCanvas * 2;
       await tester.pump();
       expect(controller.scale, zoomed);
     });
@@ -241,16 +195,11 @@ void main() {
     testWidgets('fits again under a new top inset, until the view is moved', (
       tester,
     ) async {
-      final model = reviewModel();
+      final model = modelOf(graph: review());
       Future<void> pumpInset(double inset) async {
         await pumpScreen(
           tester,
-          GraphCanvas(
-            model: model,
-            now: () => Mockup.now,
-            controller: controller,
-            topInset: inset,
-          ),
+          GraphCanvas(model: model, controller: controller, topInset: inset),
           size: reviewCanvas,
         );
         await settle(tester);
@@ -260,17 +209,17 @@ void main() {
       final canvas = tester.getRect(find.byType(GraphCanvas));
       await pumpInset(200);
       expect(
-        tester.getRect(tile('publish')).top,
+        tester.getRect(tile('3')).top,
         greaterThanOrEqualTo(canvas.top + 200),
       );
 
       // No more than half the canvas is kept free.
       await pumpInset(5000);
       expect(
-        tester.getRect(tile('publish')).top,
+        tester.getRect(tile('3')).top,
         moreOrLessEquals(canvas.top + canvas.height / 2, epsilon: 20),
       );
-      expect(tester.getRect(tile('fix')).bottom, lessThan(canvas.bottom));
+      expect(tester.getRect(tile('8')).bottom, lessThan(canvas.bottom));
 
       await tester.tap(find.byTooltip('Zoom out'));
       await tester.pump();
@@ -282,12 +231,16 @@ void main() {
     testWidgets('does not make a small graph bigger than drawn', (
       tester,
     ) async {
-      await pumpCanvas(tester, reviewModel(), size: const Size(1800, 900));
+      await pumpCanvas(
+        tester,
+        modelOf(graph: review()),
+        size: const Size(1800, 900),
+      );
       expect(controller.scale, 1);
     });
 
     testWidgets('+ and − zoom, the fit button fits again', (tester) async {
-      await pumpCanvas(tester, reviewModel());
+      await pumpCanvas(tester, modelOf(graph: review()));
       final fitted = controller.scale;
 
       await tester.tap(find.byTooltip('Zoom in'));
@@ -295,7 +248,7 @@ void main() {
       expect(controller.scale, greaterThan(fitted));
       await tester.tap(find.byTooltip('Zoom in'));
       await tester.pump();
-      expect(inside(viewport(tester), tester.getRect(tile('fix'))), isFalse);
+      expect(inside(viewport(tester), tester.getRect(tile('8'))), isFalse);
 
       await tester.tap(find.byTooltip('Zoom out'));
       await tester.tap(find.byTooltip('Zoom out'));
@@ -306,14 +259,14 @@ void main() {
       await tester.tap(find.byTooltip('Zoom to fit'));
       await tester.pump();
       expect(controller.scale, fitted);
-      for (final node in ['collect', 'publish', 'fix']) {
+      for (final node in ['1', '6', '8']) {
         expect(inside(viewport(tester), tester.getRect(tile(node))), isTrue);
       }
     });
 
     testWidgets('a drag pans', (tester) async {
-      await pumpCanvas(tester, reviewModel());
-      final before = tester.getRect(tile('collect'));
+      await pumpCanvas(tester, modelOf(graph: review()));
+      final before = tester.getRect(tile('1'));
 
       final empty = tester.getRect(find.byType(GraphCanvas)).topLeft;
       await tester.dragFrom(
@@ -322,16 +275,16 @@ void main() {
       );
       await tester.pump();
 
-      final after = tester.getRect(tile('collect'));
+      final after = tester.getRect(tile('1'));
       expect(after.topLeft - before.topLeft, const Offset(-120, 40));
     });
 
     testWidgets('a two-finger trackpad swipe pans, a pinch zooms', (
       tester,
     ) async {
-      await pumpCanvas(tester, reviewModel());
+      await pumpCanvas(tester, modelOf(graph: review()));
       final scale = controller.scale;
-      final before = tester.getRect(tile('collect'));
+      final before = tester.getRect(tile('1'));
       final trackpad = TestPointer(1, PointerDeviceKind.trackpad);
       final at = tester.getCenter(find.byType(GraphCanvas));
 
@@ -342,7 +295,7 @@ void main() {
       await tester.sendEventToBinding(trackpad.panZoomEnd());
       await tester.pump();
       expect(controller.scale, scale);
-      final moved = tester.getRect(tile('collect')).topLeft - before.topLeft;
+      final moved = tester.getRect(tile('1')).topLeft - before.topLeft;
       expect(moved.dx, lessThan(-50));
       expect(moved.dy, greaterThan(20));
 
@@ -356,9 +309,9 @@ void main() {
     testWidgets('the scroll wheel pans; with ⌘ or Ctrl it zooms', (
       tester,
     ) async {
-      await pumpCanvas(tester, reviewModel());
+      await pumpCanvas(tester, modelOf(graph: review()));
       final scale = controller.scale;
-      final before = tester.getRect(tile('collect'));
+      final before = tester.getRect(tile('1'));
       final pointer = TestPointer(1, PointerDeviceKind.mouse);
       final at = tester.getCenter(find.byType(GraphCanvas));
 
@@ -367,7 +320,7 @@ void main() {
       await tester.pump();
       expect(controller.scale, scale);
       expect(
-        tester.getRect(tile('collect')).topLeft - before.topLeft,
+        tester.getRect(tile('1')).topLeft - before.topLeft,
         const Offset(0, -50),
       );
 
@@ -386,253 +339,121 @@ void main() {
 
     testWidgets('revealNode brings a node out of view into it, and leaves a '
         'node in view where it is', (tester) async {
-      await pumpCanvas(tester, reviewModel());
+      await pumpCanvas(tester, modelOf(graph: review()));
       for (var i = 0; i < 3; i++) {
         await tester.tap(find.byTooltip('Zoom in'));
       }
       await tester.pump();
-      expect(inside(viewport(tester), tester.getRect(tile('fix'))), isFalse);
+      expect(inside(viewport(tester), tester.getRect(tile('8'))), isFalse);
 
-      controller.revealNode('fix');
+      controller.revealNode('8');
       await tester.pump();
-      expect(inside(viewport(tester), tester.getRect(tile('fix'))), isTrue);
+      expect(inside(viewport(tester), tester.getRect(tile('8'))), isTrue);
 
       final offset = controller.offset;
-      controller.revealNode('fix');
+      controller.revealNode('8');
       await tester.pump();
       expect(controller.offset, offset);
     });
 
-    testWidgets('keeps the view on live updates and fits a graph of another '
-        'shape', (tester) async {
-      final model = reviewModel(
-        current: Graph.fromJson(const {
-          'start': 'only',
-          'nodes': {
-            'only': {'command': 'only.sh'},
-          },
-        }),
-      );
-      await pumpCanvas(tester, model);
-      await tester.tap(find.byTooltip('Zoom in'));
-      await tester.pump();
-      final zoomed = controller.scale;
-
-      // Another run of the session: the same graph.
-      model.selectRun('c3d4-run');
-      await settle(tester);
-      expect(controller.scale, zoomed);
-
-      // Current graph: another graph, made of one node.
-      model.selection.showCurrentGraph();
-      await settle(tester);
-      expect(controller.scale, 1);
-    });
-
-    testWidgets('keeps the view when a new step comes', (tester) async {
-      final mockup = Mockup();
-      final e5f6 = Journal(
-        'e5f6-run',
-        parent: 'k7f2-run',
-        node: 'notify',
-        startedAt: 611.4,
-      );
-      final more = StreamController<Change>();
-      addTearDown(more.close);
-      await pumpCanvas(
-        tester,
-        modelOf(
-          changes: changesOf([mockup.k7f2, mockup.c3d4, e5f6]),
-          more: more.stream,
-          outcomes: reviewOutcomes,
-        ),
-      );
-      await tester.tap(find.byTooltip('Zoom in'));
-      await tester.pump();
-      final (scale, offset) = (controller.scale, controller.offset);
-      expect(nodeTile(tester, 'notify').state, NodeState.notVisited);
-
-      e5f6.step('notify', 612);
-      more
-        ..add(StepAdded(e5f6.steps.last))
-        ..add(EventAdded(e5f6.events.last));
-      await settle(tester);
-
-      expect(nodeTile(tester, 'notify').state, NodeState.running);
-      expect(controller.scale, scale);
-      expect(controller.offset, offset);
-    });
-
-    testWidgets('keeps the view when the current graph is described again '
-        'the same, and fits another', (tester) async {
-      Graph described(Map<String, Object?> json) =>
-          Graph.fromJson(jsonDecode(jsonEncode(json)) as Map<String, Object?>);
-      final model = modelOf(current: described(reviewGraph));
-      final source = model.source as FixedSource;
+    testWidgets('keeps the view when the graph file is written again the '
+        'same, and fits a level drawn otherwise', (tester) async {
+      final model = modelOf(graph: review());
       await pumpCanvas(tester, model);
       await tester.tap(find.byTooltip('Zoom in'));
       await tester.pump();
       final (scale, offset) = (controller.scale, controller.offset);
 
-      // `--graph --watch` printed the same graph again: a new object.
-      source.graph = described(reviewGraph);
-      await settle(tester);
-      expect(controller.scale, scale);
-      expect(controller.offset, offset);
-
-      source.graph = described(const {
-        'start': 'only',
-        'nodes': {
-          'only': {'command': 'only.sh'},
-        },
+      // describe wrote the file again, with a new fingerprint.
+      graphFileOf(model).graph = GraphFile.fromJson({
+        ...review().toJson(),
+        'fingerprint': 'sha256:other',
       });
       await settle(tester);
-      expect(controller.scale, 1);
-      expect(find.byType(NodeTile), findsOneWidget);
+      expect(controller.scale, scale);
+      expect(controller.offset, offset);
+
+      graphFileOf(model).graph = graphFileNamed('release');
+      await settle(tester);
+      expect(controller.scale, isNot(scale));
+      expect(find.text('publish()'), findsOneWidget);
+    });
+
+    testWidgets('keeps the view as sessions come', (tester) async {
+      final more = StreamController<Change>();
+      addTearDown(more.close);
+      final model = modelOf(graph: review(), more: more.stream);
+      await pumpCanvas(tester, model);
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      final (scale, offset) = (controller.scale, controller.offset);
+
+      final session = Journal('a1b2-session', graph: review().toJson())
+        ..step('collect', 1);
+      session.changes.forEach(more.add);
+      await settle(tester);
+      expect(model.selection.sessionId, 'a1b2-session');
+      expect(controller.scale, scale);
+      expect(controller.offset, offset);
     });
   });
 
   group('Current graph', () {
-    testWidgets('has no states, counters, run markers or legend: only the '
-        'zoom buttons', (tester) async {
-      final model = reviewModel(current: Graph.fromJson(reviewGraph));
-      await pumpCanvas(tester, model);
-      expect(find.text('e5f6'), findsOneWidget);
-      expect(find.text('2×'), findsNWidgets(2));
-      expect(_chips(tester), contains('2×'));
-
-      model.selection.showCurrentGraph();
-      await settle(tester);
-
-      expect(find.text('e5f6'), findsNothing);
-      expect(find.text('c3d4'), findsNothing);
-      expect(find.text('2×'), findsNothing);
-      expect(_chips(tester).where((text) => text.endsWith('×')), isEmpty);
-      for (final node in tester.widgetList<NodeTile>(find.byType(NodeTile))) {
-        expect(node.state, isNull);
-        expect(node.selected, isFalse);
-      }
+    testWidgets('has no legend: only the zoom buttons', (tester) async {
+      await pumpCanvas(tester, modelOf(graph: review()));
       // ui-spec «Холст»: for Current graph only the zoom buttons remain.
       expect(find.byType(Legend), findsNothing);
       expect(find.byTooltip('Zoom to fit'), findsOneWidget);
     });
 
-    testWidgets('says No valid graph yet until a graph passes check', (
+    testWidgets('says No valid graph yet until a graph file is read', (
       tester,
     ) async {
-      await pumpCanvas(tester, modelOf());
+      await pumpCanvas(tester, modelOf(noGraph: true));
       expect(find.text('No valid graph yet'), findsOneWidget);
       expect(find.byType(NodeTile), findsNothing);
     });
   });
 
+  testWidgets('a session\'s graph names its back arrows in the legend', (
+    tester,
+  ) async {
+    await pumpCanvas(
+      tester,
+      modelOf(
+        graph: review(),
+        changes: changesOf([Journal('a1b2-session', graph: review().toJson())]),
+      ),
+    );
+    expect(find.byType(Legend), findsOneWidget);
+    expect(find.text('back edge'), findsOneWidget);
+    expect(tester.widget<Legend>(find.byType(Legend)).backEdges, Tone.plain);
+  });
+
   testWidgets('says when the selected session\'s graph cannot be read', (
     tester,
   ) async {
-    final run = Journal('bad1-run', node: 'collect', startedAt: 0);
     await pumpCanvas(
       tester,
-      modelOf(changes: changesOf([run], graph: const {'start': 'collect'})),
+      modelOf(
+        changes: changesOf([
+          Journal(
+            'bad1-session',
+            workflow: 'release',
+            graph: const {'format': 1},
+          ),
+        ]),
+      ),
     );
     expect(find.text('Graph of this session cannot be read'), findsOneWidget);
   });
-
-  group('the legend', () {
-    testWidgets('names the selected run and the kinds of arrows the graph '
-        'has', (tester) async {
-      await pumpCanvas(tester, reviewModel());
-      expect(find.byType(Legend), findsOneWidget);
-      expect(find.text('taken by run e5f6'), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byType(Legend),
-          matching: find.byTooltip('e5f6-run'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('back edge'), findsOneWidget);
-      // e5f6 went back from fix to inspect: back arrows are shown in its
-      // color.
-      expect(tester.widget<Legend>(find.byType(Legend)).backEdges, Tone.path);
-      // The review graph has no empty targets.
-      expect(find.text('outcome with no target — run ends'), findsNothing);
-    });
-
-    testWidgets('of the task graph tells of outcomes without a target', (
-      tester,
-    ) async {
-      await pumpCanvas(tester, taskModel(), size: taskCanvas);
-      expect(find.text('taken by run t9m4'), findsOneWidget);
-      expect(find.text('outcome with no target — run ends'), findsOneWidget);
-    });
-  });
-
-  testWidgets('the sign of a running node turns, painting only itself; '
-      'moving the view does not paint the graph again', (tester) async {
-    await pumpCanvas(tester, reviewModel());
-    RenderObject renderOf(Finder finder) => tester.renderObject(finder);
-    final notify = renderOf(find.byKey(NodeTile.keyOf('notify')));
-    final edges = renderOf(
-      find.byWidgetPredicate(
-        (widget) => widget is CustomPaint && widget.painter is EdgesPainter,
-      ),
-    );
-    final collect = renderOf(find.byKey(NodeTile.tileKeyOf('collect')));
-    bool under(RenderObject object, RenderObject ancestor) {
-      for (RenderObject? at = object; at != null; at = at.parent) {
-        if (identical(at, ancestor)) return true;
-      }
-      return false;
-    }
-
-    /// What is painted while [act] runs.
-    Future<List<RenderObject>> paintedWhile(Future<void> Function() act) async {
-      final painted = <RenderObject>[];
-      debugOnProfilePaint = painted.add;
-      try {
-        await act();
-      } finally {
-        debugOnProfilePaint = null;
-      }
-      return painted;
-    }
-
-    final turning = await paintedWhile(() async {
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(milliseconds: 300));
-    });
-    expect(turning, isNotEmpty);
-    expect(turning.where((object) => !under(object, notify)), isEmpty);
-
-    final empty = tester.getRect(find.byType(GraphCanvas)).topLeft;
-    final moving = await paintedWhile(() async {
-      await tester.dragFrom(
-        empty + const Offset(300, 80),
-        const Offset(-40, 20),
-      );
-      await tester.pump();
-    });
-    expect(moving, isNotEmpty);
-    expect(moving, isNot(contains(edges)));
-    expect(moving, isNot(contains(collect)));
-  });
-
-  testWidgets('the selected step\'s node is ringed and its run marked', (
-    tester,
-  ) async {
-    await pumpCanvas(tester, reviewModel());
-    final notify = nodeTile(tester, 'notify');
-    expect(notify.selected, isTrue);
-    expect(notify.state, NodeState.running);
-    expect([for (final m in notify.markers) m.shortId], ['e5f6']);
-    final inspect = nodeTile(tester, 'inspect');
-    expect(inspect.selected, isFalse);
-    expect(inspect.visits, '2×');
-    expect(nodeTile(tester, 'discard').state, NodeState.notVisited);
-  });
 }
 
-/// The texts of the chips on the canvas: exit keys and counters.
+/// publish() of the release fixture's call node.
+Opened _publish(GraphNode call) =>
+    Opened(call.id, functionId: (call as CallNode).functions.single);
+
+/// The texts of the chips on the canvas: exit labels and counters.
 List<String> _chips(WidgetTester tester) => [
   for (final paint in tester.widgetList<CustomPaint>(find.byType(CustomPaint)))
     if (paint.painter case final ExitsPainter exits)

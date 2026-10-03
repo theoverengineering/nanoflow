@@ -5,16 +5,10 @@ import 'canvas_marks.dart';
 import 'canvas_style.dart';
 
 /// What the canvas's lines mean, in its bottom right corner
-/// (docs/design/task-graph.html): the selected run's path, back arrows,
-/// outcomes that end the run. Only what the canvas has is named; with
-/// nothing to name it is empty.
+/// (docs/design/task-graph.html): the selected run's path, back arrows.
+/// Only what the canvas has is named; with nothing to name it is empty.
 class Legend extends StatelessWidget {
-  const Legend({
-    super.key,
-    required this.runId,
-    required this.backEdges,
-    required this.emptyTargets,
-  });
+  const Legend({super.key, required this.runId, required this.backEdges});
 
   /// The selected run; `null` when none is. Shortened, its full id in a
   /// tooltip.
@@ -23,9 +17,6 @@ class Legend extends StatelessWidget {
   /// The tone back arrows are shown in, as the canvas draws them; `null`
   /// when the graph has none.
   final Tone? backEdges;
-
-  /// Whether the graph has outcomes with no target.
-  final bool emptyTargets;
 
   @override
   Widget build(BuildContext context) {
@@ -52,11 +43,6 @@ class Legend extends StatelessWidget {
             painter: _DashPainter(CanvasColors.line(tone)),
           ),
           'back edge',
-        ),
-      if (emptyTargets)
-        _item(
-          CustomPaint(size: const Size(18, 12), painter: _StubPainter()),
-          'outcome with no target — run ends',
         ),
     ];
     if (items.isEmpty) return const SizedBox.shrink();
@@ -97,30 +83,4 @@ class _DashPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DashPainter old) => old.color != color;
-}
-
-/// A stub with its cross bar.
-class _StubPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas
-      ..drawLine(
-        const Offset(0, 6),
-        const Offset(12, 6),
-        Paint()
-          ..color = CanvasColors.stubBar
-          ..strokeWidth = 1.6,
-      )
-      ..drawLine(
-        const Offset(12, 1.5),
-        const Offset(12, 10.5),
-        Paint()
-          ..color = CanvasColors.stubBar
-          ..strokeWidth = 2.4
-          ..strokeCap = StrokeCap.round,
-      );
-  }
-
-  @override
-  bool shouldRepaint(_StubPainter old) => false;
 }

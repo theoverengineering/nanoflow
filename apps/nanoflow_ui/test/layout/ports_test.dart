@@ -4,16 +4,22 @@ import 'package:test/test.dart';
 import 'support.dart';
 
 void main() {
-  /// The y of each exit of [node] by its key, `then` for a worker's.
+  /// The y of each exit of [node] by its label, `then` without one.
   Map<String, double> exitYs(GraphLayout layout, String node) => {
     for (final exit in layout.exits)
       if (exit.node == node) exit.label ?? 'then': exit.anchor.y,
   };
 
+  /// The labels of the exits of [node], top to bottom.
+  List<String> exitsDown(GraphLayout layout, String node) {
+    final ys = exitYs(layout, node);
+    return [...ys.keys]..sort((a, b) => ys[a]!.compareTo(ys[b]!));
+  }
+
   test('forward exits form a ladder: ordered by where their targets are, not '
-      'by declaration', () {
-    final layout = layoutGraph(loadGraph('task'));
-    // admit declares fresh, review, human; human goes highest.
+      'by the body\'s order', () {
+    final layout = layoutOf('task');
+    // admit's edges go fresh, review, human; human goes highest.
     final ys = exitYs(layout, 'admit');
     expect(ys['human']!, lessThan(ys['review']!));
     expect(ys['review']!, lessThan(ys['fresh']!));
@@ -25,7 +31,7 @@ void main() {
 
   test('back exits nest: the higher exit runs the lower lane and enters the '
       'higher input', () {
-    final layout = layoutGraph(loadGraph('task'));
+    final layout = layoutOf('task');
     final goOn = edgeOf(layout, 'coder-status', 1);
     final post = edgeOf(layout, 'coder-status', 2);
     double lane(EdgePath edge) =>
@@ -43,27 +49,21 @@ void main() {
     expect(inputs, [...inputs]..sort());
   });
 
-  test(
-    'back exits come after forward ones, stubs last, else the very last',
-    () {
-      final layout = layoutGraph(loadGraph('task'));
-      final ys = exitYs(layout, 'review-verdict');
-      expect([...ys.keys]..sort((a, b) => ys[a]!.compareTo(ys[b]!)), [
-        'pass',
-        'fail',
-        'again',
-        'else',
-      ]);
-      final empty = layoutGraph(loadGraph('empty'));
-      final route = exitYs(empty, 'route');
-      expect([...route.keys]..sort((a, b) => route[a]!.compareTo(route[b]!)), [
-        'store',
-        'drop',
-        'ignore',
-        'else',
-      ]);
-    },
-  );
+  test('back exits come after forward ones', () {
+    final layout = layoutOf('task');
+    expect(exitsDown(layout, 'review-verdict'), [
+      'pass',
+      'else',
+      'fail',
+      'again',
+    ]);
+    expect(exitsDown(layout, 'coder-status'), [
+      'else',
+      'done',
+      'go-on',
+      'post',
+    ]);
+  });
 
   test('a counter reads its count up to 999, then 1k+', () {
     expect(counterText(1), '1×');
@@ -71,25 +71,9 @@ void main() {
     expect(counterText(1000), '1k+×');
   });
 
-  test('a stub is as long as its key with room for a counter, and arrows of '
-      'its node turn only past it', () {
-    final layout = layoutGraph(loadGraph('task'));
-    final stub = exitOf(layout, 'coder-status', 3);
-    expect(stub.shape, ExitShape.stub);
-    final o = layout.options;
-    // Room for three digits, or the counter of a thousand passes and more.
-    final counter =
-        o.measure(counterText(999), LabelKind.counter) + 2 * o.chipPadding;
-    expect(stub.stubEnd! - stub.counterAt.x, greaterThanOrEqualTo(counter));
-    for (final exit in [1, 2]) {
-      final down = verticals(edgeOf(layout, 'coder-status', exit)).first;
-      expect(down.$1, greaterThan(stub.stubEnd!));
-    }
-  });
-
-  test('a list target is one capsule: arrows a capsule gap apart in list '
-      'order, one key', () {
-    final layout = layoutGraph(loadGraph('capsules'));
+  test('edges with one label are one capsule: arrows a capsule gap apart in '
+      'the body\'s order, one label', () {
+    final layout = layoutOf('capsules');
     final go = exitOf(layout, 'release', 0);
     expect(go.shape, ExitShape.capsule);
     expect(go.label, 'go');
@@ -107,9 +91,9 @@ void main() {
 
   test('a tile grows for its exits and for its inputs, a port gap apart on '
       'the straight part of its side', () {
-    final review = layoutGraph(loadGraph('review'));
-    expect(review.nodes['collect']!.tile.height, 80);
-    final many = layoutGraph(loadGraph('many-sources'));
+    final review = layoutOf('review');
+    expect(review.nodes['1']!.tile.height, 80);
+    final many = layoutOf('many-sources');
     final collect = many.nodes['collect']!;
     final bar = collect.bar!;
     expect(bar.inputs, hasLength(6));
@@ -123,5 +107,26 @@ void main() {
     expect(collect.tile.height, greaterThan(80));
     final split = many.nodes['split']!;
     expect(split.tile.height, (6 + 1) * many.options.exitGap);
+  });
+
+  test('a marker is as wide as a tile and lower, and grows as a tile does', () {
+    final layout = layoutOf('review');
+    final o = layout.options;
+    final start = layout.nodes[startMarker]!;
+    expect(start.tile.width, o.tile);
+    expect(start.tile.height, o.marker);
+    final many = layoutBody(
+      bodyOf({
+        'start': ['a', 'b', 'c', 'd'],
+        'nodes': {
+          'a': {'command': 'a', 'then': <String>[]},
+          'b': {'command': 'b', 'then': <String>[]},
+          'c': {'command': 'c', 'then': <String>[]},
+          'd': {'command': 'd', 'then': <String>[]},
+        },
+      }),
+    );
+    // One capsule of four arrows: an exit and a half for each over one.
+    expect(many.nodes[startMarker]!.tile.height, (2.5 + 1) * o.exitGap);
   });
 }

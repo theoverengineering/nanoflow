@@ -4,24 +4,107 @@ import 'dart:io';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/layout/layout.dart';
 
-/// The graphs in `test/layout/graphs/`, by name without `.json`, sorted.
+/// The graph files in `test/layout/graphs/`, by name without
+/// `.graph.json`, sorted.
 List<String> graphNames() {
   final names = [
     for (final file in Directory('test/layout/graphs').listSync())
-      if (file is File && file.path.endsWith('.json'))
-        file.uri.pathSegments.last.replaceAll('.json', ''),
+      if (file is File && file.path.endsWith('.graph.json'))
+        file.uri.pathSegments.last.replaceAll('.graph.json', ''),
   ]..sort();
   return names;
 }
 
-/// The graph `test/layout/graphs/<name>.json`.
-Graph loadGraph(String name) => Graph.fromJson(
-  jsonDecode(File('test/layout/graphs/$name.json').readAsStringSync())
+/// The graph file `test/layout/graphs/<name>.graph.json`.
+GraphFile loadGraphFile(String name) => GraphFile.fromJson(
+  jsonDecode(File('test/layout/graphs/$name.graph.json').readAsStringSync())
       as Map<String, Object?>,
 );
 
-/// A graph from its JSON form.
-Graph graphOf(Map<String, Object?> json) => Graph.fromJson(json);
+/// The function of [file] whose id ends with `#<function>`.
+GraphFunction functionOf(GraphFile file, String function) =>
+    file.functions.values.firstWhere((f) => f.id.endsWith('#$function'));
+
+/// The body of the function [function] of the graph file [name]; by
+/// default the function named as the file, as in the graphs converted from
+/// the README format.
+GraphBody loadBody(String name, [String? function]) =>
+    functionOf(loadGraphFile(name), function ?? name).body;
+
+/// The layout of the function [function] of the graph file [name], its
+/// calls named from the file.
+GraphLayout layoutOf(String name, [String? function]) {
+  final file = loadGraphFile(name);
+  return layoutBody(
+    functionOf(file, function ?? name).body,
+    functions: file.functions,
+  );
+}
+
+/// Every body of [file] with a name: each function's, and inside it each
+/// copies node's, as `function` and `function/node`.
+Map<String, GraphBody> bodiesOf(GraphFile file) {
+  final bodies = <String, GraphBody>{};
+  void add(String name, GraphBody body) {
+    bodies[name] = body;
+    for (final node in body.nodes) {
+      if (node is CopiesNode) add('$name/${node.id}', node.body);
+    }
+  }
+
+  for (final function in file.functions.values) {
+    add(function.id, function.body);
+  }
+  return bodies;
+}
+
+/// A body written the short way: `start` names the nodes the entry leads
+/// to; each node is a step (`command`) or a condition (`decide`) whose id,
+/// name and label are its key; `then` is a node, a list of nodes the flow
+/// goes to side by side, or `[]` for the end of the body; a condition's
+/// `then` is a map from labels to targets, or a target for `true`, and its
+/// `else` a target for `else`. A node without `then` has no edges out.
+GraphBody bodyOf(Map<String, Object?> json) {
+  List<String?> targets(Object? target) => switch (target) {
+    null => const [],
+    final String name => [name],
+    final List<Object?> names when names.isEmpty => [null],
+    final List<Object?> names => [for (final n in names) n! as String],
+    _ => throw ArgumentError.value(target, 'target'),
+  };
+  final nodes = <GraphNode>[];
+  final edges = <GraphEdge>[];
+  for (final to in targets(json['start'])) {
+    edges.add(GraphEdge(from: null, to: to, label: null));
+  }
+  final all = json['nodes']! as Map<String, Object?>;
+  for (final MapEntry(key: name, value: raw) in all.entries) {
+    final node = raw! as Map<String, Object?>;
+    final place = 'lib/flow.dart:${nodes.length + 10}';
+    void edgesTo(Object? target, String? label) {
+      for (final to in targets(target)) {
+        edges.add(GraphEdge(from: name, to: to, label: label));
+      }
+    }
+
+    if (node.containsKey('command')) {
+      nodes.add(StepNode(id: name, place: place, name: name));
+      edgesTo(node['then'], null);
+    } else {
+      nodes.add(ConditionNode(id: name, place: place, label: name));
+      switch (node['then']) {
+        case final Map<String, Object?> cases:
+          for (final MapEntry(key: label, value: target) in cases.entries) {
+            edgesTo(target, label);
+          }
+        case final target:
+          edgesTo(target, 'true');
+      }
+      edgesTo(node['else'], 'else');
+    }
+  }
+  return GraphBody(nodes: nodes, edges: edges);
+}
 
 /// The crossing counts of the reference layouts, by graph name.
 Map<String, int> referenceCrossings() => (jsonDecode(
@@ -33,15 +116,15 @@ String describe(GraphLayout layout) {
   final out = StringBuffer('bounds ${layout.bounds}\n');
   for (final node in layout.nodes.values) {
     out.writeln(
-      '${node.name} ${node.command} L${node.layer} ${node.tile} ${node.nameRect} '
-      '${node.commandRect} ${node.startRect} ${node.bar?.rect} '
-      '${node.bar?.inputs}',
+      '${node.id} ${node.kind} ${node.name} ${node.place} ${node.inside} '
+      'L${node.layer} ${node.tile} ${node.nameRect} ${node.placeRect} '
+      '${node.bar?.rect} ${node.bar?.inputs}',
     );
   }
   for (final exit in layout.exits) {
     out.writeln(
-      '${exit.node}#${exit.index} ${exit.shape} ${exit.anchor} '
-      '${exit.handle} ${exit.stubEnd} ${exit.labelRect} ${exit.counterAt}',
+      '${exit.node}#${exit.index} ${exit.label} ${exit.shape} ${exit.anchor} '
+      '${exit.handle} ${exit.labelRect} ${exit.counterAt}',
     );
   }
   for (final edge in layout.edges) {

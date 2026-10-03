@@ -1,0 +1,141 @@
+{
+  "format": 1,
+  "package": "many-sources",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/many-sources.dart#many-sources"
+  ],
+  "functions": {
+    "lib/many-sources.dart#many-sources": {
+      "name": "many-sources",
+      "place": "lib/many-sources.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "split",
+            "kind": "fork",
+            "label": "split",
+            "place": "lib/many-sources.dart:10"
+          },
+          {
+            "id": "check-a",
+            "kind": "step",
+            "name": "check-a",
+            "place": "lib/many-sources.dart:11"
+          },
+          {
+            "id": "check-b",
+            "kind": "step",
+            "name": "check-b",
+            "place": "lib/many-sources.dart:12"
+          },
+          {
+            "id": "check-c",
+            "kind": "step",
+            "name": "check-c",
+            "place": "lib/many-sources.dart:13"
+          },
+          {
+            "id": "check-d",
+            "kind": "step",
+            "name": "check-d",
+            "place": "lib/many-sources.dart:14"
+          },
+          {
+            "id": "check-e",
+            "kind": "step",
+            "name": "check-e",
+            "place": "lib/many-sources.dart:15"
+          },
+          {
+            "id": "collect",
+            "kind": "fork",
+            "label": "collect",
+            "place": "lib/many-sources.dart:16"
+          },
+          {
+            "id": "report",
+            "kind": "step",
+            "name": "report",
+            "place": "lib/many-sources.dart:17"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "split",
+            "label": null
+          },
+          {
+            "from": "split",
+            "to": "check-a",
+            "label": "a"
+          },
+          {
+            "from": "split",
+            "to": "check-b",
+            "label": "b"
+          },
+          {
+            "from": "split",
+            "to": "check-c",
+            "label": "c"
+          },
+          {
+            "from": "split",
+            "to": "check-d",
+            "label": "d"
+          },
+          {
+            "from": "split",
+            "to": "check-e",
+            "label": "e"
+          },
+          {
+            "from": "split",
+            "to": "collect",
+            "label": "else"
+          },
+          {
+            "from": "check-a",
+            "to": "collect",
+            "label": null
+          },
+          {
+            "from": "check-b",
+            "to": "collect",
+            "label": null
+          },
+          {
+            "from": "check-c",
+            "to": "collect",
+            "label": null
+          },
+          {
+            "from": "check-d",
+            "to": "collect",
+            "label": null
+          },
+          {
+            "from": "check-e",
+            "to": "collect",
+            "label": null
+          },
+          {
+            "from": "collect",
+            "to": "report",
+            "label": "true"
+          },
+          {
+            "from": "collect",
+            "to": "split",
+            "label": "else"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

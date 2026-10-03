@@ -5,7 +5,7 @@ import 'canvas_marks.dart';
 import 'canvas_style.dart';
 import 'layout_geometry.dart';
 
-/// A key or a counter on its opaque chip.
+/// A label or a counter on its opaque chip.
 final class ExitChip {
   const ExitChip(this.rect, this.text, this.color);
 
@@ -15,8 +15,8 @@ final class ExitChip {
 }
 
 /// Paints the exits of a layout (docs/ui-spec.md «Граф»): dots, capsules,
-/// stubs with their cross bars, and the keys and counters on chips of the
-/// canvas's color that arrows go behind. Over the arrows, under the tiles:
+/// and the labels and counters on chips of the canvas's color that arrows go
+/// behind. Over the arrows, under the tiles:
 /// a tile covers the half of a dot on its side, as in the mockups.
 class ExitsPainter extends CustomPainter {
   ExitsPainter(this.graph, this.marks)
@@ -25,16 +25,12 @@ class ExitsPainter extends CustomPainter {
   final layout.GraphLayout graph;
   final CanvasMarks marks;
 
-  /// The keys and counters, each where the layout put it.
+  /// The labels and counters, each where the layout put it.
   final List<ExitChip> chips;
 
   /// A dot's radius and the outline of the canvas's color round it.
   static const _dot = 5.5;
   static const _outline = 2.0;
-
-  static const _stubWidth = 1.6;
-  static const _barWidth = 2.4;
-  static const _barHalf = 6.0;
 
   /// How far over a chip's bottom its text's baseline is.
   static const _baseline = 2.5;
@@ -80,25 +76,6 @@ class ExitsPainter extends CustomPainter {
       final tone = marks.exit(exit.node, exit.index);
       final anchor = exit.anchor.toOffset();
       switch (exit.shape) {
-        case layout.ExitShape.stub:
-          final end = Offset(exit.stubEnd!, anchor.dy);
-          canvas
-            ..drawLine(
-              anchor,
-              end,
-              Paint()
-                ..color = _stubColor(tone)
-                ..strokeWidth = _stubWidth,
-            )
-            ..drawLine(
-              end.translate(0, -_barHalf),
-              end.translate(0, _barHalf),
-              Paint()
-                ..color = _stubBarColor(tone)
-                ..strokeWidth = _barWidth
-                ..strokeCap = StrokeCap.round,
-            );
-          _paintDot(canvas, anchor, tone, background);
         case layout.ExitShape.dot:
           _paintDot(canvas, anchor, tone, background);
         case layout.ExitShape.capsule:
@@ -163,16 +140,6 @@ class ExitsPainter extends CustomPainter {
     Tone.path => CanvasColors.path,
     Tone.taken || Tone.plain => CanvasColors.taken,
     Tone.untaken => CanvasColors.untakenExit,
-  };
-
-  static Color _stubColor(Tone tone) => switch (tone) {
-    Tone.untaken => CanvasColors.stub,
-    _ => _handleColor(tone),
-  };
-
-  static Color _stubBarColor(Tone tone) => switch (tone) {
-    Tone.untaken => CanvasColors.stubBar,
-    _ => _handleColor(tone),
   };
 
   @override

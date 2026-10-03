@@ -1,0 +1,120 @@
+{
+  "format": 1,
+  "package": "long",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/long.dart#long"
+  ],
+  "functions": {
+    "lib/long.dart#long": {
+      "name": "long",
+      "place": "lib/long.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "plan",
+            "kind": "fork",
+            "label": "plan",
+            "place": "lib/long.dart:10"
+          },
+          {
+            "id": "lint",
+            "kind": "step",
+            "name": "lint",
+            "place": "lib/long.dart:11"
+          },
+          {
+            "id": "compile",
+            "kind": "step",
+            "name": "compile",
+            "place": "lib/long.dart:12"
+          },
+          {
+            "id": "test",
+            "kind": "fork",
+            "label": "test",
+            "place": "lib/long.dart:13"
+          },
+          {
+            "id": "package",
+            "kind": "step",
+            "name": "package",
+            "place": "lib/long.dart:14"
+          },
+          {
+            "id": "publish",
+            "kind": "step",
+            "name": "publish",
+            "place": "lib/long.dart:15"
+          },
+          {
+            "id": "done",
+            "kind": "step",
+            "name": "done",
+            "place": "lib/long.dart:16"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "plan",
+            "label": null
+          },
+          {
+            "from": "plan",
+            "to": "lint",
+            "label": "full"
+          },
+          {
+            "from": "plan",
+            "to": "test",
+            "label": "quick"
+          },
+          {
+            "from": "plan",
+            "to": "publish",
+            "label": "docs"
+          },
+          {
+            "from": "plan",
+            "to": "done",
+            "label": "none"
+          },
+          {
+            "from": "lint",
+            "to": "compile",
+            "label": null
+          },
+          {
+            "from": "compile",
+            "to": "test",
+            "label": null
+          },
+          {
+            "from": "test",
+            "to": "package",
+            "label": "green"
+          },
+          {
+            "from": "test",
+            "to": "done",
+            "label": "flaky"
+          },
+          {
+            "from": "package",
+            "to": "publish",
+            "label": null
+          },
+          {
+            "from": "publish",
+            "to": "done",
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

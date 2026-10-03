@@ -3,102 +3,180 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
-import 'package:nanoflow_ui/layout/layout.dart' show LayoutOptions, layoutGraph;
-import 'package:nanoflow_ui/state/graph_marks.dart';
-import 'package:nanoflow_ui/state/runs.dart';
+import 'package:nanoflow_ui/layout/layout.dart'
+    show LayoutOptions, NodeBox, endMarker, layoutBody, startMarker;
+import 'package:nanoflow_ui/widgets/dashed_border.dart';
+import 'package:nanoflow_ui/widgets/icons.dart';
 
 import '../../support/golden.dart';
 
 void main() {
-  final node = layoutGraph(
-    Graph.fromJson(const {
-      'start': 'only',
-      'nodes': {
-        'only': {'command': 'only.sh'},
-      },
-    }),
+  // A step, a condition, a call and copies, between the markers.
+  final layout = layoutBody(
+    const GraphBody(
+      nodes: [
+        StepNode(id: 'step', place: 'lib/a.dart:3', name: 'collect'),
+        ConditionNode(id: 'if', place: 'lib/a.dart:4', label: 'ok'),
+        CallNode(
+          id: 'call',
+          place: 'lib/a.dart:5',
+          functions: ['lib/b.dart#f'],
+        ),
+        CopiesNode(
+          id: 'copies',
+          place: 'lib/a.dart:6',
+          label: 'x in xs',
+          body: GraphBody(nodes: [], edges: []),
+        ),
+      ],
+      edges: [
+        GraphEdge(from: null, to: 'step', label: null),
+        GraphEdge(from: 'step', to: 'if', label: null),
+        GraphEdge(from: 'if', to: 'call', label: 'true'),
+        GraphEdge(from: 'if', to: 'copies', label: 'false'),
+        GraphEdge(from: 'call', to: null, label: null),
+        GraphEdge(from: 'copies', to: null, label: null),
+      ],
+    ),
+    functions: const {
+      'lib/b.dart#f': GraphFunction(
+        id: 'lib/b.dart#f',
+        name: 'f',
+        place: null,
+        body: GraphBody(
+          nodes: [StepNode(id: '1', place: null, name: 'one')],
+          edges: [],
+        ),
+      ),
+    },
     options: const LayoutOptions(measure: measureLabel),
-  ).nodes['only']!;
-
-  final aaaa = RunMarker('aaaa-run', RunPhase.running);
-  final bbbb = RunMarker('bbbb-run', RunPhase.finished);
-  final cccc = RunMarker('cccc-run', RunPhase.failed);
+  );
 
   Future<void> pumpTile(
     WidgetTester tester,
-    List<RunMarker> markers, {
-    String? visits,
-    String? selectedRun,
-  }) => pumpScreen(
-    tester,
-    Stack(
-      children: [
-        Positioned.fromRect(
-          rect: NodeTile.areaOf(node).shift(const Offset(100, 100)),
-          child: NodeTile(
-            node: node,
-            state: NodeState.visited,
-            markers: markers,
-            visits: visits,
-            selectedRun: selectedRun,
+    String id, {
+    ValueChanged<Offset>? onDoubleTap,
+  }) {
+    final node = layout.nodes[id]!;
+    return pumpScreen(
+      tester,
+      Stack(
+        children: [
+          Positioned.fromRect(
+            rect: NodeTile.areaOf(node).shift(const Offset(100, 100)),
+            child: NodeTile(node: node, onDoubleTap: onDoubleTap),
           ),
-        ),
-      ],
-    ),
-  );
-
-  /// The row of badges over the tile, which [text] is in, on screen.
-  Rect rowOf(WidgetTester tester, String text) => tester.getRect(
-    find.ancestor(of: find.text(text), matching: find.byType(Row)).first,
-  );
-
-  /// Whether the badge row is over the tile, reaching at most 6 px past its
-  /// sides, and inside what the node's widget takes, where it is hit.
-  void expectOverTile(WidgetTester tester, Rect row) {
-    final tile = tester.getRect(find.byKey(NodeTile.tileKeyOf('only')));
-    final area = tester.getRect(find.byKey(NodeTile.keyOf('only')));
-    expect(row.left, greaterThanOrEqualTo(tile.left - 6 - 0.01));
-    expect(row.right, lessThanOrEqualTo(tile.right + 6 + 0.01));
-    expect(area.intersect(row), row);
+        ],
+      ),
+    );
   }
 
-  String tooltipOf(WidgetTester tester, String text) => tester
-      .widget<Tooltip>(
-        find.ancestor(of: find.text(text), matching: find.byType(Tooltip)),
-      )
-      .message!;
+  Rect tileOf(WidgetTester tester, String id) =>
+      tester.getRect(find.byKey(NodeTile.tileKeyOf(id)));
 
-  testWidgets('shows every run on the node when they fit over the tile', (
+  /// The tiles stacked behind the tile, outermost first.
+  List<Rect> stackOf(WidgetTester tester) => [
+    for (final element in find.byType(DecoratedBox).evaluate())
+      if ((element.widget as DecoratedBox).decoration case BoxDecoration(
+        color: CanvasColors.stackFill,
+      ))
+        if (element.renderObject case final RenderBox box)
+          box.localToGlobal(Offset.zero) & box.size,
+  ];
+
+  testWidgets('a step: a terminal, its name and place under it', (
     tester,
   ) async {
-    await pumpTile(tester, [aaaa, bbbb]);
-    expect(find.text('aaaa'), findsOneWidget);
-    expect(find.text('bbbb'), findsOneWidget);
-    expect(tooltipOf(tester, 'bbbb'), 'bbbb-run');
-    expectOverTile(tester, rowOf(tester, 'aaaa'));
+    await pumpTile(tester, 'step');
+    expect(tester.widget<NodeIcon>(find.byType(NodeIcon)).fork, isFalse);
+    expect(find.text('collect'), findsOneWidget);
+    expect(find.text('a.dart:3'), findsOneWidget);
+    expect(stackOf(tester), isEmpty);
+    expect(
+      tester.getTopLeft(find.text('collect')).dy,
+      greaterThan(tileOf(tester, 'step').bottom),
+    );
   });
 
-  testWidgets('collapses runs that do not fit into the first with how many '
-      'more, every id in its tooltip', (tester) async {
-    await pumpTile(tester, [aaaa, bbbb, cccc], visits: '2×');
-    expect(find.text('aaaa +2'), findsOneWidget);
-    expect(find.text('bbbb'), findsNothing);
-    expect(find.text('2×'), findsOneWidget);
-    expect(tooltipOf(tester, 'aaaa +2'), 'aaaa-run\nbbbb-run\ncccc-run');
-    expectOverTile(tester, rowOf(tester, 'aaaa +2'));
+  testWidgets('a condition: a diamond, its label as its name', (tester) async {
+    await pumpTile(tester, 'if');
+    expect(tester.widget<NodeIcon>(find.byType(NodeIcon)).fork, isTrue);
+    expect(find.text('ok'), findsOneWidget);
   });
 
-  testWidgets('with the visit count two runs do not fit', (tester) async {
-    await pumpTile(tester, [aaaa, bbbb], visits: '3×');
-    expect(find.text('aaaa +1'), findsOneWidget);
-    expectOverTile(tester, rowOf(tester, '3×'));
+  testWidgets('a call: a tile stacked behind it, over its top, the steps of '
+      'its function on it, its name with ()', (tester) async {
+    await pumpTile(tester, 'call');
+    final tile = tileOf(tester, 'call');
+    final stack = stackOf(tester);
+    expect(stack, hasLength(1));
+    expect(stack.single.top, lessThan(tile.top));
+    expect(stack.single.left, greaterThan(tile.left));
+    expect(stack.single.right, lessThan(tile.right));
+    expect(find.byType(NodeIcon), findsNothing);
+    expect(find.text('{ 1 }'), findsOneWidget);
+    expect(find.text('f()'), findsOneWidget);
   });
 
-  testWidgets('collapses into the selected run when it is on the node', (
+  testWidgets('copies: two tiles stacked behind, ×, their label', (
     tester,
   ) async {
-    await pumpTile(tester, [aaaa, bbbb, cccc], selectedRun: 'cccc-run');
-    expect(find.text('cccc +2'), findsOneWidget);
-    expect(tooltipOf(tester, 'cccc +2'), 'aaaa-run\nbbbb-run\ncccc-run');
+    await pumpTile(tester, 'copies');
+    final stack = stackOf(tester);
+    expect(stack, hasLength(2));
+    expect(stack.first.top, lessThan(stack.last.top));
+    expect(find.text('×'), findsOneWidget);
+    expect(find.text('x in xs'), findsOneWidget);
+  });
+
+  testWidgets('the markers: dashed, saying start and end, nothing under', (
+    tester,
+  ) async {
+    for (final (id, text) in [(startMarker, 'start'), (endMarker, 'end')]) {
+      await pumpTile(tester, id);
+      expect(
+        find.descendant(
+          of: find.byKey(NodeTile.tileKeyOf(id)),
+          matching: find.text(text),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(DashedBorder), findsOneWidget);
+      expect(find.byType(Text), findsOneWidget);
+    }
+  });
+
+  testWidgets('a double click tells where it was; a tile nothing opens takes '
+      'no clicks', (tester) async {
+    final at = <Offset>[];
+    await pumpTile(tester, 'call', onDoubleTap: at.add);
+    final centre = tester.getCenter(find.byKey(NodeTile.tileKeyOf('call')));
+    await tester.tap(find.byKey(NodeTile.tileKeyOf('call')));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tap(find.byKey(NodeTile.tileKeyOf('call')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(at, [centre]);
+
+    await pumpTile(tester, 'step');
+    expect(
+      find.descendant(
+        of: find.byType(NodeTile),
+        matching: find.byType(MouseRegion),
+      ),
+      findsNothing,
+    );
+  });
+
+  test('a node\'s area holds its tile, the tiles behind it and its texts', () {
+    for (final NodeBox node in layout.nodes.values) {
+      final area = NodeTile.areaOf(node);
+      final tile = Rect.fromLTRB(
+        node.tile.left,
+        node.tile.top - 14,
+        node.tile.right,
+        node.tile.bottom,
+      );
+      expect(area.intersect(tile), tile);
+    }
   });
 }

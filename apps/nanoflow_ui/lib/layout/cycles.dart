@@ -3,12 +3,12 @@ import 'layout_graph.dart';
 /// Step 1: finds loops and back arrows, and returns the nodes in the order
 /// the walk reached them.
 ///
-/// The walk goes depth first from the `start` nodes in their order, through
-/// each node's exits in declaration order (and each list in its order). An
-/// arrow into a node that is on the walk's stack is a back arrow; an arrow
-/// into its own node is a loop; every other arrow is forward. Nodes no walk
-/// from `start` reaches are walked from afterwards, in declaration order, so
-/// that every node is placed.
+/// The walk goes depth first from the start marker, through each node's
+/// exits in order (and each capsule's arrows in order). An arrow into a node
+/// that is on the walk's stack is a back arrow; an arrow into its own node
+/// is a loop; every other arrow is forward. Nodes the walk from the start
+/// does not reach are walked from afterwards, in the layout's order, so that
+/// every node is placed.
 ///
 /// Sets [GEdge.kind], and [GNode.seen] and [GEdge.seen] on one clock.
 List<GNode> findBackEdges(LayoutGraph graph) {

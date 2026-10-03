@@ -102,16 +102,17 @@ GraphLayout route(
     final shift = Point(leftOf(node), 0) + origin;
     final port = ports[node]!;
     final bar = frame.bar;
-    nodes[node.name] = NodeBox(
+    nodes[node.id] = NodeBox(
+      id: node.id,
+      kind: node.kind,
+      node: node.node,
       name: node.name,
-      command: node.node.run,
-      isFork: node.isFork,
-      isStart: node.isStart,
+      place: node.place,
+      inside: node.inside,
       layer: node.layer,
       tile: frame.tile.shift(shift),
       nameRect: frame.name.shift(shift),
-      commandRect: frame.command.shift(shift),
-      startRect: frame.start?.shift(shift),
+      placeRect: frame.place.shift(shift),
       marks: frame.marks.shift(shift),
       status: frame.status.shift(shift),
       bar: bar == null
@@ -132,35 +133,19 @@ GraphLayout route(
     for (final exit in node.exits) {
       final e = frame.exits[exit]!;
       final anchor = Point(e.x, e.y) + shift;
-      final shape = exit.isStub
-          ? ExitShape.stub
-          : exit.isCapsule
-          ? ExitShape.capsule
-          : ExitShape.dot;
-      final handle = switch (shape) {
-        ExitShape.stub => Rect.fromLTRB(
-          anchor.x,
-          anchor.y,
-          anchor.x + e.reach,
-          anchor.y,
-        ),
-        _ => Rect.fromLTRB(
-          anchor.x - _dot,
-          e.arrows.first + shift.y - _dot,
-          anchor.x + _dot,
-          e.arrows.last + shift.y + _dot,
-        ),
-      };
       exits.add(
         ExitBox(
-          node: node.name,
+          node: node.id,
           index: exit.index,
           label: exit.label,
-          isElse: exit.isElse,
-          shape: shape,
+          shape: exit.isCapsule ? ExitShape.capsule : ExitShape.dot,
           anchor: anchor,
-          handle: handle,
-          stubEnd: exit.isStub ? anchor.x + e.reach : null,
+          handle: Rect.fromLTRB(
+            anchor.x - _dot,
+            e.arrows.first + shift.y - _dot,
+            anchor.x + _dot,
+            e.arrows.last + shift.y + _dot,
+          ),
           labelRect: e.label?.shift(shift),
           counterAt: e.counter + shift,
           reach: e.reach,
@@ -174,10 +159,10 @@ GraphLayout route(
     final points = [for (final p in paths[edge]!) at(p)];
     edges.add(
       EdgePath(
-        from: edge.from.name,
+        from: edge.from.id,
         exitIndex: edge.exit.index,
         listIndex: edge.listIndex,
-        to: edge.to.name,
+        to: edge.to.id,
         kind: edge.kind,
         points: points,
         tip: points.last + Point(o.arrowLength, 0),

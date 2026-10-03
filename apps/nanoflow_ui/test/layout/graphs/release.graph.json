@@ -1,0 +1,206 @@
+{
+  "format": 1,
+  "package": "release",
+  "fingerprint": "sha256:cddef94aaed813868d06f159fd1e89149bd5d17fc3f55845215125f861a4c896",
+  "sources": {
+    "bin/main.dart": "sha256:ed90d1f1acdf4d1dc2ab144c121be75f89b65ca5c887e6f149c88bd316f9b324",
+    "lib/publish.dart": "sha256:2195cf86eae01ca3a6ad25e19cd4436553e73766e3437d82d64c1b7593db8afe",
+    "lib/release.dart": "sha256:2c438ad34a2b857b4586a314661c7e352a2c99e18b499a30d95b7c8c0e867ec9"
+  },
+  "builds": {},
+  "workflows": [
+    "lib/release.dart#release"
+  ],
+  "functions": {
+    "lib/publish.dart#publish": {
+      "name": "publish",
+      "place": "lib/publish.dart:11",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "upload",
+            "place": "lib/publish.dart:12"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "verify",
+            "place": "lib/publish.dart:13"
+          },
+          {
+            "id": "3",
+            "kind": "fork",
+            "label": "!ok",
+            "place": "lib/publish.dart:14"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "rollback",
+            "place": "lib/publish.dart:14"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": "true"
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/release.dart#release": {
+      "name": "release",
+      "place": "lib/release.dart:15",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "plan",
+            "place": "lib/release.dart:16"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "for pkg in plan.packages",
+            "place": "lib/release.dart:17"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "build",
+            "place": "lib/release.dart:18"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "pkg.isPublic",
+            "place": "lib/release.dart:19"
+          },
+          {
+            "id": "5",
+            "kind": "call",
+            "functions": [
+              "lib/publish.dart#publish"
+            ],
+            "place": "lib/release.dart:19"
+          },
+          {
+            "id": "6",
+            "kind": "fork",
+            "label": "switch (plan.channel)",
+            "place": "lib/release.dart:21"
+          },
+          {
+            "id": "7",
+            "kind": "step",
+            "name": "announce",
+            "place": "lib/release.dart:23"
+          },
+          {
+            "id": "8",
+            "kind": "step",
+            "name": "notify-testers",
+            "place": "lib/release.dart:26"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "each"
+          },
+          {
+            "from": "2",
+            "to": "6",
+            "label": "done"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "2",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": "Channel.stable"
+          },
+          {
+            "from": "6",
+            "to": "8",
+            "label": "Channel.beta"
+          },
+          {
+            "from": "6",
+            "to": "8",
+            "label": "Channel.dev"
+          },
+          {
+            "from": "7",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

@@ -10,23 +10,36 @@ const double nameTop = 8;
 /// The height of the name's line.
 const double nameHeight = 15;
 
-/// Where the command sits under a tile: its top below the tile's bottom.
-const double commandTop = nameTop + nameHeight + 2;
+/// Where the place sits under a tile: its top below the tile's bottom.
+const double placeTop = nameTop + nameHeight + 2;
 
-/// The height of the command's line.
-const double commandHeight = 13;
+/// The height of the place's line.
+const double placeHeight = 13;
 
-/// The `start` caption over a tile: its height, and its gap to the tile.
-const double startHeight = 12;
-const double startGap = 8;
+/// How far each tile stacked behind a call or copies shows over the tile,
+/// and how far in from its sides it is.
+const double stackStep = 7;
+const double stackInset = 8;
+
+/// How many tiles are stacked behind the tile of [kind]: one behind a call,
+/// two behind copies.
+int tilesBehind(NodeKind kind) => switch (kind) {
+  NodeKind.call => 1,
+  NodeKind.copies => 2,
+  _ => 0,
+};
 
 /// How far a loop runs from what it goes around: the marks over the tile, or
-/// the command under it.
+/// the place under it.
 const double loopClear = 8;
 
 /// The room the marks over a tile take: badges in its top right corner, and
-/// the `start` caption over a `start` node.
-double marksAbove(GNode node) => node.isStart ? startHeight + startGap + 2 : 12;
+/// the tiles stacked behind it.
+double marksAbove(GNode node) =>
+    math.max(12, stackStep * tilesBehind(node.kind) + 4);
+
+/// The room under a tile: its name and place; a marker's state badge.
+double textsBelow(GNode node) => node.isMarker ? 12 : placeTop + placeHeight;
 
 /// How far a loop's far side is from the middle of its tile: [index] counts
 /// from the innermost loop on that side.
@@ -39,7 +52,7 @@ double loopOffset(
 }) {
   final reach = loopClear + index * options.laneGap;
   return below
-      ? ports.height / 2 + commandTop + commandHeight + reach
+      ? ports.height / 2 + textsBelow(node) + reach
       : -(ports.height / 2 + marksAbove(node) + reach);
 }
 
@@ -59,7 +72,7 @@ double loopOffset(
         ? port.height / 2 + marksAbove(node)
         : -loopOffset(node, port, options, below: false, index: above - 1),
     down: below == 0
-        ? port.height / 2 + commandTop + commandHeight
+        ? port.height / 2 + textsBelow(node)
         : loopOffset(node, port, options, below: true, index: below - 1),
   );
 }
@@ -340,24 +353,21 @@ final class ExitFrame {
   /// The middle of the exit.
   final double y;
 
-  /// Where each arrow leaves, top to bottom; empty for a stub.
+  /// Where each arrow leaves, top to bottom.
   final List<double> arrows;
 
-  /// The chip of the exit's key; `null` for a worker's exit.
+  /// The chip of the exit's label; `null` for unlabelled edges.
   final Rect? label;
 
-  /// The top left corner of the counter's chip, right after the key.
+  /// The top left corner of the counter's chip, right after the label.
   final Point counter;
 
-  /// How far right of [x] the key and the room for a counter end: an arrow
-  /// may turn only past it, a stub ends there.
+  /// How far right of [x] the label and the room for a counter end: an
+  /// arrow may turn only past it.
   final double reach;
 
-  /// What the exit's marks cover: the dot or capsule, the chips, the stub.
+  /// What the exit's marks cover: the dot or capsule, the chips.
   final Rect area;
-
-  /// The x where the stub ends, for an empty target.
-  double get stubEnd => x + reach;
 }
 
 /// Where a node's tile, texts and marks are, for a tile whose left side is
@@ -366,8 +376,7 @@ final class NodeFrame {
   NodeFrame._(
     this.tile,
     this.name,
-    this.command,
-    this.start,
+    this.place,
     this.marks,
     this.status,
     this.bar,
@@ -375,13 +384,15 @@ final class NodeFrame {
   );
 
   final Rect tile;
+
+  /// The name under the tile; empty without one.
   final Rect name;
-  final Rect command;
 
-  /// The `start` caption, for a `start` node.
-  final Rect? start;
+  /// The place under the name; empty without one.
+  final Rect place;
 
-  /// The badges over the tile's top right corner: a run's id, a visit count.
+  /// Over the tile: the tiles stacked behind it, the badges over its top
+  /// right corner.
   final Rect marks;
 
   /// The state badge on the tile's bottom right corner.
@@ -396,8 +407,7 @@ final class NodeFrame {
   /// Everything an arrow must keep off, besides the tile.
   Iterable<Rect> get obstacles sync* {
     yield name;
-    yield command;
-    if (start case final start?) yield start;
+    yield place;
     yield marks;
     yield status;
     if (bar case final bar?) yield bar;
@@ -411,9 +421,10 @@ final class NodeFrame {
 NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   final o = options;
   final tile = Rect.fromLTWH(0, y - port.height / 2, o.tile, port.height);
-  Rect centred(String text, LabelKind kind, double top, double height) {
-    final width = o.measure(text, kind);
+  Rect centred(String? text, LabelKind kind, double top, double height) {
     final middle = tile.center.x;
+    if (text == null) return Rect.fromLTWH(middle, tile.bottom, 0, 0);
+    final width = o.measure(text, kind);
     return Rect.fromLTWH(middle - width / 2, top, width, height);
   }
 
@@ -423,23 +434,16 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
     tile.bottom + nameTop,
     nameHeight,
   );
-  final command = centred(
-    node.node.run,
-    LabelKind.command,
-    tile.bottom + commandTop,
-    commandHeight,
+  final place = centred(
+    node.place,
+    LabelKind.place,
+    tile.bottom + placeTop,
+    placeHeight,
   );
-  final start = node.isStart
-      ? Rect.fromLTWH(
-          tile.left,
-          tile.top - startGap - startHeight,
-          o.measure(startCaption, LabelKind.startCaption),
-          startHeight,
-        )
-      : null;
+  final behind = stackStep * tilesBehind(node.kind);
   final marks = Rect.fromLTRB(
-    tile.right - 60,
-    tile.top - 10,
+    behind > 0 ? tile.left + stackInset : tile.right - 60,
+    tile.top - math.max(10, behind),
     tile.right + 8,
     tile.top + 8,
   );
@@ -467,8 +471,8 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   for (final exit in port.slots) {
     final middle = y + port.slotAt[exit]!;
     final arrows = [for (final edge in exit.edges) y + port.exitAt[edge]!];
-    final top = arrows.isEmpty ? middle : arrows.first;
-    final bottom = arrows.isEmpty ? middle : arrows.last;
+    final top = arrows.first;
+    final bottom = arrows.last;
     final chipTop = top - _chipLift - o.chipHeight;
     final x = tile.right;
     final text = exit.label;
@@ -488,8 +492,8 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
     final area = Rect.fromLTRB(
       x - _dotRadius,
       math.min(chipTop, top - _dotRadius),
-      exit.isStub ? x + reach + _stubBar : x + reach,
-      exit.isStub ? middle + _stubHalf : bottom + _dotRadius,
+      x + reach,
+      bottom + _dotRadius,
     );
     exits[exit] = ExitFrame._(
       exit: exit,
@@ -502,7 +506,7 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       area: area,
     );
   }
-  return NodeFrame._(tile, name, command, start, marks, status, bar, exits);
+  return NodeFrame._(tile, name, place, marks, status, bar, exits);
 }
 
 /// Where chips start right of the exit, how far apart they are, and how high
@@ -511,8 +515,5 @@ const double _chipOffset = 6;
 const double _chipSpacing = 2;
 const double _chipLift = 2.5;
 
-/// The exit dot's radius with its outline, and a stub's cross bar: its half
-/// length and its stroke's half width.
+/// The exit dot's radius with its outline.
 const double _dotRadius = 6.5;
-const double _stubHalf = 6;
-const double _stubBar = 1.5;

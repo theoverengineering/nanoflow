@@ -160,7 +160,7 @@ void main() {
       ).notes,
     );
     expect(
-      colorOf(tester, '3 sessions of workflows not in nanoflow.graph.json'),
+      colorOf(tester, '3 sessions of 2 workflows not in nanoflow.graph.json'),
       AppColors.running,
     );
     expect(inNotes(find.text('backup')), findsOneWidget);
@@ -192,7 +192,7 @@ void main() {
     );
     expect(inNotes(find.text(graphFileMayBeStale)), findsOneWidget);
     expect(
-      inNotes(find.text('1 session of workflows not in nanoflow.graph.json')),
+      inNotes(find.text('1 session of a workflow not in nanoflow.graph.json')),
       findsNothing,
     );
   });

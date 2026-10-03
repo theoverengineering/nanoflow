@@ -19,6 +19,7 @@ import 'ports.dart';
 import 'routing.dart';
 
 export 'checks.dart' show checkLayout, countCrossings;
+export 'coordinates.dart' show stackInset, stackStep, tilesBehind;
 export 'geometry.dart';
 export 'graph_layout.dart';
 export 'layout_graph.dart'
@@ -27,18 +28,26 @@ export 'layout_graph.dart'
         LabelKind,
         LayoutOptions,
         MeasureText,
+        NodeKind,
         counterText,
+        endMarker,
+        endMarkerAt,
+        insideText,
         monospaceMeasure,
-        startCaption;
+        nodeName,
+        startMarker;
 
-/// Lays out [graph]: steps 1 to 8 of `docs/graph-layout.md`.
+/// Lays out one level of the graph, [body], from a start marker to end
+/// markers (`LayoutGraph.ofBody`), its calls named after their functions in
+/// [functions]: steps 1 to 8 of `docs/graph-layout.md`.
 ///
-/// The same graph always gets the same layout.
-GraphLayout layoutGraph(
-  Graph graph, {
+/// The same body always gets the same layout.
+GraphLayout layoutBody(
+  GraphBody body, {
+  Map<String, GraphFunction> functions = const {},
   LayoutOptions options = const LayoutOptions(),
 }) {
-  final g = LayoutGraph.of(graph);
+  final g = LayoutGraph.ofBody(body, functions: functions);
   findBackEdges(g);
   assignLayers(g);
   final layers = buildLayers(g);
@@ -53,11 +62,11 @@ GraphLayout layoutGraph(
           if (edge.kind == EdgeKind.loop) edge,
     ];
     if (loops.isEmpty) continue;
-    final over = _loopCrossings(layout, node.name);
+    final over = _loopCrossings(layout, node.id);
     if (over == 0) continue;
     below.add(node);
     final under = _build(g, layers, options, below);
-    if (_loopCrossings(under, node.name) < over) {
+    if (_loopCrossings(under, node.id) < over) {
       layout = under;
     } else {
       below.remove(node);

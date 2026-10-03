@@ -1,289 +1,75 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
-import 'package:nanoflow_ui/graph/run_switcher.dart';
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
-import 'package:nanoflow_ui/state/runs.dart';
 import 'package:nanoflow_ui/theme.dart';
 
-import '../state/support.dart';
-import 'canvas/support.dart';
 import 'support.dart';
 
 void main() {
   Finder inBar(Finder finder) =>
       find.descendant(of: find.byType(SessionBar), matching: finder);
 
-  Finder pill(String runId) => find.byKey(RunSwitcher.pillKey(runId));
-
-  Finder sign(String runId, RunPhase phase) => find.descendant(
-    of: pill(runId),
-    matching: find.byWidgetPredicate((w) => w is RunSign && w.phase == phase),
-  );
-
-  Color? fillOf(WidgetTester tester, String runId) =>
-      (tester.widget<Container>(pill(runId)).decoration! as BoxDecoration)
-          .color;
-
-  Finder incompleteMark(String runId) => find.descendant(
-    of: pill(runId),
-    matching: find.byWidgetPredicate(
-      (w) => w is Tooltip && w.message!.startsWith(logReadIncompletely),
-    ),
-  );
+  Future<GraphModel> pump(WidgetTester tester) =>
+      pumpGraphScreen(tester, model: columnModel(), now: () => columnNow);
 
   Future<void> select(WidgetTester tester, String sessionId) async {
     await tester.tap(find.byKey(SessionsColumn.cardKey(sessionId)));
     await tester.pump();
   }
 
-  group('the session bar', () {
-    testWidgets('names the session, when it started and how it is', (
-      tester,
-    ) async {
-      await pumpGraphScreen(tester);
+  testWidgets('names the session, when it started and how it is', (
+    tester,
+  ) async {
+    await pump(tester);
 
-      for (final text in ['Session', 'a1b2', 'started 14:03:11']) {
-        expect(inBar(find.text(text)), findsOneWidget);
-      }
-      expect(inBar(find.byTooltip('a1b2-session')), findsOneWidget);
-      final status = inBar(find.text('running 12m 26s'));
-      expect(tester.widget<Text>(status).style!.color, AppColors.running);
-    });
-
-    testWidgets('a failed session: failed in 6m 18s', (tester) async {
-      await pumpGraphScreen(tester);
-      await select(tester, '7c3e-s');
-
-      expect(inBar(find.text('7c3e')), findsOneWidget);
-      final status = inBar(find.text('failed in 6m 18s'));
-      expect(tester.widget<Text>(status).style!.color, AppColors.dangerText);
-    });
-
-    testWidgets('a finished session: finished in 3m 04s', (tester) async {
-      await pumpGraphScreen(tester);
-      await select(tester, '4b8d-s');
-
-      final status = inBar(find.text('finished in 3m 04s'));
-      expect(tester.widget<Text>(status).style!.color, AppColors.finishedText);
-    });
-
-    testWidgets('stays put while the canvas under it moves', (tester) async {
-      await pumpGraphScreen(tester);
-      final bar = tester.getRect(inBar(find.text('Session')));
-      final node = tester.getRect(find.byKey(NodeTile.tileKeyOf('collect')));
-
-      await tester.dragFrom(const Offset(700, 400), const Offset(-120, 60));
-      await tester.pump();
-
-      expect(tester.getRect(inBar(find.text('Session'))), bar);
-      expect(
-        tester.getRect(find.byKey(NodeTile.tileKeyOf('collect'))),
-        isNot(node),
-      );
-    });
-
-    testWidgets('is not there for Current graph; the zoom buttons are', (
-      tester,
-    ) async {
-      final model = await pumpGraphScreen(tester);
-      model.selection.showCurrentGraph();
-      await tester.pump();
-
-      expect(inBar(find.text('Session')), findsNothing);
-      expect(find.byKey(RunSwitcher.pillKey('e5f6-run')), findsNothing);
-      expect(find.byTooltip('Zoom to fit'), findsOneWidget);
-    });
+    for (final text in ['Session', 'a1b2', 'started 14:03:11']) {
+      expect(inBar(find.text(text)), findsOneWidget);
+    }
+    expect(inBar(find.byTooltip('a1b2-session')), findsOneWidget);
+    final status = inBar(find.text('running 12m 26s'));
+    expect(tester.widget<Text>(status).style!.color, AppColors.running);
   });
 
-  group('the run switcher', () {
-    testWidgets('has the runs in the order they were created', (tester) async {
-      await pumpGraphScreen(tester);
+  testWidgets('a failed session: failed in 6m 18s', (tester) async {
+    await pump(tester);
+    await select(tester, '7c3e-session');
 
-      final lefts = [
-        for (final run in ['k7f2-run', 'c3d4-run', 'e5f6-run'])
-          tester.getTopLeft(pill(run)).dx,
-      ];
-      expect(lefts, orderedEquals([...lefts]..sort()));
-      expect(inBar(find.text('Run')), findsOneWidget);
-      expect(
-        find.descendant(of: pill('k7f2-run'), matching: find.text('k7f2')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: pill('k7f2-run'),
-          matching: find.byTooltip('k7f2-run'),
-        ),
-        findsOneWidget,
-      );
-    });
+    expect(inBar(find.text('7c3e')), findsOneWidget);
+    final status = inBar(find.text('failed in 6m 18s'));
+    expect(tester.widget<Text>(status).style!.color, AppColors.dangerText);
+  });
 
-    testWidgets('signs each run with its state, a split one with split too', (
-      tester,
-    ) async {
-      final mockup = Mockup();
-      final failed = Journal(
-        'f1a2-run',
-        parent: 'k7f2-run',
-        node: 'publish',
-        startedAt: 611.4,
-      );
-      failed.fail(failed.step('publish', 612, end: 620, exit: 1), 620, 'oops');
-      final waiting = Journal(
-        'w9x8-run',
-        parent: 'k7f2-run',
-        node: 'notify',
-        startedAt: 611.5,
-      );
-      await pumpGraphScreen(
-        tester,
-        model: ownedModel(
-          changes: changesOf([
-            mockup.k7f2,
-            mockup.c3d4,
-            mockup.e5f6,
-            failed,
-            waiting,
-          ]),
-          outcomes: reviewOutcomes,
-        ),
-      );
+  testWidgets('a finished session: finished in 3m 04s', (tester) async {
+    await pump(tester);
+    await select(tester, '4b8d-session');
 
-      expect(sign('k7f2-run', RunPhase.split), findsOneWidget);
-      expect(
-        find.descendant(of: pill('k7f2-run'), matching: find.text('split')),
-        findsOneWidget,
-      );
-      expect(sign('c3d4-run', RunPhase.finished), findsOneWidget);
-      expect(sign('e5f6-run', RunPhase.running), findsOneWidget);
-      expect(sign('f1a2-run', RunPhase.failed), findsOneWidget);
-      expect(sign('w9x8-run', RunPhase.notStarted), findsOneWidget);
-      expect(find.text('split'), findsOneWidget);
-    });
+    final status = inBar(find.text('finished in 3m 04s'));
+    expect(tester.widget<Text>(status).style!.color, AppColors.finishedText);
+  });
 
-    testWidgets('fills the selected run with the accent', (tester) async {
-      await pumpGraphScreen(tester);
+  testWidgets('stays put while the canvas under it moves', (tester) async {
+    await pump(tester);
+    final bar = tester.getRect(inBar(find.text('Session')));
+    final node = tester.getRect(find.byKey(NodeTile.tileKeyOf('1')));
 
-      expect(fillOf(tester, 'e5f6-run'), AppColors.accent);
-      expect(fillOf(tester, 'c3d4-run'), isNot(AppColors.accent));
-      expect(fillOf(tester, 'k7f2-run'), isNot(AppColors.accent));
-    });
+    await tester.dragFrom(const Offset(700, 400), const Offset(-120, 60));
+    await tester.pump();
 
-    testWidgets('a click on a run selects it', (tester) async {
-      final model = await pumpGraphScreen(tester);
+    expect(tester.getRect(inBar(find.text('Session'))), bar);
+    expect(tester.getRect(find.byKey(NodeTile.tileKeyOf('1'))), isNot(node));
+  });
 
-      await tester.tap(pill('c3d4-run'));
-      await tester.pump();
+  testWidgets('is not there for Current graph; the zoom buttons are', (
+    tester,
+  ) async {
+    final model = await pump(tester);
+    model.selection.showCurrentGraph();
+    await tester.pump();
 
-      expect(model.selection.runId, 'c3d4-run');
-      expect(fillOf(tester, 'c3d4-run'), AppColors.accent);
-      expect(fillOf(tester, 'e5f6-run'), isNot(AppColors.accent));
-    });
-
-    group('with more runs than fit', () {
-      /// The mockup's session with 30 more runs of the split, each finished.
-      Future<GraphModel> pumpManyRuns(WidgetTester tester) {
-        final mockup = Mockup();
-        return pumpGraphScreen(
-          tester,
-          model: ownedModel(
-            changes: changesOf([
-              mockup.k7f2,
-              mockup.c3d4,
-              mockup.e5f6,
-              for (var i = 0; i < 30; i++)
-                Journal(
-                    'm${i.toString().padLeft(3, '0')}-run',
-                    parent: 'k7f2-run',
-                    node: 'publish',
-                    startedAt: 611.6 + i / 100,
-                  )
-                  ..step('publish', 612 + i, end: 613 + i)
-                  ..finish(613 + i),
-            ]),
-            outcomes: reviewOutcomes,
-          ),
-        );
-      }
-
-      Rect switcher(WidgetTester tester) => tester.getRect(
-        find.descendant(
-          of: find.byType(RunSwitcher),
-          matching: find.byType(Scrollable),
-        ),
-      );
-
-      bool shown(WidgetTester tester, String runId) {
-        final runs = switcher(tester);
-        final run = tester.getRect(pill(runId));
-        return run.left >= runs.left - 0.5 && run.right <= runs.right + 0.5;
-      }
-
-      testWidgets('scrolls the selected run into view', (tester) async {
-        final model = await pumpManyRuns(tester);
-        expect(shown(tester, 'e5f6-run'), isTrue);
-        expect(shown(tester, 'm029-run'), isFalse);
-
-        model.selectRun('m029-run');
-        // The runs scroll there in a short animation.
-        await settle(tester);
-        await settle(tester);
-        expect(shown(tester, 'm029-run'), isTrue);
-
-        model.selectRun('k7f2-run');
-        await settle(tester);
-        await settle(tester);
-        expect(shown(tester, 'k7f2-run'), isTrue);
-      });
-
-      testWidgets('scrolls the runs with the mouse wheel, and the canvas '
-          'stays', (tester) async {
-        await pumpManyRuns(tester);
-        final node = tester.getRect(find.byKey(NodeTile.tileKeyOf('collect')));
-        final first = tester.getRect(pill('k7f2-run'));
-
-        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-        await mouse.addPointer(location: switcher(tester).center);
-        await tester.sendEventToBinding(
-          PointerScrollEvent(
-            position: switcher(tester).center,
-            scrollDelta: const Offset(0, 200),
-          ),
-        );
-        await tester.pump();
-
-        expect(tester.getRect(pill('k7f2-run')).left, lessThan(first.left));
-        expect(tester.getRect(find.byKey(NodeTile.tileKeyOf('collect'))), node);
-      });
-    });
-
-    testWidgets('marks a run whose log was read incompletely, and says why', (
-      tester,
-    ) async {
-      final mockup = Mockup();
-      await pumpGraphScreen(
-        tester,
-        model: ownedModel(
-          changes: [
-            ...changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]),
-            const LogCorrupted(runId: 'c3d4-run', line: 3, text: 'garbage'),
-          ],
-          outcomes: reviewOutcomes,
-        ),
-      );
-
-      expect(incompleteMark('c3d4-run'), findsOneWidget);
-      expect(
-        tester.widget<Tooltip>(incompleteMark('c3d4-run')).message,
-        contains('line 3 is not an event: garbage'),
-      );
-      expect(incompleteMark('e5f6-run'), findsNothing);
-      expect(incompleteMark('k7f2-run'), findsNothing);
-    });
+    expect(inBar(find.text('Session')), findsNothing);
+    expect(find.byTooltip('Zoom to fit'), findsOneWidget);
   });
 }

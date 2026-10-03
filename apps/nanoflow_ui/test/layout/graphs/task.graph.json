@@ -1,0 +1,198 @@
+{
+  "format": 1,
+  "package": "task",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/task.dart#task"
+  ],
+  "functions": {
+    "lib/task.dart#task": {
+      "name": "task",
+      "place": "lib/task.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "admit",
+            "kind": "fork",
+            "label": "admit",
+            "place": "lib/task.dart:10"
+          },
+          {
+            "id": "coder",
+            "kind": "step",
+            "name": "coder",
+            "place": "lib/task.dart:11"
+          },
+          {
+            "id": "coder-status",
+            "kind": "fork",
+            "label": "coder-status",
+            "place": "lib/task.dart:12"
+          },
+          {
+            "id": "checks",
+            "kind": "step",
+            "name": "checks",
+            "place": "lib/task.dart:13"
+          },
+          {
+            "id": "checks-result",
+            "kind": "fork",
+            "label": "checks-result",
+            "place": "lib/task.dart:14"
+          },
+          {
+            "id": "reviewer",
+            "kind": "step",
+            "name": "reviewer",
+            "place": "lib/task.dart:15"
+          },
+          {
+            "id": "review-verdict",
+            "kind": "fork",
+            "label": "review-verdict",
+            "place": "lib/task.dart:16"
+          },
+          {
+            "id": "human-review",
+            "kind": "step",
+            "name": "human-review",
+            "place": "lib/task.dart:17"
+          },
+          {
+            "id": "human-answer",
+            "kind": "fork",
+            "label": "human-answer",
+            "place": "lib/task.dart:18"
+          },
+          {
+            "id": "accept",
+            "kind": "step",
+            "name": "accept",
+            "place": "lib/task.dart:19"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "admit",
+            "label": null
+          },
+          {
+            "from": "admit",
+            "to": "coder",
+            "label": "fresh"
+          },
+          {
+            "from": "admit",
+            "to": "reviewer",
+            "label": "review"
+          },
+          {
+            "from": "admit",
+            "to": "human-review",
+            "label": "human"
+          },
+          {
+            "from": "admit",
+            "to": null,
+            "label": "else"
+          },
+          {
+            "from": "coder",
+            "to": "coder-status",
+            "label": null
+          },
+          {
+            "from": "coder-status",
+            "to": "checks",
+            "label": "done"
+          },
+          {
+            "from": "coder-status",
+            "to": "coder",
+            "label": "go-on"
+          },
+          {
+            "from": "coder-status",
+            "to": "coder",
+            "label": "post"
+          },
+          {
+            "from": "coder-status",
+            "to": null,
+            "label": "else"
+          },
+          {
+            "from": "checks",
+            "to": "checks-result",
+            "label": null
+          },
+          {
+            "from": "checks-result",
+            "to": "reviewer",
+            "label": "pass"
+          },
+          {
+            "from": "checks-result",
+            "to": "coder",
+            "label": "repair"
+          },
+          {
+            "from": "checks-result",
+            "to": null,
+            "label": "else"
+          },
+          {
+            "from": "reviewer",
+            "to": "review-verdict",
+            "label": null
+          },
+          {
+            "from": "review-verdict",
+            "to": "human-review",
+            "label": "pass"
+          },
+          {
+            "from": "review-verdict",
+            "to": "coder",
+            "label": "fail"
+          },
+          {
+            "from": "review-verdict",
+            "to": "reviewer",
+            "label": "again"
+          },
+          {
+            "from": "review-verdict",
+            "to": null,
+            "label": "else"
+          },
+          {
+            "from": "human-review",
+            "to": "human-answer",
+            "label": null
+          },
+          {
+            "from": "human-answer",
+            "to": "accept",
+            "label": "accept"
+          },
+          {
+            "from": "human-answer",
+            "to": "coder",
+            "label": "changes"
+          },
+          {
+            "from": "human-answer",
+            "to": null,
+            "label": "else"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

@@ -1,0 +1,956 @@
+{
+  "format": 1,
+  "package": "control",
+  "fingerprint": "sha256:82179a49bb0784e2d0f5fab9beb759f82c28eeaf6130c62808483c6830ce99e6",
+  "sources": {
+    "lib/backup.dart": "sha256:4dba6514bb60409384695bd590ed329ea948f34af93d409691a91222864af635"
+  },
+  "builds": {},
+  "workflows": [],
+  "functions": {
+    "lib/backup.dart#alert": {
+      "name": "alert",
+      "place": "lib/backup.dart:130",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "switch (level)",
+            "place": "lib/backup.dart:131"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "page",
+            "place": "lib/backup.dart:133"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "log",
+            "place": "lib/backup.dart:135"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "'error'"
+          },
+          {
+            "from": "1",
+            "to": "3",
+            "label": "_"
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#compress": {
+      "name": "compress",
+      "place": "lib/backup.dart:30",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "switch (format)",
+            "place": "lib/backup.dart:31"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "zip",
+            "place": "lib/backup.dart:33"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "tar",
+            "place": "lib/backup.dart:35"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "checksum",
+            "place": "lib/backup.dart:37"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "'zip'"
+          },
+          {
+            "from": "1",
+            "to": "3",
+            "label": "'tar'"
+          },
+          {
+            "from": "1",
+            "to": "4",
+            "label": "default"
+          },
+          {
+            "from": "2",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#deployLocked": {
+      "name": "deployLocked",
+      "place": "lib/backup.dart:105",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "lock",
+            "place": "lib/backup.dart:107"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "early",
+            "place": "lib/backup.dart:108"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "work",
+            "place": "lib/backup.dart:109"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "unlock",
+            "place": "lib/backup.dart:111"
+          },
+          {
+            "id": "5",
+            "kind": "step",
+            "name": "unlock",
+            "place": "lib/backup.dart:111"
+          },
+          {
+            "id": "6",
+            "kind": "step",
+            "name": "report",
+            "place": "lib/backup.dart:113"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "true"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": "6",
+            "label": null
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#drain": {
+      "name": "drain",
+      "place": "lib/backup.dart:116",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "for queue in queues",
+            "place": "lib/backup.dart:117"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "measure",
+            "place": "lib/backup.dart:119"
+          },
+          {
+            "id": "3",
+            "kind": "fork",
+            "label": "size == 0",
+            "place": "lib/backup.dart:120"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "size > 100",
+            "place": "lib/backup.dart:121"
+          },
+          {
+            "id": "5",
+            "kind": "step",
+            "name": "process",
+            "place": "lib/backup.dart:122"
+          },
+          {
+            "id": "6",
+            "kind": "step",
+            "name": "release",
+            "place": "lib/backup.dart:124"
+          },
+          {
+            "id": "7",
+            "kind": "step",
+            "name": "release",
+            "place": "lib/backup.dart:124"
+          },
+          {
+            "id": "8",
+            "kind": "step",
+            "name": "release",
+            "place": "lib/backup.dart:124"
+          },
+          {
+            "id": "9",
+            "kind": "step",
+            "name": "done",
+            "place": "lib/backup.dart:127"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "each"
+          },
+          {
+            "from": "1",
+            "to": "9",
+            "label": "done"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "8",
+            "label": "true"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": "false"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "4",
+            "to": "7",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": "9",
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "9",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#prepare": {
+      "name": "prepare",
+      "place": "lib/backup.dart:145",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "measure-disk",
+            "place": "lib/backup.dart:147"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "measure-memory",
+            "place": "lib/backup.dart:148"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "plan",
+            "place": "lib/backup.dart:150"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": null,
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#report": {
+      "name": "report",
+      "place": "lib/backup.dart:69",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "quiet",
+            "place": "lib/backup.dart:70"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "summarize",
+            "place": "lib/backup.dart:70"
+          },
+          {
+            "id": "3",
+            "kind": "fork",
+            "label": "urgent",
+            "place": "lib/backup.dart:71"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "text.isNotEmpty",
+            "place": "lib/backup.dart:71"
+          },
+          {
+            "id": "5",
+            "kind": "step",
+            "name": "ask",
+            "place": "lib/backup.dart:71"
+          },
+          {
+            "id": "6",
+            "kind": "fork",
+            "label": "urgent || text.isNotEmpty && await f.step('ask', () => true)",
+            "place": "lib/backup.dart:71"
+          },
+          {
+            "id": "7",
+            "kind": "step",
+            "name": "mail",
+            "place": "lib/backup.dart:72"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "false"
+          },
+          {
+            "from": "1",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "6",
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "6",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": "true"
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "7",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#restore": {
+      "name": "restore",
+      "place": "lib/backup.dart:139",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "find",
+            "place": "lib/backup.dart:140"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "!found",
+            "place": "lib/backup.dart:141"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "restore",
+            "place": "lib/backup.dart:142"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#rotate": {
+      "name": "rotate",
+      "place": "lib/backup.dart:76",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "files.every((file) => file.endsWith('.gz') || file.endsWith('.zip') || file.endsWith('.xz'))",
+            "place": "lib/backup.dart:82"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "lock",
+            "place": "lib/backup.dart:89"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "unlock",
+            "place": "lib/backup.dart:91"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#schedule": {
+      "name": "schedule",
+      "place": "lib/backup.dart:40",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "config case {'every': final int hours}",
+            "place": "lib/backup.dart:41"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "schedule",
+            "place": "lib/backup.dart:42"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "true"
+          },
+          {
+            "from": "1",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#sendParts": {
+      "name": "sendParts",
+      "place": "lib/backup.dart:60",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "for (; i < parts.length;)",
+            "place": "lib/backup.dart:61"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "parts[i].isEmpty",
+            "place": "lib/backup.dart:62"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "send",
+            "place": "lib/backup.dart:63"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!sent",
+            "place": "lib/backup.dart:64"
+          },
+          {
+            "id": "5",
+            "kind": "step",
+            "name": "close",
+            "place": "lib/backup.dart:66"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "true"
+          },
+          {
+            "from": "1",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#store": {
+      "name": "store",
+      "place": "lib/backup.dart:21",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "switch (target)",
+            "place": "lib/backup.dart:22"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "copy",
+            "place": "lib/backup.dart:24"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "upload",
+            "place": "lib/backup.dart:26"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "Disk(:final path)"
+          },
+          {
+            "from": "1",
+            "to": "3",
+            "label": "Bucket(:final name)"
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#verify": {
+      "name": "verify",
+      "place": "lib/backup.dart:97",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "switch (target)",
+            "place": "lib/backup.dart:98"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "stat",
+            "place": "lib/backup.dart:99"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "head",
+            "place": "lib/backup.dart:100"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "record",
+            "place": "lib/backup.dart:102"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "Disk(:final path)"
+          },
+          {
+            "from": "1",
+            "to": "3",
+            "label": "Bucket()"
+          },
+          {
+            "from": "2",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/backup.dart#waitForHost": {
+      "name": "waitForHost",
+      "place": "lib/backup.dart:46",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "fork",
+            "label": "while (tries < 3)",
+            "place": "lib/backup.dart:48"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "is-up",
+            "place": "lib/backup.dart:49"
+          },
+          {
+            "id": "3",
+            "kind": "fork",
+            "label": "up",
+            "place": "lib/backup.dart:50"
+          },
+          {
+            "id": "4",
+            "kind": "step",
+            "name": "ping",
+            "place": "lib/backup.dart:55"
+          },
+          {
+            "id": "5",
+            "kind": "step",
+            "name": "is-busy",
+            "place": "lib/backup.dart:56"
+          },
+          {
+            "id": "6",
+            "kind": "fork",
+            "label": "while (busy)",
+            "place": "lib/backup.dart:57"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": "true"
+          },
+          {
+            "from": "1",
+            "to": "4",
+            "label": "false"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": null
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": "4",
+            "label": "true"
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": "false"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

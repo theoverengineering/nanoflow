@@ -9,7 +9,7 @@ import '../../theme.dart';
 import 'canvas_marks.dart' show Tone;
 
 /// The canvas's colors. Arrows, exits and input bars come in four tones
-/// (`Tone` in canvas_marks.dart), tiles in the node's state.
+/// (`Tone` in canvas_marks.dart).
 abstract final class CanvasColors {
   static const background = Color(0xFF27282C);
   static const gridDot = Color(0xFF3A3B41);
@@ -33,22 +33,23 @@ abstract final class CanvasColors {
     Tone.untaken => untaken,
   };
 
-  /// A stub's line and its cross bar, where no run ended.
-  static const stub = Color(0xFF45464C);
-  static const stubBar = Color(0xFF55565C);
-
-  /// Keys and counters off the selected run's path.
+  /// Labels and counters off the selected run's path.
   static const chipText = Color(0xFF9A9BA2);
 
-  static const startCaption = Color(0xFF7E7F86);
+  /// A tile: its fill and border, its icon, its name and place under it.
+  static const tileFill = Color(0xFF323338);
+  static const tileBorder = Color(0xFF55565C);
+  static const icon = Color(0xFFC9CACF);
+  static const name = Color(0xFFECECEE);
+  static const place = Color(0xFF9A9BA2);
 
-  /// The ring round the selected step's node: 4 px of the accent at 38 %.
-  static const ring = Color(0x619C8CFF);
+  /// The tiles stacked behind a call or copies.
+  static const stackFill = Color(0xFF2C2D32);
+  static const stackBorder = Color(0xFF55565C);
 
-  /// The visit count over a tile.
-  static const countFill = Color(0xFF3A3B41);
-  static const countBorder = Color(0xFF4A4B52);
-  static const countText = Color(0xFFD5D6DA);
+  /// The dashed outline of the start and end markers, and their word.
+  static const markerBorder = Color(0xFF5A5B62);
+  static const markerText = Color(0xFFA7A8AE);
 
   /// The zoom buttons and the legend.
   static const panel = Color(0xFF202125);
@@ -82,22 +83,20 @@ abstract final class CanvasText {
     fontWeight: FontWeight.w600,
   );
 
-  /// A node's command under its name.
-  static final command = _mono.copyWith(fontSize: 10.5);
+  /// A node's place in the code under its name.
+  static final place = _mono.copyWith(fontSize: 10.5);
 
-  /// `START` over a start node.
-  static final startCaption = _sans.copyWith(
-    fontSize: 9.5,
-    fontWeight: FontWeight.w600,
-    letterSpacing: 9.5 * 0.08,
-    color: CanvasColors.startCaption,
+  /// `{ 3 }` on a call, `×` on copies.
+  static final inside = _mono.copyWith(fontSize: 15, color: CanvasColors.icon);
+
+  /// `start` and `end` in their markers.
+  static final marker = _sans.copyWith(
+    fontSize: 12,
+    color: CanvasColors.markerText,
   );
 
-  /// Exit keys and arrow counters on their chips.
+  /// Exit labels and arrow counters on their chips.
   static final chip = _mono.copyWith(fontSize: 10);
-
-  /// Run ids and visit counts over a tile.
-  static final badge = _mono.copyWith(fontSize: 10);
 
   static final legend = _sans.copyWith(
     fontSize: 11,
@@ -115,8 +114,7 @@ abstract final class CanvasText {
   static TextStyle of(LabelKind kind) => switch (kind) {
     LabelKind.exitLabel || LabelKind.counter => chip,
     LabelKind.nodeName => name.copyWith(fontWeight: FontWeight.w700),
-    LabelKind.command => command,
-    LabelKind.startCaption => startCaption,
+    LabelKind.place => place,
   };
 }
 

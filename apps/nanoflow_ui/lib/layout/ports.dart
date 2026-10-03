@@ -15,7 +15,7 @@ final class Ports {
   /// The exits, top to bottom.
   final List<GExit> slots = [];
 
-  /// The middle of each exit: a dot, a capsule or a stub.
+  /// The middle of each exit: a dot or a capsule.
   final Map<GExit, double> slotAt = {};
 
   /// Where each arrow leaves the tile; arrows of a capsule are a capsule gap
@@ -43,9 +43,8 @@ final class Ports {
 ///
 /// Exits, top to bottom: loops over the tile (nested), forward arrows (a
 /// ladder: by where they go in the next layer), back arrows (nested: the
-/// higher the exit, the lower its lane), loops under the tile (nested),
-/// empty targets (`else` the very last). A capsule takes its place by its
-/// middle arrow.
+/// higher the exit, the lower its lane), loops under the tile (nested). A
+/// capsule takes its place by its middle arrow.
 ///
 /// Inputs, top to bottom: loops over the tile (nested), forward arrows (a
 /// ladder: by where they come from in the layer before), back arrows (nested:
@@ -76,7 +75,8 @@ Map<GNode, Ports> assignPorts(
 }
 
 /// The height of [node]'s tile: room for its exits an exit gap apart, and
-/// for its input bar on the straight part of the left side.
+/// for its input bar on the straight part of the left side; at least a
+/// tile's side, a marker's height for a marker.
 ///
 /// A capsule counts as an exit plus half an exit for every arrow over one.
 double tileHeight(GNode node, LayoutOptions options) {
@@ -85,7 +85,8 @@ double tileHeight(GNode node, LayoutOptions options) {
   final inputs = node.inEdges.isEmpty
       ? 0.0
       : barLength(node.inEdges.length, options) + 2 * options.tileRadius;
-  return math.max(options.tile, math.max(exits, inputs));
+  final least = node.isMarker ? options.marker : options.tile;
+  return math.max(least, math.max(exits, inputs));
 }
 
 /// The room [exit] takes on its tile, in exit gaps.
@@ -104,12 +105,7 @@ void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
   final loops = <GExit>[];
   final forward = <GExit>[];
   final back = <GExit>[];
-  final stubs = <GExit>[];
   for (final exit in port.node.exits) {
-    if (exit.isStub) {
-      stubs.add(exit);
-      continue;
-    }
     switch (middleArrow(exit).kind) {
       case EdgeKind.loop:
         loops.add(exit);
@@ -133,10 +129,6 @@ void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
     }
     return a.index.compareTo(b.index);
   });
-  stubs.sort((a, b) {
-    if (a.isElse != b.isElse) return a.isElse ? 1 : -1;
-    return a.index.compareTo(b.index);
-  });
   // Loops nest: the first declared is the innermost, nearest the tile's top
   // over it and nearest the bottom under it.
   final loopEdges = [
@@ -150,7 +142,6 @@ void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
     ...forward,
     ...back,
     if (below) ...loops.reversed,
-    ...stubs,
   ]);
 
   final units = port.slots.fold(0.0, (sum, exit) => sum + _units(exit));

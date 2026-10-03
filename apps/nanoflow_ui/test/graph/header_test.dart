@@ -2,10 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/header.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
-import 'package:nanoflow_ui/state/graph_source.dart';
+import 'package:nanoflow_ui/state/body_path.dart';
 
+import '../state/support.dart';
+import 'canvas/support.dart';
 import 'support.dart';
 
 void main() {
@@ -21,12 +24,25 @@ void main() {
   Finder inHeader(Finder finder) =>
       find.descendant(of: find.byType(GraphHeader), matching: finder);
 
-  testWidgets('names the graph file and its directory', (tester) async {
+  const publish = Opened('5', functionId: 'lib/publish.dart#publish');
+
+  /// The release fixture with publish as a workflow too.
+  GraphFile twoWorkflows() => GraphFile.fromJson({
+    ...graphFileNamed('release').toJson(),
+    'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
+  });
+
+  testWidgets('names the graph file, its directory and the workflow', (
+    tester,
+  ) async {
     await pumpGraphScreen(tester);
 
     expect(inHeader(find.text('Graphs')), findsOneWidget);
-    expect(inHeader(find.text('review.yaml')), findsOneWidget);
-    expect(inHeader(find.text('~/Projects/review')), findsOneWidget);
+    expect(inHeader(find.text(graphFileName)), findsOneWidget);
+    expect(inHeader(find.text('~/Projects/release')), findsOneWidget);
+    expect(inHeader(find.text('release')), findsOneWidget);
+    // One workflow: nothing to choose.
+    expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsNothing);
   });
 
   testWidgets('Graphs leads back', (tester) async {
@@ -37,6 +53,96 @@ void main() {
     expect(backs, 1);
   });
 
+  group('the crumbs', () {
+    testWidgets('lead from the workflow down to the body drawn; a crumb '
+        'goes back up to its level', (tester) async {
+      final model = await pumpGraphScreen(tester);
+      model.open(publish);
+      await tester.pump();
+
+      expect(inHeader(find.text('release')), findsOneWidget);
+      expect(inHeader(find.text('publish()')), findsOneWidget);
+      expect(inHeader(find.text('›')), findsOneWidget);
+
+      // The crumb of the body drawn leads nowhere.
+      await tester.tap(inHeader(find.text('publish()')));
+      await tester.pump();
+      expect(model.canvas.levels, hasLength(2));
+
+      await tester.tap(inHeader(find.text('release')));
+      await tester.pump();
+      expect(model.canvas.levels, hasLength(1));
+      expect(inHeader(find.text('publish()')), findsNothing);
+    });
+
+    testWidgets('are none while there is no workflow to draw', (tester) async {
+      await pumpGraphScreen(tester, model: ownedModel(noGraph: true));
+      expect(inHeader(find.text('›')), findsNothing);
+      expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsNothing);
+    });
+  });
+
+  group('the workflow picker', () {
+    testWidgets('lists the workflows of the graph file, then those only '
+        'sessions ran, marked; a choice draws its top level', (tester) async {
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(
+          graph: twoWorkflows(),
+          changes: changesOf([Journal('d1d1-session', workflow: 'deploy')]),
+        ),
+      );
+      model.open(publish);
+      await tester.pump();
+
+      await tester.tap(inHeader(find.byKey(GraphHeader.workflowKey)));
+      await tester.pumpAndSettle();
+      final menu = find.byType(PopupMenuItem<String>);
+      expect(menu, findsNWidgets(3));
+      for (final name in ['release', 'publish', 'deploy']) {
+        expect(
+          find.descendant(of: menu, matching: find.text(name)),
+          findsOneWidget,
+        );
+      }
+      expect(
+        find.descendant(of: menu, matching: find.text('not in the graph file')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.descendant(of: menu, matching: find.text('publish')),
+      );
+      await tester.pumpAndSettle();
+      expect(model.workflow!.name, 'publish');
+      expect(model.canvas.levels, hasLength(1));
+      expect(inHeader(find.text('publish')), findsOneWidget);
+    });
+
+    testWidgets('the workflow drawn chosen again draws its top level', (
+      tester,
+    ) async {
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(graph: twoWorkflows()),
+      );
+      model.open(publish);
+      await tester.pump();
+
+      await tester.tap(inHeader(find.byKey(GraphHeader.workflowKey)));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(PopupMenuItem<String>),
+          matching: find.text('release'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(model.workflow!.name, 'release');
+      expect(model.canvas.levels, hasLength(1));
+    });
+  });
+
   group('the Live badge', () {
     testWidgets('says the runs directory is watched', (tester) async {
       await pumpGraphScreen(tester);
@@ -44,21 +150,19 @@ void main() {
       expect(inHeader(find.text('Live · watching runs/')), findsOneWidget);
     });
 
-    testWidgets('says the graph is not live when its program has a problem', (
+    testWidgets('says the graph file cannot be read, why in its tooltip', (
       tester,
     ) async {
       final model = await pumpGraphScreen(tester);
-      sourceOf(model).programProblem = const SourceProblem(
-        'nanoflow-yaml not found on PATH',
-      );
+      graphFileOf(model).error = 'line 3, column 1: unexpected end';
       await tester.pump();
 
       expect(
-        inHeader(find.text('Graph not live · watching runs/')),
+        inHeader(find.text('File unreadable · watching runs/')),
         findsOneWidget,
       );
       expect(
-        inHeader(find.byTooltip('nanoflow-yaml not found on PATH')),
+        inHeader(find.byTooltip('line 3, column 1: unexpected end')),
         findsOneWidget,
       );
     });
@@ -67,11 +171,7 @@ void main() {
       tester,
     ) async {
       final model = await pumpGraphScreen(tester);
-      sourceOf(model)
-        ..programProblem = const SourceProblem(
-          'nanoflow-yaml exited with code 1',
-        )
-        ..fileMissing = true;
+      graphFileOf(model).fileMissing = true;
       await tester.pump();
 
       expect(
@@ -79,12 +179,9 @@ void main() {
         findsOneWidget,
       );
 
-      sourceOf(model).fileMissing = false;
+      graphFileOf(model).fileMissing = false;
       await tester.pump();
-      expect(
-        inHeader(find.text('Graph not live · watching runs/')),
-        findsOneWidget,
-      );
+      expect(inHeader(find.text('Live · watching runs/')), findsOneWidget);
     });
   });
 
@@ -98,7 +195,7 @@ void main() {
     await tester.pump();
 
     expect(ran, [
-      ['/usr/bin/open', '-R', reviewFile],
+      ['/usr/bin/open', '-R', releaseFile],
     ]);
     expect(find.byType(SnackBar), findsNothing);
   });
@@ -113,7 +210,7 @@ void main() {
     await tester.pump();
 
     expect(ran, [
-      ['/usr/bin/open', '-t', reviewFile],
+      ['/usr/bin/open', '-t', releaseFile],
     ]);
     expect(find.byType(SnackBar), findsNothing);
   });
@@ -127,18 +224,24 @@ void main() {
     await tester.tap(inHeader(find.text('Reveal in Finder')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('Could not reveal review.yaml in Finder'), findsOneWidget);
+    expect(
+      find.text('Could not reveal $graphFileName in Finder'),
+      findsOneWidget,
+    );
 
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(seconds: 1));
     }
-    expect(find.text('Could not reveal review.yaml in Finder'), findsNothing);
+    expect(
+      find.text('Could not reveal $graphFileName in Finder'),
+      findsNothing,
+    );
 
     await tester.tap(inHeader(find.text('Open in editor')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(
-      find.text('Could not open review.yaml in an editor'),
+      find.text('Could not open $graphFileName in an editor'),
       findsOneWidget,
     );
   });

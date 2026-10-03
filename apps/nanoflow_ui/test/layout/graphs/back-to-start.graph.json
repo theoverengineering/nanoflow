@@ -1,0 +1,93 @@
+{
+  "format": 1,
+  "package": "back-to-start",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/back-to-start.dart#back-to-start"
+  ],
+  "functions": {
+    "lib/back-to-start.dart#back-to-start": {
+      "name": "back-to-start",
+      "place": "lib/back-to-start.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "poll",
+            "kind": "step",
+            "name": "poll",
+            "place": "lib/back-to-start.dart:10"
+          },
+          {
+            "id": "changed",
+            "kind": "fork",
+            "label": "changed",
+            "place": "lib/back-to-start.dart:11"
+          },
+          {
+            "id": "sync",
+            "kind": "step",
+            "name": "sync",
+            "place": "lib/back-to-start.dart:12"
+          },
+          {
+            "id": "verify",
+            "kind": "fork",
+            "label": "verify",
+            "place": "lib/back-to-start.dart:13"
+          },
+          {
+            "id": "alert",
+            "kind": "step",
+            "name": "alert",
+            "place": "lib/back-to-start.dart:14"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "poll",
+            "label": null
+          },
+          {
+            "from": "poll",
+            "to": "changed",
+            "label": null
+          },
+          {
+            "from": "changed",
+            "to": "sync",
+            "label": "true"
+          },
+          {
+            "from": "changed",
+            "to": "poll",
+            "label": "else"
+          },
+          {
+            "from": "sync",
+            "to": "verify",
+            "label": null
+          },
+          {
+            "from": "verify",
+            "to": "poll",
+            "label": "ok"
+          },
+          {
+            "from": "verify",
+            "to": "sync",
+            "label": "broken"
+          },
+          {
+            "from": "verify",
+            "to": "alert",
+            "label": "fatal"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

@@ -1,0 +1,103 @@
+{
+  "format": 1,
+  "package": "loops",
+  "fingerprint": "sha256:0",
+  "sources": {},
+  "builds": {},
+  "workflows": [
+    "lib/loops.dart#loops"
+  ],
+  "functions": {
+    "lib/loops.dart#loops": {
+      "name": "loops",
+      "place": "lib/loops.dart:1",
+      "body": {
+        "nodes": [
+          {
+            "id": "fetch",
+            "kind": "step",
+            "name": "fetch",
+            "place": "lib/loops.dart:10"
+          },
+          {
+            "id": "fetch-check",
+            "kind": "fork",
+            "label": "fetch-check",
+            "place": "lib/loops.dart:11"
+          },
+          {
+            "id": "build",
+            "kind": "step",
+            "name": "build",
+            "place": "lib/loops.dart:12"
+          },
+          {
+            "id": "build-check",
+            "kind": "fork",
+            "label": "build-check",
+            "place": "lib/loops.dart:13"
+          },
+          {
+            "id": "report",
+            "kind": "step",
+            "name": "report",
+            "place": "lib/loops.dart:14"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "fetch",
+            "label": null
+          },
+          {
+            "from": "fetch",
+            "to": "fetch-check",
+            "label": null
+          },
+          {
+            "from": "fetch-check",
+            "to": "fetch-check",
+            "label": "retry"
+          },
+          {
+            "from": "fetch-check",
+            "to": "fetch-check",
+            "label": "wait"
+          },
+          {
+            "from": "fetch-check",
+            "to": "report",
+            "label": "skip"
+          },
+          {
+            "from": "fetch-check",
+            "to": "build",
+            "label": "ok"
+          },
+          {
+            "from": "build",
+            "to": "build-check",
+            "label": null
+          },
+          {
+            "from": "build",
+            "to": "build",
+            "label": null
+          },
+          {
+            "from": "build-check",
+            "to": "build-check",
+            "label": "true"
+          },
+          {
+            "from": "build-check",
+            "to": "report",
+            "label": "else"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}
