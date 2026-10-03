@@ -2,16 +2,20 @@ import 'dart:math' as math;
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show GraphNode;
+import 'package:nanoflow_model/nanoflow_model.dart' show GraphNode, StepNode;
 
 import '../platform/shell.dart';
 import '../state/body_path.dart';
 import '../state/clock.dart';
 import '../state/graph_model.dart';
+import '../state/step_details.dart';
+import '../state/visits.dart';
 import '../theme.dart';
 import 'canvas/graph_canvas.dart';
+import 'details/step_details_window.dart';
 import 'graph_notes.dart';
 import 'header.dart';
+import 'logs/logs_panel.dart';
 import 'session_bar.dart';
 import 'sessions_column.dart';
 import 'split_view.dart';
@@ -21,13 +25,20 @@ typedef OpenModel = GraphModel Function(String file);
 
 /// One graph file's screen (docs/ui-spec.md «Экран графа», spec §9): the
 /// header with the crumbs of the levels drawn, the sessions column, and the
-/// canvas with the session bar and the notes on the graph (`GraphNotes`)
-/// floating over it, the notes under the bar. The border of the column
-/// moves.
+/// canvas over the `Logs` panel, the session bar and the notes on the graph
+/// (`GraphNotes`) floating over the canvas, the notes under the bar. The
+/// borders of the column and of the panel move.
 ///
 /// A double click on a call draws its function's body, on copies the body
 /// of a copy (`openings`); a call of an interface method first offers its
 /// implementations.
+///
+/// `Open` in `Logs` opens the step details window over it all on the
+/// selected step; a double click on a step node, on the node's last step
+/// among those shown, else on the node alone. The step the window shows is
+/// selected, so the canvas and `Logs` are on it once the window closes —
+/// or, when it is the session's last step, on its newest: following goes
+/// on under the window, which stays on its step.
 ///
 /// The screen owns the [GraphModel] of its file: it opens it as it opens,
 /// and disposes it, with what follows the files, when it is left or the
@@ -57,6 +68,9 @@ class GraphScreen extends StatefulWidget {
   /// The time; by default the wall clock.
   final DateTime Function()? now;
 
+  /// The key of the `Logs` panel.
+  static const logsKey = ValueKey('logs');
+
   @override
   State<GraphScreen> createState() => _GraphScreenState();
 }
@@ -70,6 +84,13 @@ class _GraphScreenState extends State<GraphScreen> {
 
   /// How tall the notes over the canvas are; 0 without any.
   double _notesHeight = 0;
+
+  /// Whether the `Logs` panel is folded to its title.
+  bool _logsFolded = false;
+
+  /// What the step details window shows, while it is open: a step, or a
+  /// step node without one.
+  ({StepNode? node, String? stepId})? _details;
 
   /// Where the session bar and the notes float over the canvas: clear of
   /// the zoom buttons at the bottom.
@@ -132,6 +153,26 @@ class _GraphScreenState extends State<GraphScreen> {
     _model.open(Opened(node.id, functionId: functionId));
   }
 
+  /// `Open` in `Logs`: the window on the selected [step].
+  void _openStep(StepDetails step) =>
+      setState(() => _details = (node: null, stepId: step.stepId));
+
+  /// A double click on the step node [node]: the window on the step it
+  /// opens on, which is selected; on the node alone when it has none.
+  void _openStepNode(StepNode node) {
+    final visit = _model.visitToOpen(node);
+    if (visit != null) _model.showVisit(visit.stepId);
+    setState(() => _details = (node: node, stepId: visit?.stepId));
+  }
+
+  /// Shows [visit] in the window, and selects it.
+  void _showVisit(Visit visit) {
+    _model.showVisit(visit.stepId);
+    setState(() => _details = (node: _details?.node, stepId: visit.stepId));
+  }
+
+  void _closeDetails() => setState(() => _details = null);
+
   @override
   void dispose() {
     _lifecycle.dispose();
@@ -141,38 +182,81 @@ class _GraphScreenState extends State<GraphScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        GraphHeader(
-          path: widget.path,
-          model: _model,
-          shell: widget.shell,
-          onBack: widget.onBack,
-        ),
-        Expanded(
-          child: SplitView(
-            axis: Axis.horizontal,
-            sized: SplitPane.first,
-            extent: 272,
-            minExtent: 200,
-            maxExtent: 480,
-            minOther: 480,
-            border: AppColors.divider,
-            first: SessionsColumn(
-              model: _model,
-              clock: _clock,
-              graphFile: widget.path,
+  Widget build(BuildContext context) {
+    final details = _details;
+    return Scaffold(
+      body: Stack(
+        children: [
+          Positioned.fill(child: _screen()),
+          if (details != null)
+            Positioned.fill(
+              child: StepDetailsWindow(
+                model: _model,
+                clock: _clock,
+                shell: widget.shell,
+                graphFile: widget.path,
+                node: details.node,
+                stepId: details.stepId,
+                onVisit: _showVisit,
+                onClose: _closeDetails,
+              ),
             ),
-            second: ListenableBuilder(
+        ],
+      ),
+    );
+  }
+
+  Widget _screen() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      GraphHeader(
+        path: widget.path,
+        model: _model,
+        shell: widget.shell,
+        onBack: widget.onBack,
+      ),
+      Expanded(
+        child: SplitView(
+          axis: Axis.horizontal,
+          sized: SplitPane.first,
+          extent: 272,
+          minExtent: 200,
+          maxExtent: 480,
+          minOther: 480,
+          border: AppColors.divider,
+          first: SessionsColumn(
+            model: _model,
+            clock: _clock,
+            graphFile: widget.path,
+          ),
+          second: SplitView(
+            axis: Axis.vertical,
+            sized: SplitPane.second,
+            extent: 280,
+            minExtent: 120,
+            maxExtent: double.infinity,
+            minOther: 200,
+            border: AppColors.panelBorder,
+            fixedExtent: _logsFolded ? LogsPanel.foldedExtent : null,
+            first: ListenableBuilder(
               listenable: _model,
               builder: (context, _) => _overlaidCanvas(),
             ),
+            second: LogsPanel(
+              key: GraphScreen.logsKey,
+              model: _model,
+              clock: _clock,
+              shell: widget.shell,
+              graphFile: widget.path,
+              collapsed: _logsFolded,
+              onToggle: () => setState(() => _logsFolded = !_logsFolded),
+              onRevealNode: _canvas.revealNode,
+              onOpenStep: _openStep,
+            ),
           ),
         ),
-      ],
-    ),
+      ),
+    ],
   );
 
   /// The canvas with the session bar over its top, and the notes under the
@@ -186,8 +270,10 @@ class _GraphScreenState extends State<GraphScreen> {
         Positioned.fill(
           child: GraphCanvas(
             model: _model,
+            now: _clock.now,
             controller: _canvas,
             onOpenNode: _openNode,
+            onOpenStep: _openStepNode,
             topInset: _notesHeight == 0
                 ? GraphCanvas.sessionBarRoom
                 : math.max(

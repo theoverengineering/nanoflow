@@ -1,5 +1,3 @@
-// migrated in Task 12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -66,7 +64,7 @@ class _LogViewState extends State<LogView> {
     super.initState();
     final step = widget.step;
     _log = widget.files
-        .stepLog(step.sessionId, step.runId, step.stepId)
+        .stepLog(step.sessionId, step.stepId)
         .listen(_add, onError: _failed);
     _scroll.addListener(_scrolled);
     _quietTimer = Timer(_quietTime, () => setState(() => _quiet = true));

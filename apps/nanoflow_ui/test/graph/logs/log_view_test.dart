@@ -31,14 +31,14 @@ void main() {
       [for (var i = from; i <= to; i++) 'line $i\n'].join();
 
   Future<FakeFiles> pumpLog(WidgetTester tester, String log) async {
-    final files = mockupFiles()..logs['e5f6-notify-0'] = log;
-    await pumpGraphScreen(tester, model: mockupModel(files: files));
+    final files = reviewFiles()..logs['a1b2-notify-5'] = log;
+    await pumpReview(tester, model: reviewModel(files: files));
     await tester.pump();
     return files;
   }
 
   testWidgets('shows the step\'s log in monospace', (tester) async {
-    await pumpGraphScreen(tester);
+    await pumpReview(tester);
 
     for (final text in notifyLog.trimRight().split('\n')) {
       expect(line(text), findsOneWidget, reason: text);
@@ -53,7 +53,7 @@ void main() {
     expect(shown(tester, 'line 100'), isTrue);
     expect(badge(), findsOneWidget);
 
-    files.append('e5f6-notify-0', numbered(101, 120));
+    files.append('a1b2-notify-5', numbered(101, 120));
     await tester.pump();
     await tester.pump();
     expect(shown(tester, 'line 120'), isTrue);
@@ -67,7 +67,7 @@ void main() {
     await wheel(tester, lines(), -300);
     expect(badge(), findsNothing);
     final at = positionOf(tester).pixels;
-    files.append('e5f6-notify-0', numbered(101, 120));
+    files.append('a1b2-notify-5', numbered(101, 120));
     await tester.pump();
     await tester.pump();
     expect(positionOf(tester).pixels, at);
@@ -75,7 +75,7 @@ void main() {
 
     await wheel(tester, lines(), 10000);
     expect(badge(), findsOneWidget);
-    files.append('e5f6-notify-0', numbered(121, 130));
+    files.append('a1b2-notify-5', numbered(121, 130));
     await tester.pump();
     await tester.pump();
     expect(shown(tester, 'line 130'), isTrue);
@@ -87,7 +87,7 @@ void main() {
     await wheel(tester, lines(), -300);
     expect(badge(), findsNothing);
 
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.input)));
+    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.output)));
     await tester.pump();
     await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.log)));
     // The text comes, then the view goes to its end.
@@ -104,10 +104,10 @@ void main() {
   });
 
   testWidgets('a finished step\'s log shows no badge', (tester) async {
-    final files = mockupFiles()..logs['k7f2-collect-0'] = 'collected\n';
-    await pumpGraphScreen(tester, model: mockupModel(files: files));
+    final files = reviewFiles()..logs['a1b2-collect-0'] = 'collected\n';
+    await pumpReview(tester, model: reviewModel(files: files));
 
-    await tester.tap(find.byKey(StepList.rowKey('k7f2-collect-0')));
+    await tester.tap(find.byKey(StepList.rowKey('a1b2-collect-0')));
     await tester.pump();
     await tester.pump();
     expect(line('collected'), findsOneWidget);
@@ -115,9 +115,9 @@ void main() {
   });
 
   testWidgets('a finished step that wrote nothing says so', (tester) async {
-    await pumpGraphScreen(tester);
+    await pumpReview(tester);
 
-    await tester.tap(find.byKey(StepList.rowKey('k7f2-collect-0')));
+    await tester.tap(find.byKey(StepList.rowKey('a1b2-collect-0')));
     await tester.pump();
     await tester.pump();
     expect(find.text(LogView.nothing), findsNothing);
@@ -126,11 +126,11 @@ void main() {
   });
 
   testWidgets('says why a log cannot be read', (tester) async {
-    await pumpGraphScreen(
+    await pumpReview(
       tester,
-      model: mockupModel(
+      model: reviewModel(
         files: FakeFiles(
-          logErrors: {'e5f6-notify-0': ArgumentError('no such step')},
+          logErrors: {'a1b2-notify-5': ArgumentError('no such step')},
         ),
       ),
     );
@@ -146,12 +146,12 @@ void main() {
   ) async {
     final files = await pumpLog(tester, notifyLog);
 
-    files.fail('e5f6-notify-0', const FileSystemException('busy'));
+    files.fail('a1b2-notify-5', const FileSystemException('busy'));
     await tester.pump();
     expect(line('2 findings, 3 subscribers'), findsOneWidget);
     expect(find.textContaining('Could not read the log'), findsNothing);
 
-    files.append('e5f6-notify-0', 'subscriber 3: sent\n');
+    files.append('a1b2-notify-5', 'subscriber 3: sent\n');
     await tester.pump();
     await tester.pump();
     expect(line('subscriber 3: sent'), findsOneWidget);
@@ -161,17 +161,17 @@ void main() {
     tester,
   ) async {
     final files = await pumpLog(tester, notifyLog);
-    expect(files.followed, ['e5f6-notify-0']);
+    expect(files.followed, ['a1b2-notify-5']);
 
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.input)));
+    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.output)));
     await tester.pump();
     expect(files.followed, isEmpty);
 
     await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.log)));
     await tester.pump();
-    await tester.tap(find.byKey(StepList.rowKey('k7f2-collect-0')));
+    await tester.tap(find.byKey(StepList.rowKey('a1b2-collect-0')));
     await tester.pump();
-    expect(files.followed, ['k7f2-collect-0']);
+    expect(files.followed, ['a1b2-collect-0']);
   });
 
   testWidgets('a big log shows its tail, and Show all all of it', (
@@ -199,11 +199,13 @@ void main() {
   testWidgets('a big document shows its start, and Show all all of it', (
     tester,
   ) async {
-    final files = mockupFiles()
+    final files = reviewFiles()
       ..documents['report-2'] = [for (var i = 1; i <= 1500; i++) 'f$i'];
-    await pumpGraphScreen(tester, model: mockupModel(files: files));
+    await pumpReview(tester, model: reviewModel(files: files));
 
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.input)));
+    await tester.tap(find.byKey(StepList.rowKey('a1b2-inspect-3')));
+    await tester.pump();
+    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.output)));
     await tester.pump();
     await tester.pump();
     final cut = find.byKey(MonoLines.cutKey);
@@ -248,9 +250,11 @@ void main() {
   testWidgets('a document with a line too long to show whole is cut, and '
       'Show all shows it whole', (tester) async {
     final long = 'y' * (previewLineLength + 10);
-    final files = mockupFiles()..documents['report-2'] = {'diff': long};
-    await pumpGraphScreen(tester, model: mockupModel(files: files));
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.input)));
+    final files = reviewFiles()..documents['report-2'] = {'diff': long};
+    await pumpReview(tester, model: reviewModel(files: files));
+    await tester.tap(find.byKey(StepList.rowKey('a1b2-inspect-3')));
+    await tester.pump();
+    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.output)));
     await tester.pump();
     await tester.pump();
 

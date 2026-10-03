@@ -5,10 +5,11 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/state/outcomes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
+import 'package:nanoflow_ui/state/step_files.dart';
 
 import '../../layout/support.dart' show loadGraphFile;
 import '../../state/support.dart';
@@ -31,6 +32,7 @@ GraphModel modelOf({
   Stream<Change> more = const Stream.empty(),
   Map<String, Object?> documents = const {},
   bool noGraph = false,
+  StepFiles? files,
 }) {
   final model = ownedModel(
     graph: graph,
@@ -39,6 +41,7 @@ GraphModel modelOf({
     more: more,
     documents: documents,
     noGraph: noGraph,
+    files: files,
   );
   addTearDown(model.dispose);
   return model;
@@ -46,7 +49,7 @@ GraphModel modelOf({
 
 /// [modelOf] for whoever disposes it: the graph screen disposes its model.
 /// Without [graph], the release fixture of describe; no graph file read at
-/// all when [noGraph].
+/// all when [noGraph]. Steps' logs and documents are [files].
 GraphModel ownedModel({
   GraphFile? graph,
   String file = '/nowhere/$graphFileName',
@@ -54,6 +57,7 @@ GraphModel ownedModel({
   Stream<Change> more = const Stream.empty(),
   Map<String, Object?> documents = const {},
   bool noGraph = false,
+  StepFiles? files,
 }) {
   final graphFile = FixedGraphFile(
     noGraph ? null : graph ?? graphFileNamed('release'),
@@ -64,7 +68,7 @@ GraphModel ownedModel({
     freshness: FixedFreshness(graphFile),
     feed: SessionFeed(_concat(Stream.fromIterable(changes), more)),
     outcomes: Outcomes((_, documentId) async => documents[documentId]),
-    files: FakeFiles(),
+    files: files ?? FakeFiles(),
     now: () => at(100000),
   );
 }

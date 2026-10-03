@@ -1,6 +1,6 @@
-// The app opening a graph with a long history: 200 sessions of 30 steps
-// each, written as files the way the engine writes them. Needs macOS; not
-// part of tool/ci.sh:
+// The app opening a graph file with a long history: 200 sessions of 30
+// steps each, written as files the way the workflow library writes them.
+// Needs macOS; not part of tool/ci.sh:
 //
 //   cd apps/nanoflow_ui
 //   flutter test integration_test/history_test.dart -d macos
@@ -16,7 +16,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart' hide Step;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/app.dart';
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
@@ -38,9 +38,9 @@ void main() {
 
   setUpAll(() async {
     temp = await Directory.systemTemp.createTemp('nanoflow_history_');
-    graphFile = p.join(temp.path, 'review.yaml');
-    await File(graphFile).writeAsString('');
-    newest = _writeHistory(runsDirOf(graphFile));
+    graphFile = p.join(temp.path, graphFileName);
+    _json(graphFile, _graph);
+    newest = _writeHistory(runsDirOf(temp.path));
   });
 
   tearDownAll(() => temp.delete(recursive: true));
@@ -107,9 +107,10 @@ Future<int> _frame(WidgetTester tester) async {
   return took.elapsedMilliseconds;
 }
 
-/// Writes [_sessions] sessions of the review graph to [runsDir], a day
-/// apart up to yesterday, each a root run of [_steps] − 2 steps through the fix loop that
-/// splits into publish and notify; returns the id of the newest session.
+/// Writes [_sessions] sessions of review to [runsDir], a day apart up to
+/// yesterday, each [_steps] steps — collect, then inspect and fix round
+/// and round, then inspect, publish and notify — that finished; returns
+/// the id of the newest session.
 String _writeHistory(String runsDir) {
   var time = DateTime.now().toUtc().subtract(
     const Duration(days: _sessions + 1),
@@ -122,9 +123,15 @@ String _writeHistory(String runsDir) {
       sessionDirName('review', time, sessionId),
     );
     Directory(p.join(sessionDir, documentsDirName)).createSync(recursive: true);
+    Directory(p.join(sessionDir, stepsDirName)).createSync();
     _json(
       p.join(sessionDir, sessionFileName),
-      Session(id: sessionId, graph: _graph).toJson(),
+      Session(
+        id: sessionId,
+        workflow: 'review',
+        graph: _graph,
+        inputId: null,
+      ).toJson(),
     );
     String document(Object? value) {
       final id = newId();
@@ -135,102 +142,59 @@ String _writeHistory(String runsDir) {
       return id;
     }
 
-    /// A run of [nodes] that starts at [time] with [input] and ends with
-    /// [last]; its directory.
-    String run(
-      String runId,
-      String? parentId,
-      List<String> nodes,
-      String? input,
-      Event Function(DateTime at) last,
-    ) {
-      final runDir = p.join(sessionDir, runDirName(time, runId));
-      Directory(p.join(runDir, stepsDirName)).createSync(recursive: true);
-      _json(
-        p.join(runDir, runFileName),
-        Run(id: runId, sessionId: sessionId, parentId: parentId).toJson(),
-      );
-      final events = <Event>[
-        RunStarted(runId: runId, time: time, node: nodes.first),
-      ];
-      for (final (i, node) in nodes.indexed) {
-        final stepId = newId();
-        final stepDir = p.join(
-          runDir,
-          stepsDirName,
-          stepDirName(time, node, stepId),
-        );
-        Directory(stepDir).createSync();
-        File(p.join(stepDir, logFileName)).writeAsStringSync(
-          [for (var line = 0; line < 20; line++) '$node: line $line\n'].join(),
-        );
-        events.add(
-          StepStarted(runId: runId, time: time, stepId: stepId, node: node),
-        );
-        time = time.add(const Duration(seconds: 7));
-        final output = switch (node) {
-          'publish' || 'notify' => null,
-          'isEmpty' => document(false),
-          'verdict' => document(
-            i == nodes.length - 1 ? 'accepted' : 'returned',
-          ),
-          _ => document({'change': 'parseConfig', 'findings': <String>[]}),
-        };
-        _json(
-          p.join(stepDir, stepFileName),
-          Step(
-            id: stepId,
-            runId: runId,
-            inputId: i == 0 ? input : null,
-            outputId: output,
-            log: logFileName,
-          ).toJson(),
-        );
-        events.add(
-          StepFinished(
-            runId: runId,
-            time: time,
-            stepId: stepId,
-            exitCode: 0,
-            outputId: output,
-          ),
-        );
-      }
-      events.add(last(time));
-      File(p.join(runDir, eventsFileName)).writeAsStringSync(
-        events.map((event) => '${jsonEncode(event.toJson())}\n').join(),
-      );
-      return runDir;
-    }
-
-    final rootId = newId();
-    run(
-      rootId,
-      null,
-      [
-        'collect',
-        'isEmpty',
-        for (var loop = 0; loop < (_steps - 6) ~/ 3; loop++) ...[
-          'inspect',
-          'verdict',
-          'fix',
-        ],
+    final events = <Event>[
+      SessionStarted(time: time, code: _graph['fingerprint']! as String),
+    ];
+    final names = [
+      'collect',
+      for (var loop = 0; loop < (_steps - 4) ~/ 2; loop++) ...[
         'inspect',
-        'verdict',
+        'fix',
       ],
-      document({'branch': 'parseConfig'}),
-      (at) => RunSplit(runId: rootId, time: at),
-    );
-    for (final node in ['publish', 'notify']) {
-      final childId = newId();
-      run(
-        childId,
-        rootId,
-        [node],
-        null,
-        (at) => RunFinished(runId: childId, time: at),
+      'inspect',
+      'publish',
+      'notify',
+    ];
+    String? after;
+    final counts = <String, int>{};
+    for (final name in names) {
+      final stepId = newId();
+      final key = '$name#${counts[name] = (counts[name] ?? 0) + 1}@0';
+      final stepDir = p.join(
+        sessionDir,
+        stepsDirName,
+        stepDirName(time, name, stepId),
       );
+      Directory(stepDir).createSync();
+      File(p.join(stepDir, logFileName)).writeAsStringSync(
+        [for (var line = 0; line < 20; line++) '$name: line $line\n'].join(),
+      );
+      events.add(StepStarted(time: time, stepId: stepId));
+      time = time.add(const Duration(seconds: 7));
+      final output = document({
+        'change': 'parseConfig',
+        'findings': <String>[],
+      });
+      _json(
+        p.join(stepDir, stepFileName),
+        Step(
+          id: stepId,
+          sessionId: sessionId,
+          name: name,
+          key: key,
+          after: after,
+          place: 'lib/review.dart:${_lines[name]}',
+          outputId: output,
+          log: logFileName,
+        ).toJson(),
+      );
+      events.add(StepFinished(time: time, stepId: stepId, outputId: output));
+      after = key;
     }
+    events.add(SessionFinished(time: time, outputId: null));
+    File(p.join(sessionDir, eventsFileName)).writeAsStringSync(
+      events.map((event) => '${jsonEncode(event.toJson())}\n').join(),
+    );
     time = time.add(const Duration(days: 1));
   }
   return sessionId;
@@ -239,27 +203,80 @@ String _writeHistory(String runsDir) {
 void _json(String path, Object? json) => File(path)
     .writeAsStringSync('${const JsonEncoder.withIndent('  ').convert(json)}\n');
 
-/// The review graph of README «Формат».
+/// The line of each step of [_graph].
+const _lines = {
+  'collect': 2,
+  'inspect': 4,
+  'fix': 6,
+  'publish': 8,
+  'notify': 9,
+};
+
+/// A graph file of review: collect, inspect and fix in a loop until
+/// inspect finds nothing, then publish and notify side by side.
 const _graph = <String, Object?>{
-  'start': 'collect',
-  'nodes': {
-    'collect': {'command': 'nodes/collect/run.sh', 'then': 'isEmpty'},
-    'isEmpty': {
-      'decide': 'nodes/is-empty/run.sh',
-      'then': 'discard',
-      'else': 'inspect',
-    },
-    'inspect': {'command': 'nodes/inspect/run.sh', 'then': 'verdict'},
-    'verdict': {
-      'decide': 'nodes/verdict/run.sh',
-      'then': {
-        'accepted': ['publish', 'notify'],
-        'returned': 'fix',
+  'format': 1,
+  'package': 'review_example',
+  'fingerprint': 'sha256:history',
+  'sources': {'lib/review.dart': 'sha256:history'},
+  'builds': <String, String>{},
+  'workflows': ['lib/review.dart#review'],
+  'functions': {
+    'lib/review.dart#review': {
+      'name': 'review',
+      'place': 'lib/review.dart:1',
+      'body': {
+        'nodes': [
+          {
+            'id': '1',
+            'kind': 'step',
+            'name': 'collect',
+            'place': 'lib/review.dart:2',
+          },
+          {
+            'id': '2',
+            'kind': 'step',
+            'name': 'inspect',
+            'place': 'lib/review.dart:4',
+          },
+          {
+            'id': '3',
+            'kind': 'fork',
+            'label': 'report.findings.isEmpty',
+            'place': 'lib/review.dart:5',
+          },
+          {
+            'id': '4',
+            'kind': 'step',
+            'name': 'fix',
+            'place': 'lib/review.dart:6',
+          },
+          {
+            'id': '5',
+            'kind': 'step',
+            'name': 'publish',
+            'place': 'lib/review.dart:8',
+          },
+          {
+            'id': '6',
+            'kind': 'step',
+            'name': 'notify',
+            'place': 'lib/review.dart:9',
+          },
+        ],
+        'edges': [
+          {'from': null, 'to': '1', 'label': null},
+          {'from': '1', 'to': '2', 'label': null},
+          {'from': '2', 'to': '3', 'label': null},
+          {'from': '3', 'to': '5', 'label': 'true'},
+          {'from': '3', 'to': '6', 'label': 'true'},
+          {'from': '3', 'to': '4', 'label': 'false'},
+          {'from': '4', 'to': '2', 'label': null},
+          {'from': '5', 'to': null, 'label': null},
+          {'from': '6', 'to': null, 'label': null},
+        ],
       },
     },
-    'fix': {'command': 'nodes/fix/run.sh', 'then': 'inspect'},
-    'publish': {'command': 'nodes/publish/run.sh'},
-    'notify': {'command': 'nodes/notify/run.sh'},
-    'discard': {'command': 'nodes/discard/run.sh'},
   },
+  'warnings': <Object?>[],
 };

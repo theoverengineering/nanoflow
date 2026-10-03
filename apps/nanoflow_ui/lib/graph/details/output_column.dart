@@ -18,13 +18,11 @@ import 'parts.dart';
 enum OutputTab { output, log }
 
 /// The `Output` column of the step details window (docs/ui-spec.md «Окно
-/// деталей шага»): the tabs `Output` and `Log`. `Output` says that the data
-/// passes the node's `out` — it is stored only once the graph program has
-/// checked it — with its size, and shows it as `Schema` or `JSON`; a fork's
-/// output is its outcome. `—` and why when the node declares no `out`, `not
-/// yet` while the step runs, the run's error when it failed on the step.
-/// `Log` is the step's log as it grows. The file of the open tab is at the
-/// bottom. Empty for a node's description alone.
+/// деталей шага»; spec §9 «Окно шага»): the tabs `Output` and `Log`.
+/// `Output` shows the value the step returned, with its size, as `Schema`
+/// or `JSON`; `not yet` while the step runs; the error the step threw, with
+/// its stack, when it failed. `Log` is the step's log as it grows. The file
+/// of the open tab is at the bottom. Empty for a node alone.
 class OutputColumn extends StatefulWidget {
   const OutputColumn({
     super.key,
@@ -43,9 +41,8 @@ class OutputColumn extends StatefulWidget {
 
   static Key tabKey(OutputTab tab) => ValueKey(('output tab', tab));
 
-  /// What the column says for a node that declares no `out`.
-  static const noOutput =
-      'This node declares no out: what it prints goes to its log';
+  /// The key of the stack of a failed step.
+  static const stackKey = ValueKey('error stack');
 
   @override
   State<OutputColumn> createState() => _OutputColumnState();
@@ -91,14 +88,13 @@ class _OutputColumnState extends State<OutputColumn> {
                 child: Row(
                   spacing: 2,
                   children: [
-                    for (final (which, label, marked) in [
-                      (OutputTab.output, 'Output', output.marked),
-                      (OutputTab.log, 'Log', false),
+                    for (final (which, label) in const [
+                      (OutputTab.output, 'Output'),
+                      (OutputTab.log, 'Log'),
                     ])
                       _Tab(
                         key: OutputColumn.tabKey(which),
                         label: label,
-                        marked: marked,
                         selected: which == _tab,
                         onTap: () => setState(() => _tab = which),
                       ),
@@ -122,7 +118,7 @@ class _OutputColumnState extends State<OutputColumn> {
                   files: widget.files,
                   step: step,
                 )
-              : _output(details, step, output),
+              : _output(step, output),
         ),
         if (path != null)
           PathBar(
@@ -144,27 +140,16 @@ class _OutputColumnState extends State<OutputColumn> {
     );
   }
 
-  Widget _output(VisitDetails details, StepDetails step, StepDocument output) {
-    final error = details.error;
+  Widget _output(StepDetails step, StepDocument output) {
+    final error = step.error;
+    if (error != null) return _Failure(error: error, stack: step.stack);
     final documentId = output.documentId;
-    final failure = error == null
-        ? null
-        : DataNote('Run failed: $error', color: AppColors.dangerText);
     if (documentId == null) {
       return Align(
         alignment: Alignment.topLeft,
-        child:
-            failure ??
-            DataNote(
-              output.state == DocumentState.undeclared
-                  ? OutputColumn.noOutput
-                  : output.message ?? '',
-              dash: output.state == DocumentState.undeclared,
-            ),
+        child: DataNote(output.message ?? ''),
       );
     }
-    final fork = details.description?.fork ?? false;
-    final type = details.description?.output;
     return DocumentData(
       key: ValueKey(('output', step.sessionId, documentId)),
       files: widget.files,
@@ -173,20 +158,14 @@ class _OutputColumnState extends State<OutputColumn> {
       builder: (context, document) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ?failure,
           DataRowBar(
             children: [
-              if (fork)
-                Text('outcome', style: AppText.fromText)
-              else ...[
-                const CheckIcon(
-                  size: 12,
-                  color: AppColors.finished,
-                  strokeWidth: 1.8,
-                ),
-                Text('passes', style: AppText.fromText),
-                if (type != null) TypePill(type.label),
-              ],
+              const CheckIcon(
+                size: 12,
+                color: AppColors.finished,
+                strokeWidth: 1.8,
+              ),
+              Text('returned', style: AppText.fromText),
               const Spacer(),
               Text(document.size, style: AppText.filePath),
             ],
@@ -200,18 +179,40 @@ class _OutputColumnState extends State<OutputColumn> {
   }
 }
 
-/// A tab: underlined when [selected]; `—` after a [marked] one's label.
+/// The error a failed step threw, and its stack under it, in monospace.
+class _Failure extends StatelessWidget {
+  const _Failure({required this.error, required this.stack});
+
+  final String error;
+  final String? stack;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      DataNote('Failed: $error', color: AppColors.dangerText),
+      if (stack case final stack? when stack.isNotEmpty)
+        Expanded(
+          child: SingleChildScrollView(
+            key: OutputColumn.stackKey,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SelectionArea(child: Text(stack, style: AppText.textLine)),
+          ),
+        ),
+    ],
+  );
+}
+
+/// A tab: underlined when [selected].
 class _Tab extends StatelessWidget {
   const _Tab({
     super.key,
     required this.label,
-    required this.marked,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
-  final bool marked;
   final bool selected;
   final VoidCallback onTap;
 
@@ -232,21 +233,7 @@ class _Tab extends StatelessWidget {
             ),
           ),
         ),
-        child: Text.rich(
-          TextSpan(
-            text: label,
-            children: [
-              if (marked)
-                TextSpan(
-                  text: ' —',
-                  style: style.copyWith(color: AppColors.textDim),
-                ),
-            ],
-          ),
-          style: style,
-          maxLines: 1,
-          softWrap: false,
-        ),
+        child: Text(label, style: style, maxLines: 1, softWrap: false),
       ),
     );
   }

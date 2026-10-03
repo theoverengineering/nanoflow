@@ -5,7 +5,7 @@ import '../../theme.dart';
 // What the columns of the step details window share
 // (docs/design/step-details.html).
 
-/// `INPUT`, `COMMAND`, `THIS STEP`.
+/// `PLACE IN CODE`, `THIS STEP`, `OUTPUT`.
 class SectionLabel extends StatelessWidget {
   const SectionLabel(this.text, {super.key});
 
@@ -16,7 +16,7 @@ class SectionLabel extends StatelessWidget {
       Text(text.toUpperCase(), style: AppText.sectionLabel);
 }
 
-/// The head of the `Input` and `Output` columns: 46 high, a line under it.
+/// The head of the `Output` column: 46 high, a line under it.
 class ColumnHead extends StatelessWidget {
   const ColumnHead({super.key, required this.children});
 
@@ -33,8 +33,8 @@ class ColumnHead extends StatelessWidget {
   );
 }
 
-/// The row under a column's head: where the data came from, or what it
-/// passes; a line under it.
+/// The row under a column's head: what the data is, and its size; a line
+/// under it.
 class DataRowBar extends StatelessWidget {
   const DataRowBar({super.key, required this.children});
 
@@ -50,52 +50,19 @@ class DataRowBar extends StatelessWidget {
   );
 }
 
-/// `#/Change`: a type in a pill.
-class TypePill extends StatelessWidget {
-  const TypePill(this.label, {super.key});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-    decoration: BoxDecoration(
-      color: AppColors.accentSurface,
-      border: Border.all(color: AppColors.accentBorder),
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(label, style: AppText.typePill, maxLines: 1),
-  );
-}
-
-/// What a column says instead of data: `— This node declares no in…`,
-/// `Not yet: the step is still running`, an error in [color].
+/// What a column says instead of data: `Not yet: the step is still
+/// running`, an error in [color].
 class DataNote extends StatelessWidget {
-  const DataNote(this.text, {super.key, this.dash = false, this.color});
+  const DataNote(this.text, {super.key, this.color});
 
   final String text;
-
-  /// Whether a `—` comes first: the node declares no such data.
-  final bool dash;
   final Color? color;
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      spacing: 8,
-      children: [
-        if (dash) Text('—', style: AppText.textAreaNote),
-        Expanded(
-          child: SelectionArea(
-            child: Text(
-              text,
-              style: AppText.textAreaNote.copyWith(color: color),
-            ),
-          ),
-        ),
-      ],
+    child: SelectionArea(
+      child: Text(text, style: AppText.textAreaNote.copyWith(color: color)),
     ),
   );
 }

@@ -2,13 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/header.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/theme.dart';
 
 import '../state/support.dart';
+import '../support/golden.dart';
 import 'canvas/support.dart';
 import 'support.dart';
 
@@ -140,6 +141,65 @@ void main() {
       await tester.pumpAndSettle();
       expect(model.canvas.levels, hasLength(2));
       expect(inHeader(find.byKey(GraphHeader.foldedKey)), findsNothing);
+    });
+
+    testWidgets('never overflow, at any width the header has room for: '
+        'folded, squeezed or not', (tester) async {
+      final model = modelOf(graph: graphFileNamed('recursion'));
+      final width = ValueNotifier(1300.0);
+      addTearDown(width.dispose);
+      await pumpScreen(
+        tester,
+        Material(
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: ValueListenableBuilder(
+              valueListenable: width,
+              builder: (context, width, _) => SizedBox(
+                width: width,
+                child: GraphHeader(
+                  path: releaseFile,
+                  model: model,
+                  shell: Shell(),
+                  onBack: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await settle(tester);
+      // Narrower than 720, the header's own words and buttons do not fit.
+      const narrowest = 720.0;
+      // Two levels squeeze; nine fold, then squeeze.
+      for (final depth in [1, 9]) {
+        model.openLevel(0);
+        for (var i = 0; i < depth; i++) {
+          model.open(
+            i.isEven
+                ? const Opened('3', functionId: 'lib/crawl.dart#visit')
+                : const Opened('2', functionId: 'lib/crawl.dart#crawl'),
+          );
+        }
+        for (var w = narrowest; w <= 1300; w += 1) {
+          width.value = w;
+          await tester.pump();
+          expect(tester.takeException(), isNull, reason: '$depth deep at $w');
+        }
+        width.value = narrowest;
+        await tester.pump();
+        // The last crumb is cut: squeezed.
+        final last = inHeader(find.text(depth.isEven ? 'crawl()' : 'visit()'));
+        final painter = TextPainter(
+          text: TextSpan(
+            text: depth.isEven ? 'crawl()' : 'visit()',
+            style: AppText.headerTitle,
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        addTearDown(painter.dispose);
+        expect(tester.getSize(last.last).width, lessThan(painter.width));
+      }
     });
 
     testWidgets('a wide window shows them all', (tester) async {

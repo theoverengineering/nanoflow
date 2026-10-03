@@ -1,28 +1,24 @@
-// migrated in Task 12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show StepStatus;
+import 'package:nanoflow_model/nanoflow_model.dart'
+    show SessionStatus, StepStatus;
 
 import '../../state/log_rows.dart';
-import '../../state/texts.dart' show count, shortId;
+import '../../state/texts.dart' show count;
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
-import '../run_switcher.dart' show RunSign;
 import 'step_bar.dart';
 
-/// The steps of the selected run on the left of the `Logs` panel
-/// (docs/ui-spec.md «Logs»: «Лента шагов»), as the rows of `logRows` give
-/// them: each step's sign, node, a fork's outcome and where it went or a
-/// failure's error, `2 starts`, when it started, how long it took — a
-/// running one's time going on — and its bar on the session's time scale,
-/// striped while it runs. Inherited steps are dimmed; `split · run e5f6`
-/// stands where a run split; an ended run ends with how it ended, a split
-/// one with links to its children.
+/// The steps shown on the left of the `Logs` panel (docs/ui-spec.md «Logs»:
+/// «Лента шагов»; spec §9 «Логи»), as the rows of `logRows` give them: each
+/// step's sign, name, a failure's error or `not on the graph`, the copy it
+/// is in while every copy is shown, `2 starts`, when it started, how long it
+/// took — a running one's time going on — and its bar on the session's time
+/// scale, striped while it runs. An ended session ends with how it ended.
 ///
 /// The selected step is highlighted, and kept in view as the selection
-/// moves; while the run is followed, so are the rows after it. Scrolled
+/// moves; while the session is followed, so are the rows after it. Scrolled
 /// down, the list says how many steps are above it.
 class StepList extends StatefulWidget {
   const StepList({
@@ -32,7 +28,6 @@ class StepList extends StatefulWidget {
     required this.selectedStepId,
     required this.following,
     required this.onSelect,
-    required this.onSelectRun,
   });
 
   final List<LogRow> rows;
@@ -42,18 +37,13 @@ class StepList extends StatefulWidget {
 
   final String? selectedStepId;
 
-  /// Whether the selection moves on to each new step of the run.
+  /// Whether the selection moves on to each new step of the session.
   final bool following;
 
   /// A click on a step's row.
   final ValueChanged<StepRow> onSelect;
 
-  /// A click on a run the selected one split into.
-  final ValueChanged<String> onSelectRun;
-
   static Key rowKey(String stepId) => ValueKey(('step row', stepId));
-  static Key splitKey(String runId) => ValueKey(('split', runId));
-  static Key childKey(String runId) => ValueKey(('child run', runId));
   static const endKey = ValueKey('end row');
   static const earlierKey = ValueKey('earlier steps');
 
@@ -66,7 +56,6 @@ abstract final class _Sizes {
   static const header = 24.0;
   static const row = 22.0;
   static const selected = 24.0;
-  static const split = 20.0;
   static const earlier = 20.0;
   static const padding = 16.0;
   static const gap = 10.0;
@@ -109,7 +98,6 @@ class _StepListState extends State<StepList> {
   double _extentOf(LogRow row) => switch (row) {
     StepRow(:final stepId) =>
       stepId == widget.selectedStepId ? _Sizes.selected : _Sizes.row,
-    SplitRow() => _Sizes.split,
     EndRow() => _Sizes.row,
   };
 
@@ -192,12 +180,7 @@ class _StepListState extends State<StepList> {
                       selected: row.stepId == widget.selectedStepId,
                       onTap: () => widget.onSelect(row),
                     ),
-                    final SplitRow row => _SplitRowView(row),
-                    final EndRow row => _EndRowView(
-                      row,
-                      columns: columns,
-                      onSelectRun: widget.onSelectRun,
-                    ),
+                    final EndRow row => _EndRowView(row, columns: columns),
                   },
                 ),
                 Positioned(
@@ -307,14 +290,12 @@ class _StepRowView extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  /// How inherited steps are dimmed.
-  static const _dimmed = 0.55;
-
   @override
   Widget build(BuildContext context) {
     final running = row.status == StepStatus.running;
     final detail = row.detail;
     final starts = row.startsText;
+    final copy = row.copy;
     final step = Text.rich(
       TextSpan(
         text: row.name,
@@ -340,7 +321,7 @@ class _StepRowView extends StatelessWidget {
       softWrap: false,
       overflow: TextOverflow.ellipsis,
     );
-    Widget content = columns.row(
+    final content = columns.row(
       sign: StepIcon(row.status),
       step: Row(
         // The width of a space between the name and the note.
@@ -351,6 +332,7 @@ class _StepRowView extends StatelessWidget {
                 ? step
                 : Tooltip(message: detail, child: step),
           ),
+          if (copy != null) _CopyNote(copy),
           if (starts != null) _StartsNote(starts),
         ],
       ),
@@ -372,7 +354,6 @@ class _StepRowView extends StatelessWidget {
       ),
       bar: StepTrack(row),
     );
-    if (row.inherited) content = Opacity(opacity: _dimmed, child: content);
     return Clickable(
       onTap: onTap,
       child: Container(
@@ -416,68 +397,40 @@ class _StartsNote extends StatelessWidget {
   );
 }
 
-/// `split · run e5f6` between two lines.
-class _SplitRowView extends StatelessWidget {
-  const _SplitRowView(this.row);
+/// `copy 2`: the copy of a step, while every copy is shown.
+class _CopyNote extends StatelessWidget {
+  const _CopyNote(this.text);
 
-  final SplitRow row;
+  final String text;
 
   @override
-  Widget build(BuildContext context) {
-    const line = Expanded(
-      child: SizedBox(
-        height: 1,
-        child: ColoredBox(color: AppColors.panelBorder),
-      ),
-    );
-    return Padding(
-      key: StepList.splitKey(row.runId),
-      padding: const EdgeInsets.symmetric(horizontal: _Sizes.padding),
-      child: Row(
-        spacing: 9,
-        children: [
-          line,
-          Tooltip(
-            message: row.runId,
-            child: Text.rich(
-              TextSpan(
-                text: 'split · run ',
-                children: [
-                  TextSpan(
-                    text: shortId(row.runId),
-                    style: AppText.listNote.copyWith(fontFamily: AppText.mono),
-                  ),
-                ],
-              ),
-              style: AppText.listNote,
-            ),
-          ),
-          line,
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5),
+    decoration: BoxDecoration(
+      color: AppColors.selectedTab,
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Text(
+      text,
+      style: AppText.startsNote.copyWith(color: AppColors.textMuted),
+    ),
+  );
 }
 
-/// How the run ended: `Run finished`, `Run failed: exited with code 1`,
-/// `Run split into` and links to its children, which scroll sideways when
-/// there are more than fit; and when.
+/// How the session ended: `Session finished`, `Session failed: StateError:
+/// plan failed`; and when.
 class _EndRowView extends StatelessWidget {
-  const _EndRowView(
-    this.row, {
-    required this.columns,
-    required this.onSelectRun,
-  });
+  const _EndRowView(this.row, {required this.columns});
 
   final EndRow row;
   final _Columns columns;
-  final ValueChanged<String> onSelectRun;
 
   @override
   Widget build(BuildContext context) {
+    final failed = row.status == SessionStatus.failed;
     final text = Text(
       row.text,
-      style: AppText.listNote.copyWith(color: row.phase.textColor),
+      style: AppText.listNote.copyWith(color: row.status.textColor),
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.ellipsis,
@@ -485,43 +438,8 @@ class _EndRowView extends StatelessWidget {
     return KeyedSubtree(
       key: StepList.endKey,
       child: columns.row(
-        sign: RunSign(row.phase),
-        step: Row(
-          spacing: 8,
-          children: [
-            if (row.children.isEmpty)
-              Flexible(
-                child: row.error == null
-                    ? text
-                    : Tooltip(message: row.text, child: text),
-              )
-            else ...[
-              text,
-              Flexible(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    spacing: 8,
-                    children: [
-                      for (final child in row.children)
-                        Tooltip(
-                          message: child,
-                          child: Clickable(
-                            onTap: () => onSelectRun(child),
-                            child: Text(
-                              shortId(child),
-                              key: StepList.childKey(child),
-                              style: AppText.runLink,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
+        sign: StepIcon(failed ? StepStatus.failed : StepStatus.finished),
+        step: failed ? Tooltip(message: row.text, child: text) : text,
         started: Text(row.atText, style: AppText.stepTime),
         took: const SizedBox.shrink(),
       ),

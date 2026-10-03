@@ -1,5 +1,3 @@
-// migrated in Task 12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -13,14 +11,15 @@ import '../../widgets/clickable.dart';
 import 'step_details_pane.dart';
 import 'step_list.dart';
 
-/// The `Logs` panel under the canvas (docs/ui-spec.md «Logs»): its title
-/// names the selected run and its steps — `run e5f6 · 8 steps, 7 inherited
-/// from k7f2` — over the [StepList] on the left and the selected step's
-/// [StepDetailsPane] on the right. The chevron folds it to its title. With
-/// `Current graph` selected, or no run, it is empty.
+/// The `Logs` panel under the canvas (docs/ui-spec.md «Logs»; spec §9
+/// «Логи»): its title counts the steps shown and names the copy shown —
+/// `12 steps`, `copy 2 · 3 steps` — over the [StepList] on the left and the
+/// selected step's [StepDetailsPane] on the right. The chevron folds it to
+/// its title. With `Current graph` selected it is empty.
 ///
-/// A click on a step selects it and asks the canvas to show its node
-/// ([onRevealNode]); running times go on with the [clock].
+/// A click on a step selects it and asks the canvas to show its node on
+/// the level drawn, or the call or copies it is in ([onRevealNode]);
+/// running times go on with the [clock].
 class LogsPanel extends StatelessWidget {
   const LogsPanel({
     super.key,
@@ -47,7 +46,7 @@ class LogsPanel extends StatelessWidget {
   /// Folds or unfolds the panel.
   final VoidCallback onToggle;
 
-  /// Brings the node of a clicked step into view on the canvas.
+  /// Brings the node [id] of a clicked step into view on the canvas.
   final ValueChanged<String> onRevealNode;
 
   /// Opens the step details window on the selected step: `Open`.
@@ -72,17 +71,17 @@ class LogsPanel extends StatelessWidget {
       listenable: Listenable.merge([model, clock]),
       builder: (context, _) {
         final view = model.sessionView(clock.now());
-        final run = view?.run;
+        final logs = view?.logs;
         final step = view?.step;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _Title(
-              header: run?.header,
+              header: logs?.header,
               collapsed: collapsed,
               onToggle: onToggle,
             ),
-            if (!collapsed && run != null)
+            if (!collapsed && view != null && logs != null)
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -99,15 +98,17 @@ class LogsPanel extends StatelessWidget {
                         SizedBox(
                           width: list - 1,
                           child: StepList(
-                            rows: run.rows,
-                            scale: run.scale,
+                            rows: logs.rows,
+                            scale: logs.scale,
                             selectedStepId: step?.stepId,
                             following: model.selection.following,
                             onSelect: (row) {
                               model.selectStep(row.stepId);
-                              onRevealNode(row.name);
+                              final node = view.marks
+                                  ?.nodesOf(row.stepId)
+                                  .firstOrNull;
+                              if (node != null) onRevealNode(node);
                             },
-                            onSelectRun: model.selectRun,
                           ),
                         ),
                         const SizedBox(
@@ -137,7 +138,7 @@ class LogsPanel extends StatelessWidget {
   );
 }
 
-/// The chevron and `Logs`, which fold the panel, and the selected run with
+/// The chevron and `Logs`, which fold the panel, and the copy shown with
 /// its steps.
 class _Title extends StatelessWidget {
   const _Title({
@@ -153,7 +154,6 @@ class _Title extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final header = this.header;
-    final parent = header?.inheritedFrom;
     return Container(
       key: LogsPanel.titleKey,
       height: 38,
@@ -183,33 +183,25 @@ class _Title extends StatelessWidget {
           ),
           if (header != null)
             Expanded(
-              child: Row(
-                children: [
-                  Text('run ', style: AppText.logsRun),
-                  Tooltip(
-                    message: header.runId,
-                    child: Text(
-                      header.shortId,
-                      style: AppText.logsRunId.copyWith(
-                        color: AppColors.accentText,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    if (header.copy case final copy?) ...[
+                      TextSpan(
+                        text: copy,
+                        style: AppText.logsRun.copyWith(
+                          color: AppColors.accentText,
+                        ),
                       ),
-                    ),
-                  ),
-                  Flexible(
-                    child: Text(
-                      ' · ${header.stepsLead}',
-                      style: AppText.logsRun,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (header.parentId case final parentId? when parent != null)
-                    Tooltip(
-                      message: parentId,
-                      child: Text(parent, style: AppText.logsRunId),
-                    ),
-                ],
+                      const TextSpan(text: ' · '),
+                    ],
+                    TextSpan(text: header.stepsText),
+                  ],
+                ),
+                style: AppText.logsRun,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
         ],

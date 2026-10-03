@@ -1,6 +1,5 @@
 import 'package:flutter/rendering.dart' show debugDisableShadows;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 
 import '../../state/support.dart';
@@ -8,44 +7,9 @@ import '../../support/golden.dart';
 import '../canvas/support.dart';
 import '../support.dart';
 
-/// [Mockup] with the second step on `inspect` at the times of
-/// docs/design/step-details.png: started at 14:09:20.118, interrupted, again
-/// at 14:11:47, finished at 14:13:22.406.
-Mockup _stepDetailsMockup() {
-  final mockup = Mockup();
-  final events = mockup.k7f2.events;
-  final starts = [at(369.118), at(516)];
-  for (final (i, event) in events.indexed) {
-    switch (event) {
-      case StepStarted(stepId: 'k7f2-inspect-5', :final runId, :final node):
-        events[i] = StepStarted(
-          runId: runId,
-          time: starts.removeAt(0),
-          stepId: 'k7f2-inspect-5',
-          node: node,
-        );
-      case StepFinished(
-        stepId: 'k7f2-inspect-5',
-        :final runId,
-        :final exitCode,
-        :final outputId,
-      ):
-        events[i] = StepFinished(
-          runId: runId,
-          time: at(611.406),
-          stepId: 'k7f2-inspect-5',
-          exitCode: exitCode,
-          outputId: outputId,
-        );
-      default:
-    }
-  }
-  return mockup;
-}
-
 void main() {
-  testWidgets('the step details window on inspect\'s second visit '
-      '(docs/design/step-details.png)', (tester) async {
+  testWidgets("the step details window on inspect's second visit "
+      '(docs/design/step-details.png, without the input)', (tester) async {
     // The window's shadow, which tests leave out unless told; set back
     // before the test ends, or the test fails.
     debugDisableShadows = false;
@@ -58,38 +22,46 @@ void main() {
   });
 }
 
-/// The graph screen of [_stepDetailsMockup] with the step details window
-/// open on inspect's second visit, its documents those of the mockup.
+/// The graph screen of [reviewSession] with the second step on `inspect`
+/// at the times of docs/design/step-details.png — started at
+/// 14:09:20.118, interrupted, again at 14:11:47, finished at 14:13:22.406
+/// — and the step details window open on it.
 Future<void> _pumpWindow(WidgetTester tester) async {
-  final mockup = _stepDetailsMockup();
-  const change = {'id': 'c4f1a9', 'path': 'src/engine/step.ts'};
-  final files = mockupFiles()
-    ..documents['change-2'] = change
-    ..documents['report-2'] = const {
-      'change': change,
-      'findings': [
-        'Writes no output.json on exit code 0',
-        'Timeout is absent from the protocol',
-      ],
-    }
-    ..stepPaths['k7f2-inspect-5'] = mockupStepDir(
-      'k7f2-run',
-      0,
+  final graph = graphFileNamed('review');
+  String place(int line) => 'lib/review.dart:$line';
+  final session =
+      Journal('a1b2-session', graph: graph.toJson(), code: graph.fingerprint)
+        ..step('collect', 0, end: 149, output: 'change-1', place: place(49))
+        ..step('inspect', 150, end: 342, output: 'report-1', place: place(55))
+        ..step('fix', 343, end: 369, output: 'change-2', place: place(63))
+        ..step(
+          'inspect',
+          369.118,
+          end: 611.406,
+          output: 'report-2',
+          place: place(55),
+          restarts: [516],
+        )
+        ..step('publish', 612, end: 613, output: 'published', place: place(58))
+        ..step('notify', 612, place: place(59));
+  final files = reviewFiles()
+    ..stepPaths['a1b2-inspect-3'] = reviewStepDir(
       'inspect',
-      'k7f2-inspect-5',
+      'a1b2-inspect-3',
       369.118,
     );
-  await pumpGraphScreen(
+  await pumpReview(
     tester,
     model: ownedModel(
-      current: Graph.fromJson(reviewGraph),
-      changes: changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]),
-      outcomes: reviewOutcomes,
+      graph: graph,
+      file: reviewFile,
+      changes: session.changes,
+      documents: reviewDocuments,
       files: files,
     ),
   );
 
-  final tile = find.byKey(NodeTile.tileKeyOf('inspect'));
+  final tile = find.byKey(NodeTile.tileKeyOf('4'));
   await tester.tap(tile);
   await tester.pump(const Duration(milliseconds: 60));
   await tester.tap(tile);

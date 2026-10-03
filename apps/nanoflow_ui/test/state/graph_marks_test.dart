@@ -1,262 +1,210 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/state/copies.dart';
 import 'package:nanoflow_ui/state/graph_marks.dart';
-import 'package:nanoflow_ui/state/runs.dart';
+import 'package:nanoflow_ui/state/step_places.dart';
 
 import 'support.dart';
 
 void main() {
-  final mockup = Mockup();
-  final noOutcomes = outcomesOf(const {});
+  final file = copiesGraphFile();
+  GraphFunction workflow(String name) =>
+      file.functions['lib/copies.dart#$name']!;
+  StepPlaces placesOf(String name) =>
+      StepPlaces.of(workflow(name), file.functions);
 
-  group('the graph (ui-spec «Граф»)', () {
-    test('a node a run failed on is failed, whatever else is on it', () {
-      final failed = Journal('fail-run', node: 'collect', startedAt: 0);
-      failed.fail(
-        failed.step('collect', 0, end: 1, exit: 1),
-        1,
-        'exited with code 1',
+  /// `inPlace` over core and tool: plan, then copies; core's tag runs,
+  /// tool's verify failed.
+  Journal inPlace() {
+    final j = Journal('a1b2-session', workflow: 'inPlace')
+      ..step('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null);
+    for (final (i, pkg) in ['core', 'tool'].indexed) {
+      j.step(
+        'upload',
+        3 + i,
+        end: 5,
+        place: copiesAt(7),
+        key: 'u$pkg',
+        after: 'p',
       );
-      final running = Journal('runn-run', node: 'collect', startedAt: 0)
-        ..step('collect', 2);
-      final done = Journal('done-run', node: 'collect', startedAt: 0)
-        ..step('collect', 0, end: 1);
-      final marks = GraphMarks.of(
-        sessionOf([done, running, failed]),
-        noOutcomes,
-      );
-      expect(marks.stateOf('collect'), NodeState.failed);
-    });
+    }
+    j
+      ..step(
+        'verify',
+        6,
+        end: 7,
+        place: copiesAt(8),
+        key: 'vcore',
+        after: 'ucore',
+      )
+      ..step(
+        'verify',
+        6,
+        end: 8,
+        failed: true,
+        place: copiesAt(8),
+        key: 'vtool',
+        after: 'utool',
+      )
+      ..step('tag', 9, place: copiesAt(9), key: 'tcore', after: 'vcore');
+    return j;
+  }
 
-    test('a node with a step without step-finished is running', () {
-      final marks = GraphMarks.of(mockup.session, mockup.outcomes);
-      expect(marks.stateOf('notify'), NodeState.running);
-      final done = Journal('done-run', node: 'collect', startedAt: 0)
-        ..step('collect', 0, end: 1);
-      final running = Journal('runn-run', node: 'collect', startedAt: 0)
-        ..step('collect', 2);
-      expect(
-        GraphMarks.of(
-          sessionOf([done, running]),
-          noOutcomes,
-        ).stateOf('collect'),
-        NodeState.running,
-      );
-    });
+  group('marks of the workflow body', () {
+    final session = inPlace().data;
+    final marks = GraphMarks.of(
+      workflow('inPlace').body,
+      places: placesOf('inPlace'),
+      session: session,
+    );
 
-    test('a node with finished steps is visited', () {
-      final marks = GraphMarks.of(mockup.session, mockup.outcomes);
-      for (final node in [
-        'collect',
-        'is-empty',
-        'inspect',
-        'verdict',
-        'fix',
-        'publish',
-      ]) {
-        expect(marks.stateOf(node), NodeState.visited, reason: node);
-      }
+    test('a step node with finished steps is visited', () {
+      expect(marks.of('1')!.state, NodeState.visited);
+      expect(marks.of('1')!.steps, 1);
     });
 
     test('a node without steps is not visited', () {
-      final marks = GraphMarks.of(mockup.session, mockup.outcomes);
-      expect(marks.stateOf('discard'), NodeState.notVisited);
+      expect(marks.of('3')!.state, NodeState.notVisited);
+      expect(marks.of('3')!.steps, 0);
     });
 
-    test('each run is marked on the node of its last step, in its state; '
-        'a split run is not marked', () {
-      final marks = GraphMarks.of(mockup.session, mockup.outcomes);
-      expect(
-        [for (final m in marks.markersOn('publish')) (m.shortId, m.phase)],
-        [('c3d4', RunPhase.finished)],
-      );
-      expect(
-        [for (final m in marks.markersOn('notify')) (m.shortId, m.phase)],
-        [('e5f6', RunPhase.running)],
-      );
-      expect(marks.markersOn('verdict'), isEmpty);
+    test('copies hold the steps of their copies: failed when one failed, '
+        'whatever else runs; their count of copies', () {
+      final copies = marks.of('2')!;
+      expect(copies.state, NodeState.failed);
+      expect(copies.steps, 5);
+      expect(copies.running, 1);
+      expect(copies.copies, 2);
     });
 
-    test('a run not started is marked on its start node', () {
-      final parent = Journal('pare-run', node: 'collect', startedAt: 0);
-      parent.step('collect', 0, end: 1);
-      parent.split(1);
-      final child = Journal(
-        'chil-run',
-        parent: 'pare-run',
-        node: 'notify',
-        startedAt: 1,
-      );
-      final marks = GraphMarks.of(sessionOf([parent, child]), noOutcomes);
-      expect(
-        [for (final m in marks.markersOn('notify')) (m.shortId, m.phase)],
-        [('chil', RunPhase.notStarted)],
-      );
+    test('a step node has no count of copies', () {
+      expect(marks.of('1')!.copies, isNull);
     });
 
-    test('a node entered more than once shows its visits: 2×', () {
-      final marks = GraphMarks.of(mockup.session, mockup.outcomes);
-      expect(marks.visitText('inspect'), '2×');
-      expect(marks.visitText('verdict'), '2×');
-      expect(marks.visitText('collect'), isNull);
-      expect(marks.visitText('discard'), isNull);
+    test('markers and unknown nodes have no marks', () {
+      expect(marks.of('(start)'), isNull);
+      expect(marks.of('nope'), isNull);
+    });
+  });
+
+  group('marks of the body of the copies', () {
+    final session = inPlace().data;
+    final places = placesOf('inPlace');
+    final frame = workflow('inPlace').body.node('2')! as CopiesNode;
+
+    test('all copies: each node counts the steps of every copy on it, and '
+        'how many run', () {
+      final marks = GraphMarks.of(frame.body, places: places, session: session);
+      expect(marks.of('1')!.steps, 2);
+      expect(marks.of('2')!.state, NodeState.failed);
+      expect(marks.of('3')!.state, NodeState.running);
+      expect(marks.of('3')!.running, 1);
     });
 
-    test(
-      'arrows count how often runs of the session went through each exit',
-      () {
-        final marks = GraphMarks.of(mockup.session, mockup.outcomes);
-        expect(
-          {
-            for (final MapEntry(:key, :value) in marks.passes.entries)
-              '${key.node}#${key.exit}': value,
-          },
-          {
-            'collect#0': 1,
-            'is-empty#1': 1,
-            'inspect#0': 2,
-            'verdict#1': 1,
-            'fix#0': 1,
-            'verdict#0': 1,
-          },
-        );
-        expect(marks.counterOf('inspect', 0), '2×');
-      },
+    test('one copy: only its steps, the steps it has not reached not '
+        'visited', () {
+      final tool = copiesOf(frame, places: places, session: session)[1];
+      final marks = GraphMarks.of(
+        frame.body,
+        places: places,
+        session: session,
+        steps: tool.steps,
+      );
+      expect(marks.of('1')!.state, NodeState.visited);
+      expect(marks.of('1')!.steps, 1);
+      expect(marks.of('2')!.state, NodeState.failed);
+      expect(marks.of('3')!.state, NodeState.notVisited);
+    });
+  });
+
+  test('a running step outweighs finished ones on its node', () {
+    final j = Journal('a1b2-session', workflow: 'inPlace')
+      ..step('plan', 1, end: 2, place: copiesAt(4))
+      ..step('plan', 3, place: copiesAt(4));
+    final marks = GraphMarks.of(
+      workflow('inPlace').body,
+      places: placesOf('inPlace'),
+      session: j.data,
     );
+    expect(marks.of('1')!.state, NodeState.running);
+    expect(marks.of('1')!.steps, 2);
+    expect(marks.of('1')!.visitsText, '2×');
+  });
 
-    test('a fork step passes the exit its outcome chooses', () {
-      final run = Journal('fork-run', node: 'is-empty', startedAt: 0);
-      run.step('is-empty', 0, end: 1, output: 'true-doc');
-      run.step('is-empty', 2, end: 3, output: 'false-doc');
-      run.step('is-empty', 4, end: 5, output: 'string-doc');
-      final marks = GraphMarks.of(
-        sessionOf([run]),
-        outcomesOf({
-          'true-doc': true,
-          'false-doc': false,
-          'string-doc': 'true',
-        }),
-      );
-      expect(marks.passesOf('is-empty', 0), 1);
-      expect(marks.passesOf('is-empty', 1), 2);
-    });
+  test('a call holds the steps of its functions', () {
+    final j = Journal('e5f6-session', workflow: 'viaCall')
+      ..step('upload', 1, end: 2, place: copiesAt(20), key: 'u', after: null)
+      ..step('verify', 3, place: copiesAt(21), key: 'v', after: 'u');
+    final copies = workflow('viaCall').body.node('1')! as CopiesNode;
+    final marks = GraphMarks.of(
+      copies.body,
+      places: placesOf('viaCall'),
+      session: j.data,
+    );
+    expect(marks.of('1')!.state, NodeState.running);
+    expect(marks.of('1')!.steps, 2);
+    expect(marks.of('1')!.copies, isNull);
+  });
 
-    test('a fork step whose outcome is not read yet passes nothing, and its '
-        'document is needed', () {
-      final marks = GraphMarks.of(mockup.session, noOutcomes);
-      expect(marks.passesOf('verdict', 0), 0);
-      expect(marks.passesOf('verdict', 1), 0);
-      expect(marks.passesOf('collect', 0), 1);
-      expect(forkOutputs(mockup.session), {
-        'is-empty-outcome',
-        'verdict-outcome-1',
-        'verdict-outcome-2',
-      });
-    });
+  test('a step is on every node at its place (D13): a finally drawn on each '
+      'way out of its try', () {
+    const body = GraphBody(
+      nodes: [
+        ConditionNode(id: '1', place: 'lib/f.dart:2', label: 'ok'),
+        StepNode(id: '2', place: 'lib/f.dart:5', name: 'cleanup'),
+        StepNode(id: '3', place: 'lib/f.dart:5', name: 'cleanup'),
+      ],
+      edges: [],
+    );
+    const function = GraphFunction(
+      id: 'lib/f.dart#f',
+      name: 'f',
+      place: 'lib/f.dart:1',
+      body: body,
+    );
+    final j = Journal('a1b2-session', workflow: 'f')
+      ..step('cleanup', 1, end: 2, place: '/home/me/f/lib/f.dart:5');
+    final marks = GraphMarks.of(
+      body,
+      places: StepPlaces.of(function, {function.id: function}),
+      session: j.data,
+      selectedStepId: j.steps.single.id,
+    );
+    expect(marks.of('2')!.state, NodeState.visited);
+    expect(marks.of('3')!.state, NodeState.visited);
+    expect(marks.of('1'), isNull, reason: 'a condition runs no step');
+    expect(marks.selected, {'2', '3'});
+    expect(marks.nodesOf(j.steps.single.id), ['2', '3']);
+  });
 
-    test('a list target counts once per split', () {
-      final marks = GraphMarks.of(mockup.session, mockup.outcomes);
-      expect(marks.passesOf('verdict', 0), 1);
-    });
+  test('the selected step marks the node it is on, or the call or copies it '
+      'is in', () {
+    final j = inPlace();
+    final tag = j.steps.last.id;
+    final plan = j.steps.first.id;
+    final body = workflow('inPlace').body;
+    GraphMarks marksOf(String stepId) => GraphMarks.of(
+      body,
+      places: placesOf('inPlace'),
+      session: j.data,
+      selectedStepId: stepId,
+    );
+    expect(marksOf(tag).selected, {'2'});
+    expect(marksOf(plan).selected, {'1'});
+    expect(marksOf(plan).nodesOf(tag), ['2']);
+  });
 
-    test('an empty target counts when chosen', () {
-      const graph = <String, Object?>{
-        'start': 'work',
-        'nodes': {
-          'work': {'command': 'w', 'then': 'route'},
-          'route': {
-            'decide': 'r',
-            'then': {'skip': <String>[], 'go': 'work'},
-            'else': <String>[],
-          },
-          'last': {'command': 'l', 'then': <String>[]},
-        },
-      };
-      final run = Journal('stub-run', node: 'work', startedAt: 0);
-      run.step('route', 0, end: 1, output: 'skip-doc');
-      run.step('route', 1, end: 2, output: 'other-doc');
-      run.step('last', 2, end: 3);
-      run.finish(3);
-      final marks = GraphMarks.of(
-        sessionOf([run], graph: graph),
-        outcomesOf({'skip-doc': 'skip', 'other-doc': 'other'}),
-      );
-      expect(marks.passesOf('route', 0), 1);
-      expect(marks.passesOf('route', 2), 1);
-      expect(marks.passesOf('last', 0), 1);
-    });
-
-    test('a step its run failed on passes nothing', () {
-      final worker = Journal('work-run', node: 'collect', startedAt: 0);
-      worker.fail(
-        worker.step('collect', 0, end: 1, exit: 1),
-        1,
-        'exited with code 1',
-      );
-      final fork = Journal('fork-run', node: 'verdict', startedAt: 0);
-      fork.fail(
-        fork.step('verdict', 0, end: 1, output: 'odd-doc'),
-        1,
-        'no target for outcome "odd"',
-      );
-      final marks = GraphMarks.of(
-        sessionOf([worker, fork]),
-        outcomesOf({'odd-doc': 'odd'}),
-      );
-      expect(marks.passes, isEmpty);
-    });
-
-    test('a running step passes nothing yet', () {
-      final run = Journal('runn-run', node: 'collect', startedAt: 0)
-        ..step('collect', 0);
-      expect(GraphMarks.of(sessionOf([run]), noOutcomes).passes, isEmpty);
-    });
-
-    test('an exit no run went through is untaken', () {
-      final marks = GraphMarks.of(mockup.session, mockup.outcomes);
-      expect(marks.isTaken('is-empty', 0), isFalse);
-      expect(marks.counterOf('is-empty', 0), isNull);
-      expect(marks.isTaken('is-empty', 1), isTrue);
-    });
-
-    test('the selected run\'s path is the exits its steps took, inherited ones '
-        'too, and the nodes they entered', () {
-      final path = pathOf(mockup.session, 'e5f6-run', mockup.outcomes);
-      expect(path.exits, {
-        (node: 'collect', exit: 0),
-        (node: 'is-empty', exit: 1),
-        (node: 'inspect', exit: 0),
-        (node: 'verdict', exit: 1),
-        (node: 'fix', exit: 0),
-        (node: 'verdict', exit: 0),
-      });
-      expect(path.arrows, {
-        (from: 'collect', exit: 0, to: 'is-empty'),
-        (from: 'is-empty', exit: 1, to: 'inspect'),
-        (from: 'inspect', exit: 0, to: 'verdict'),
-        (from: 'verdict', exit: 1, to: 'fix'),
-        (from: 'fix', exit: 0, to: 'inspect'),
-        (from: 'verdict', exit: 0, to: 'notify'),
-      });
-      expect(path.inputs, {'is-empty', 'inspect', 'verdict', 'fix', 'notify'});
-    });
-
-    test('a run not started yet has its path into its start node', () {
-      final parent = Journal('pare-run', node: 'verdict', startedAt: 0);
-      parent.step('verdict', 0, end: 1, output: 'accepted-doc');
-      parent.split(1);
-      final child = Journal(
-        'chil-run',
-        parent: 'pare-run',
-        node: 'notify',
-        startedAt: 1,
-      );
-      final path = pathOf(
-        sessionOf([parent, child]),
-        'chil-run',
-        outcomesOf({'accepted-doc': 'accepted'}),
-      );
-      expect(path.arrows, {(from: 'verdict', exit: 0, to: 'notify')});
-      expect(path.inputs, {'notify'});
-    });
+  test('a step at no node of the body is on none of it', () {
+    final j = Journal('a1b2-session', workflow: 'inPlace')
+      ..step('stray', 1, end: 2, place: 'lib/old.dart:3');
+    final marks = GraphMarks.of(
+      workflow('inPlace').body,
+      places: placesOf('inPlace'),
+      session: j.data,
+      selectedStepId: j.steps.single.id,
+    );
+    expect(marks.selected, isEmpty);
+    expect(marks.nodesOf(j.steps.single.id), isEmpty);
+    expect(marks.of('1')!.state, NodeState.notVisited);
   });
 }

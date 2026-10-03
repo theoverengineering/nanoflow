@@ -85,7 +85,7 @@ abstract final class AppColors {
 
   // The step details window (docs/design/step-details.html).
 
-  /// Round the window, and its `Input` and `Output` columns.
+  /// Round the window, and its `Output` column.
   static const backdrop = Color(0xFF1C1D20);
   static const backdropDot = Color(0xFF2C2D32);
 
@@ -97,9 +97,6 @@ abstract final class AppColors {
 
   /// `from fix · 14:08:54`; the keys of JSON.
   static const link = Color(0xFFB7ABFF);
-
-  /// The `in` and `out` cards.
-  static const typeCard = Color(0xFF232428);
 
   /// Numbers, and `true`, `false` and `null`, in data.
   static const jsonNumber = Color(0xFF8FDDB0);
@@ -242,7 +239,7 @@ abstract final class AppText {
   static final smallBadge = _style(sans, 10.5);
   static final hint = _style(sans, 12, color: AppColors.textMuted);
 
-  // The session bar and the run switcher over the canvas.
+  // The session bar over the canvas.
   static final barLabel = _style(sans, 12, color: AppColors.textMuted);
   static final barId = _style(
     mono,
@@ -253,8 +250,6 @@ abstract final class AppText {
 
   /// The `·` between the bar's parts: the mockup's 16 px default.
   static final barSeparator = _style(sans, 16, color: AppColors.separator);
-  static final runId = _style(mono, 11.5);
-  static final runWord = _style(sans, 11.5);
 
   // What is wrong with the current graph, over the canvas.
   static final problemTitle = _style(sans, 12, fontWeight: FontWeight.w600);
@@ -269,22 +264,20 @@ abstract final class AppText {
     color: AppColors.textPrimary,
   );
   static final logsRun = _style(sans, 12, color: AppColors.textMuted);
-  static final logsRunId = _style(mono, 12, color: AppColors.textMuted);
 
   /// `Step`, `Started`, `Took`; the timeline's axis.
   static final columnTitle = _style(sans, 10.5, color: AppColors.textFaint);
   static final axisLabel = _style(mono, 9.5, color: AppColors.textFaint);
   static final stepName = _style(sans, 12, color: AppColors.textPrimary);
 
-  /// A fork's `returned → fix`, a failure's error.
+  /// A failure's error, `not on the graph`.
   static final stepDetail = _style(mono, 10.5, color: AppColors.textMuted);
   static final stepTime = _style(mono, 10.5, color: AppColors.textMuted);
   static final stepTook = _style(mono, 10.5, color: AppColors.textSecondary);
   static final startsNote = _style(sans, 10, color: AppColors.noteText);
 
-  /// `split · run e5f6`, `↑ 8 earlier steps`, the end of a run.
+  /// `↑ 8 earlier steps`, the end of a session.
   static final listNote = _style(sans, 10.5, color: AppColors.textMuted);
-  static final runLink = _style(mono, 10.5, color: AppColors.accentText);
 
   // The selected step's details.
   static final detailsTitle = _style(
@@ -319,10 +312,9 @@ abstract final class AppText {
   static final windowCommand = _style(mono, 11, color: AppColors.textSubtle);
   static final visitText = _style(sans, 12, color: AppColors.textPrimary);
   static final windowRun = _style(sans, 12, color: AppColors.textMuted);
-  static final windowRunId = _style(mono, 12, color: AppColors.textPrimary);
   static final resultChip = _style(sans, 11.5);
 
-  /// `INPUT`, `COMMAND`, `THIS STEP`: 0.09 em apart.
+  /// `PLACE IN CODE`, `THIS STEP`, `OUTPUT`: 0.09 em apart.
   static final sectionLabel = _style(
     sans,
     11,
@@ -332,13 +324,6 @@ abstract final class AppText {
   );
   static final toggle = _style(sans, 11.5, color: AppColors.textMuted);
   static final fromText = _style(sans, 12, color: AppColors.textMuted);
-  static final fromLink = _style(
-    mono,
-    12,
-    fontWeight: FontWeight.w500,
-    color: AppColors.link,
-  );
-  static final typePill = _style(mono, 10.5, color: AppColors.accentText);
   static final dataName = _style(mono, 12, color: AppColors.textPrimary);
   static final dataType = _style(mono, 10, color: AppColors.textMuted);
   static final dataValue = _style(mono, 12, color: AppColors.noteText);
@@ -351,21 +336,7 @@ abstract final class AppText {
   ).copyWith(height: 1.8);
   static final commandBox = _style(mono, 12, color: AppColors.textPrimary);
   static final commandNote = _style(sans, 11.5, color: AppColors.textSubtle);
-  static final commandNoteCode = _style(
-    mono,
-    11.5,
-    color: AppColors.textAreaText,
-  );
-  static final cardType = _style(mono, 11.5, color: AppColors.accentText);
-
-  /// `{ id, path }`: 11 px at 1.6.
-  static final cardFields = _style(
-    mono,
-    11,
-    color: AppColors.textAreaText,
-  ).copyWith(height: 1.6);
   static final target = _style(sans, 12, color: AppColors.textPrimary);
-  static final outcomeKey = _style(mono, 11.5, color: AppColors.textSecondary);
   static final factLabel = _style(sans, 12, color: AppColors.textMuted);
   static final factValue = _style(mono, 12, color: AppColors.textPrimary);
   static final factNote = _style(sans, 11.5, color: AppColors.textSubtle);

@@ -1,31 +1,26 @@
-// migrated in Task 12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
-/// What the details of the selected step show: which step it is, and
-/// whether it has its input and output documents (docs/ui-spec.md «Logs»:
-/// «Детали шага»). Pure.
+/// What the details of a step show: which step it is, where in the code it
+/// was called, its output document and, for a step that failed, its error
+/// with the stack (docs/ui-spec.md «Logs»: «Детали шага»; spec §9 «Окно
+/// шага»). A step has no input: it takes its data from its closure. Pure.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-import 'runs.dart';
 import 'session_feed.dart';
 
-/// Whether a step has one of its documents (ui-spec «Logs»: «Данных нет»).
+/// Whether a step has its output.
 enum DocumentState {
-  /// The node declares no `in` (no `out`): the tab is marked `—`.
-  undeclared,
-
-  /// Not there yet: the step is running, or its `step.json` is not read.
+  /// Not there yet: the step is running.
   notYet,
 
-  /// The step has none: it failed, or nothing was carried to it.
+  /// The step has none: it failed, or finished without naming one.
   missing,
 
   /// The document [StepDocument.documentId] holds it.
   present,
 }
 
-/// A step's input or output.
+/// A step's output.
 final class StepDocument {
   const StepDocument._(this.state, {this.documentId, this.message});
 
@@ -36,112 +31,85 @@ final class StepDocument {
 
   /// What the tab says instead of a document.
   final String? message;
-
-  /// Whether the tab is marked `—`: the node declares no such data.
-  bool get marked => state == DocumentState.undeclared;
 }
 
-/// The selected step as its details show it.
+/// A step as its details show it.
 final class StepDetails {
   const StepDetails._({
     required this.sessionId,
-    required this.runId,
     required this.stepId,
-    required this.node,
+    required this.name,
+    required this.place,
     required this.status,
-    required this.input,
     required this.output,
+    required this.error,
+    required this.stack,
   });
 
   final String sessionId;
 
-  /// The run the step belongs to: an ancestor's for an inherited step.
-  final String runId;
-
   final String stepId;
 
-  /// The node's name.
-  final String node;
+  /// The name given to `f.step`.
+  final String name;
+
+  /// Where `f.step` was called: `lib/review.dart:49`; `null` when not
+  /// known.
+  final String? place;
 
   final StepStatus status;
 
   bool get running => status == StepStatus.running;
 
-  final StepDocument input;
   final StepDocument output;
+
+  /// The error of the step's last `step-failed`, while it is failed.
+  final String? error;
+
+  /// The stack of that `step-failed`.
+  final String? stack;
 }
 
-/// The step [stepId] among the steps the run [runId] of [session] shows,
-/// inherited ones too; `null` when it shows no such step. [steps] are the
-/// run's [stepsOfRun], when already at hand.
-StepDetails? stepDetails(
-  SessionData session,
-  String runId,
-  String stepId, {
-  List<RunStep>? steps,
-}) {
-  final step = (steps ?? stepsOfRun(session, runId))
+/// The step [stepId] of [session]; `null` until it has started and its
+/// record has been read.
+StepDetails? stepDetails(SessionData session, String stepId) {
+  final record = session.steps[stepId];
+  final state = session.state.steps
       .where((step) => step.stepId == stepId)
       .firstOrNull;
-  if (step == null) return null;
-  final run = step.run;
-  final state = step.state;
-  final node = session.graph?.nodes[step.node];
-  final given = run.steps[stepId];
+  if (record == null || state == null) return null;
+  final failure = state.status == StepStatus.failed
+      ? session.events.whereType<StepFailed>().lastWhere(
+          (event) => event.stepId == stepId,
+        )
+      : null;
   return StepDetails._(
     sessionId: session.id,
-    runId: run.id,
     stepId: stepId,
-    node: step.node,
+    name: record.name,
+    place: record.place,
     status: state.status,
-    input: _input(node, given),
-    output: _output(node, state, run.finishOf(stepId)?.outputId),
+    output: _output(state),
+    error: failure?.error,
+    stack: failure?.stack,
   );
 }
 
-StepDocument _input(Node? node, Step? given) {
-  if (node != null && node.input == null) {
-    return const StepDocument._(
-      DocumentState.undeclared,
-      message: 'This node declares no input',
-    );
-  }
-  if (given == null) {
-    return const StepDocument._(DocumentState.notYet, message: 'Not read yet');
-  }
-  final id = given.inputId;
-  return id == null
-      ? const StepDocument._(
-          DocumentState.missing,
-          message: 'The step had no input',
-        )
-      : StepDocument._(DocumentState.present, documentId: id);
-}
-
-/// A fork's output is its outcome; `step-finished` names it before
-/// `step.json` does.
-StepDocument _output(Node? node, StepState state, String? outputId) {
-  if (node is WorkerNode && node.output == null) {
-    return const StepDocument._(
-      DocumentState.undeclared,
-      message: 'This node declares no output',
-    );
-  }
-  if (outputId != null) {
-    return StepDocument._(DocumentState.present, documentId: outputId);
-  }
-  return switch (state.status) {
-    StepStatus.running => const StepDocument._(
-      DocumentState.notYet,
-      message: 'Not yet: the step is still running',
-    ),
-    StepStatus.failed => const StepDocument._(
-      DocumentState.missing,
-      message: 'No output: the step failed',
-    ),
-    StepStatus.finished => const StepDocument._(
+/// `step-finished` names the output before `step.json` does.
+StepDocument _output(StepState state) => switch (state.status) {
+  StepStatus.running => const StepDocument._(
+    DocumentState.notYet,
+    message: 'Not yet: the step is still running',
+  ),
+  StepStatus.failed => const StepDocument._(
+    DocumentState.missing,
+    message: 'No output: the step failed',
+  ),
+  StepStatus.finished => switch (state.outputId) {
+    final id? => StepDocument._(DocumentState.present, documentId: id),
+    null => const StepDocument._(
       DocumentState.missing,
       message: 'The step gave no output',
     ),
-  };
-}
+  },
+};

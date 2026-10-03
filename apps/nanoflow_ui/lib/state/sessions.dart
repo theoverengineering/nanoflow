@@ -5,6 +5,7 @@ library;
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
+import 'freshness.dart' show CodeCheck;
 import 'session_feed.dart';
 import 'texts.dart';
 import 'texts.dart' as texts show shortId;
@@ -19,6 +20,7 @@ final class SessionSummary {
     required this.steps,
     required this.failedSteps,
     required this.firstLine,
+    required this.code,
   });
 
   final String id;
@@ -44,6 +46,18 @@ final class SessionSummary {
 
   /// The day and time the session started: `Today · 14:03:11`.
   final String firstLine;
+
+  /// How the code the session ran on stands against its graph; `null`
+  /// while that is not known.
+  final CodeCheck? code;
+
+  /// `other code` for a session that ran on code its graph was not read
+  /// from; `not checked` for one that recorded no hash of its code.
+  String? get codeNote => switch (code) {
+    CodeCheck.otherCode => 'other code',
+    CodeCheck.notChecked => 'not checked',
+    CodeCheck.matches || null => null,
+  };
 
   /// `Running for 12m 26s`, `Failed in 6m 18s`, `Finished in 3m 04s`.
   String get statusText => switch (status) {
@@ -73,9 +87,14 @@ final class SessionSummary {
   };
 }
 
-/// The summary of [session] at [now]; `null` while its `session-started`
-/// has not been read: a session has no start time before that.
-SessionSummary? summarize(SessionData session, DateTime now) {
+/// The summary of [session] at [now], [code] the check of its code; `null`
+/// while its `session-started` has not been read: a session has no start
+/// time before that.
+SessionSummary? summarize(
+  SessionData session,
+  DateTime now, {
+  CodeCheck? code,
+}) {
   final state = session.state;
   final start = state.startedAt;
   if (start == null) return null;
@@ -89,6 +108,7 @@ SessionSummary? summarize(SessionData session, DateTime now) {
         .where((step) => step.status == StepStatus.failed)
         .length,
     firstLine: dayAndTime(start, now),
+    code: code,
   );
 }
 
@@ -102,12 +122,15 @@ String noSessionsHint(String graphFile) =>
     'Sessions of the workflow appear as it runs: '
     'they are read from runs/ next to ${p.basename(graphFile)}.';
 
-/// The summaries of [sessions] that have started, newest first.
+/// The summaries of [sessions] that have started, newest first; [codeOf]
+/// checks the code of each.
 List<SessionSummary> sessionSummaries(
   Iterable<SessionData> sessions,
-  DateTime now,
-) => [
-  for (final session in sessionsNewestFirst(sessions)) summarize(session, now)!,
+  DateTime now, {
+  CodeCheck? Function(SessionData session)? codeOf,
+}) => [
+  for (final session in sessionsNewestFirst(sessions))
+    summarize(session, now, code: codeOf?.call(session))!,
 ];
 
 /// Those of [sessions] that have started, newest first (ui-spec «Сессии»).

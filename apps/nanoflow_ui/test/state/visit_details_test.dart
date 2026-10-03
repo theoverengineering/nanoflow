@@ -1,286 +1,119 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_ui/state/session_feed.dart';
-import 'package:nanoflow_ui/state/step_details.dart';
+import 'package:nanoflow_ui/state/step_places.dart';
 import 'package:nanoflow_ui/state/visit_details.dart';
 import 'package:nanoflow_ui/state/visits.dart';
 
 import 'support.dart';
 
 void main() {
-  final mockup = Mockup();
+  final file = copiesGraphFile();
+  final inPlace = file.functions['lib/copies.dart#inPlace']!;
+  final places = StepPlaces.of(inPlace, file.functions);
+  final copies = inPlace.body.node('2')! as CopiesNode;
+  final now = at(746);
 
-  VisitDetails details(
-    String node, {
-    String? stepId,
-    SessionData? session,
-    DateTime? now,
-  }) {
-    final shown = session ?? mockup.session;
+  /// Three copies' verify: finished in 4m 02s, running, failed in 0.1s.
+  Journal journal() {
+    final j = Journal('a1b2-session', workflow: 'inPlace');
+    j.step('verify', 9.118, end: 251.524, place: copiesAt(8), output: 'doc');
+    j.step('verify', 612, place: copiesAt(8));
+    j.step('verify', 700, end: 700.1, failed: true, place: copiesAt(8));
+    return j;
+  }
+
+  VisitDetails detailsOf(Journal j, int i, {String? Function(String)? copy}) {
+    final session = j.data;
     return visitDetails(
-      session: shown,
-      graph: shown.graph,
-      node: node,
-      stepId: stepId,
-      now: now ?? Mockup.now,
+      session: session,
+      steps: session.state.steps,
+      places: places,
+      stepId: j.steps[i].id,
+      copyOf: copy,
+      now: now,
     );
   }
 
   group('the step details window (ui-spec «Окно деталей шага»)', () {
     test('shows a visit among all the visits to its node', () {
-      final second = details('inspect', stepId: 'k7f2-inspect-5');
-      expect(second.visit?.stepId, 'k7f2-inspect-5');
-      expect(second.visitText, 'Visit 2 of 2');
-      expect(second.previous?.stepId, 'k7f2-inspect-2');
-      expect(second.next, isNull);
-      expect(second.visit?.runId, 'k7f2-run');
-
-      final first = details('inspect', stepId: 'k7f2-inspect-2');
-      expect(first.visitText, 'Visit 1 of 2');
-      expect((first.previous, first.next?.stepId), (null, 'k7f2-inspect-5'));
+      final details = detailsOf(journal(), 1);
+      expect(details.visitText, 'Visit 2 of 3');
+      expect(details.previous!.stepId, details.visits[0].stepId);
+      expect(details.next!.stepId, details.visits[2].stepId);
+      expect(details.name, 'verify');
+      expect(details.place, copiesAt(8));
     });
 
-    test('of a finished step: its exit code and how long it took', () {
-      final inspect = details('inspect', stepId: 'k7f2-inspect-5');
-      expect(inspect.result?.status, StepStatus.finished);
-      expect(inspect.result?.text, 'exit 0 · 4m 02s');
-      final facts = inspect.facts!;
-      expect(facts.started, '14:09:20.000');
-      expect(facts.finished, '14:13:22.000');
+    test('of a finished step: how long it took, when it started and '
+        'finished', () {
+      final details = detailsOf(journal(), 0);
+      expect(details.result!.text, 'finished · 4m 02s');
+      expect(details.result!.status, StepStatus.finished);
+      final facts = details.facts!;
+      expect(facts.started, '14:03:20.118');
+      expect(facts.finished, '14:07:22.524');
       expect(facts.took, 'took 4m 02s');
-      expect(facts.exitCode, 0);
-      expect(facts.starts, [
-        (time: '14:09:20', interrupted: true),
-        (time: '14:09:51', interrupted: false),
-      ]);
+      expect(details.step!.output.documentId, 'doc');
     });
 
     test('of a running step: the time it has been running, nothing more', () {
-      final notify = details('notify', stepId: 'e5f6-notify-0');
-      expect(notify.result?.status, StepStatus.running);
-      expect(notify.result?.text, 'running · 2m 14s');
-      expect(
-        details('notify', stepId: 'e5f6-notify-0', now: at(747)).result?.text,
-        'running · 2m 15s',
-      );
-      expect(notify.facts!.finished, isNull);
-      expect(notify.facts!.took, isNull);
-      expect(notify.facts!.exitCode, isNull);
-      expect(notify.step?.output.state, DocumentState.undeclared);
-      expect(notify.error, isNull);
+      final details = detailsOf(journal(), 1);
+      expect(details.result!.text, 'running · 2m 14s');
+      expect(details.facts!.finished, isNull);
+      expect(details.facts!.took, isNull);
     });
 
-    test('of a failed step: its exit code and the run\'s error', () {
-      final run = Journal('fail-run', node: 'collect', startedAt: 0);
-      run.fail(
-        run.step('collect', 0, end: 28, exit: 1, input: 'request'),
-        28,
-        'exited with code 1',
-      );
-      final collect = details(
-        'collect',
-        stepId: 'fail-collect-0',
-        session: sessionOf([run]),
-      );
-      expect(collect.result?.status, StepStatus.failed);
-      expect(collect.result?.text, 'exit 1 · 28s');
-      expect(collect.error, 'exited with code 1');
-      expect(collect.facts!.exitCode, 1);
+    test('of a failed step: its error and stack', () {
+      final details = detailsOf(journal(), 2);
+      expect(details.result!.text, 'failed · 0.1s');
+      expect(details.step!.error, 'StateError: verify failed');
+      expect(details.step!.stack, '#0 main');
     });
 
-    test('of a step that could not start: failed, without a code', () {
-      final run = Journal('gone-run', node: 'collect', startedAt: 0);
-      run.fail(
-        run.step('collect', 0, input: 'request'),
-        0.1,
-        'cannot start the graph program: no such file',
-      );
-      final collect = details(
-        'collect',
-        stepId: 'gone-collect-0',
-        session: sessionOf([run]),
-      );
-      expect(collect.result?.text, 'failed · 0.1s');
-      expect(collect.facts!.finished, isNull);
-      expect(collect.facts!.exitCode, isNull);
-    });
-
-    test('where the input came from', () {
-      final inspect = details('inspect', stepId: 'k7f2-inspect-5');
-      expect((inspect.source! as FromStep).visit.stepId, 'k7f2-fix-4');
-      expect(inspect.step?.input.documentId, 'change-2');
-      expect(
-        details('collect', stepId: 'k7f2-collect-0').source,
-        isA<LaunchInput>(),
-      );
-    });
-
-    test('a fork\'s output is its outcome', () {
-      final verdict = details('verdict', stepId: 'k7f2-verdict-6');
-      expect(verdict.step?.output.documentId, 'verdict-outcome-2');
-      expect(verdict.description!.fork, isTrue);
-    });
-
-    test('a node without visits: its description alone', () {
-      final discard = details('discard');
-      expect(discard.visit, isNull);
-      expect(discard.visits, isEmpty);
-      expect(discard.visitText, isNull);
-      expect(
-        (discard.step, discard.result, discard.facts, discard.source),
-        (null, null, null, null),
-      );
-      expect(discard.description!.run, 'nodes/discard/run.sh');
-    });
-
-    test('a step that is not a visit to the node is not shown', () {
-      final inspect = details('inspect', stepId: 'k7f2-fix-4');
-      expect(inspect.visit, isNull);
-      expect(inspect.visits, hasLength(2));
-    });
-
-    test('a node of the current graph, without a session', () {
-      final described = visitDetails(
-        session: null,
-        graph: Graph.fromJson(reviewGraph),
-        node: 'inspect',
-        stepId: null,
-        now: Mockup.now,
-      );
-      expect(described.visits, isEmpty);
-      expect(described.description!.run, 'nodes/inspect/run.sh');
-    });
-  });
-
-  group('the node\'s description', () {
-    NodeDescription describe(String node) => details(node).description!;
-
-    /// The ways as `accepted → publish, notify`; `→` alone when the run ends.
-    List<String> waysOf(NodeDescription node) => [
-      for (final way in node.ways)
-        '${way.outcome ?? ''} → '
-                '${way.targets.map((target) => target.name).join(', ')}'
-            .trim(),
-    ];
-
-    test('of a worker: its command, its in and out, where it goes', () {
-      final inspect = describe('inspect');
-      expect(inspect.fork, isFalse);
-      expect(inspect.function, isFalse);
-      expect(inspect.runTitle, 'Command');
-      expect(inspect.run, 'nodes/inspect/run.sh');
-      expect(
-        (inspect.input?.label, inspect.input?.fields),
-        ('#/Change', '{ id, path }'),
-      );
-      expect(
-        (inspect.output?.label, inspect.output?.fields),
-        ('#/Report', '{ change, findings[] }'),
-      );
-      expect(waysOf(inspect), ['→ verdict']);
-      expect(inspect.ways.single.targets.single.fork, isTrue);
-      expect(describe('fix').ways.single.targets.single.fork, isFalse);
-    });
-
-    test('of a worker without then or out: the run ends there', () {
-      final notify = describe('notify');
-      expect(notify.output, isNull);
-      expect(waysOf(notify), ['→']);
-    });
-
-    test('of a fork: what it decides with, its outcomes and their '
-        'targets', () {
-      final verdict = describe('verdict');
-      expect(verdict.fork, isTrue);
-      expect(verdict.function, isFalse);
-      expect(verdict.runTitle, 'Decide');
-      expect(verdict.run, 'nodes/verdict/run.sh');
-      expect(verdict.output, isNull);
-      expect(waysOf(verdict), ['accepted → publish, notify', 'returned → fix']);
-      expect(waysOf(describe('is-empty')), [
-        'true → discard',
-        'else → inspect',
+    test('its starts, and how each ended', () {
+      final j = journal();
+      j.events.add(StepStarted(time: at(800), stepId: j.steps[2].id));
+      final starts = detailsOf(j, 2).facts!.starts;
+      expect(starts, [
+        (time: '14:14:51', outcome: StartOutcome.failed),
+        (time: '14:16:31', outcome: StartOutcome.running),
       ]);
     });
 
-    test('of an if without else: the run ends when the outcome is not '
-        'true', () {
-      final run = Journal('ifno-run', node: 'pick', startedAt: null);
-      final session = sessionOf(
-        [run],
-        graph: const {
-          'start': 'pick',
-          'nodes': {
-            'pick': {'decide': 'pick.sh', 'then': 'pick'},
-          },
-        },
-      );
-      final pick = details('pick', session: session).description!;
-      expect(waysOf(pick), ['true → pick', 'else →']);
+    test('names the copy of the step', () {
+      expect(detailsOf(journal(), 0, copy: (_) => 'copy 2').copy, 'copy 2');
+      expect(detailsOf(journal(), 0).copy, isNull);
     });
 
-    test('of a switch without else: no way for an outcome that matches no '
-        'key, which is an error', () {
-      final run = Journal('swno-run', node: 'pick', startedAt: null);
-      final session = sessionOf(
-        [run],
-        graph: const {
-          'start': 'pick',
-          'nodes': {
-            'pick': {
-              'decide': 'pick.sh',
-              'then': {'a': 'pick'},
-            },
-          },
-        },
+    test('a node without steps: its name and place alone', () {
+      final session = journal().data;
+      final details = visitDetails(
+        session: session,
+        steps: session.state.steps,
+        places: places,
+        stepId: null,
+        node: copies.body.node('3')! as StepNode,
+        now: now,
       );
-      final pick = details('pick', session: session).description!;
-      expect(waysOf(pick), ['a → pick']);
+      expect(details.name, 'tag');
+      expect(details.place, copiesAt(9));
+      expect(details.visits, isEmpty);
+      expect(details.visitText, isNull);
+      expect(details.step, isNull);
+      expect(details.result, isNull);
     });
 
-    test('of a fork whose else leads nowhere', () {
-      final run = Journal('else-run', node: 'pick', startedAt: null);
-      final session = sessionOf(
-        [run],
-        graph: const {
-          'start': 'pick',
-          'nodes': {
-            'pick': {
-              'decide': 'pick.sh',
-              'then': {'a': 'pick'},
-              'else': <String>[],
-            },
-          },
-        },
+    test('a node of the current graph, without a session', () {
+      final details = visitDetails(
+        session: null,
+        steps: const [],
+        places: places,
+        stepId: null,
+        node: copies.body.node('1')! as StepNode,
+        now: now,
       );
-      final pick = details('pick', session: session).description!;
-      expect(pick.input, isNull);
-      expect(waysOf(pick), ['a → pick', 'else →']);
-    });
-
-    test('of a graph in code: its function, by the place it is declared '
-        'at', () {
-      final run = Journal('code-run', node: 'collect', startedAt: null);
-      final session = sessionOf(
-        [run],
-        graph: const {
-          'start': 'collect',
-          'nodes': {
-            'collect': {'command': 'graph.dart:12', 'then': 'pick'},
-            'pick': {'decide': '../lib/nodes.dart:40', 'then': 'collect'},
-          },
-        },
-      );
-      final collect = details('collect', session: session).description!;
-      expect((collect.function, collect.runTitle), (true, 'Function'));
-      expect(collect.run, 'graph.dart:12');
-      final pick = details('pick', session: session).description!;
-      expect((pick.function, pick.runTitle), (true, 'Decide function'));
-      expect(pick.run, '../lib/nodes.dart:40');
-    });
-
-    test('of a node the graph does not have: none', () {
-      expect(details('nope').description, isNull);
+      expect(details.name, 'upload');
+      expect(details.visit, isNull);
     });
   });
 }

@@ -169,20 +169,30 @@ class _Crumbs extends StatelessWidget {
 
       TextStyle styleOf(int i) =>
           i == last ? AppText.headerTitle : AppText.crumb;
-      final widths = [
-        for (var i = 0; i <= last; i++)
-          widthOf(titles[i], styleOf(i)) +
-              (i == 0 && picker ? _chevronGap + _chevron : 0),
+      final texts = [
+        for (var i = 0; i <= last; i++) widthOf(titles[i], styleOf(i)),
       ];
+      final chevron = picker ? _chevronGap + _chevron : 0.0;
       final separator = widthOf('›', AppText.crumbSeparator) + 2 * _spacing;
       final fold = widthOf('…', AppText.crumb);
       // A crumb by its index; null for the fold.
       double width(List<int?> shown) =>
-          [for (final i in shown) i == null ? fold : widths[i]]
-              .fold(0.0, (sum, w) => sum + w) +
+          [
+            for (final i in shown)
+              i == null ? fold : texts[i] + (i == 0 ? chevron : 0),
+          ].fold(0.0, (sum, w) => sum + w) +
           (shown.length - 1) * separator;
+      // What of [shown] does not give way: all but the texts of the
+      // workflow's crumb and the last.
+      double fixed(List<int?> shown) =>
+          width(shown) -
+          [
+            for (final i in shown)
+              if (i == 0 || i == last) texts[i!],
+          ].fold(0.0, (sum, w) => sum + w);
 
-      final room = constraints.maxWidth;
+      // The gap before the directory is taken first.
+      final room = math.max(0.0, constraints.maxWidth - _spacing);
       var shown = <int?>[for (var i = 0; i <= last; i++) i];
       if (width(shown) > room && last >= 2) {
         // The workflow's, the fold, and as many of the last as fit.
@@ -197,6 +207,10 @@ class _Crumbs extends StatelessWidget {
         }
         shown = keeping(from);
       }
+      // Too narrow even to squeeze them: the fold and the last, or the last.
+      if (last > 0 && fixed(shown) > room) {
+        shown = fixed([null, last]) <= room ? [null, last] : [last];
+      }
       final hidden = [
         for (var i = 0; i <= last; i++)
           if (!shown.contains(i)) i,
@@ -207,25 +221,27 @@ class _Crumbs extends StatelessWidget {
           SizedBox(
             width: math.min(width(shown), room),
             child: Row(
-              spacing: _spacing,
               children: [
                 for (final (k, i) in shown.indexed) ...[
-                  if (k > 0) Text('›', style: AppText.crumbSeparator),
+                  if (k > 0) ...[
+                    const SizedBox(width: _spacing),
+                    Text('›', style: AppText.crumbSeparator),
+                    const SizedBox(width: _spacing),
+                  ],
                   if (i == null)
                     _fold(context, titles, hidden)
                   else if (i == 0 || i == last)
                     // The ones that give way when nothing else does.
                     Flexible(
-                      flex: math.max(1, widths[i].round()),
-                      child: _crumb(
-                        titles[i],
-                        i,
-                        last,
-                        picker: i == 0 && picker,
-                      ),
+                      flex: math.max(1, texts[i].round()),
+                      child: _crumb(titles[i], i, last),
                     )
                   else
-                    _crumb(titles[i], i, last, picker: false),
+                    _crumb(titles[i], i, last),
+                  if (i == 0 && picker) ...[
+                    const SizedBox(width: _chevronGap),
+                    _WorkflowPicker(model: model),
+                  ],
                 ],
               ],
             ),
@@ -237,27 +253,18 @@ class _Crumbs extends StatelessWidget {
   );
 
   /// The crumb of the level [i] of [last] + 1, [title]: going up unless it
-  /// is the last; with the workflow picker's chevron when [picker].
-  Widget _crumb(String title, int i, int last, {required bool picker}) {
-    Widget text = Text(
+  /// is the last.
+  Widget _crumb(String title, int i, int last) {
+    final text = Text(
       title,
       style: i == last ? AppText.headerTitle : AppText.crumb,
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.ellipsis,
     );
-    if (i < last) {
-      text = Clickable(onTap: () => model.openLevel(i), child: text);
-    }
-    if (!picker) return text;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      spacing: _chevronGap,
-      children: [
-        Flexible(child: text),
-        _WorkflowPicker(model: model),
-      ],
-    );
+    return i < last
+        ? Clickable(onTap: () => model.openLevel(i), child: text)
+        : text;
   }
 
   /// `…` for the crumbs [hidden] of [titles]: a click lists them, and the

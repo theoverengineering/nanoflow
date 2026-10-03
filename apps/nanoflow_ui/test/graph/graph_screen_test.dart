@@ -1,7 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/graph_notes.dart';
@@ -35,9 +35,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   }
 
-  testWidgets('lays out the header, the sessions column and the canvas', (
-    tester,
-  ) async {
+  testWidgets('lays out the header, the sessions column, and the canvas '
+      'over the Logs panel', (tester) async {
     await pumpGraphScreen(tester);
 
     expect(
@@ -50,7 +49,11 @@ void main() {
     );
     expect(
       tester.getRect(find.byType(GraphCanvas)),
-      const Rect.fromLTRB(272, 48, 1440, 900),
+      const Rect.fromLTRB(272, 48, 1440, 620),
+    );
+    expect(
+      tester.getRect(find.byKey(GraphScreen.logsKey)),
+      const Rect.fromLTRB(272, 621, 1440, 900),
     );
   });
 
@@ -67,7 +70,7 @@ void main() {
     expect(tester.getSize(find.byType(SessionsColumn)).width, 331);
     expect(
       tester.getRect(find.byType(GraphCanvas)),
-      const Rect.fromLTRB(332, 48, 1440, 900),
+      const Rect.fromLTRB(332, 48, 1440, 620),
     );
   });
 

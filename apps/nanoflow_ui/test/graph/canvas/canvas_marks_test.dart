@@ -1,109 +1,111 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
 import 'package:nanoflow_ui/layout/layout.dart';
+import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/session_view.dart';
 
+import '../../layout/support.dart' show layoutOf;
 import '../../state/support.dart';
 
 void main() {
-  final layout = layoutGraph(Graph.fromJson(reviewGraph));
-  final mockup = Mockup();
-  final marks = CanvasMarks.of(
-    SessionView.of(
-      mockup.session,
-      now: Mockup.now,
-      outcomes: mockup.outcomes,
-      runId: 'e5f6-run',
-      stepId: 'e5f6-notify-0',
-    ),
-  );
+  final file = copiesGraphFile();
+  final inPlace = file.functions['lib/copies.dart#inPlace']!;
 
-  EdgePath edge(String from, String to) =>
-      layout.edges.firstWhere((e) => e.from == from && e.to == to);
+  /// inPlace over core and tool: plan, core's upload done, tool's running.
+  Journal journal() =>
+      Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
+        ..step('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
+        ..step('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
+        ..step('upload', 3, place: copiesAt(7), key: 'ut', after: 'p');
 
-  Iterable<EdgePath> into(String node) =>
-      layout.edges.where((e) => e.to == node);
+  CanvasMarks marksOf(
+    List<Opened> path, {
+    Map<int, String> copies = const {},
+    String? stepId,
+  }) {
+    final levels = bodyLevels(inPlace, file.functions, path);
+    return CanvasMarks.of(
+      SessionView.of(
+        journal().data,
+        now: at(100),
+        documents: outcomesOf(const {}),
+        graphFile: null,
+        levels: levels,
+        copies: copies,
+        stepId: stepId,
+      ),
+      depth: levels.length - 1,
+    );
+  }
 
-  test('the selected run\'s arrows, exits and bars are its path', () {
-    expect(marks.edge(edge('collect', 'is-empty')), Tone.path);
-    expect(marks.edge(edge('fix', 'inspect')), Tone.path);
-    expect(marks.edge(edge('verdict', 'notify')), Tone.path);
-    expect(marks.exit('verdict', 0), Tone.path);
-    expect(marks.exit('is-empty', 1), Tone.path);
-    expect(marks.bar('notify', into('notify')), Tone.path);
-    expect(marks.bar('inspect', into('inspect')), Tone.path);
+  test('the marks of the steps on the nodes of the level drawn', () {
+    final marks = marksOf(const [], stepId: 'a1b2-plan-0');
+    expect(marks.isPlain, isFalse);
+    expect(marks.node('1')!.state, NodeState.visited);
+    expect(marks.node('2')!.state, NodeState.running);
+    expect(marks.node('3')!.state, NodeState.notVisited);
+    expect(marks.selected('1'), isTrue);
+    expect(marks.selected('2'), isFalse);
   });
 
-  test('what other runs went along is taken; what none did, untaken', () {
-    // c3d4 went to publish from the same capsule as e5f6 to notify.
-    expect(marks.edge(edge('verdict', 'publish')), Tone.taken);
-    expect(marks.bar('publish', into('publish')), Tone.taken);
-    expect(marks.edge(edge('is-empty', 'discard')), Tone.untaken);
-    expect(marks.exit('is-empty', 0), Tone.untaken);
-    expect(marks.bar('discard', into('discard')), Tone.untaken);
+  test('copies say how many copies ran', () {
+    expect(marksOf(const []).copies('2'), '×2');
   });
 
-  test('counters, states, markers, visits and the ring', () {
-    expect(marks.counter('inspect', 0), '2×');
-    expect(marks.counter('verdict', 0), '1×');
-    expect(marks.counter('is-empty', 0), isNull);
-    expect(marks.state('notify'), NodeState.running);
-    expect(marks.state('discard'), NodeState.notVisited);
-    expect([for (final m in marks.markers('publish')) m.shortId], ['c3d4']);
-    expect(marks.visits('verdict'), '2×');
-    expect(marks.visits('fix'), isNull);
-    expect(marks.selectedNode, 'notify');
-    expect(marks.runId, 'e5f6-run');
+  test('copies none of which ran yet say ×0', () {
+    final marks = CanvasMarks.of(
+      SessionView.of(
+        Journal(
+          'b2c3-session',
+          workflow: 'inPlace',
+          graph: copiesGraphJson(),
+        ).data,
+        now: at(100),
+        documents: outcomesOf(const {}),
+        graphFile: null,
+        levels: bodyLevels(inPlace, file.functions, const []),
+      ),
+      depth: 0,
+    );
+    expect(marks.copies('2'), '×0');
   });
 
-  group('back arrows are shown in the tone', () {
-    final back = layout.edges.where((edge) => edge.isDashed);
-
-    test('of the selected run when it went back', () {
-      expect(marks.backEdges(back), Tone.path);
-    });
-
-    test('they are drawn in when it did not', () {
-      final noRun = CanvasMarks.of(
-        SessionView.of(
-          mockup.session,
-          now: Mockup.now,
-          outcomes: mockup.outcomes,
-        ),
-      );
-      expect(noRun.backEdges(back), Tone.taken);
-      final once = Journal('once-run', node: 'collect', startedAt: 0)
-        ..step('collect', 0, end: 1);
-      expect(
-        CanvasMarks.of(
-          SessionView.of(
-            sessionOf([once]),
-            now: Mockup.now,
-            outcomes: mockup.outcomes,
-            runId: 'once-run',
-          ),
-        ).backEdges(back),
-        Tone.untaken,
-      );
-      expect(CanvasMarks.plain.backEdges(back), Tone.plain);
-    });
-
-    test('none without back arrows', () {
-      expect(marks.backEdges(const <EdgePath>[]), isNull);
-    });
+  test('in the body of copies, all shown, steps count the copies on them; '
+      'one copy shown, not', () {
+    expect(marksOf(const [Opened('2')]).allCopies, isTrue);
+    expect(marksOf(const [Opened('2')]).node('1')!.running, 1);
+    expect(marksOf(const []).allCopies, isFalse);
+    expect(
+      marksOf(const [Opened('2')], copies: {1: 'a1b2-upload-2'}).allCopies,
+      isFalse,
+    );
   });
 
-  test('Current graph is plain', () {
+  test('a step records no way it took: arrows, exits and bars are plain', () {
+    final marks = marksOf(const []);
+    final layout = layoutBody(inPlace.body, functions: file.functions);
+    for (final edge in layout.edges) {
+      expect(marks.edge(edge), Tone.plain);
+    }
+    expect(marks.exit('1', 0), Tone.plain);
+    expect(marks.bar('2', layout.edges.where((e) => e.to == '2')), Tone.plain);
+    expect(marks.counter('1', 0), isNull);
+  });
+
+  test('back arrows are in the plain tone; none without them', () {
+    // Review goes back from fix to inspect.
+    final back = layoutOf('review').edges.where((edge) => edge.isDashed);
+    expect(back, isNotEmpty);
+    expect(marksOf(const []).backEdges(back), Tone.plain);
+    expect(marksOf(const []).backEdges(const <EdgePath>[]), isNull);
+  });
+
+  test('Current graph is plain: no marks, ×n on copies', () {
     const plain = CanvasMarks.plain;
-    expect(CanvasMarks.of(null), same(plain));
-    expect(plain.edge(edge('collect', 'is-empty')), Tone.plain);
-    expect(plain.exit('collect', 0), Tone.plain);
-    expect(plain.bar('inspect', into('inspect')), Tone.plain);
-    expect(plain.counter('inspect', 0), isNull);
-    expect(plain.state('collect'), isNull);
-    expect(plain.markers('notify'), isEmpty);
-    expect(plain.visits('inspect'), isNull);
-    expect(plain.selectedNode, isNull);
+    expect(CanvasMarks.of(null, depth: 0), same(plain));
+    expect(plain.isPlain, isTrue);
+    expect(plain.node('1'), isNull);
+    expect(plain.selected('1'), isFalse);
+    expect(plain.copies('2'), '×n');
   });
 }

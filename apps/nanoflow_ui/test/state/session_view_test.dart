@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/session_view.dart';
 
 import 'support.dart';
@@ -140,5 +141,78 @@ void main() {
     expect(view.graph.graph, reviewGraphFile());
     expect(view.graph.code, CodeCheck.matches);
     expect(view.stepId, 'a1b2-collect-0');
+    expect(view.step!.name, 'collect');
+    expect(view.logs.header.text, '2 steps');
+    expect(view.logs.rows, hasLength(2));
+    expect(view.marks, isNull, reason: 'no level drawn');
+  });
+
+  group('the session on the levels drawn (spec §9 «Шаги на графе»)', () {
+    final file = copiesGraphFile();
+    final inPlace = file.functions['lib/copies.dart#inPlace']!;
+
+    /// inPlace over core and tool, tool's verify running.
+    Journal journal() =>
+        Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
+          ..step('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
+          ..step('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
+          ..step('upload', 3, end: 5, place: copiesAt(7), key: 'ut', after: 'p')
+          ..step('verify', 6, place: copiesAt(8), key: 'vt', after: 'ut');
+
+    SessionView viewOf(
+      Journal j, {
+      List<Opened> path = const [],
+      Map<int, String> copies = const {},
+      String? stepId,
+    }) => SessionView.of(
+      j.data,
+      now: now,
+      documents: noDocuments,
+      graphFile: null,
+      stepId: stepId,
+      levels: bodyLevels(inPlace, file.functions, path),
+      copies: copies,
+    );
+
+    test('the workflow body: every step in Logs, the marks of its nodes', () {
+      final view = viewOf(journal());
+      expect(view.shown.frames, isEmpty);
+      expect(view.logs.header.text, '4 steps');
+      expect(view.marks!.of('2')!.copies, 2);
+      expect(view.logs.rows.whereType<StepRow>().map((row) => row.copy), [
+        null,
+        null,
+        null,
+        null,
+      ]);
+    });
+
+    test('the body of the copies, all of them: Logs name the copy of each '
+        'step', () {
+      final view = viewOf(journal(), path: const [Opened('2')]);
+      expect(view.shown.frames.single.footer, 'done 1 of 2');
+      expect(view.logs.rows.whereType<StepRow>().map((row) => row.copy), [
+        null,
+        'copy 1',
+        'copy 2',
+        'copy 2',
+      ]);
+      expect(view.marks!.of('2')!.running, 1);
+    });
+
+    test('one copy: Logs and the marks show its steps alone', () {
+      final j = journal();
+      final view = viewOf(
+        j,
+        path: const [Opened('2')],
+        copies: {1: j.steps[2].id},
+        stepId: j.steps[3].id,
+      );
+      expect(view.logs.header.text, 'copy 2 · 2 steps');
+      expect(view.logs.rows.whereType<EndRow>(), isEmpty);
+      expect(view.marks!.of('1')!.steps, 1);
+      expect(view.marks!.selected, {'2'});
+      expect(view.copyOf(j.steps[3].id), 'copy 2');
+    });
   });
 }

@@ -18,6 +18,11 @@ class Selection extends ChangeNotifier {
 
   final DateTime Function() _now;
 
+  /// The last of the steps of a session shown, which following moves on
+  /// to; `null` for the session's last step. The steps shown are those of
+  /// the copies chosen, when any is.
+  String? Function(SessionData session)? lastStepOf;
+
   late DateTime _openedAt;
 
   bool _currentGraph = true;
@@ -109,8 +114,12 @@ class Selection extends ChangeNotifier {
     if (_following) _stepId = _lastStep(session) ?? _stepId;
   }
 
-  /// The step of [session] that started first last.
-  static String? _lastStep(SessionData session) =>
+  /// The last of the steps of [session] shown ([lastStepOf]); by default
+  /// the step that started first last.
+  String? _lastStep(SessionData session) =>
+      lastStepOf?.call(session) ?? _lastOf(session);
+
+  static String? _lastOf(SessionData session) =>
       session.state.steps.lastOrNull?.stepId;
 
   /// Runs [change] and tells listeners when it changed what is selected.

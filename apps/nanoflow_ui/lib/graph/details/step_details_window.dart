@@ -1,37 +1,33 @@
-// migrated in Task 12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
 import 'dart:math' as math;
 import 'dart:ui' show PointMode;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show StepStatus;
+import 'package:nanoflow_model/nanoflow_model.dart' show StepNode, StepStatus;
 
 import '../../platform/shell.dart';
 import '../../state/clock.dart';
 import '../../state/graph_model.dart';
-import '../../state/texts.dart' show shortId;
 import '../../state/visit_details.dart';
 import '../../state/visits.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
 import '../../widgets/icons.dart';
 import '../../widgets/spinner.dart';
-import 'input_column.dart';
 import 'node_column.dart';
 import 'output_column.dart';
 
-/// The step details window (docs/ui-spec.md «Окно деталей шага»), over the
-/// whole graph screen, the dotted backdrop round it: one visit to the node
-/// [node] — the step [stepId] — or, without one, the node's description
-/// alone.
+/// The step details window (docs/ui-spec.md «Окно деталей шага»; spec §9
+/// «Окно шага»), over the whole graph screen, the dotted backdrop round it:
+/// the step [stepId] — or, without one, the step node [node] alone.
 ///
-/// The top bar has `Back to canvas`, the node's icon, name and command, the
-/// switcher `Visit 2 of 2` through every visit to the node in the selected
-/// session, the visit's run, how the step went, and close; Esc closes too.
-/// Under it, the columns `Input`, the node, `Output`. Showing another visit
-/// is [onVisit]: the graph screen selects it. The window stays on its visit
-/// while the selection follows a running run's new steps.
+/// The top bar has `Back to canvas`, the step's icon, name and place, the
+/// switcher `Visit 2 of 2` through every visit to its node among the steps
+/// shown, the copy it is in, how it went, and close; Esc closes too. Under
+/// it, the column of the step — its place in the code and its facts — and
+/// `Output`. A step has no input. Showing another visit is [onVisit]: the
+/// graph screen selects it. The window stays on its step while the
+/// selection follows a running session's new steps.
 class StepDetailsWindow extends StatefulWidget {
   const StepDetailsWindow({
     super.key,
@@ -39,8 +35,8 @@ class StepDetailsWindow extends StatefulWidget {
     required this.clock,
     required this.shell,
     required this.graphFile,
-    required this.node,
     required this.stepId,
+    this.node,
     required this.onVisit,
     required this.onClose,
   });
@@ -52,10 +48,11 @@ class StepDetailsWindow extends StatefulWidget {
   /// The graph file: paths are shown from its directory.
   final String graphFile;
 
-  final String node;
-
-  /// The step of the visit shown; `null` for the node's description alone.
+  /// The step shown; `null` for the [node] alone.
   final String? stepId;
+
+  /// The node double clicked: shown alone without a step.
+  final StepNode? node;
 
   final ValueChanged<Visit> onVisit;
   final VoidCallback onClose;
@@ -65,6 +62,7 @@ class StepDetailsWindow extends StatefulWidget {
   static const closeKey = ValueKey('details close');
   static const previousKey = ValueKey('previous visit');
   static const nextKey = ValueKey('next visit');
+  static const copyKey = ValueKey('details copy');
 
   /// Round the window, the graph screen's dots show: 40 px at the sides, 36
   /// at the top and the bottom.
@@ -156,30 +154,16 @@ class _StepDetailsWindowState extends State<StepDetailsWindow> {
       Expanded(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // The mockup's 420, 520 and 418 in its 1358 inside the border:
-            // the node column no wider, the others sharing the rest so.
+            // The mockup's node column, 520 of its 1358 inside the border;
+            // the output takes the rest, the input's room too.
             final width = constraints.maxWidth;
-            final node = (width * 520 / 1358).clamp(0.0, 520.0);
-            final side = (width - node) * 420 / 838;
+            final step = (width * 520 / 1358).clamp(0.0, 520.0);
             final files = widget.model.files;
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  width: side,
-                  child: ColoredBox(
-                    color: AppColors.backdrop,
-                    child: InputColumn(
-                      details: details,
-                      files: files,
-                      shell: widget.shell,
-                      graphFile: widget.graphFile,
-                      onVisit: widget.onVisit,
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: node,
+                  width: step,
                   child: NodeColumn(
                     details: details,
                     files: files,
@@ -207,8 +191,8 @@ class _StepDetailsWindowState extends State<StepDetailsWindow> {
   );
 }
 
-/// `Back to canvas`, the node, the visit switcher and the run, how the step
-/// went, close.
+/// `Back to canvas`, the step, the visit switcher and the copy, how the
+/// step went, close.
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.details,
@@ -220,7 +204,7 @@ class _TopBar extends StatelessWidget {
   final ValueChanged<Visit> onVisit;
   final VoidCallback onClose;
 
-  /// The widest the node's name and command get before they are cut: a
+  /// The widest the step's name and place get before they are cut: a
   /// quarter of the bar, and no more than this.
   static const _nameWidth = 320.0;
 
@@ -246,7 +230,7 @@ class _TopBar extends StatelessWidget {
 
   Widget _row(BuildContext context, {required double nameWidth}) {
     final visit = details.visit;
-    final description = details.description;
+    final place = details.place;
     final result = details.result;
     return Row(
       spacing: 14,
@@ -271,7 +255,7 @@ class _TopBar extends StatelessWidget {
           height: 24,
           child: ColoredBox(color: AppColors.panelBorder),
         ),
-        _NodeBadge(fork: description?.fork ?? false, status: result?.status),
+        _NodeBadge(status: result?.status),
         ConstrainedBox(
           constraints: BoxConstraints(maxWidth: nameWidth),
           child: Column(
@@ -280,14 +264,14 @@ class _TopBar extends StatelessWidget {
             spacing: 1,
             children: [
               Text(
-                details.node,
+                details.name,
                 style: AppText.windowNode,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              if (description != null)
+              if (place != null)
                 Text(
-                  description.run,
+                  place,
                   style: AppText.windowCommand,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -303,21 +287,12 @@ class _TopBar extends StatelessWidget {
             onPrevious: _show(details.previous),
             onNext: _show(details.next),
           ),
-          Tooltip(
-            message: visit.runId,
-            child: Text.rich(
-              TextSpan(
-                text: 'run ',
-                children: [
-                  TextSpan(
-                    text: shortId(visit.runId),
-                    style: AppText.windowRunId,
-                  ),
-                ],
-              ),
+          if (details.copy case final copy?)
+            Text(
+              copy,
+              key: StepDetailsWindow.copyKey,
               style: AppText.windowRun,
             ),
-          ),
         ],
         const Spacer(),
         if (result != null) _ResultChip(result),
@@ -367,11 +342,9 @@ class _Button extends StatelessWidget {
   );
 }
 
-/// The node's icon in a tile framed in the color of how the step went.
+/// A step's icon in a tile framed in the color of how the step went.
 class _NodeBadge extends StatelessWidget {
-  const _NodeBadge({required this.fork, required this.status});
-
-  final bool fork;
+  const _NodeBadge({required this.status});
 
   /// `null` for the node's description alone.
   final StepStatus? status;
@@ -389,8 +362,8 @@ class _NodeBadge extends StatelessWidget {
       ),
       borderRadius: BorderRadius.circular(8),
     ),
-    child: NodeIcon(
-      fork: fork,
+    child: const NodeIcon(
+      fork: false,
       size: 18,
       color: AppColors.textAreaText,
       strokeWidth: 2,

@@ -14,15 +14,15 @@ abstract final class CanvasColors {
   static const background = Color(0xFF27282C);
   static const gridDot = Color(0xFF3A3B41);
 
-  /// The selected run's path; also the run legend.
+  /// The selected way: `Tone.path`.
   static const path = Color(0xFF9C8CFF);
   static const pathText = Color(0xFFBDB3FF);
 
-  /// Arrows runs went along, not the selected run; and every arrow of
+  /// Arrows steps went along, not the selected way; and every arrow of
   /// `Current graph`.
   static const taken = Color(0xFF6B6C73);
 
-  /// Arrows no run went along: darker.
+  /// Arrows no step went along: darker.
   static const untaken = Color(0xFF4A4B52);
   static const untakenExit = Color(0xFF55565C);
 
@@ -47,7 +47,11 @@ abstract final class CanvasColors {
   static const stackFill = Color(0xFF2C2D32);
   static const stackBorder = Color(0xFF55565C);
 
-  /// The badge across the top of the stack of copies: `×n`.
+  /// The ring round the selected step's node: 4 px of the accent at 38 %.
+  static const ring = Color(0x619C8CFF);
+
+  /// The badges over a tile: `×3` across the stack of copies, `2×` over a
+  /// node entered more than once.
   static const badgeFill = Color(0xFF3A3B41);
   static const badgeBorder = Color(0xFF4A4B52);
   static const badgeText = Color(0xFFD5D6DA);
@@ -94,7 +98,7 @@ abstract final class CanvasText {
   /// The steps of a call or of a copy: `{ 3 }`.
   static final inside = _mono.copyWith(fontSize: 15, color: CanvasColors.icon);
 
-  /// `×n` across the top of the stack of copies.
+  /// The badges over a tile: `×3`, `2×`.
   static final badge = _mono.copyWith(
     fontSize: 10,
     color: CanvasColors.badgeText,

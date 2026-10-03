@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/clock.dart';
+import '../state/freshness.dart' show CodeCheck;
 import '../state/graph_model.dart';
 import '../state/sessions.dart';
 import '../theme.dart';
@@ -93,7 +94,8 @@ class SessionsColumn extends StatelessWidget {
 }
 
 /// A session in the column: the day and time it started and its short id;
-/// its status with the time, `1 failed`, and how many steps it has.
+/// its status with the time, `1 failed`, `other code` or `not checked`
+/// when its code is not its graph's, and how many steps it has.
 class _SessionCard extends StatelessWidget {
   const _SessionCard({
     super.key,
@@ -127,6 +129,8 @@ class _SessionCard extends StatelessWidget {
       color: summary.status.textColor,
     ),
     badge: summary.failedBadge,
+    note: summary.codeNote,
+    noteMuted: summary.code == CodeCheck.notChecked,
     end: Text(summary.stepsText, style: AppText.sessionRuns),
   );
 }
@@ -151,8 +155,9 @@ class _CurrentGraphItem extends StatelessWidget {
 
 /// A card of the column, a status [bar] on its left edge, the accent when
 /// [selected]: the [title] and the [id] on its first line; the [status],
-/// a red [badge] and the [end] on its second. In a narrow column the title
-/// and the status give way first.
+/// a red [badge], an amber [note] — muted when [noteMuted] — and the [end]
+/// on its second. In a narrow column the title and the status give way
+/// first.
 class _Item extends StatelessWidget {
   const _Item({
     required this.boxKey,
@@ -163,6 +168,8 @@ class _Item extends StatelessWidget {
     required this.statusStyle,
     this.id,
     this.badge,
+    this.note,
+    this.noteMuted = false,
     this.end,
     this.bar,
   });
@@ -177,6 +184,8 @@ class _Item extends StatelessWidget {
   final String status;
   final TextStyle statusStyle;
   final String? badge;
+  final String? note;
+  final bool noteMuted;
   final Widget? end;
   final Color? bar;
 
@@ -237,6 +246,8 @@ class _Item extends StatelessWidget {
                     children: [
                       Flexible(child: _text(status, statusStyle)),
                       if (badge case final text?) _DangerBadge(text),
+                      if (note case final text?)
+                        _NoteBadge(text, muted: noteMuted),
                     ],
                   ),
                   end,
@@ -274,6 +285,29 @@ class _DangerBadge extends StatelessWidget {
     child: Text(
       text,
       style: AppText.smallBadge.copyWith(color: AppColors.dangerText),
+    ),
+  );
+}
+
+/// `other code`: a small amber badge; `not checked` muted.
+class _NoteBadge extends StatelessWidget {
+  const _NoteBadge(this.text, {required this.muted});
+
+  final String text;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    decoration: BoxDecoration(
+      color: muted ? AppColors.selectedTab : AppColors.noteSurface,
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Text(
+      text,
+      style: AppText.smallBadge.copyWith(
+        color: muted ? AppColors.textMuted : AppColors.noteText,
+      ),
     ),
   );
 }

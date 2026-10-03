@@ -34,80 +34,76 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('names the step, and shows its log first: notify, Input, '
-      'Output —, Log, following tail, Open', (tester) async {
-    await pumpGraphScreen(tester);
+  testWidgets('names the step, and shows its log first: notify, Output, '
+      'Log, following tail, Open — a step has no input', (tester) async {
+    await pumpReview(tester);
 
     expect(
       textIn(tester, find.byKey(StepDetailsPane.headerKey)),
-      'notify Input Output — Log following tail Open',
+      'notify Output Log following tail Open',
     );
     expect(fillOf(tester, StepTab.log), AppColors.selectedTab);
-    expect(fillOf(tester, StepTab.input), isNull);
+    expect(fillOf(tester, StepTab.output), isNull);
     expect(inPane(find.text('2 findings, 3 subscribers')), findsOneWidget);
   });
 
-  testWidgets('marks — the tab of data the node does not declare, and says '
-      'so in it', (tester) async {
-    await pumpGraphScreen(tester);
-
-    expect(textIn(tester, tab(StepTab.output)), 'Output —');
-    expect(textIn(tester, tab(StepTab.input)), 'Input');
+  testWidgets('shows the output as JSON', (tester) async {
+    await pumpReview(tester);
+    await selectRow(tester, 'a1b2-inspect-3');
 
     await open(tester, StepTab.output);
     expect(fillOf(tester, StepTab.output), AppColors.selectedTab);
-    expect(inPane(find.text('This node declares no output')), findsOneWidget);
-  });
-
-  testWidgets('shows the input as JSON', (tester) async {
-    await pumpGraphScreen(tester);
-
-    await open(tester, StepTab.input);
     for (final line in [
       '{',
       '  "change": {',
-      '    "id": "c4f1b0",',
-      '  "findings": [',
-      '    "Timeout is absent from the protocol"',
-      '  },',
+      '    "path": "lib/parse_config.dart"',
+      '  "findings": []',
     ]) {
       expect(inPane(find.text(line)), findsOneWidget, reason: line);
     }
   });
 
-  testWidgets('a fork\'s output is its outcome', (tester) async {
-    await pumpGraphScreen(tester);
-    await selectRow(tester, 'k7f2-verdict-6');
-
-    await open(tester, StepTab.output);
-    expect(
-      textIn(tester, find.byKey(StepDetailsPane.headerKey)),
-      startsWith('verdict Input Output Log'),
-    );
-    expect(inPane(find.text('"accepted"')), findsOneWidget);
-  });
-
   testWidgets('a running step has no output yet', (tester) async {
-    final run = Journal('runs-run', node: 'collect', startedAt: 0)
-      ..step('collect', 0, end: 10, input: 'request', output: 'change-1')
-      ..step('inspect', 10, input: 'change-1');
-    await pumpGraphScreen(
-      tester,
-      model: ownedModel(changes: changesOf([run]), files: mockupFiles()),
-    );
+    await pumpReview(tester);
 
     await open(tester, StepTab.output);
-    expect(textIn(tester, tab(StepTab.output)), 'Output');
     expect(
       inPane(find.text('Not yet: the step is still running')),
       findsOneWidget,
     );
   });
 
-  testWidgets('says why a document cannot be read', (tester) async {
-    await pumpGraphScreen(tester, model: mockupModel(files: FakeFiles()));
+  testWidgets("a failed step's output is its error", (tester) async {
+    final session = reviewSession()
+      ..step(
+        'inspect',
+        700,
+        end: 701,
+        failed: true,
+        place: 'lib/review.dart:55',
+      );
+    await pumpReview(
+      tester,
+      model: ownedModel(
+        graph: graphFileNamed('review'),
+        file: reviewFile,
+        changes: session.changes,
+      ),
+    );
+    await selectRow(tester, 'a1b2-inspect-6');
 
-    await open(tester, StepTab.input);
+    await open(tester, StepTab.output);
+    expect(
+      inPane(find.text('Failed: StateError: inspect failed')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('says why a document cannot be read', (tester) async {
+    await pumpReview(tester, model: reviewModel(files: FakeFiles()));
+    await selectRow(tester, 'a1b2-inspect-3');
+
+    await open(tester, StepTab.output);
     expect(
       inPane(find.textContaining('Could not read the document: ')),
       findsOneWidget,
@@ -115,26 +111,25 @@ void main() {
   });
 
   testWidgets('keeps the open tab as another step is selected', (tester) async {
-    await pumpGraphScreen(tester);
-    await open(tester, StepTab.input);
+    await pumpReview(tester);
+    await selectRow(tester, 'a1b2-inspect-3');
+    await open(tester, StepTab.output);
 
-    await selectRow(tester, 'k7f2-collect-0');
-    expect(fillOf(tester, StepTab.input), AppColors.selectedTab);
-    expect(
-      inPane(find.text('  "branch": "feat/step-protocol"')),
-      findsOneWidget,
-    );
+    await selectRow(tester, 'a1b2-collect-0');
+    expect(fillOf(tester, StepTab.output), AppColors.selectedTab);
+    expect(inPane(find.text('  "id": "c4f1a9",')), findsOneWidget);
   });
 
   testWidgets('Open opens the step', (tester) async {
     final opened = <String>[];
-    final mockup = Mockup();
     final model = modelOf(
-      changes: changesOf([mockup.k7f2, mockup.c3d4, mockup.e5f6]),
-      outcomes: reviewOutcomes,
-      files: mockupFiles(),
+      graph: graphFileNamed('review'),
+      file: reviewFile,
+      changes: reviewSession().changes,
+      documents: reviewDocuments,
+      files: reviewFiles(),
     );
-    final clock = LiveClock(now: () => Mockup.now);
+    final clock = LiveClock(now: () => columnNow);
     addTearDown(clock.dispose);
     await pumpScreen(
       tester,
@@ -154,6 +149,6 @@ void main() {
     await settle(tester);
 
     await tester.tap(find.byKey(StepDetailsPane.openKey));
-    expect(opened, ['e5f6-notify-0']);
+    expect(opened, ['a1b2-notify-5']);
   });
 }

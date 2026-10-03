@@ -37,6 +37,7 @@ final class SessionData {
   final List<String> _problems = [];
   SessionState? _state;
   List<Step>? _stepsInOrder;
+  Map<String, Step>? _stepsByKey;
 
   /// The session's known events in the order of its journal.
   List<KnownEvent> get events => UnmodifiableListView(_events);
@@ -51,6 +52,11 @@ final class SessionData {
   List<Step> get stepsInOrder => _stepsInOrder ??= List.unmodifiable([
     for (final step in state.steps) ?_steps[step.stepId],
   ]);
+
+  /// The record of the session's step with [key]; `null` when none has been
+  /// given. A step's `after` is the key of the step it follows.
+  Step? stepWithKey(String key) =>
+      (_stepsByKey ??= {for (final step in _steps.values) step.key: step})[key];
 
   /// The ids of the session's documents that have been written in full.
   Set<String> get documents => UnmodifiableSetView(_documents);
@@ -83,6 +89,7 @@ final class SessionData {
   void _addStep(Step step) {
     _steps[step.id] = step;
     _stepsInOrder = null;
+    _stepsByKey = null;
   }
 }
 

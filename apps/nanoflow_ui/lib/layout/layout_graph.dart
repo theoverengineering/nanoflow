@@ -198,7 +198,8 @@ String _functionName(List<String> ids, Map<String, GraphFunction> functions) {
 /// steps can run in it ([reachableSteps]). `{ 3 }` on a call, the steps of
 /// its function; `{ 1–2 }` for implementations of a method with different
 /// counts; `{ ? }` when the file has none of its functions. `{ 3 }` on
-/// copies, the steps of one copy. `{ }` when there are none.
+/// copies, the steps of one copy; `{ ? }` when they have none but call a
+/// function the file does not have. `{ }` when there are none.
 String? insideText(GraphNode node, Map<String, GraphFunction> functions) {
   final List<int> counts;
   switch (node) {
@@ -206,6 +207,7 @@ String? insideText(GraphNode node, Map<String, GraphFunction> functions) {
       return null;
     case CopiesNode(:final body):
       counts = [reachableSteps(body, functions)];
+      if (counts.single == 0 && _callsUnknown(body, functions)) return '{ ? }';
     case CallNode(functions: final ids):
       counts = [
         for (final id in ids)
@@ -219,6 +221,17 @@ String? insideText(GraphNode node, Map<String, GraphFunction> functions) {
       ? '{ ${counts.first} }'
       : '{ ${counts.first}–${counts.last} }';
 }
+
+/// Whether [body], or the body of copies in it, calls a function that
+/// [functions] does not have: what runs there is not known.
+bool _callsUnknown(GraphBody body, Map<String, GraphFunction> functions) =>
+    body.nodes.any(
+      (node) => switch (node) {
+        CallNode(functions: final ids) => !ids.any(functions.containsKey),
+        CopiesNode(body: final copy) => _callsUnknown(copy, functions),
+        StepNode() || ConditionNode() => false,
+      },
+    );
 
 /// How many steps can run in [body]: its own, those of the bodies of its
 /// copies, and those of the functions it calls that [functions] has — of

@@ -207,6 +207,27 @@ void main() {
       expect(layout.nodes['call']!.inside, '{ }');
       expect(layout.nodes['copies']!.inside, '{ }');
     });
+
+    test('are not known on copies that only call functions the file does '
+        'not have, as on such a call', () {
+      const unknown = GraphBody(
+        nodes: [
+          CallNode(id: '1', place: null, functions: ['lib/a.dart#gone']),
+        ],
+        edges: [],
+      );
+      final layout = layoutBody(
+        const GraphBody(
+          nodes: [
+            CallNode(id: 'call', place: null, functions: ['lib/a.dart#gone']),
+            CopiesNode(id: 'copies', place: null, label: 'x', body: unknown),
+          ],
+          edges: [],
+        ),
+      );
+      expect(layout.nodes['call']!.inside, '{ ? }');
+      expect(layout.nodes['copies']!.inside, '{ ? }');
+    });
   });
 
   test('a name longer than 30 characters is cut with …, whole in '

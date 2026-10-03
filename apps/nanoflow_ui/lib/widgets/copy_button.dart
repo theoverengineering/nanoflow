@@ -7,7 +7,8 @@ import 'clickable.dart';
 import 'failure_note.dart';
 import 'icons.dart';
 
-/// The button that copies a path: two sheets, `Copy path` in its tooltip;
+/// The button that copies a path: two sheets, [tooltip] — `Copy path` —
+/// in its tooltip;
 /// `Copied` with a check for a moment after a copy, a note when copying
 /// fails. [width] by [height], its icon [iconSize] across.
 class CopyButton extends StatefulWidget {
@@ -18,6 +19,7 @@ class CopyButton extends StatefulWidget {
     this.width = 24,
     this.height = 22,
     this.iconSize = 11,
+    this.tooltip = 'Copy path',
   });
 
   final Future<void> Function() copy;
@@ -28,6 +30,9 @@ class CopyButton extends StatefulWidget {
   final double width;
   final double height;
   final double iconSize;
+
+  /// What the button copies, said over it.
+  final String tooltip;
 
   /// The look of the small buttons by a path: `Finder`, `Editor`, copy.
   static final box = BoxDecoration(
@@ -82,7 +87,7 @@ class _CopyButtonState extends State<CopyButton> {
           ),
         )
       : Tooltip(
-          message: 'Copy path',
+          message: widget.tooltip,
           child: Clickable(
             onTap: _copy,
             child: Container(

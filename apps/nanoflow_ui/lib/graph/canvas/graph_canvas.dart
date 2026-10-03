@@ -6,14 +6,17 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nanoflow_model/nanoflow_model.dart'
-    show CallNode, CopiesNode, GraphBody, GraphFunction, GraphNode;
+    show CallNode, CopiesNode, GraphBody, GraphFunction, GraphNode, StepNode;
 
 import '../../layout/layout.dart' as layout;
 import '../../state/body_path.dart';
 import '../../state/graph_model.dart';
+import '../../state/session_view.dart';
 import '../../widgets/clickable.dart';
+import '../copy_switcher.dart';
 import 'canvas_marks.dart';
 import 'canvas_style.dart';
+import 'copies_frame.dart';
 import 'edges_painter.dart';
 import 'exit_labels.dart';
 import 'layout_geometry.dart';
@@ -49,14 +52,20 @@ typedef OpenNode = void Function(GraphNode node, Offset position);
 /// fitted when first shown and when another graph replaces it, but not when
 /// new data comes for the same graph.
 ///
+/// With a session, its steps are marked on the nodes (spec §9 «Шаги на
+/// графе»); a click on a node selects its last step. The body of copies is
+/// drawn in their frame, with the copy switcher (decisions 10, 11).
+///
 /// A double click on a call or on copies is [onOpenNode]: what it opens
-/// (`openings`) is drawn instead.
+/// (`openings`) is drawn instead; on a step, [onOpenStep].
 class GraphCanvas extends StatefulWidget {
   const GraphCanvas({
     super.key,
     required this.model,
+    this.now = DateTime.now,
     this.controller,
     this.onOpenNode,
+    this.onOpenStep,
     this.topInset = sessionBarRoom,
   });
 
@@ -66,10 +75,16 @@ class GraphCanvas extends StatefulWidget {
 
   final GraphModel model;
 
+  /// The time to show the selected session at.
+  final DateTime Function() now;
+
   final GraphCanvasController? controller;
 
   /// Opens a call or copies: on a double click on it.
   final OpenNode? onOpenNode;
+
+  /// Opens the step details window on a step node: on a double click on it.
+  final ValueChanged<StepNode>? onOpenStep;
 
   /// The room over the graph that fitting keeps free, for what floats over
   /// the top of the canvas; at most half the canvas. When it changes, the
@@ -98,7 +113,10 @@ class _GraphCanvasState extends State<GraphCanvas> {
   static const _options = layout.LayoutOptions(measure: measureLabel);
 
   late CanvasGraph _canvas;
-  final CanvasMarks _marks = CanvasMarks.plain;
+  CanvasMarks _marks = CanvasMarks.plain;
+
+  /// The frame round the body drawn, when it is the body of copies.
+  CopiesFrameBox? _frame;
 
   /// The body laid out, and what it is drawn with in JSON: another body
   /// drawn the same keeps the layout and the view.
@@ -161,11 +179,45 @@ class _GraphCanvasState extends State<GraphCanvas> {
 
   /// Takes in what the model shows now; lays out a body drawn otherwise.
   void _read() {
-    _canvas = widget.model.canvas;
+    final model = widget.model;
+    _canvas = model.canvas;
     _layOut(_canvas.body, _canvas.file?.functions ?? const {});
+    final view = _canvas.ofSession ? model.sessionView(widget.now()) : null;
+    final depth = _canvas.levels.length - 1;
+    _marks = CanvasMarks.of(view, depth: depth);
     final graph = _layout;
-    _drawing = graph == null ? null : _draw(graph);
+    final copies = _copiesDrawn();
+    final frame = view?.frames.where((f) => f.depth == depth).firstOrNull;
+    _frame = graph == null || copies == null
+        ? null
+        : CopiesFrameBox.around(
+            graph.bounds.toRect(),
+            title: 'each ${copies.label}',
+            count: frame?.countText ?? _plainCount,
+            switcher: frame == null
+                ? null
+                : CopySwitcher.widthOf(frame.copies, frame.selected),
+          );
+    _drawing = graph == null ? null : _draw(graph, copies, frame);
   }
+
+  /// Across from the title of a frame of copies without a session.
+  static const _plainCount = '×n · in parallel';
+
+  /// The copies whose body is drawn; `null` when the body drawn is not
+  /// theirs.
+  CopiesNode? _copiesDrawn() {
+    final levels = _canvas.levels;
+    if (levels.length < 2) return null;
+    final node = levels[levels.length - 2].body.node(
+      levels.last.opened!.nodeId,
+    );
+    return node is CopiesNode ? node : null;
+  }
+
+  /// What is drawn, in the coordinates of the layout: the layout, and the
+  /// frame of copies round it.
+  Rect get _extent => _frame?.extent ?? _layout!.bounds.toRect();
 
   void _layOut(GraphBody? body, Map<String, GraphFunction> functions) {
     // A body read once is drawn with the functions of its own file.
@@ -203,7 +255,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
 
   /// Makes the whole graph fit [size], centred, no bigger than drawn.
   void _fitTo(Size size) {
-    final bounds = _layout!.bounds;
+    final bounds = _extent;
     final room = _room(size);
     var scale = 1.0;
     if (bounds.width > 0 && bounds.height > 0) {
@@ -213,7 +265,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
       );
     }
     _scale = scale.clamp(_minScale, _maxScale);
-    _offset = room.center - bounds.center.toOffset() * _scale;
+    _offset = room.center - bounds.center * _scale;
     _needsFit = false;
     _fitted = true;
   }
@@ -341,7 +393,6 @@ class _GraphCanvasState extends State<GraphCanvas> {
                       right: 16,
                       bottom: 14,
                       child: Legend(
-                        runId: null,
                         backEdges: _marks.backEdges(
                           graph.edges.where((edge) => edge.isDashed),
                         ),
@@ -357,47 +408,104 @@ class _GraphCanvasState extends State<GraphCanvas> {
   );
 
   /// [drawing] moved and scaled to the view.
-  Widget _view(Widget drawing) => OverflowBox(
-    alignment: Alignment.topLeft,
-    minWidth: 0,
-    minHeight: 0,
-    maxWidth: double.infinity,
-    maxHeight: double.infinity,
-    child: Transform(
-      transform: Matrix4.translationValues(_offset.dx, _offset.dy, 0)
-        ..scaleByDouble(_scale, _scale, 1, 1),
-      child: drawing,
-    ),
-  );
-
-  /// The arrows, the exits and the nodes of [graph], with the marks; calls
-  /// and copies open on a double click.
-  Widget _draw(layout.GraphLayout graph) => RepaintBoundary(
-    child: SizedBox(
-      width: graph.bounds.width,
-      height: graph.bounds.height,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(
-            child: CustomPaint(painter: EdgesPainter(graph, _marks)),
-          ),
-          Positioned.fill(
-            child: CustomPaint(painter: ExitsPainter(graph, _marks)),
-          ),
-          for (final node in graph.nodes.values)
-            Positioned.fromRect(
-              rect: NodeTile.areaOf(node),
-              child: NodeTile(node: node, onDoubleTap: _opener(node)),
-            ),
-        ],
+  Widget _view(Widget drawing) {
+    final at = _offset + _extent.topLeft * _scale;
+    return OverflowBox(
+      alignment: Alignment.topLeft,
+      minWidth: 0,
+      minHeight: 0,
+      maxWidth: double.infinity,
+      maxHeight: double.infinity,
+      child: Transform(
+        transform: Matrix4.translationValues(at.dx, at.dy, 0)
+          ..scaleByDouble(_scale, _scale, 1, 1),
+        child: drawing,
       ),
-    ),
-  );
+    );
+  }
 
-  /// What a double click on [node] does: opens it, when it opens anything.
+  /// The arrows, the exits and the nodes of [graph], with the marks, in
+  /// the frame of [copies] when it is their body that is drawn, [frame] the
+  /// session's copies of it; calls and copies open on a double click,
+  /// steps their details.
+  Widget _draw(
+    layout.GraphLayout graph,
+    CopiesNode? copies,
+    CopiesFrame? frame,
+  ) {
+    final extent = _extent;
+    final box = _frame;
+    return RepaintBoundary(
+      child: SizedBox(
+        width: extent.width,
+        height: extent.height,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            if (box != null && copies != null)
+              Positioned.fill(
+                child: CopiesFrameView(
+                  box: box,
+                  title: 'each ${copies.label}',
+                  count: frame?.countText ?? _plainCount,
+                  footer: frame?.footer,
+                  switcher: frame == null
+                      ? null
+                      : CopySwitcher(
+                          copies: frame.copies,
+                          selected: frame.selected,
+                          hintOf: widget.model.hintOf,
+                          onSelect: (id) =>
+                              widget.model.selectCopy(frame.depth, id),
+                        ),
+                ),
+              ),
+            Positioned(
+              left: -extent.left,
+              top: -extent.top,
+              width: graph.bounds.width,
+              height: graph.bounds.height,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(painter: EdgesPainter(graph, _marks)),
+                  ),
+                  Positioned.fill(
+                    child: CustomPaint(painter: ExitsPainter(graph, _marks)),
+                  ),
+                  for (final node in graph.nodes.values)
+                    Positioned.fromRect(
+                      rect: NodeTile.areaOf(node),
+                      child: NodeTile(
+                        node: node,
+                        marks: _marks.node(node.id),
+                        selected: _marks.selected(node.id),
+                        allCopies: _marks.allCopies,
+                        copies: _marks.copies(node.id),
+                        onTap: _marks.isPlain || node.node == null
+                            ? null
+                            : () => widget.model.clickNode(node.id),
+                        onDoubleTap: _opener(node),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// What a double click on [node] does: opens a call or copies, when it
+  /// opens anything; the details of a step.
   ValueChanged<Offset>? _opener(layout.NodeBox node) {
     final graphNode = node.node;
+    if (graphNode is StepNode) {
+      final open = widget.onOpenStep;
+      return open == null ? null : (_) => open(graphNode);
+    }
     final open = widget.onOpenNode;
     if (graphNode == null || open == null) return null;
     final functions = _canvas.file?.functions ?? const {};

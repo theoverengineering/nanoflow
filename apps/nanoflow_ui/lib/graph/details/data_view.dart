@@ -10,7 +10,7 @@ import '../../widgets/icons.dart';
 import '../logs/mono_lines.dart';
 import 'parts.dart';
 
-/// How the data of `Input` and `Output` is shown (docs/ui-spec.md «Окно
+/// How the data of `Output` is shown (docs/ui-spec.md «Окно
 /// деталей шага»: «Данные»).
 enum DataMode { schema, json }
 

@@ -1,170 +1,72 @@
-// migrated in Task 12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
-/// What the step details window shows of a visit to a node: the visit among
-/// all the visits to the node, how the step went, where its input came from,
-/// and the node's description (docs/ui-spec.md «Окно деталей шага»). Pure:
-/// the time is passed in.
+/// What the step details window shows of a step: the step among all the
+/// visits to its node, how it went, when it started and ended, and its
+/// place in the code; or, for a node without steps, the node's name and
+/// place alone (docs/ui-spec.md «Окно деталей шага»; spec §9 «Окно шага»).
+/// Pure: the time is passed in.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-import 'schema_labels.dart';
 import 'session_feed.dart';
 import 'step_details.dart';
+import 'step_places.dart';
 import 'texts.dart';
 import 'visits.dart';
 
-/// A type of a node's `in` or `out`: its label and its fields.
-final class TypeCard {
-  const TypeCard(this.label, this.fields);
-
-  /// `#/Change`, `string[]`.
-  final String label;
-
-  /// `{ id, path }`; `null` for a type without properties.
-  final String? fields;
-}
-
-/// A node a way leads to, and whether it is a fork: its icon.
-typedef WayTarget = ({String name, bool fork});
-
-/// Where a node sends the run: for an [outcome] of a fork — its key in
-/// `then`, `true`, `else` — or after a worker ([outcome] `null`). No
-/// [targets]: the run ends.
-typedef Way = ({String? outcome, List<WayTarget> targets});
-
-/// A node as the graph describes it.
-final class NodeDescription {
-  NodeDescription._({
-    required this.name,
-    required this.fork,
-    required this.run,
-    required this.input,
-    required this.output,
-    required List<Way> ways,
-  }) : ways = List.unmodifiable(ways);
-
-  /// [node] of [graph].
-  factory NodeDescription.of(Node node, Graph graph) {
-    TypeCard? card(Object? schema) => schema == null
-        ? null
-        : TypeCard(typeLabel(schema), fieldSummary(schema, graph.types));
-    List<WayTarget> targets(Target? target) => [
-      for (final name in target?.names ?? const <String>[])
-        (name: name, fork: graph.nodes[name] is ForkNode),
-    ];
-    return NodeDescription._(
-      name: node.name,
-      fork: node is ForkNode,
-      run: node.run,
-      input: card(node.input),
-      output: node is WorkerNode ? card(node.output) : null,
-      ways: switch (node) {
-        WorkerNode(:final then) => [(outcome: null, targets: targets(then))],
-        ForkNode(:final exits, :final isIf, :final otherwise) => [
-          for (final exit in exits)
-            (outcome: exit.label, targets: targets(exit.target)),
-          // An if without `else` ends the run on any other outcome; a
-          // switch without one fails it, which is no way to go.
-          if (isIf && otherwise == null)
-            (outcome: 'else', targets: const <WayTarget>[]),
-        ],
-      },
-    );
-  }
-
-  final String name;
-
-  final bool fork;
-
-  /// What the node runs: its `command`, or a fork's `decide`. A graph in
-  /// code holds there the place of the node's function: `graph.dart:12`.
-  final String run;
-
-  /// Whether [run] is the place of a function, `<path>.dart:<line>`, rather
-  /// than a command (README «Рабочий узел», D12).
-  bool get function => _functionPlace.hasMatch(run);
-
-  /// The title over [run].
-  String get runTitle => switch ((fork, function)) {
-    (false, false) => 'Command',
-    (false, true) => 'Function',
-    (true, false) => 'Decide',
-    (true, true) => 'Decide function',
-  };
-
-  /// `null` when the node declares no `in`.
-  final TypeCard? input;
-
-  /// `null` when the node declares no `out`, and for a fork.
-  final TypeCard? output;
-
-  /// A worker's `then`; a fork's outcomes, `else` last — for an if without
-  /// `else` too, leading nowhere, as it does.
-  final List<Way> ways;
-}
-
-/// The place a graph in code declares a node's function at: `graph.dart:12`.
-final _functionPlace = RegExp(r'\.dart:\d+$');
-
-/// How the step went, at the top of the window: `exit 0 · 4m 02s`,
+/// How the step went, at the top of the window: `finished · 4m 02s`,
 /// `running · 2m 14s`, `failed · 0.1s`.
 typedef StepResult = ({StepStatus status, String text});
 
-/// A start of the step, as the window lists it: `14:09:20`.
-typedef StartText = ({String time, bool interrupted});
+/// A start of the step, as the window lists it: `14:09:20`, and how it
+/// ended.
+typedef StartText = ({String time, StartOutcome outcome});
 
-/// The facts of the step: `Started`, `Finished`, `Exit code`, `Starts`.
+/// The facts of the step: `Started`, `Finished`, `Starts`.
 final class StepFacts {
   StepFacts._({
     required this.started,
     required this.finished,
     required this.took,
-    required this.exitCode,
     required List<StartText> starts,
   }) : starts = List.unmodifiable(starts);
 
   /// The first start, to the millisecond: `14:09:20.118`.
   final String started;
 
-  /// `step-finished`, to the millisecond; `null` while the step runs, and
-  /// for a step that could not start.
+  /// The outcome of the last start, to the millisecond; `null` while the
+  /// step runs.
   final String? finished;
 
   /// `took 4m 02s`; `null` with [finished].
   final String? took;
 
-  /// `null` without `step-finished`.
-  final int? exitCode;
-
-  /// Every start; all but the last were interrupted.
+  /// Every start, and how it ended.
   final List<StartText> starts;
 }
 
-/// The step details window on the node [node], at its visit of the step
-/// [stepId].
+/// The step details window on a step, or on a node without one.
 final class VisitDetails {
   VisitDetails._({
-    required this.node,
-    required this.description,
+    required this.name,
+    required this.place,
     required List<Visit> visits,
-    required this.index,
+    this.index,
     this.step,
     this.result,
-    this.source,
     this.facts,
-    this.error,
+    this.copy,
   }) : visits = List.unmodifiable(visits);
 
-  final String node;
+  /// The step's name, or the node's.
+  final String name;
 
-  /// `null` when the graph has no such node.
-  final NodeDescription? description;
+  /// Where the step was called, or where the node is: `lib/review.dart:49`.
+  final String? place;
 
-  /// Every visit to the node in the session, in order.
+  /// Every visit to the step's node among the steps shown, in order.
   final List<Visit> visits;
 
-  /// Which of [visits] is shown; `null` for the node's description alone.
+  /// Which of [visits] is shown; `null` for a node alone.
   final int? index;
 
   Visit? get visit => switch (index) {
@@ -182,79 +84,64 @@ final class VisitDetails {
   Visit? get next =>
       index != null && index! < visits.length - 1 ? visits[index! + 1] : null;
 
-  /// The step: its input and output documents, its status.
+  /// The step: its output, its error with the stack.
   final StepDetails? step;
 
   final StepResult? result;
 
-  /// Where the input came from; `null` when that is not known.
-  final InputSource? source;
-
   final StepFacts? facts;
 
-  /// The `run-failed` error, when the run failed on the step.
-  final String? error;
+  /// The copy the step is in: `copy 2`; `null` outside copies.
+  final String? copy;
 }
 
-/// The window on [node] of [graph], at the visit of the step [stepId] of
-/// [session] at [now]. Without a [session] (`Current graph`), or a step that
-/// is not a visit to [node], it shows the node's description alone.
+/// The window on the step [stepId] of [session] among [steps], the steps
+/// shown, at [now]; [copyOf] names the copy of a step. Without the step —
+/// for `Current graph`, or a node without steps — the window shows the
+/// step node [node] alone.
 VisitDetails visitDetails({
   required SessionData? session,
-  required Graph? graph,
-  required String node,
+  required Iterable<StepState> steps,
+  required StepPlaces places,
   required String? stepId,
+  StepNode? node,
+  String? Function(String stepId)? copyOf,
   required DateTime now,
 }) {
-  final described = graph?.nodes[node];
-  final description = described == null
+  final details = session == null || stepId == null
       ? null
-      : NodeDescription.of(described, graph!);
-  final visits = session == null ? <Visit>[] : visitsTo(session, node);
-  final index = visits.indexWhere((visit) => visit.stepId == stepId);
-  if (session == null || index < 0) {
+      : stepDetails(session, stepId);
+  if (session == null || details == null) {
     return VisitDetails._(
-      node: node,
-      description: description,
-      visits: visits,
-      index: null,
+      name: node?.name ?? '',
+      place: node?.place,
+      visits: const [],
     );
   }
-  final visit = visits[index];
-  final run = visit.run;
-  final state = visit.state;
-  final failed = state.status == StepStatus.failed;
-  // A step that could not start fails without `step-finished` (D16).
-  final end = state.finishedAt ?? (failed ? run.state.finishedAt : null);
-  final took = formatDuration((end ?? now).difference(state.startedAt));
-  final code = state.exitCode;
+  final visits = visitsLike(session, steps, places, details.stepId);
+  final index = visits.indexWhere((visit) => visit.stepId == details.stepId);
+  final state = visits[index].state;
+  final took = formatDuration(
+    (state.finishedAt ?? now).difference(state.startedAt),
+  );
   return VisitDetails._(
-    node: node,
-    description: description,
+    name: details.name,
+    place: details.place,
     visits: visits,
     index: index,
-    step: stepDetails(session, run.id, visit.stepId),
-    result: (
-      status: state.status,
-      text: switch (state.status) {
-        StepStatus.running => 'running · $took',
-        _ when code == null => 'failed · $took',
-        _ => 'exit $code · $took',
-      },
-    ),
-    source: inputSource(session, visit),
+    step: details,
+    result: (status: state.status, text: '${state.status.name} · $took'),
     facts: StepFacts._(
       started: clockTimeMillis(state.startedAt),
       finished: state.finishedAt == null
           ? null
           : clockTimeMillis(state.finishedAt!),
       took: state.finishedAt == null ? null : 'took $took',
-      exitCode: code,
       starts: [
-        for (final start in startsOf(run, visit.stepId))
-          (time: clockTime(start.at), interrupted: start.interrupted),
+        for (final start in startsOf(session, details.stepId))
+          (time: clockTime(start.at), outcome: start.outcome),
       ],
     ),
-    error: failed ? run.state.error : null,
+    copy: copyOf?.call(details.stepId),
   );
 }

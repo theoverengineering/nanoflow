@@ -1,0 +1,247 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_ui/graph/canvas/copies_frame.dart';
+import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
+import 'package:nanoflow_ui/graph/copy_switcher.dart';
+import 'package:nanoflow_ui/graph/logs/logs_panel.dart';
+import 'package:nanoflow_ui/graph/logs/step_list.dart';
+import 'package:nanoflow_ui/state/body_path.dart';
+import 'package:nanoflow_ui/state/copies.dart';
+import 'package:nanoflow_ui/state/graph_model.dart';
+
+import '../state/support.dart';
+import 'canvas/support.dart';
+import 'logs/support.dart';
+import 'support.dart';
+
+void main() {
+  Finder chip(int? number) => find.byKey(CopySwitcher.chipKey(number));
+  Finder footer() => find.byKey(CopiesFrameView.footerKey);
+  String logsTitle(WidgetTester tester) =>
+      textIn(tester, find.byKey(LogsPanel.titleKey));
+
+  /// The screen of [copiesModel], the body of its copies drawn.
+  Future<GraphModel> pumpCopies(
+    WidgetTester tester, {
+    GraphModel? model,
+  }) async {
+    final shown = await pumpGraphScreen(
+      tester,
+      path: inlineFile,
+      model: model ?? copiesModel(),
+      now: () => columnNow,
+    );
+    shown.open(const Opened('1'));
+    await settle(tester);
+    return shown;
+  }
+
+  Future<void> tap(WidgetTester tester, Finder finder) async {
+    await tester.tap(finder);
+    await tester.pump();
+    await settle(tester);
+  }
+
+  testWidgets('the copies tile says how many copies ran: ×3', (tester) async {
+    await pumpGraphScreen(
+      tester,
+      path: inlineFile,
+      model: copiesModel(),
+      now: () => columnNow,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(NodeTile.keyOf('1')),
+        matching: find.text('×3'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the frame of the copies drawn: what they are over, how many, '
+      'all of them, how many are done', (tester) async {
+    await pumpCopies(tester);
+
+    expect(find.text('each pkg in packages'), findsOneWidget);
+    expect(find.text('×3 · in parallel'), findsOneWidget);
+    expect(textIn(tester, find.byType(CopySwitcher)), 'all 1 2 3');
+    expect(textIn(tester, footer()), 'done 1 of 3');
+    // All selected: the steps say how many copies are on them now.
+    expect(find.byKey(NodeTile.runningKeyOf('2')), findsOneWidget);
+    expect(find.byKey(NodeTile.runningKeyOf('3')), findsOneWidget);
+    expect(find.byKey(NodeTile.runningKeyOf('1')), findsNothing);
+    // Logs names the copy of each step.
+    expect(logsTitle(tester), 'Logs 8 steps');
+    expect(
+      textIn(tester, find.byKey(StepList.rowKey('c0c0-verify-4'))),
+      startsWith('verify copy 2'),
+    );
+  });
+
+  testWidgets('a chip of a copy says how it stands, its hint over it', (
+    tester,
+  ) async {
+    await pumpCopies(tester);
+
+    CopyStatus? statusOf(int number) => tester
+        .widget<CopySwitcher>(find.byType(CopySwitcher))
+        .copies
+        .where((copy) => copy.number == number)
+        .single
+        .status;
+    expect(
+      [
+        for (final n in [1, 2, 3]) statusOf(n),
+      ],
+      [CopyStatus.finished, CopyStatus.running, CopyStatus.running],
+    );
+    expect(
+      find.ancestor(of: chip(2), matching: find.byTooltip('tool:uploaded')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a copy chosen: its path alone, copy 2 · now verify; Logs its '
+      'steps; all goes back', (tester) async {
+    final model = await pumpCopies(tester);
+
+    await tap(tester, chip(2));
+
+    expect(textIn(tester, footer()), 'copy 2 · now verify');
+    expect(logsTitle(tester), 'Logs copy 2 · 2 steps');
+    expect(model.selection.stepId, 'c0c0-verify-4');
+    final marks = tester.widget<NodeTile>(find.byKey(NodeTile.keyOf('3')));
+    expect(marks.marks!.steps, 0, reason: 'tool has not reached tag');
+    expect(find.byKey(NodeTile.runningKeyOf('2')), findsNothing);
+    final selected = tester.widget<Container>(
+      find.descendant(of: chip(2), matching: find.byType(Container)).first,
+    );
+    expect(
+      (selected.decoration! as BoxDecoration).color,
+      const Color(0xFF3A3550),
+    );
+
+    await tap(tester, chip(null));
+    expect(textIn(tester, footer()), 'done 1 of 3');
+    expect(logsTitle(tester), 'Logs 8 steps');
+  });
+
+  testWidgets('more copies than chips: a list with a search and a filter', (
+    tester,
+  ) async {
+    final graph = graphFileNamed('inline');
+    final session = Journal(
+      'm4ny-session',
+      workflow: 'inPlace',
+      graph: graph.toJson(),
+      code: graph.fingerprint,
+    );
+    for (var i = 0; i < 20; i++) {
+      session.step(
+        'upload',
+        10 + i,
+        end: i.isEven ? 100 : null,
+        failed: i == 4,
+        output: 'pkg$i',
+        place: 'lib/inline.dart:10',
+        key: 'upload#${i + 1}@e3b0',
+        after: null,
+      );
+    }
+    final model = await pumpCopies(
+      tester,
+      model: ownedModel(
+        graph: graph,
+        file: inlineFile,
+        changes: session.changes,
+        documents: {for (var i = 0; i < 20; i++) 'pkg$i': 'pkg$i'},
+      ),
+    );
+    expect(chip(1), findsNothing);
+    final list = find.byKey(CopySwitcher.listKey);
+    expect(textIn(tester, find.byType(CopySwitcher)), 'all 20 copies');
+
+    await tap(tester, list);
+    expect(find.byKey(CopySwitcher.rowKey(1)), findsOneWidget);
+    await tester.enterText(find.byKey(CopySwitcher.searchKey), 'pkg1');
+    await tester.pump();
+    // The copies whose upload finished hint at their package: pkg10,
+    // pkg12 … pkg18 are copies 11, 13 … 19.
+    expect(find.byKey(CopySwitcher.rowKey(11)), findsOneWidget);
+    expect(find.byKey(CopySwitcher.rowKey(12)), findsNothing);
+    expect(find.byKey(CopySwitcher.rowKey(3)), findsNothing);
+    // A number finds its copy.
+    await tester.enterText(find.byKey(CopySwitcher.searchKey), '12');
+    await tester.pump();
+    expect(find.byKey(CopySwitcher.rowKey(12)), findsOneWidget);
+    expect(find.byKey(CopySwitcher.rowKey(11)), findsNothing);
+    await tester.enterText(find.byKey(CopySwitcher.searchKey), '');
+    await tester.tap(find.byKey(CopySwitcher.filterKey(CopyStatus.failed)));
+    await tester.pump();
+    expect(find.byKey(CopySwitcher.rowKey(5)), findsOneWidget);
+    expect(find.byKey(CopySwitcher.rowKey(1)), findsNothing);
+
+    await tap(tester, find.byKey(CopySwitcher.rowKey(5)));
+    expect(textIn(tester, find.byType(CopySwitcher)), 'copy 5 20 copies');
+    expect(textIn(tester, footer()), 'copy 5 · failed at upload');
+    expect(model.selection.stepId, 'm4ny-upload-4');
+  });
+
+  testWidgets('copies in copies: the path of the copies chosen', (
+    tester,
+  ) async {
+    final session = Journal(
+      'n3st-session',
+      workflow: 'nested',
+      graph: copiesGraphJson(),
+      code: 'sha256:copies-code',
+    );
+    for (final (i, pkg) in ['core', 'tool'].indexed) {
+      session.step(
+        'fetch',
+        1 + i,
+        end: 3,
+        place: copiesAt(27),
+        key: 'f$pkg',
+        after: null,
+      );
+      for (final target in ['arm', 'x64']) {
+        session.step(
+          'build',
+          4,
+          place: copiesAt(30),
+          key: 'b$pkg$target',
+          after: 'f$pkg',
+        );
+      }
+    }
+    final model = await pumpGraphScreen(
+      tester,
+      model: ownedModel(graph: copiesGraphFile(), changes: session.changes),
+      now: () => columnNow,
+    );
+    model.selectWorkflow('lib/copies.dart#nested');
+    model.showSession('n3st-session');
+    model.open(const Opened('1'));
+    await settle(tester);
+    await tap(tester, chip(2));
+    model.open(const Opened('2'));
+    await settle(tester);
+    await tap(tester, chip(1));
+
+    expect(textIn(tester, footer()), 'copy 2 › copy 1 · now build');
+    expect(logsTitle(tester), 'Logs copy 2 › copy 1 · 1 step');
+  });
+
+  testWidgets('without a session the frame says what the copies are over, '
+      'and no more', (tester) async {
+    final model = await pumpCopies(tester);
+    model.selection.showCurrentGraph();
+    await settle(tester);
+
+    expect(find.text('each pkg in packages'), findsOneWidget);
+    expect(find.text('×n · in parallel'), findsOneWidget);
+    expect(find.byType(CopySwitcher), findsNothing);
+    expect(footer(), findsNothing);
+  });
+}

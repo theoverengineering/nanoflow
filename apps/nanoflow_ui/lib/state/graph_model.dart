@@ -6,6 +6,7 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 import 'package:path/path.dart' as p;
 
 import 'body_path.dart';
+import 'copies.dart';
 import 'freshness.dart';
 import 'graph_file_source.dart';
 import 'outcomes.dart';
@@ -13,7 +14,11 @@ import 'selection.dart';
 import 'session_feed.dart';
 import 'session_view.dart';
 import 'step_files.dart';
+import 'step_places.dart';
 import 'texts.dart';
+import 'visit_details.dart';
+import 'visits.dart' as visits show visitToOpen;
+import 'visits.dart' show Visit;
 
 /// Something to know of the graph on the canvas, over its top left (spec
 /// §9 «Свежесть», «Сессия»; docs/ui-spec.md «Когда что-то не так»).
@@ -110,6 +115,15 @@ const sessionCodeNotChecked = 'Session code not checked';
 /// Said under [sessionCodeNotChecked].
 const notCheckedDetail = 'The session recorded no hash of the code it ran on.';
 
+/// [steps] steps of the session ran where the graph has no step: `2 steps
+/// not on the graph`.
+String notOnGraphTitle(int steps) => '${count(steps, 'step')} not on the graph';
+
+/// Said under the steps not on the graph.
+const notOnGraphDetail =
+    'They ran at no step of the graph: the code may differ from the one it '
+    'was read from.';
+
 /// The chosen workflow [workflow] is not in the graph file [fileName]: its
 /// sessions ran it, the file does not have it.
 String workflowNotInFile(String workflow, String fileName) =>
@@ -138,7 +152,8 @@ final class CanvasGraph {
     this.notes = const [],
   }) : levels = workflow == null
            ? const []
-           : List.unmodifiable(bodyLevels(workflow, file!.functions, path));
+           : List.unmodifiable(bodyLevels(workflow, file!.functions, path)),
+       places = StepPlaces.of(workflow, file?.functions ?? const {});
 
   /// The graph file whose functions the canvas draws: the graph file, or
   /// the session's snapshot of it; `null` when there is none to draw.
@@ -166,6 +181,10 @@ final class CanvasGraph {
 
   /// The body drawn: that of the last of the [levels].
   GraphBody? get body => levels.lastOrNull?.body;
+
+  /// The places of the step nodes of the [workflow]: which nodes a
+  /// session's steps are on.
+  final StepPlaces places;
 
   /// The levels opened under the [workflow]'s body, as far as the graph has
   /// them.
@@ -247,6 +266,12 @@ CanvasGraph sessionCanvas(
   final file = graph.graph;
   final name = session.session.workflow;
   final workflow = file?.workflowNamed(name);
+  final offGraph = file == null
+      ? const <Step>[]
+      : stepsNotOnGraph(
+          session.stepsInOrder,
+          StepPlaces.of(workflow, file.functions),
+        );
   return CanvasGraph._(
     file: file,
     workflow: workflow,
@@ -266,6 +291,15 @@ CanvasGraph sessionCanvas(
         const GraphNote(sessionRanOnOtherCode, text: otherCodeDetail),
       if (graph.code == CodeCheck.notChecked)
         const GraphNote(sessionCodeNotChecked, text: notCheckedDetail),
+      if (offGraph.isNotEmpty)
+        GraphNote(
+          notOnGraphTitle(offGraph.length),
+          lines: [
+            for (final step in offGraph)
+              '${step.name}  ${step.place ?? 'no place'}',
+          ],
+          text: notOnGraphDetail,
+        ),
       ...extraNotes,
     ]),
   );
@@ -326,7 +360,9 @@ class GraphModel extends ChangeNotifier {
     freshness.addListener(_changed);
     feed.addListener(_fed);
     outcomes.addListener(_changed);
-    selection.addListener(_selected);
+    selection
+      ..addListener(_selected)
+      ..lastStepOf = _lastShownStep;
     _documents = feed.documentsAdded.listen(
       (document) => outcomes.documentWritten(document.documentId),
     );
@@ -372,6 +408,12 @@ class GraphModel extends ChangeNotifier {
   /// The levels opened under the workflow's body: the canvas goes down them
   /// as far as the graph it draws has them.
   List<Opened> _path = const [];
+
+  /// The copy chosen in each copies frame, as the id of its first step, by
+  /// the path to the frame's level ([_levelKey]); of the session
+  /// [_copiesOf], and forgotten for another.
+  Map<String, String> _copies = const {};
+  String? _copiesOf;
 
   /// Whether the [selection] changes because of new data: the change is told
   /// with the data.
@@ -447,18 +489,32 @@ class GraphModel extends ChangeNotifier {
     return selection.currentGraph || id == null ? null : feed.session(id);
   }
 
-  /// The sessions column at [now], newest first.
+  /// The sessions column at [now], newest first, the code of each checked
+  /// against its graph.
   List<SessionSummary> sessions(DateTime now) {
     final key = _key(now);
     if (key != _sessionsKey) {
-      _sessions = List.unmodifiable(sessionSummaries(workflowSessions, now));
+      _sessions = List.unmodifiable(
+        sessionSummaries(
+          workflowSessions,
+          now,
+          // A snapshot of a resume is read only for the session shown: the
+          // others are checked once it has been read.
+          codeOf: (session) => sessionGraphOf(
+            session,
+            documents: outcomes,
+            graphFile: graphFile.graph,
+          ).code,
+        ),
+      );
       _sessionsKey = key;
     }
     return _sessions;
   }
 
   /// The selected session at [now]; `null` for `Current graph`. Starts
-  /// reading its snapshot: it comes as a change.
+  /// reading its snapshot, and the outputs of the first steps of the
+  /// copies of its frames drawn: they come as a change.
   SessionView? sessionView(DateTime now) {
     final key = _key(now);
     if (key == _viewKey) return _view;
@@ -471,7 +527,17 @@ class GraphModel extends ChangeNotifier {
             documents: outcomes,
             graphFile: graphFile.graph,
             stepId: selection.stepId,
+            levels: canvas.ofSession ? canvas.levels : const [],
+            places: canvas.ofSession ? canvas.places : null,
+            copies: _chosenCopies,
           );
+    // What the copies' first steps gave tells them apart: read it now.
+    if (session != null) {
+      outcomes.load(session.id, [
+        for (final frame in _view!.frames)
+          for (final copy in frame.copies) ?copy.hintDocument,
+      ]);
+    }
     _viewKey = key;
     return _view;
   }
@@ -529,6 +595,123 @@ class GraphModel extends ChangeNotifier {
     if (session != null) selection.showSession(session);
   }
 
+  /// The path to the level [depth] of the canvas, as a key.
+  static String _levelKey(Iterable<Opened> path) =>
+      [for (final opened in path) '${opened.nodeId}#${opened.functionId ?? ''}']
+          .join('/');
+
+  /// The copies chosen in the copies frames of the canvas's levels, by
+  /// depth.
+  Map<int, String> get _chosenCopies {
+    final path = canvas.path;
+    return {
+      for (var depth = 1; depth <= path.length; depth++)
+        depth: ?_copies[_levelKey(path.take(depth))],
+    };
+  }
+
+  /// The copies frames of the canvas's levels and the steps they show, of
+  /// the selected session on its own graph; `null` for `Current graph`.
+  ShownSteps? _shown() {
+    final session = selectedSession;
+    final canvas = this.canvas;
+    if (session == null || !canvas.ofSession) return null;
+    return framesOf(
+      canvas.levels,
+      places: canvas.places,
+      session: session,
+      selected: _chosenCopies,
+    );
+  }
+
+  /// The last of the steps of [session] shown, while copies of it are
+  /// chosen: the selection follows the copy shown; `null` otherwise.
+  String? _lastShownStep(SessionData session) {
+    if (session.id != _copiesOf || _copies.isEmpty) return null;
+    final canvas = this.canvas;
+    if (!canvas.ofSession) return null;
+    return framesOf(
+      canvas.levels,
+      places: canvas.places,
+      session: session,
+      selected: _chosenCopies,
+    ).steps.lastOrNull?.stepId;
+  }
+
+  /// Shows the copy [copyId] — the id of its first step — of the copies
+  /// frame at the level [depth] of the canvas, and selects its last step;
+  /// every copy for `null` (decision 11).
+  void selectCopy(int depth, String? copyId) {
+    final session = selectedSession;
+    if (session == null) return;
+    final level = _levelKey(canvas.path.take(depth));
+    _copies = {
+      for (final MapEntry(:key, :value) in _copies.entries)
+        if (key != level) key: value,
+      level: ?copyId,
+    };
+    _copiesOf = session.id;
+    final frame = _shown()?.frames.where((f) => f.depth == depth).firstOrNull;
+    final last = frame?.selected?.steps.lastOrNull;
+    if (last != null) selection.selectStep(session, last.stepId);
+    _changed();
+  }
+
+  /// What the first step of [copy] of the selected session gave, to tell
+  /// the copy by (`copyHint`); `null` while it is not known: [sessionView]
+  /// reads it.
+  String? hintOf(Copy copy) {
+    final document = copy.hintDocument;
+    if (document == null) return null;
+    return switch (outcomes[document]) {
+      (:final value) => copyHint(value),
+      null => null,
+    };
+  }
+
+  /// A click on the node [nodeId] of the body drawn: selects the last of
+  /// the steps shown on it or in it; nothing without one.
+  void clickNode(String nodeId) {
+    final session = selectedSession;
+    final node = canvas.body?.node(nodeId);
+    final shown = _shown();
+    if (session == null || node == null || shown == null) return;
+    final last = shown.steps
+        .where((s) => canvas.places.isIn(session.steps[s.stepId]?.place, node))
+        .lastOrNull;
+    if (last != null) selection.selectStep(session, last.stepId);
+  }
+
+  /// The visit the step details window opens on for a double click on the
+  /// step node [node]: its last step among those shown; `null` when it has
+  /// none, and for `Current graph`.
+  Visit? visitToOpen(StepNode node) {
+    final session = selectedSession;
+    final shown = _shown();
+    if (session == null || shown == null) return null;
+    return visits.visitToOpen(session, shown.steps, canvas.places, node);
+  }
+
+  /// Selects the step [stepId] of the selected session, a visit the step
+  /// details window shows, so that the canvas and `Logs` are on it.
+  void showVisit(String stepId) => selectStep(stepId);
+
+  /// The step details window on the step [stepId] of the selected session,
+  /// among the steps shown, at [now]; on the step node [node] alone without
+  /// a step.
+  VisitDetails detailsOf(StepNode? node, String? stepId, DateTime now) {
+    final shown = _shown();
+    return visitDetails(
+      session: shown == null ? null : selectedSession,
+      steps: shown?.steps ?? const [],
+      places: canvas.places,
+      stepId: stepId,
+      node: node,
+      copyOf: shown?.copyOf,
+      now: now,
+    );
+  }
+
   /// Selects the step [stepId] of the selected session.
   void selectStep(String stepId) {
     final session = selectedSession;
@@ -562,6 +745,11 @@ class GraphModel extends ChangeNotifier {
   }
 
   void _selected() {
+    // The copies chosen are the session's.
+    if (selection.sessionId != _copiesOf) {
+      _copies = const {};
+      _copiesOf = selection.sessionId;
+    }
     if (!_feeding) _changed();
   }
 

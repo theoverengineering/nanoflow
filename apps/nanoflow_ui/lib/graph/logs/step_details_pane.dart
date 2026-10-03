@@ -11,17 +11,18 @@ import 'file_footer.dart';
 import 'log_view.dart';
 
 /// A tab of the step details.
-enum StepTab { input, output, log }
+enum StepTab { output, log }
 
 /// The selected step's details on the right of the `Logs` panel
-/// (docs/ui-spec.md «Logs»: «Детали шага»): the node's name, the tabs
-/// `Input`, `Output` and `Log`, and `Open` for the step details window.
+/// (docs/ui-spec.md «Logs»: «Детали шага»; spec §9 «Окно шага»): the step's
+/// name, the tabs `Output` and `Log`, and `Open` for the step details
+/// window. A step has no input.
 ///
-/// A tab whose data the node does not declare is marked `—`. `Input` and
-/// `Output` show their document as JSON, `Log` the step's log; the open tab
-/// stays as other steps are selected, `Log` at first. While the log of a
-/// running step holds on to its end, `following tail` says so. With files
-/// to point at, the open tab's file is at the bottom.
+/// `Output` shows its document as JSON — a failed step's error instead —
+/// `Log` the step's log; the open tab stays as other steps are selected,
+/// `Log` at first. While the log of a running step holds on to its end,
+/// `following tail` says so. With files to point at, the open tab's file is
+/// at the bottom.
 class StepDetailsPane extends StatefulWidget {
   const StepDetailsPane({
     super.key,
@@ -59,7 +60,7 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
   ValueNotifier<bool> _following = ValueNotifier(true);
 
   static bool _same(StepDetails a, StepDetails b) =>
-      a.sessionId == b.sessionId && a.runId == b.runId && a.stepId == b.stepId;
+      a.sessionId == b.sessionId && a.stepId == b.stepId;
 
   @override
   void didUpdateWidget(StepDetailsPane old) {
@@ -91,42 +92,39 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
   String? get _path {
     final step = widget.step;
     final files = widget.files;
-    String? document(StepDocument data) => switch (data.documentId) {
-      final id? => files.documentPath(step.sessionId, id),
-      null => null,
-    };
     return switch (_tab) {
       StepTab.log => files.logPath(step.stepId),
-      StepTab.input => document(step.input),
-      StepTab.output => document(step.output),
+      StepTab.output => switch (step.output.documentId) {
+        final id? => files.documentPath(step.sessionId, id),
+        null => null,
+      },
     };
   }
 
   Widget _body() {
     final step = widget.step;
-    StepDocument data;
-    switch (_tab) {
-      case StepTab.log:
-        return LogView(
-          key: ValueKey(('log', step.sessionId, step.runId, step.stepId)),
-          files: widget.files,
-          step: step,
-          following: _following,
-        );
-      case StepTab.input:
-        data = step.input;
-      case StepTab.output:
-        data = step.output;
+    if (_tab == StepTab.log) {
+      return LogView(
+        key: ValueKey(('log', step.sessionId, step.stepId)),
+        files: widget.files,
+        step: step,
+        following: _following,
+      );
     }
-    final id = data.documentId;
-    return id == null
-        ? TabNote(data.message ?? '')
-        : DocumentView(
-            key: ValueKey(('document', step.sessionId, id)),
-            files: widget.files,
-            sessionId: step.sessionId,
-            documentId: id,
-          );
+    final output = step.output;
+    final id = output.documentId;
+    if (id != null) {
+      return DocumentView(
+        key: ValueKey(('document', step.sessionId, id)),
+        files: widget.files,
+        sessionId: step.sessionId,
+        documentId: id,
+      );
+    }
+    return switch (step.error) {
+      final error? => TabNote('Failed: $error', color: AppColors.dangerText),
+      null => TabNote(output.message ?? ''),
+    };
   }
 
   @override
@@ -193,7 +191,7 @@ class _Header extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: Text(
-                      step.node,
+                      step.name,
                       style: AppText.detailsTitle,
                       maxLines: 1,
                       softWrap: false,
@@ -201,15 +199,13 @@ class _Header extends StatelessWidget {
                     ),
                   ),
                 ),
-                for (final (which, label, marked) in [
-                  (StepTab.input, 'Input', step.input.marked),
-                  (StepTab.output, 'Output', step.output.marked),
-                  (StepTab.log, 'Log', false),
+                for (final (which, label) in const [
+                  (StepTab.output, 'Output'),
+                  (StepTab.log, 'Log'),
                 ])
                   _Tab(
                     which: which,
                     label: label,
-                    marked: marked,
                     selected: which == tab,
                     onTap: () => onTab(which),
                   ),
@@ -254,19 +250,17 @@ class _Header extends StatelessWidget {
   );
 }
 
-/// A tab: filled when [selected]; `—` after a [marked] one's label.
+/// A tab: filled when [selected].
 class _Tab extends StatelessWidget {
   const _Tab({
     required this.which,
     required this.label,
-    required this.marked,
     required this.selected,
     required this.onTap,
   });
 
   final StepTab which;
   final String label;
-  final bool marked;
   final bool selected;
   final VoidCallback onTap;
 
@@ -277,9 +271,7 @@ class _Tab extends StatelessWidget {
             color: AppColors.textPrimary,
             fontWeight: FontWeight.w600,
           )
-        : AppText.tab.copyWith(
-            color: marked ? AppColors.textFaint : AppColors.textMuted,
-          );
+        : AppText.tab.copyWith(color: AppColors.textMuted);
     return Clickable(
       onTap: onTap,
       child: Container(
@@ -291,24 +283,7 @@ class _Tab extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
               )
             : null,
-        child: Text.rich(
-          TextSpan(
-            text: label,
-            children: [
-              if (marked)
-                TextSpan(
-                  text: ' —',
-                  style: style.copyWith(
-                    color: AppColors.textDim,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-            ],
-          ),
-          style: style,
-          maxLines: 1,
-          softWrap: false,
-        ),
+        child: Text(label, style: style, maxLines: 1, softWrap: false),
       ),
     );
   }

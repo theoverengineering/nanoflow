@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/layout/layout.dart'
     show LayoutOptions, NodeBox, endMarker, layoutBody, startMarker;
+import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/widgets/dashed_border.dart';
 import 'package:nanoflow_ui/widgets/icons.dart';
 
@@ -67,6 +68,10 @@ void main() {
     WidgetTester tester,
     String id, {
     ValueChanged<Offset>? onDoubleTap,
+    NodeMarks? marks,
+    bool selected = false,
+    bool allCopies = false,
+    String copies = '×n',
   }) {
     final node = layout.nodes[id]!;
     return pumpScreen(
@@ -75,7 +80,14 @@ void main() {
         children: [
           Positioned.fromRect(
             rect: NodeTile.areaOf(node).shift(const Offset(100, 100)),
-            child: NodeTile(node: node, onDoubleTap: onDoubleTap),
+            child: NodeTile(
+              node: node,
+              onDoubleTap: onDoubleTap,
+              marks: marks,
+              selected: selected,
+              allCopies: allCopies,
+              copies: copies,
+            ),
           ),
         ],
       ),
@@ -153,6 +165,107 @@ void main() {
     // All of it inside what the node's widget takes.
     final area = tester.getRect(find.byKey(NodeTile.keyOf('copies')));
     expect(area.intersect(badge), badge);
+  });
+
+  group('with a session', () {
+    BoxDecoration tileLook(WidgetTester tester, String id) =>
+        tester
+                .widget<DecoratedBox>(find.byKey(NodeTile.tileKeyOf(id)))
+                .decoration
+            as BoxDecoration;
+
+    testWidgets('a step is framed in the state of its steps, its badge on '
+        'its corner; entered twice, it says 2×', (tester) async {
+      await pumpTile(
+        tester,
+        'step',
+        marks: const NodeMarks(state: NodeState.visited, steps: 2, running: 0),
+      );
+      expect(
+        tileLook(tester, 'step').border!.top.color,
+        const Color(0xFF3CC47C),
+      );
+      expect(find.text('2×'), findsOneWidget);
+
+      await pumpTile(
+        tester,
+        'step',
+        marks: const NodeMarks(
+          state: NodeState.notVisited,
+          steps: 0,
+          running: 0,
+        ),
+      );
+      expect(
+        tileLook(tester, 'step').border!.top.color,
+        const Color(0xFF45464C),
+      );
+      expect(find.text('2×'), findsNothing);
+    });
+
+    testWidgets('in the body of copies, all shown, a step says how many '
+        'copies are on it now, instead of 2×', (tester) async {
+      await pumpTile(
+        tester,
+        'step',
+        allCopies: true,
+        marks: const NodeMarks(state: NodeState.running, steps: 3, running: 2),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(NodeTile.runningKeyOf('step')),
+          matching: find.text('2'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('3×'), findsNothing);
+    });
+
+    testWidgets('the selected step\'s node is ringed', (tester) async {
+      await pumpTile(
+        tester,
+        'step',
+        selected: true,
+        marks: const NodeMarks(state: NodeState.visited, steps: 1, running: 0),
+      );
+      expect(
+        tileLook(tester, 'step').boxShadow!.single.color,
+        CanvasColors.ring,
+      );
+    });
+
+    testWidgets('copies say how many ran, muted while none has; their stack '
+        'keeps the corner: no count over it', (tester) async {
+      const marks = NodeMarks(
+        state: NodeState.running,
+        steps: 4,
+        running: 1,
+        copies: 3,
+      );
+      await pumpTile(tester, 'copies', marks: marks, copies: '×3');
+      expect(find.text('×3'), findsOneWidget);
+      expect(find.text('4×'), findsNothing);
+      expect(
+        tester.widget<Text>(find.text('×3')).style!.color,
+        CanvasColors.badgeText,
+      );
+
+      await pumpTile(
+        tester,
+        'copies',
+        marks: const NodeMarks(
+          state: NodeState.notVisited,
+          steps: 0,
+          running: 0,
+          copies: 0,
+        ),
+        copies: '×0',
+      );
+      expect(
+        tester.widget<Text>(find.text('×0')).style!.color,
+        CanvasColors.markerText,
+      );
+    });
   });
 
   testWidgets('a name cut short is whole in its tooltip', (tester) async {

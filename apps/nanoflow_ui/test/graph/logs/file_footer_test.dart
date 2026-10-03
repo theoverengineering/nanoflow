@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/graph/logs/file_footer.dart';
 import 'package:nanoflow_ui/graph/logs/step_details_pane.dart';
+import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 
 import '../../state/support.dart';
@@ -31,15 +32,17 @@ void main() {
 
   testWidgets('shows the file of the open tab, cut from the left when too '
       'long, in full in a tooltip', (tester) async {
-    await pumpGraphScreen(tester);
+    await pumpReview(tester);
 
     final shown = textIn(tester, inFooter(find.byKey(FileFooter.pathKey)));
     expect(shown, startsWith('…'));
-    expect(shown, endsWith('-notify-e5f6-notify-0/command.log'));
+    expect(shown, endsWith('-notify-a1b2-notify-5/step.log'));
     expect(notifyLogPath, endsWith(shown.substring(1)));
     expect(inFooter(find.byTooltip(notifyLogPath)), findsOneWidget);
 
-    await open(tester, StepTab.input);
+    await tester.tap(find.byKey(StepList.rowKey('a1b2-inspect-3')));
+    await tester.pump();
+    await open(tester, StepTab.output);
     expect(
       textIn(tester, inFooter(find.byKey(FileFooter.pathKey))),
       endsWith('-a1b2-session/documents/report-2.json'),
@@ -49,11 +52,11 @@ void main() {
   testWidgets('a short path is shown whole, from the graph\'s directory', (
     tester,
   ) async {
-    final files = mockupFiles()
-      ..logPaths['e5f6-notify-0'] =
+    final files = reviewFiles()
+      ..logPaths['a1b2-notify-5'] =
           '${File(reviewFile).parent.path}/'
           'runs/notify.log';
-    await pumpGraphScreen(tester, model: mockupModel(files: files));
+    await pumpReview(tester, model: reviewModel(files: files));
 
     expect(
       textIn(tester, inFooter(find.byKey(FileFooter.pathKey))),
@@ -64,17 +67,17 @@ void main() {
   testWidgets('without a file, or a document, there is no footer', (
     tester,
   ) async {
-    await pumpGraphScreen(tester, model: mockupModel(files: FakeFiles()));
+    await pumpReview(tester, model: reviewModel(files: FakeFiles()));
     expect(footer(), findsNothing);
 
-    await pumpGraphScreen(tester);
+    await pumpReview(tester);
     await open(tester, StepTab.output);
     expect(footer(), findsNothing);
   });
 
   testWidgets('Finder reveals the file, Editor opens it', (tester) async {
     final ran = <List<String>>[];
-    await pumpGraphScreen(tester, shell: shellOpening(ran));
+    await pumpReview(tester, shell: shellOpening(ran));
 
     await tester.tap(inFooter(find.text('Finder')));
     await tester.pump();
@@ -87,11 +90,11 @@ void main() {
   });
 
   for (final (button, note) in [
-    ('Finder', 'Could not reveal command.log in Finder'),
-    ('Editor', 'Could not open command.log in an editor'),
+    ('Finder', 'Could not reveal step.log in Finder'),
+    ('Editor', 'Could not open step.log in an editor'),
   ]) {
     testWidgets('says when $button fails', (tester) async {
-      await pumpGraphScreen(tester, shell: shellOpening([], exitCode: 1));
+      await pumpReview(tester, shell: shellOpening([], exitCode: 1));
 
       await tester.tap(inFooter(find.text(button)));
       await tester.pump();
@@ -103,7 +106,7 @@ void main() {
   testWidgets('copies the path, and says so for a moment', (tester) async {
     final copied = <Object?>[];
     mockClipboard(tester, copied);
-    await pumpGraphScreen(tester);
+    await pumpReview(tester);
 
     await tester.tap(inFooter(find.byTooltip('Copy path')));
     await tester.pump();
@@ -119,12 +122,12 @@ void main() {
 
   testWidgets('says when copying fails', (tester) async {
     mockClipboard(tester, [], error: PlatformException(code: 'busy'));
-    await pumpGraphScreen(tester);
+    await pumpReview(tester);
 
     await tester.tap(inFooter(find.byTooltip('Copy path')));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Could not copy the path of command.log'), findsOneWidget);
+    expect(find.text('Could not copy the path of step.log'), findsOneWidget);
     expect(inFooter(find.text('Copied')), findsNothing);
   });
 }

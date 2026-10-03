@@ -1,72 +1,32 @@
-// migrated in Task 12: still on the old model (runs, the README graph,
-// GraphSource); it does not compile until then.
 /// The `Logs` panel: its title and the rows of the steps list
-/// (docs/ui-spec.md «Logs»). Pure: the time is passed in.
+/// (docs/ui-spec.md «Logs»; spec §9 «Логи»): a session's steps in the order
+/// of their first `step-started`, a selected copy's alone. Pure: the time is
+/// passed in.
 library;
-
-import 'dart:convert';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-import 'outcomes.dart';
-import 'runs.dart';
 import 'session_feed.dart';
-import 'sessions.dart' show sessionEnd, sessionStart;
+import 'step_places.dart';
 import 'texts.dart';
-import 'texts.dart' as texts show shortId;
 
-/// The title of the `Logs` panel: `run e5f6 · 8 steps, 7 inherited from
-/// k7f2`.
+/// What a row says of a step that is on no node of the graph.
+const notOnGraph = 'not on the graph';
+
+/// The title of the `Logs` panel: `8 steps`, `copy 2 · 3 steps`.
 final class LogsHeader {
-  LogsHeader._(this.runId, this.steps, this.inherited, this.parentId);
+  const LogsHeader(this.steps, {this.copy});
 
-  final String runId;
-
-  String get shortId => texts.shortId(runId);
-
-  /// How many steps the run shows, inherited ones too.
+  /// How many steps the list shows.
   final int steps;
 
-  /// How many of them are its ancestors'.
-  final int inherited;
+  /// The copy shown, `copy 2` or `copy 2 › copy 1`; `null` when the list
+  /// shows every copy's steps.
+  final String? copy;
 
-  /// The run the selected one split from; `null` for a root run.
-  final String? parentId;
+  String get stepsText => count(steps, 'step');
 
-  /// `8 steps, 7 inherited from k7f2`; `7 steps` for a root run.
-  String get stepsText => '$stepsLead${inheritedFrom ?? ''}';
-
-  /// [stepsText] up to the id of the run the steps are inherited from:
-  /// `8 steps, 7 inherited from `; all of it when it names no run.
-  String get stepsLead {
-    final all = count(steps, 'step');
-    return inheritedFrom == null ? all : '$all, $inherited inherited from ';
-  }
-
-  /// The short id that ends [stepsText]: the parent's, when steps are
-  /// inherited from it.
-  String? get inheritedFrom {
-    final parent = parentId;
-    return inherited == 0 || parent == null ? null : texts.shortId(parent);
-  }
-
-  String get text => 'run $shortId · $stepsText';
-}
-
-/// The title of the `Logs` panel for the run [runId]. [steps] are the run's
-/// [stepsOfRun], when already at hand.
-LogsHeader logsHeader(
-  SessionData session,
-  String runId, {
-  List<RunStep>? steps,
-}) {
-  steps ??= stepsOfRun(session, runId);
-  return LogsHeader._(
-    runId,
-    steps.length,
-    steps.where((step) => step.inherited).length,
-    session.runs[runId]?.run.parentId,
-  );
+  String get text => copy == null ? stepsText : '$copy · $stepsText';
 }
 
 /// A row of the steps list.
@@ -76,12 +36,11 @@ sealed class LogRow {}
 final class StepRow extends LogRow {
   StepRow._({
     required this.stepId,
-    required this.runId,
     required this.name,
     required this.status,
-    required this.inherited,
     required this.detail,
     required this.failure,
+    required this.copy,
     required this.started,
     required this.duration,
     required this.starts,
@@ -91,35 +50,33 @@ final class StepRow extends LogRow {
 
   final String stepId;
 
-  /// The run the step belongs to.
-  final String runId;
-
-  /// The node's name.
+  /// The step's name.
   final String name;
 
   /// The icon: finished, running, failed.
   final StepStatus status;
 
-  /// An ancestor's step: dimmed.
-  final bool inherited;
-
-  /// After the name: for a fork, its outcome and where it went
-  /// (`returned → fix`); for a failed step, the error of `run-failed`.
+  /// After the name: a failed step's error; [notOnGraph] for a step on no
+  /// node of the graph.
   final String? detail;
 
   /// Whether [detail] is an error.
   final bool failure;
 
+  /// The copy the step is in, `copy 2`, when the list shows every copy's
+  /// steps.
+  final String? copy;
+
   /// The time of the first `step-started`: `14:03:11`.
   final String started;
 
-  /// To `step-finished`, or to now while the step runs.
+  /// To the outcome of the last start, or to now while the step runs.
   final Duration duration;
 
   /// [duration] as shown: `2m 29s`.
   String get took => formatDuration(duration);
 
-  /// How many times the step's command was started.
+  /// How many times the step started.
   final int starts;
 
   /// `2 starts` for a step started more than once.
@@ -134,43 +91,26 @@ final class StepRow extends LogRow {
   bool get striped => status == StepStatus.running;
 }
 
-/// Where a run split from its parent: `split · run e5f6`.
-final class SplitRow extends LogRow {
-  SplitRow._(this.runId);
-
-  /// The run the split made, whose steps follow.
-  final String runId;
-
-  String get text => 'split · run ${texts.shortId(runId)}';
-}
-
-/// The last row of a run that has ended.
+/// The last row of a session that has ended.
 final class EndRow extends LogRow {
-  EndRow._(this.phase, this.error, List<String> children, this.at)
-    : children = List.unmodifiable(children);
+  EndRow._(this.status, this.error, this.at);
 
-  /// [RunPhase.finished], [RunPhase.failed] or [RunPhase.split].
-  final RunPhase phase;
+  /// [SessionStatus.finished] or [SessionStatus.failed].
+  final SessionStatus status;
 
-  /// The error of `run-failed`.
+  /// The error of `session-failed`.
   final String? error;
 
-  /// The runs a split made, in the order they were created: links.
-  final List<String> children;
-
-  /// When the run ended.
+  /// When the session ended.
   final DateTime at;
 
   /// [at] as the `Started` column shows times: `14:13:51`.
   String get atText => clockTime(at);
 
-  /// `Run finished`, `Run failed: exited with code 1`, `Run split into`
-  /// followed by the [children].
-  String get text => switch (phase) {
-    RunPhase.failed => 'Run failed: $error',
-    RunPhase.split => 'Run split into',
-    _ => 'Run finished',
-  };
+  /// `Session finished`, `Session failed: StateError: plan failed`.
+  String get text => status == SessionStatus.failed
+      ? 'Session failed: $error'
+      : 'Session finished';
 }
 
 /// The common time scale of a session's step bars: from its start to its
@@ -207,72 +147,53 @@ final class TimeScale {
 }
 
 /// The time scale of [session] at [now].
-TimeScale timeScale(SessionData session, DateTime now) =>
-    TimeScale(sessionStart(session) ?? now, sessionEnd(session) ?? now);
+TimeScale timeScale(SessionData session, DateTime now) {
+  final state = session.state;
+  return TimeScale(state.startedAt ?? now, state.finishedAt ?? now);
+}
 
-/// The steps list of the run [runId]: its steps in order, inherited ones
-/// too, a [SplitRow] where each split begins, and an [EndRow] once the run
-/// has ended.
+/// The rows of [steps] of [session], in their order; a step of a copy
+/// named by its number in [copies], by step id. An [EndRow] follows once
+/// the session has ended, unless [end] is false. [places] tells which
+/// steps are not on the graph.
 List<LogRow> logRows(
-  SessionData session,
-  String runId, {
-  required KnownOutcomes outcomes,
+  SessionData session, {
+  required Iterable<StepState> steps,
+  required StepPlaces places,
   required DateTime now,
+  Map<String, int> copies = const {},
+  bool end = true,
 }) {
   final scale = timeScale(session, now);
-  final chain = lineage(session, runId);
-  final rows = <LogRow>[];
-  for (final (i, run) in chain.indexed) {
-    if (i > 0) rows.add(SplitRow._(run.id));
-    for (final step in run.state.steps) {
-      rows.add(
-        _stepRow(
-          session.graph,
-          run,
-          step,
-          run.id != runId,
-          outcomes,
-          now,
-          scale,
-        ),
-      );
-    }
-  }
-  final run = chain.lastOrNull;
-  final ended = run?.state.finishedAt;
-  if (run != null && ended != null) {
-    rows.add(
-      EndRow._(phaseOf(run), run.state.error, [
-        for (final child in runsInOrder(session))
-          if (child.run.parentId == run.id) child.id,
-      ], ended),
-    );
-  }
-  return rows;
+  final state = session.state;
+  final ended = state.finishedAt;
+  return [
+    for (final step in steps)
+      _stepRow(step, session, places, copies[step.stepId], now, scale),
+    if (end && ended != null) EndRow._(state.status, state.error, ended),
+  ];
 }
 
 StepRow _stepRow(
-  Graph? graph,
-  RunData run,
   StepState step,
-  bool inherited,
-  KnownOutcomes outcomes,
+  SessionData session,
+  StepPlaces places,
+  int? copy,
   DateTime now,
   TimeScale scale,
 ) {
-  final failed = step.status == StepStatus.failed;
-  // A step that could not start fails without `step-finished` (D16).
-  final end = step.finishedAt ?? (failed ? run.state.finishedAt : null) ?? now;
+  final record = session.steps[step.stepId];
+  final error = step.status == StepStatus.failed ? step.error : null;
+  final end = step.finishedAt ?? now;
   return StepRow._(
     stepId: step.stepId,
-    runId: run.id,
-    name: step.node,
+    name: record?.name ?? '',
     status: step.status,
-    inherited: inherited,
-    detail: failed
-        ? run.state.error
-        : _routeText(graph?.nodes[step.node], run, step, outcomes),
-    failure: failed,
+    detail:
+        error ??
+        (record == null || places.onGraph(record.place) ? null : notOnGraph),
+    failure: error != null,
+    copy: copy == null ? null : 'copy $copy',
     started: clockTime(step.startedAt),
     duration: end.difference(step.startedAt),
     starts: step.starts,
@@ -280,25 +201,3 @@ StepRow _stepRow(
     barEnd: scale.fraction(end),
   );
 }
-
-/// A fork step's outcome and where it sent the run: `returned → fix`,
-/// `accepted → publish, notify`, `else → inspect`; `end` where it sent the
-/// run nowhere. `null` for a worker, and while the outcome is not known.
-String? _routeText(
-  Node? node,
-  RunData run,
-  StepState step,
-  KnownOutcomes outcomes,
-) {
-  if (node is! ForkNode || step.status != StepStatus.finished) return null;
-  final outcome = stepOutcome(run, step, outcomes);
-  if (outcome == null) return null;
-  return switch (node.route(outcome.value)) {
-    RouteTo(:final exit) => '${exit.label} → ${_targetText(exit.target)}',
-    RouteEnd() => '${jsonEncode(outcome.value)} → end',
-    RouteMissing() => null,
-  };
-}
-
-String _targetText(Target target) =>
-    target.isEmpty ? 'end' : target.names.join(', ');

@@ -86,6 +86,175 @@ GraphFile reviewGraphFile({
   ),
 );
 
+/// What [Journal.step] takes for "after the step before it".
+const _previous = '\u0000previous';
+
+/// A step node of a test graph.
+Map<String, Object?> stepNode(String id, String name, int line) => {
+  'id': id,
+  'kind': 'step',
+  'name': name,
+  'place': 'lib/copies.dart:$line',
+};
+
+/// A body of a test graph whose [nodes] follow one another from its entry
+/// to its exit.
+Map<String, Object?> chainBody(List<Map<String, Object?>> nodes) => {
+  'nodes': nodes,
+  'edges': [
+    for (var i = 0; i <= nodes.length; i++)
+      {
+        'from': i == 0 ? null : nodes[i - 1]['id'],
+        'to': i == nodes.length ? null : nodes[i]['id'],
+        'label': null,
+      },
+  ],
+};
+
+/// The graph file describe writes for `lib/copies.dart` of the package
+/// `copies`, whose workflows run copies side by side as the prototype
+/// step_keys does (the line of each step in the comments):
+///
+/// ```dart
+/// Future<String> inPlace(Flow f, List<String> packages) async {
+///   final plan = await f.step('plan', …);                     // 4
+///   final results = await Future.wait([                       // 5
+///     for (final pkg in plan) () async {
+///       final up = await f.step('upload', …);                 // 7
+///       final ok = await f.step('verify', …);                 // 8
+///       return f.step('tag', …);                              // 9
+///     }(),
+///   ]);
+///   return f.step('announce', …);                             // 12
+/// }
+///
+/// Future<String> viaCall(Flow f, List<String> packages) async {
+///   final results = await Future.wait([                       // 15
+///     for (final pkg in packages) publish(f, pkg),
+///   ]);
+///   return f.step('announce', …);                             // 17
+/// }
+///
+/// Future<String> publish(Flow f, String pkg) async {
+///   final up = await f.step('upload', …);                     // 20
+///   final ok = await f.step('verify', …);                     // 21
+///   return f.step('tag', …);                                  // 22
+/// }
+///
+/// Future<String> nested(Flow f, List<String> packages) async {
+///   final results = await Future.wait([                       // 25
+///     for (final pkg in packages) () async {
+///       final src = await f.step('fetch', …);                 // 27
+///       final builds = await Future.wait([                    // 28
+///         for (final target in targets) () async {
+///           final bin = await f.step('build', …);             // 30
+///           return f.step('test', …);                         // 31
+///         }(),
+///       ]);
+///       return f.step('upload', …);                           // 34
+///     }(),
+///   ]);
+///   return f.step('announce', …);                             // 37
+/// }
+/// ```
+Map<String, Object?> copiesGraphJson() => {
+  'format': 1,
+  'package': 'copies',
+  'fingerprint': 'sha256:copies-code',
+  'sources': {'lib/copies.dart': 'sha256:c0c0'},
+  'builds': <String, String>{},
+  'workflows': [
+    'lib/copies.dart#inPlace',
+    'lib/copies.dart#nested',
+    'lib/copies.dart#viaCall',
+  ],
+  'functions': {
+    'lib/copies.dart#inPlace': {
+      'name': 'inPlace',
+      'place': 'lib/copies.dart:3',
+      'body': chainBody([
+        stepNode('1', 'plan', 4),
+        {
+          'id': '2',
+          'kind': 'copies',
+          'label': 'pkg in plan',
+          'place': 'lib/copies.dart:5',
+          'body': chainBody([
+            stepNode('1', 'upload', 7),
+            stepNode('2', 'verify', 8),
+            stepNode('3', 'tag', 9),
+          ]),
+        },
+        stepNode('3', 'announce', 12),
+      ]),
+    },
+    'lib/copies.dart#nested': {
+      'name': 'nested',
+      'place': 'lib/copies.dart:24',
+      'body': chainBody([
+        {
+          'id': '1',
+          'kind': 'copies',
+          'label': 'pkg in packages',
+          'place': 'lib/copies.dart:25',
+          'body': chainBody([
+            stepNode('1', 'fetch', 27),
+            {
+              'id': '2',
+              'kind': 'copies',
+              'label': 'target in targets',
+              'place': 'lib/copies.dart:28',
+              'body': chainBody([
+                stepNode('1', 'build', 30),
+                stepNode('2', 'test', 31),
+              ]),
+            },
+            stepNode('3', 'upload', 34),
+          ]),
+        },
+        stepNode('2', 'announce', 37),
+      ]),
+    },
+    'lib/copies.dart#publish': {
+      'name': 'publish',
+      'place': 'lib/copies.dart:19',
+      'body': chainBody([
+        stepNode('1', 'upload', 20),
+        stepNode('2', 'verify', 21),
+        stepNode('3', 'tag', 22),
+      ]),
+    },
+    'lib/copies.dart#viaCall': {
+      'name': 'viaCall',
+      'place': 'lib/copies.dart:14',
+      'body': chainBody([
+        {
+          'id': '1',
+          'kind': 'copies',
+          'label': 'pkg in packages',
+          'place': 'lib/copies.dart:15',
+          'body': chainBody([
+            {
+              'id': '1',
+              'kind': 'call',
+              'functions': ['lib/copies.dart#publish'],
+              'place': 'lib/copies.dart:16',
+            },
+          ]),
+        },
+        stepNode('2', 'announce', 17),
+      ]),
+    },
+  },
+  'warnings': <Object?>[],
+};
+
+/// [copiesGraphJson] read.
+GraphFile copiesGraphFile() => GraphFile.fromJson(copiesGraphJson());
+
+/// The place of line [line] of `lib/copies.dart`.
+String copiesAt(int line) => 'lib/copies.dart:$line';
+
 /// 14:03:11 local time on 2026-09-21: when the mockups' session a1b2 starts.
 final DateTime t0 = DateTime(2026, 9, 21, 14, 3, 11).toUtc();
 
@@ -120,9 +289,11 @@ final class Journal {
   Session get session =>
       Session(id: id, workflow: workflow, graph: graph, inputId: null);
 
-  /// A step [name] started at [start], again at each of [restarts], and
-  /// finished at [end] with [output], or failed then when [failed]; running
-  /// without [end]. Returns its id.
+  /// A step [name] at [place] started at [start], again at each of
+  /// [restarts], and finished at [end] with [output], or failed then when
+  /// [failed]; running without [end]. Its [key] is `<name>#<n>@0…0` by
+  /// default, `n` counting the steps of that name; it comes [after] the
+  /// step of that key, by default the step before it. Returns its id.
   String step(
     String name,
     num start, {
@@ -131,15 +302,18 @@ final class Journal {
     String? output,
     String? place,
     List<num> restarts = const [],
+    String? key,
+    String? after = _previous,
   }) {
     final stepId = '${id.substring(0, 4)}-$name-${steps.length}';
+    final n = steps.where((step) => step.name == name).length + 1;
     steps.add(
       Step(
         id: stepId,
         sessionId: id,
         name: name,
-        key: '$name#1@0000000000000000',
-        after: steps.lastOrNull?.key,
+        key: key ?? '$name#$n@0000000000000000',
+        after: identical(after, _previous) ? steps.lastOrNull?.key : after,
         place: place,
         outputId: failed ? null : output,
         log: logFileName,

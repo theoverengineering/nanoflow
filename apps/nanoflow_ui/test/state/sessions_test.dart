@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/state/freshness.dart' show CodeCheck;
 import 'package:nanoflow_ui/state/sessions.dart';
 
 import 'support.dart';
@@ -14,6 +15,32 @@ void main() {
     ..step('inspect', 150);
 
   group('a session (ui-spec «Сессии»)', () {
+    test('notes the code it ran on when that is not the code of its graph, '
+        'or was not recorded (spec §9 «Сессия»)', () {
+      final session = running().data;
+      expect(summarize(session, now)!.codeNote, isNull);
+      expect(
+        summarize(session, now, code: CodeCheck.matches)!.codeNote,
+        isNull,
+      );
+      expect(
+        summarize(session, now, code: CodeCheck.otherCode)!.codeNote,
+        'other code',
+      );
+      expect(
+        summarize(session, now, code: CodeCheck.notChecked)!.codeNote,
+        'not checked',
+      );
+      expect(
+        sessionSummaries(
+          [session],
+          now,
+          codeOf: (_) => CodeCheck.otherCode,
+        ).single.codeNote,
+        'other code',
+      );
+    });
+
     test('starts at its session-started', () {
       final session = Journal('a1b2-session', startedAt: 5)..resume(30);
       expect(summarize(session.data, now)!.startedAt, at(5));

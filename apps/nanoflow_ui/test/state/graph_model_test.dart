@@ -700,6 +700,145 @@ void main() {
       expect(canvas.workflow, isNull);
       expect(canvas.placeholder, noWorkflowNamed('deploy'));
     });
+
+    test('lists the steps that are not on the graph: at no step node, or '
+        'without a place (spec §9 «Шаги на графе»)', () {
+      final session = Journal('a1b2-session')
+        ..step('collect', 1, end: 2, place: 'lib/review.dart:22')
+        ..step('gather', 2, end: 3, place: 'lib/review.dart:30')
+        ..step('loose', 3);
+      expect(sessionCanvas(session.data, graphOf(session)).notes, [
+        const GraphNote(
+          '2 steps not on the graph',
+          lines: ['gather  lib/review.dart:30', 'loose  no place'],
+          text: notOnGraphDetail,
+        ),
+      ]);
+    });
+
+    test('has the places of the steps of its workflow', () {
+      final session = Journal('a1b2-session');
+      final canvas = sessionCanvas(session.data, graphOf(session));
+      expect(canvas.places.nodePlaces, {'lib/review.dart:22'});
+    });
+  });
+
+  group('a session with copies', () {
+    /// inPlace over core and tool: core done, tool on verify.
+    List<Change> copies() => changesOf([
+      Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
+        ..step('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
+        ..step('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
+        ..step('upload', 3, end: 5, place: copiesAt(7), key: 'ut', after: 'p')
+        ..step('verify', 6, end: 7, place: copiesAt(8), key: 'vc', after: 'uc')
+        ..step('verify', 8, place: copiesAt(8), key: 'vt', after: 'ut'),
+    ]);
+
+    void open(FakeAsync async) {
+      graphFile.graph = copiesGraphFile();
+      give(async, copies());
+      model.open(const Opened('2'));
+    }
+
+    test('shows every copy of the copies drawn until one is chosen', () {
+      run((async) {
+        open(async);
+        final view = model.sessionView(at(746))!;
+        expect(view.frames.single.copies, hasLength(2));
+        expect(view.frames.single.selected, isNull);
+        expect(view.logs.header.text, '5 steps');
+      });
+    });
+
+    test('a chosen copy shows its steps, its last selected', () {
+      run((async) {
+        open(async);
+        final tool = model.sessionView(at(746))!.frames.single.copies[1];
+        model.selectCopy(1, tool.id);
+        final view = model.sessionView(at(746))!;
+        expect(view.frames.single.selected!.number, 2);
+        expect(view.logs.header.text, 'copy 2 · 2 steps');
+        expect(model.selection.stepId, 'a1b2-verify-4');
+        model.selectCopy(1, null);
+        expect(model.sessionView(at(746))!.frames.single.selected, isNull);
+      });
+    });
+
+    test('a chosen copy is followed: its new steps are selected, those of '
+        'other copies are not', () {
+      run((async) {
+        open(async);
+        final tool = model.sessionView(at(746))!.frames.single.copies[1];
+        model.selectCopy(1, tool.id);
+        expect(model.selection.following, isTrue);
+        StepAdded record(String name, String key, String after) => StepAdded(
+          Step(
+            id: 'a1b2-$name-$key',
+            sessionId: 'a1b2-session',
+            name: name,
+            key: key,
+            after: after,
+            place: copiesAt(name == 'tag' ? 9 : 8),
+            outputId: null,
+            log: logFileName,
+          ),
+        );
+        EventAdded started(String stepId, num time) => EventAdded(
+          sessionId: 'a1b2-session',
+          event: StepStarted(time: at(time), stepId: stepId),
+        );
+        // Core's tag: another copy.
+        give(async, [record('tag', 'tc', 'vc'), started('a1b2-tag-tc', 20)]);
+        expect(model.selection.stepId, 'a1b2-verify-4');
+        // Tool's tag: the copy chosen.
+        give(async, [record('tag', 'tt', 'vt'), started('a1b2-tag-tt', 21)]);
+        expect(model.selection.stepId, 'a1b2-tag-tt');
+      });
+    });
+
+    test('the chosen copies are forgotten for another session', () {
+      run((async) {
+        open(async);
+        final tool = model.sessionView(at(746))!.frames.single.copies[1];
+        model.selectCopy(1, tool.id);
+        give(
+          async,
+          changesOf([
+            Journal(
+              'b2c3-session',
+              workflow: 'inPlace',
+              graph: copiesGraphJson(),
+              startedAt: 20,
+            ),
+          ]),
+        );
+        model.showSession('b2c3-session');
+        model.showSession('a1b2-session');
+        expect(model.sessionView(at(746))!.frames.single.selected, isNull);
+      });
+    });
+
+    test('a click on a node selects its last step among those shown; on '
+        'a node without one, nothing', () {
+      run((async) {
+        open(async);
+        model.clickNode('1');
+        expect(model.selection.stepId, 'a1b2-upload-2');
+        model.clickNode('3');
+        expect(model.selection.stepId, 'a1b2-upload-2');
+      });
+    });
+
+    test('a double click on a step node opens its last step', () {
+      run((async) {
+        open(async);
+        final verify = model.canvas.body!.node('2')! as StepNode;
+        expect(model.visitToOpen(verify)!.stepId, 'a1b2-verify-4');
+        final details = model.detailsOf(verify, 'a1b2-verify-3', at(746));
+        expect(details.visitText, 'Visit 1 of 2');
+        expect(details.copy, 'copy 1');
+      });
+    });
   });
 
   test('opens a graph file whose runs/ has a session of a workflow it does '

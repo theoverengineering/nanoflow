@@ -20,16 +20,6 @@
   `step.json` и `step.log`); знаки имени вне `[A-Za-z0-9._-]` — `_`.
   `idOfDirName` достаёт идентификатор из имени каталога, `isSessionDirName`
   узнаёт каталог сессии, `runsDirOf` — каталог `runs` в каталоге проекта.
-- **Граф.** `Graph.fromJson` разбирает [граф](../../README.md#граф) из JSON:
-  рабочие узлы (`WorkerNode`) и развилки (`ForkNode`), цели (`Target`) и
-  выходы узлов (`Exit`) в порядке объявления. `ForkNode.route` решает, куда
-  идти по исходу развилки (`RouteTo`, `RouteEnd`, `RouteMissing`): так
-  движок выбирает следующий шаг, а UI знает выходы узла. Структура
-  проверяется только по форме, любая ошибка — `FormatException` с местом
-  (`nodes.verdict.then`); ссылки на узлы и то, что `in`, `out` и типы —
-  объект или boolean, проверяет `nanoflow check`, а сами схемы и их
-  совместимость — программа графа.
-  `GraphDescription` — описание графа, которое печатает программа графа.
 - **Модели и их JSON.** `Session` (один вызов функции воркфлоу: `workflow`,
   снимок файла графа `graph`, `inputId`), `Step` (`name`, `key`, `after`,
   `place`, `outputId`, `log`) и `Document`; `Event` — событие журнала
