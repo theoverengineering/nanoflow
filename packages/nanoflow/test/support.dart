@@ -55,9 +55,13 @@ List<String> eventNamesOf(String projectDir, String sessionId) => [
 ];
 
 /// Waits until [condition] holds, looking every 10 ms; fails, naming [what]
-/// it waited for, after 10 s.
-Future<void> until(bool Function() condition, String what) async {
-  final deadline = DateTime.now().add(const Duration(seconds: 10));
+/// it waited for, after [within].
+Future<void> until(
+  bool Function() condition,
+  String what, {
+  Duration within = const Duration(seconds: 10),
+}) async {
+  final deadline = DateTime.now().add(within);
   while (!condition()) {
     if (DateTime.now().isAfter(deadline)) fail('waited in vain for $what');
     await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -83,6 +87,17 @@ Future<SessionHandle> onlySession(String projectDir) async {
 Future<List<KnownEvent>> eventsOf(SessionHandle handle) async => [
   for (final event in await handle.events()) event as KnownEvent,
 ];
+
+/// What the log of the step [name] of the session of [handle] holds; `null`
+/// when the step has no log file.
+Future<String?> logOfStep(SessionHandle handle, String name) async {
+  final step = (await handle.steps()).singleWhere((s) => s.name == name);
+  final dir = Directory(p.join(handle.dir, stepsDirName))
+      .listSync()
+      .singleWhere((entity) => p.basename(entity.path).endsWith(step.id));
+  final log = File(p.join(dir.path, step.log));
+  return log.existsSync() ? log.readAsStringSync() : null;
+}
 
 /// What another process that tries to own the session [sessionId] of
 /// [projectDir] finds: `busy` while this one owns it, `opened` when not.

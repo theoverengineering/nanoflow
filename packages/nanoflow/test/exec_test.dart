@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
-import 'package:nanoflow/src/exec.dart' show inGroupScript;
+import 'package:nanoflow/src/exec.dart' show execIn, inGroupScript;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
+
+import 'support.dart';
 
 /// A stand-in for the process stderr that keeps what is written to it.
 final class Captured implements Stdout {
@@ -41,9 +43,8 @@ Future<T> withStderr<T>(Captured stderr, Future<T> Function() body) =>
 /// killed after the test if its stdout has not ended by then.
 Future<String> withoutTerminal(
   String executable,
-  List<String> arguments, {
-  String stdin = '',
-}) async {
+  List<String> arguments,
+) async {
   final process = await Process.start(
     executable,
     arguments,
@@ -55,13 +56,134 @@ Future<String> withoutTerminal(
   addTearDown(() {
     if (!ended) process.kill(ProcessSignal.sigkill);
   });
-  process.stdin.write(stdin);
   await process.stdin.close();
   process.stderr.drain<void>().ignore();
   final out = await utf8.decodeStream(process.stdout);
   ended = true;
   return out;
 }
+
+/// Runs [program] through bash with [inGroupScript] as [exec] does, keeping
+/// the pipe on the shell's stdin open until it exits; gives what it printed
+/// on stdout and stderr.
+Future<({String out, String err})> runInGroup(
+  List<String> program, {
+  Map<String, String>? environment,
+}) async {
+  final shell = await Process.start('/bin/bash', [
+    '-c',
+    inGroupScript,
+    'sh',
+    ...program,
+  ], environment: environment);
+  final out = utf8.decodeStream(shell.stdout);
+  final err = utf8.decodeStream(shell.stderr);
+  await shell.exitCode;
+  await shell.stdin.close();
+  return (out: await out, err: await err);
+}
+
+/// Whether the process [pid] runs: it is there, and not a zombie.
+bool isRunning(int pid) {
+  final ps = Process.runSync('ps', ['-o', 'stat=', '-p', '$pid']);
+  return ps.exitCode == 0 && !(ps.stdout as String).trim().startsWith('Z');
+}
+
+/// The ids of the [count] processes that wrote them to [file], one per
+/// line, once they have; each is killed after the test if it still runs.
+Future<List<int>> pidsIn(String file, int count) async {
+  var pids = <int>[];
+  await until(() {
+    if (!File(file).existsSync()) return false;
+    pids = [for (final line in File(file).readAsLinesSync()) int.parse(line)];
+    return pids.length == count;
+  }, '$count pids in $file');
+  for (final pid in pids) {
+    addTearDown(() {
+      if (isRunning(pid)) Process.killPid(pid, ProcessSignal.sigkill);
+    });
+  }
+  return pids;
+}
+
+/// Arguments of [exec] for `/bin/sh` that make it append its pid to
+/// [pidFile], then sleep for 100 s.
+List<String> sleeper(String pidFile) => [
+  '-c',
+  r'echo $$ >> "$0"; exec sleep 100',
+  pidFile,
+];
+
+/// Where [sleepsInStep] and [sleepsBeside] have their program write its pid.
+late String pidFile;
+
+/// What [exec] threw in [sleepsInStep] and [sleepsBeside], in order.
+final execErrors = <Object>[];
+
+/// Opened to let [sleepsBeside] past its step `wait`.
+late Completer<void> gate;
+
+/// A step that runs a program that sleeps for 100 s, then another program.
+Future<String> sleepsInStep(Flow f, String x) => f.step('sleep', () async {
+  for (final arguments in [sleeper(pidFile), <String>[]]) {
+    try {
+      await exec('/bin/sh', arguments);
+    } on Exception catch (e) {
+      execErrors.add(e);
+    }
+  }
+  return 'woke';
+});
+
+/// A step that runs a program that sleeps for 100 s, and beside it a step
+/// that waits for [gate].
+Future<void> sleepsBeside(Flow f, String x) async {
+  await Future.wait([
+    f.step('sleep', () async {
+      try {
+        return await exec('/bin/sh', sleeper(pidFile));
+      } on Exception catch (e) {
+        execErrors.add(e);
+        rethrow;
+      }
+    }),
+    f.step('wait', () => gate.future),
+  ]);
+}
+
+/// A step that runs a program that writes to stderr.
+Future<String> complainsInStep(Flow f, String x) => f.step(
+  'complain',
+  () => exec('/bin/sh', ['-c', 'echo to the log >&2; echo out']),
+);
+
+/// Runs a program that writes to stderr, outside the steps.
+Future<String> complainsOutside(Flow f, String x) =>
+    exec('/bin/sh', ['-c', 'echo to stderr >&2; echo out']);
+
+/// A step that runs a program that writes 3 MB to stderr.
+Future<String> floodsLog(Flow f, String x) => f.step(
+  'flood',
+  () => exec('/bin/sh', [
+    '-c',
+    r"head -c 3000000 /dev/zero | tr '\0' x >&2; echo done",
+  ]),
+);
+
+/// The shell [execsThenSteps] runs its program through.
+late String shellPath;
+
+/// Runs a program through [shellPath] in the workflow, then a step.
+Future<String> execsThenSteps(Flow f, String x) async {
+  await execIn(shellPath, 'true', []);
+  return f.step('after', () => 'x');
+}
+
+/// The keys of the steps of the session [sessionId] in [dir].
+Future<List<String>> keysOf(String dir, String sessionId) async => [
+  for (final step in await (await openSession(dir, sessionId)).steps())
+    step.key,
+];
 
 /// Why a test that needs bash is skipped, or `null` when there is one.
 final String? noBash = File('/bin/bash').existsSync() ? null : 'no /bin/bash';
@@ -114,20 +236,12 @@ void main() {
       'environment under a locale that is not installed', () async {
     // perl warns on stderr about it, unless told not to with PERL_BADLANG,
     // which then must not reach the program.
-    final run = await Process.run(
-      '/bin/bash',
-      [
-        '-c',
-        inGroupScript,
-        'sh',
-        '/bin/sh',
-        '-c',
-        r'echo "${PERL_BADLANG-unset}"',
-      ],
+    final run = await runInGroup(
+      ['/bin/sh', '-c', r'echo "${PERL_BADLANG-unset}"'],
       environment: {'LANG': 'xx_XX.UTF-8', 'LC_ALL': 'xx_XX.UTF-8'},
     );
-    expect(run.stdout, 'unset\n');
-    expect(run.stderr, matches(RegExp(r'^nanoflow-exec-group \d+\n$')));
+    expect(run.out, 'unset\n');
+    expect(run.err, matches(RegExp(r'^nanoflow-exec-group \d+\n$')));
   }, skip: noBash ?? noPerl);
 
   test('takes an executable that starts with - for a program, not a switch '
@@ -165,12 +279,19 @@ void main() {
     );
   });
 
-  test('writes stdin to the program and closes it', () async {
-    expect(await exec('cat', [], stdin: 'données'), 'données');
+  test('gives the program an empty stdin', () async {
+    expect(await exec('cat', []), isEmpty);
   });
 
-  test('closes stdin at once when there is none to write', () async {
-    expect(await exec('cat', []), isEmpty);
+  test('adds environment to the environment of the process', () async {
+    expect(
+      await exec(
+        '/bin/sh',
+        ['-c', r'echo "$NANOFLOW_GREETING $HOME"'],
+        environment: {'NANOFLOW_GREETING': 'hello'},
+      ),
+      'hello ${Platform.environment['HOME']}\n',
+    );
   });
 
   test('runs the program in workingDirectory', () async {
@@ -252,34 +373,161 @@ void main() {
     expect(p.basename(parent.trim()), 'bash');
   }, skip: noBash);
 
-  group(
-    'through a shell without job control, as dash is without a terminal',
-    () {
-      test('hands the program its stdin', () async {
-        expect(
-          await withoutTerminal('/bin/dash', [
-            '-c',
-            inGroupScript,
-            'sh',
-            'cat',
-          ], stdin: 'piped'),
-          'piped',
-        );
-      }, skip: noDash);
+  test('through a shell without job control, as dash is without a '
+      'terminal, throws instead of running a program it could not '
+      'stop', () async {
+    Future<String> through(String shell) => withoutTerminal(
+      Platform.resolvedExecutable,
+      ['run', p.join('test', 'fixtures', 'exec_through.dart'), shell],
+    );
+    expect(await through('/bin/bash'), 'ran\n');
+    expect(
+      await through('/bin/dash'),
+      'exec cannot run echo in a process group of its own, so it could not '
+      'be stopped with what it starts: /bin/dash turns job control off '
+      'without a terminal; install bash\n',
+    );
+  }, skip: noDash);
 
-      test('throws instead of running a program it could not stop', () async {
-        Future<String> through(String shell) => withoutTerminal(
-          Platform.resolvedExecutable,
-          ['run', p.join('test', 'fixtures', 'exec_through.dart'), shell],
-        );
-        expect(await through('/bin/bash'), 'piped\n');
-        expect(
-          await through('/bin/dash'),
-          'exec cannot run cat in a process group of its own, so a stop '
-          'of the step could not end it: /bin/dash turns job control off '
-          'without a terminal; install bash\n',
-        );
-      }, skip: noDash);
-    },
-  );
+  group('the program dies with the process that ran it', () {
+    test('as the shell that runs it ends its group, with what it started, '
+        'when the pipe on its stdin closes', () async {
+      final pids = p.join(temp.path, 'pids');
+      final shell = await Process.start('/bin/bash', [
+        '-c',
+        inGroupScript,
+        'sh',
+        '/bin/sh',
+        '-c',
+        r'sleep 100 & echo $! >> "$0"; wait',
+        pids,
+      ]);
+      shell.stdout.drain<void>().ignore();
+      shell.stderr.drain<void>().ignore();
+      final [sleep] = await pidsIn(pids, 1);
+
+      await shell.stdin.close();
+
+      expect(await shell.exitCode.timeout(const Duration(seconds: 5)), 143);
+      expect(isRunning(sleep), isFalse);
+    }, skip: noBash);
+
+    test('even when that process is killed with SIGKILL', () async {
+      final pids = p.join(temp.path, 'pids');
+      final process = await Process.start(Platform.resolvedExecutable, [
+        p.join('test', 'fixtures', 'exec_dies_with.dart'),
+        pids,
+      ]);
+      addTearDown(() => process.kill(ProcessSignal.sigkill));
+      process.stdout.drain<void>().ignore();
+      process.stderr.drain<void>().ignore();
+      final sleeps = await pidsIn(pids, 2);
+
+      process.kill(ProcessSignal.sigkill);
+      await process.exitCode;
+
+      await until(
+        () => !sleeps.any(isRunning),
+        'the end of the programs',
+        within: const Duration(seconds: 5),
+      );
+    });
+  });
+
+  group('in a session', () {
+    late String dir;
+
+    setUp(() async {
+      dir = await tempDir();
+      pidFile = p.join(temp.path, 'pids');
+      execErrors.clear();
+    });
+
+    test('writes the stderr of a program run in a step to the step\'s '
+        'log', () async {
+      final stderr = Captured();
+
+      expect(
+        await withStderr(
+          stderr,
+          () => Flow(directory: dir).run(complainsInStep, 'x'),
+        ),
+        'out\n',
+      );
+
+      expect(stderr.text, isEmpty);
+      expect(
+        await logOfStep(await onlySession(dir), 'complain'),
+        'to the log\n',
+      );
+    });
+
+    test('writes all of a flood of stderr to the step\'s log', () async {
+      expect(await Flow(directory: dir).run(floodsLog, 'x'), 'done\n');
+
+      expect(await logOfStep(await onlySession(dir), 'flood'), 'x' * 3000000);
+    });
+
+    test('passes the stderr of a program run outside the steps on to the '
+        'process stderr', () async {
+      final stderr = Captured();
+
+      expect(
+        await withStderr(
+          stderr,
+          () => Flow(directory: dir).run(complainsOutside, 'x'),
+        ),
+        'out\n',
+      );
+
+      expect(stderr.text, 'to stderr\n');
+      expect(await (await onlySession(dir)).steps(), isEmpty);
+    });
+
+    test('flow.stop() ends the group of a program that runs, and exec throws '
+        'a FlowStoppedException then, and at once after', () async {
+      final flow = Flow(directory: dir);
+      final session = await flow.start(sleepsInStep, 'x');
+      final [sleep] = await pidsIn(pidFile, 1);
+
+      flow.stop();
+
+      await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
+      expect(execErrors, [
+        isA<FlowStoppedException>(),
+        isA<FlowStoppedException>(),
+      ]);
+      expect(isRunning(sleep), isFalse);
+    });
+
+    test('moves no step key: the first program through a shell, which '
+        'probes the shell, and a later one give the same keys', () async {
+      // A path to bash that no test has run a program through before.
+      shellPath = '/bin/./bash';
+      final flow = Flow(directory: dir);
+
+      final first = await flow.start(execsThenSteps, 'x');
+      await first.result;
+      final second = await flow.start(execsThenSteps, 'x');
+      await second.result;
+
+      final keys = await keysOf(dir, first.id);
+      expect(keys, hasLength(1));
+      expect(await keysOf(dir, second.id), keys);
+    }, skip: noBash);
+
+    test('a failure of the store ends the group of a program that runs, and '
+        'exec throws the StorageException', () async {
+      gate = Completer();
+      final session = await Flow(directory: dir).start(sleepsBeside, 'x');
+      final [sleep] = await pidsIn(pidFile, 1);
+
+      Directory(sessionDirOf(dir, session.id)).deleteSync(recursive: true);
+      gate.complete();
+
+      await expectLater(session.result, throwsA(isA<StorageException>()));
+      expect(execErrors, [isA<StorageException>()]);
+      expect(isRunning(sleep), isFalse);
+    });
+  });
 }

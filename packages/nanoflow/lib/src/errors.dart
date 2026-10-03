@@ -1,5 +1,8 @@
 /// A value that a session keeps — the input of a workflow, the result of a
-/// workflow or of a step — cannot be turned into JSON.
+/// workflow or of a step — does not come back from JSON as the type the code
+/// declares: it is not JSON and has no `toJson`, its type is neither a JSON
+/// type nor one with a codec (`Flow.addCodec`), or the codec's `fromJson`
+/// fails.
 ///
 /// For a step it is the step's exception: the step fails with it.
 final class CodecException implements Exception {
@@ -62,8 +65,8 @@ final class StorageException implements Exception {
   String toString() => 'StorageException: $cause';
 }
 
-/// The flow was stopped: no step starts and no session starts or resumes
-/// any more.
+/// The flow was stopped: no step starts, no program starts with `exec` in
+/// its sessions, and no session starts or resumes any more.
 final class FlowStoppedException implements Exception {
   const FlowStoppedException();
 

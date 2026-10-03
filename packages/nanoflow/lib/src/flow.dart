@@ -5,8 +5,10 @@ import 'dart:io';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart';
 
+import 'codecs.dart';
 import 'context.dart';
 import 'errors.dart';
+import 'exec.dart';
 import 'project.dart';
 
 /// Runs workflows: ordinary async functions of a [Flow] and an input, whose
@@ -20,9 +22,12 @@ import 'project.dart';
 /// step a key that is the same on every run of the same code (spec §4.3);
 /// several sessions of one flow may run at once.
 ///
-/// The input, the result and every step's result must be JSON: `null`, a
-/// `bool`, a number, a `String`, and lists and maps with `String` keys of
-/// them; anything else is a [CodecException].
+/// The input, the result and every step's result are kept as JSON (spec
+/// §4.4): a value of a JSON type — `null`, a `bool`, a number, a `String`,
+/// and lists and maps with `String` keys of them — as it is, a value of
+/// another type through its `toJson`, which comes back through the
+/// `fromJson` registered for its type with [addCodec]. A value that would
+/// not come back is a [CodecException].
 final class Flow {
   /// A flow whose sessions go to `runs/` in [directory]; by default the
   /// project directory: the directory of the binary in a compiled program,
@@ -36,8 +41,24 @@ final class Flow {
 
   late final FsStore _store = FsStore(runsDirOf(directory));
 
+  final _codecs = Codecs();
+
+  /// The sessions that run in this process.
+  final _sessions = <_Session>{};
+
   /// Whether [stop] was called.
   bool _stopped = false;
+
+  /// Registers [fromJson] as the codec of [T]: a [T] that a session keeps —
+  /// the input of a workflow, its result or the result of a step — becomes
+  /// JSON through its `toJson`, and [fromJson] makes a [T] of that JSON
+  /// again, as [resume] needs.
+  ///
+  /// It serves `T?`, `List<T>`, `Map<String, T>` and any nesting of them
+  /// too. A type of JSON needs no codec. A codec registered for [T] again
+  /// takes the place of the one before.
+  void addCodec<T>(T Function(Map<String, Object?> json) fromJson) =>
+      _codecs.add(fromJson);
 
   /// Starts a session of [workflow] with [input]: the session is written and
   /// owned by this process, and [workflow] runs.
@@ -45,9 +66,9 @@ final class Flow {
   /// The session records the graph file as it is now and the hash of the
   /// code. Throws, having written nothing: an [ArgumentError] when
   /// [workflow] is not a top-level function or a static method, whose name
-  /// names the session; a [CodecException] when [input] is not JSON; a
-  /// [FlowStoppedException] once the flow is stopped; a [StorageException]
-  /// when the session cannot be written.
+  /// names the session; a [CodecException] when [input] would not come back
+  /// from JSON; a [FlowStoppedException] once the flow is stopped; a
+  /// [StorageException] when the session cannot be written.
   Future<FlowSession<R>> start<I, R>(
     Future<R> Function(Flow f, I input) workflow,
     I input,
@@ -60,7 +81,7 @@ final class Flow {
     _Journal journal,
   ) async {
     final name = workflowNameOf(workflow);
-    _checkJson<I>(input);
+    final inputJson = _codecs.encode<I>(input);
     final graph = await graphSnapshotOf(directory);
     final package = await packageOf(directory, graph);
     final code = await codeHashOf(directory);
@@ -69,7 +90,7 @@ final class Flow {
       () => _store.createSession(
         workflow: name,
         graph: graph,
-        input: (value: input),
+        input: (value: inputJson),
         code: code,
       ),
     );
@@ -102,14 +123,19 @@ final class Flow {
   /// the result is its saved result, or a [SessionFailedException] with its
   /// saved error and stack trace.
   ///
+  /// The input, the results of the steps taken from the journal and the
+  /// saved result come back from JSON as the types the code declares (see
+  /// [addCodec]); one that does not is a [CodecException]: for a step, its
+  /// exception, and for the result, the session's.
+  ///
   /// Throws, having written no event: an [ArgumentError] when [workflow] is
-  /// not a top-level function or a static method; a
-  /// [FlowStoppedException] once the flow is stopped; a
-  /// [SessionNotFoundException] when `runs/` has no session [sessionId]; a
-  /// [SessionBusyException] when another process owns it, or this one runs
-  /// it already; a
-  /// [WorkflowMismatchException] when it is a session of another workflow;
-  /// a [StorageException] when it cannot be read.
+  /// not a top-level function or a static method; a [FlowStoppedException]
+  /// once the flow is stopped; a [SessionNotFoundException] when `runs/` has
+  /// no session [sessionId]; a [SessionBusyException] when another process
+  /// owns it, or this one runs it already; a [WorkflowMismatchException]
+  /// when it is a session of another workflow; a [CodecException] when its
+  /// saved input does not come back; a [StorageException] when it cannot be
+  /// read.
   Future<FlowSession<R>> resume<I, R>(
     Future<R> Function(Flow f, I input) workflow,
     String sessionId,
@@ -132,18 +158,18 @@ final class Flow {
       }
       if (state.status == SessionStatus.finished) {
         final outputId = state.outputId;
-        final value = outputId == null
+        final json = outputId == null
             ? null
             : await _stored(() => handle.documentValue(outputId));
         await handle.release();
-        return FlowSession._(sessionId, Future.value(value as R));
+        return FlowSession._(sessionId, _decoded<R>(json));
       }
       final inputId = session.inputId;
-      final input =
-          (inputId == null
-                  ? null
-                  : await _stored(() => handle.documentValue(inputId)))
-              as I;
+      final input = _codecs.decode<I>(
+        inputId == null
+            ? null
+            : await _stored(() => handle.documentValue(inputId)),
+      );
       final journal = await _journalOf(handle, state);
       final graph = await graphSnapshotOf(directory);
       final code = await codeHashOf(directory);
@@ -168,6 +194,17 @@ final class Flow {
     } catch (_) {
       await handle.release();
       rethrow;
+    }
+  }
+
+  /// The result of a session that finished with [json]: the [R] it stands
+  /// for, or the [CodecException] when it does not decode to one.
+  Future<R> _decoded<R>(Object? json) {
+    try {
+      return Future.value(_codecs.decode<R>(json));
+    } on CodecException catch (e, s) {
+      // Nobody can listen to it before [resume] gives it.
+      return Future<R>.error(e, s)..ignore();
     }
   }
 
@@ -223,11 +260,18 @@ final class Flow {
   /// a [FlowStoppedException] — and nothing more is written to them, so
   /// each can be resumed; no session starts or resumes either.
   ///
-  /// A step that runs goes on, and its outcome is not written: it throws a
-  /// [FlowStoppedException] at the workflow. A session's result is a
-  /// [FlowStoppedException] once its workflow and its steps have ended, and
-  /// then the session is let go.
-  void stop() => _stopped = true;
+  /// Every program that `exec` runs in the sessions is stopped, with every
+  /// process it started, and none starts any more: `exec` throws a
+  /// [FlowStoppedException]. A step that runs goes on, and its outcome is
+  /// not written: it throws a [FlowStoppedException] at the workflow. A
+  /// session's result is a [FlowStoppedException] once its workflow and its
+  /// steps have ended, and then the session is let go.
+  void stop() {
+    _stopped = true;
+    for (final session in _sessions) {
+      session._programs.stop(const FlowStoppedException());
+    }
+  }
 
   void _checkNotStopped() {
     if (_stopped) throw const FlowStoppedException();
@@ -236,9 +280,12 @@ final class Flow {
   /// Runs the step [name] of the session this is called in: [body] runs, and
   /// what it returns is written to the session and returned.
   ///
+  /// What [body] prints goes to the step's log, and so does the stderr of
+  /// the programs `exec` runs in it.
+  ///
   /// When [body] throws, the step fails: the exception is written, and
-  /// thrown on into the workflow. A result that is not JSON fails the step
-  /// with a [CodecException].
+  /// thrown on into the workflow. A result that would not come back from
+  /// JSON as a [T] fails the step with a [CodecException] (see [addCodec]).
   ///
   /// Throws a [StateError] when called outside a session of this flow: from
   /// anywhere but the code of a workflow that [start], [run] or [resume]
@@ -259,9 +306,9 @@ final class Flow {
 
 /// Starts a session of [workflow] as [Flow.start] does, as one whose steps of
 /// the keys in [saved] have finished before, following the step `after`,
-/// with the result `value`: such a step returns its result when it follows
-/// that step, and neither runs nor writes anything (spec §4.6, a step from
-/// the journal).
+/// with the result whose JSON is `value`: such a step returns its result
+/// when it follows that step, and neither runs nor writes anything (spec
+/// §4.6, a step from the journal).
 ///
 /// For tests of the keys under many timings, which would otherwise write a
 /// journal for each.
@@ -289,7 +336,8 @@ final class FlowSession<R> {
   final Future<R> result;
 }
 
-/// A step that finished: the key of the step it followed, and its result.
+/// A step that finished: the key of the step it followed, and the JSON of
+/// its result.
 typedef _Saved = ({String? after, Object? value});
 
 /// What a session's journal has of its steps, by key.
@@ -307,8 +355,9 @@ final class _Journal {
 final class _Session {
   _Session(this._flow, this._handle, this._package, this._journal)
     : _projectDir = _flow.directory,
-      _outside = Zone.current {
-    _zone = KeyedZone(zoneValues: {_flow: this});
+      _outside = Zone.current,
+      _programs = ExecScope(Zone.current) {
+    _zone = KeyedZone(zoneValues: {_flow: this, ..._programs.zoneValues});
   }
 
   final Flow _flow;
@@ -322,11 +371,16 @@ final class _Session {
   final _Journal _journal;
 
   /// The zone the session was started from. The library's own work for the
-  /// session — writing its steps — runs there, not in the session's zone,
-  /// so it schedules nothing that would change the keys of the steps.
+  /// session — writing its steps and their logs, turning values into JSON
+  /// and back, running programs for `exec` — runs there, not in the
+  /// session's zone, so it schedules nothing that would change the keys of
+  /// the steps.
   final Zone _outside;
 
   late final KeyedZone _zone;
+
+  /// The programs `exec` runs in the session.
+  final ExecScope _programs;
 
   /// One future for each step that runs live, which completes when the step
   /// has ended and its outcome is written.
@@ -348,21 +402,21 @@ final class _Session {
   /// failed: the result is then the [FlowStoppedException] or the
   /// [StorageException].
   Future<R> run<R>(Future<R> Function() workflow) async {
+    _flow._sessions.add(this);
     try {
-      ({R value})? returned;
+      ({R value, Object? json})? returned;
       Object? error;
       StackTrace? stack;
       try {
         final value = await _zone.run(workflow);
-        _checkJson<R>(value);
-        returned = (value: value);
+        returned = (value: value, json: _flow._codecs.encode<R>(value));
       } catch (e, s) {
         error = e;
         stack = s;
       }
       await _settled();
-      if (returned case (:final value)?) {
-        final outputId = await _write(() => _handle.writeDocument(value));
+      if (returned case (:final value, :final json)?) {
+        final outputId = await _write(() => _handle.writeDocument(json));
         await _write(
           () => _handle.appendEvent(
             SessionFinished(time: systemClock(), outputId: outputId),
@@ -381,6 +435,7 @@ final class _Session {
       );
       Error.throwWithStackTrace(error!, stack!);
     } finally {
+      _flow._sessions.remove(this);
       await _handle.release();
     }
   }
@@ -411,14 +466,17 @@ final class _Session {
     return _zone.step(name, (step) {
       final saved = _journal.saved[step.key];
       if (saved != null && saved.after == step.after) {
-        return Future<T>.value(saved.value as T);
+        return _outside.run(
+          () => Future.sync(() => _flow._codecs.decode<T>(saved.value)),
+        );
       }
       return _outside.run(() => _live(step, body, trace));
     });
   }
 
   /// Runs [body] as [step] and writes it: `step-started`, then its result
-  /// and `step-finished`, or `step-failed`.
+  /// and `step-finished`, or `step-failed`. What the body prints goes to the
+  /// step's log, which is written before the step's outcome.
   Future<T> _live<T>(
     KeyedStep step,
     FutureOr<T> Function() body,
@@ -428,10 +486,16 @@ final class _Session {
     _running.add(ended.future);
     try {
       final record = await _started(step, trace);
+      final output = _StepOutput(this, record.id);
       final T value;
+      final Object? json;
       try {
-        value = await step.runBody(body);
-        _checkJson<T>(value);
+        try {
+          value = await step.runBody(() => output.bodyZone().run(body));
+        } finally {
+          await output.close();
+        }
+        json = _flow._codecs.encode<T>(value);
       } catch (e, s) {
         await _write(
           () => _handle.appendEvent(
@@ -445,7 +509,7 @@ final class _Session {
         );
         rethrow;
       }
-      final outputId = await _write(() => _handle.writeDocument(value));
+      final outputId = await _write(() => _handle.writeDocument(json));
       await _write(
         () => _handle.appendEvent(
           StepFinished(
@@ -507,8 +571,17 @@ final class _Session {
     try {
       return await _stored(write);
     } on StorageException catch (e) {
-      throw _failure ??= e;
+      throw _failed(e);
     }
+  }
+
+  /// The store of the session has failed with [failure]: the session is not
+  /// written any more, and its programs are stopped. Gives the session's
+  /// failure, the first one.
+  StorageException _failed(StorageException failure) {
+    final first = _failure ??= failure;
+    _programs.stop(first);
+    return first;
   }
 
   void _checkWritable() {
@@ -534,23 +607,84 @@ Future<T> _stored<T>(Future<T> Function() io) async {
 /// The text of [error] on one line: every run of line breaks is a space.
 String _oneLine(Object error) => '$error'.replaceAll(RegExp(r'[\r\n]+'), ' ');
 
-/// Throws a [CodecException] for [T] unless [value] is JSON as it is,
-/// without a `toJson`.
-void _checkJson<T>(Object? value) {
-  try {
-    jsonEncode(value, toEncodable: (_) => throw const _NotJson());
-  } on JsonCyclicError {
-    throw CodecException(T, 'a list or a map contains itself');
-  } on JsonUnsupportedObjectError catch (e) {
-    throw CodecException(T, switch (e.unsupportedObject) {
-      final num number => '$number is not a JSON number',
-      Map() => 'a map with keys that are not strings is not JSON',
-      final other => 'a ${other.runtimeType} is not a JSON value',
+/// What the body of a step outputs — the lines it prints and the stderr of
+/// the programs `exec` runs in it — written to the step's log, which is
+/// opened at the first byte.
+///
+/// Takes nothing once the step has ended, the flow is stopped or the store of
+/// the session has failed — nothing more is written to the session then —
+/// and the output goes to the process's own. A log that cannot be written is
+/// a failure of the store.
+final class _StepOutput implements ProgramLog {
+  _StepOutput(this._session, this._stepId);
+
+  final _Session _session;
+  final String _stepId;
+
+  /// The step's log; `null` until the first output.
+  StepLog? _log;
+
+  /// Whether the step has ended.
+  bool _closed = false;
+
+  /// A zone for the body of the step, forked from the current one, in
+  /// which `print` and `exec` write to this output.
+  Zone bodyZone() => Zone.current.fork(
+    specification: ZoneSpecification(
+      print: (self, parent, zone, line) {
+        if (!add(utf8.encode('$line\n'))) parent.print(zone, line);
+      },
+    ),
+    zoneValues: logZoneValues(this),
+  );
+
+  @override
+  bool add(List<int> bytes) {
+    if (_closed || _session._flow._stopped || _session._failure != null) {
+      return false;
+    }
+    // Outside the session's zone: writing to the log schedules callbacks.
+    return _session._outside.run(() {
+      final log = _log ??= _open();
+      if (log == null) return false;
+      log.add(bytes);
+      return true;
     });
   }
-}
 
-/// What the check for JSON throws for a value that is not.
-final class _NotJson {
-  const _NotJson();
+  /// Opens the step's log; `null` when its directory is gone.
+  StepLog? _open() {
+    final StepLog log;
+    try {
+      log = _session._handle.openLog(_stepId);
+    } on FileSystemException catch (e) {
+      _session._failed(StorageException(e));
+      return null;
+    } on ArgumentError {
+      // The record was there when the step started.
+      _session._failed(
+        StorageException(
+          FileSystemException(
+            'Cannot find the directory of the step $_stepId',
+            _session._handle.dir,
+          ),
+        ),
+      );
+      return null;
+    }
+    unawaited(log.failed.then((e) => _session._failed(StorageException(e))));
+    return log;
+  }
+
+  @override
+  int get unwritten => _log?.unwritten ?? 0;
+
+  @override
+  Future<void> flush() async => _log?.flush();
+
+  /// Takes no more output, and writes what it took.
+  Future<void> close() async {
+    _closed = true;
+    await _log?.close();
+  }
 }
