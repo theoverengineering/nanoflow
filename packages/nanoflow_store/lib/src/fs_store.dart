@@ -27,12 +27,13 @@ final class FsStore {
   ///
   /// The session's lock is taken before anything is written to it: the
   /// handle holds it, so no other process can open the session (see
-  /// [openSession]). The store's owner is written into the lock file. Builds the whole session under `runs/.tmp-<id>/` and
-  /// renames it into place: `session.json` with [graph], the `documents`
-  /// directory with the input document (when [input] is given), the empty
-  /// `steps` directory and `log.jsonl` with `session-started` and [code].
-  /// The session directory's name and the time of `session-started` are the
-  /// time the session is created; creates [runsDir] when there is none.
+  /// [openSession]). The store's owner is written into the lock file. Builds
+  /// the whole session under `runs/.tmp-<id>/` and renames it into place:
+  /// `session.json` with [graph], the `documents` directory with the input
+  /// document (when [input] is given), the empty `steps` directory and
+  /// `log.jsonl` with `session-started` and [code]. The session directory's
+  /// name and the time of `session-started` are the time the session is
+  /// created; creates [runsDir] when there is none.
   Future<SessionHandle> createSession({
     required String workflow,
     required Map<String, Object?>? graph,

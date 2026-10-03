@@ -30,7 +30,8 @@ Future<SessionHandle> _create(FsStore store) => store.createSession(
 );
 
 /// A process that holds an exclusive lock on [path]: the byte at [offset],
-/// or the whole file without one. Completes once it holds it.
+/// or the whole file without one. Completes once it holds it; fails, with
+/// what the process printed to stderr, when it ends without saying so.
 Future<void> _holdLock(String path, {int? offset}) async {
   final holder = await Process.start(Platform.resolvedExecutable, [
     p.join('test', 'fixtures', 'hold_lock.dart'),
@@ -38,12 +39,18 @@ Future<void> _holdLock(String path, {int? offset}) async {
     if (offset != null) '$offset',
   ]);
   addTearDown(() => holder.kill(ProcessSignal.sigkill));
-  holder.stderr.drain<void>().ignore();
-  final first = await holder.stdout
+  final stderrText = holder.stderr.transform(utf8.decoder).join();
+  final lines = await holder.stdout
       .transform(utf8.decoder)
       .transform(const LineSplitter())
-      .first;
-  expect(first, 'locked');
+      .take(1)
+      .toList();
+  if (lines.firstOrNull == 'locked') return;
+  // Its stdout is closed: the process has ended, and its stderr ends too.
+  final why = lines.isEmpty
+      ? 'it ended without printing, stderr: ${await stderrText}'
+      : 'it printed "${lines.single}"';
+  fail('the process that should hold the lock did not report it: $why');
 }
 
 void main() {
@@ -215,7 +222,9 @@ void main() {
       final id = created.session.id;
 
       expect(await ownerCheck(runsDir, id), 'busy');
-      // Locked or not, what the owner wrote is there to read.
+      // What the owner wrote is there to read. Reading it here, in the process
+      // that holds the lock, drops the lock, so it comes after the busy check
+      // and release follows.
       expect(read(_lockPath(created)), _ownerText);
 
       await created.release();
