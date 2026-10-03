@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/copies_frame.dart';
@@ -10,8 +10,10 @@ import 'package:nanoflow_ui/graph/copy_switcher.dart';
 import 'package:nanoflow_ui/graph/logs/logs_panel.dart';
 import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
+import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 
+import '../../state/support.dart';
 import '../../support/golden.dart';
 import '../logs/support.dart';
 import '../support.dart';
@@ -27,10 +29,13 @@ void main() {
       GraphCanvas(
         model: model,
         controller: controller,
-        onExpandNode: (path, node, _) => model.expandNode(
-          path,
-          openings(node, model.canvas.file!.functions).first,
-        ),
+        onExpandNode: (path, node, _) async {
+          model.expandNode(
+            path,
+            openings(node, model.canvas.file!.functions).first,
+          );
+          return true;
+        },
       ),
       size: reviewCanvas,
     );
@@ -168,6 +173,45 @@ void main() {
     expect(inside(viewport(tester), tester.getRect(tile('5/4'))), isTrue);
   });
 
+  testWidgets('a session on a call in place: the steps of its function on '
+      'their nodes in the frame, the selected one ringed', (tester) async {
+    final release = graphFileNamed('release');
+    final j =
+        Journal('r1r1-session', workflow: 'release', graph: release.toJson())
+          ..step('plan', 1, end: 2, place: 'lib/release.dart:16')
+          ..step('upload', 3, end: 4, place: 'lib/publish.dart:12')
+          ..step('verify', 5, place: 'lib/publish.dart:13');
+    final model = modelOf(changes: j.changes);
+    await pumpCanvas(tester, model);
+    await tap(tester, expand('5'));
+    NodeTile tileOf(String id) => tester.widget<NodeTile>(node(id));
+    expect(tileOf('5/1').marks!.state, NodeState.visited);
+    expect(tileOf('5/2').marks!.state, NodeState.running);
+    expect(tileOf('5/2').selected, isTrue);
+    expect(tileOf('5/4').marks!.state, NodeState.notVisited);
+    expect(tileOf('1').marks!.state, NodeState.visited);
+  });
+
+  testWidgets('what a session changes in a frame — the room of its copy '
+      'switcher — keeps the view fitted as it was', (tester) async {
+    final model = modelOf(
+      graph: graphFileNamed('inline'),
+      file: inlineFile,
+      changes: copiesSession().changes,
+    );
+    model.selection.showCurrentGraph();
+    await pumpCanvas(tester, model);
+    await tap(tester, expand('1'));
+    final (scale, offset) = (controller.scale, controller.offset);
+
+    // The session's frame has its switcher: a row taller.
+    model.showSession('c0c0-session');
+    await settle(tester);
+    expect(find.byType(CopySwitcher), findsOneWidget);
+    expect(controller.scale, scale);
+    expect(controller.offset, offset);
+  });
+
   group('on the graph screen', () {
     testWidgets('+ on a call of an interface method offers its '
         'implementations; the one chosen is drawn in place', (tester) async {
@@ -186,6 +230,37 @@ void main() {
       expect(model.canvas.frames.single.path, const [
         Opened('2', functionId: 'lib/deploy.dart#MailNotifier.notify'),
       ]);
+    });
+
+    testWidgets('a + whose menu is left without a choice expands nothing, '
+        'and moves nothing later', (tester) async {
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(
+          file: releaseFile,
+          graph: graphFileNamed('interfaces'),
+        ),
+      );
+      await tester.drag(find.byType(GraphCanvas), const Offset(-60, 20));
+      await tester.pump();
+      final opened = tester.getTopLeft(tile('2'));
+      await tap(tester, expand('2'));
+      expect(find.text('MailNotifier.notify()'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.text('MailNotifier.notify()'), findsNothing);
+      expect(model.canvas.frames, isEmpty);
+
+      // The view moved on; the call expanded otherwise is not put back
+      // where its tile was when the menu opened.
+      await tester.drag(find.byType(GraphCanvas), const Offset(-80, 0));
+      await tester.pump();
+      model.expandNode(const [], const Opened('2', functionId: _mail));
+      await settle(tester);
+      expect(
+        tester.getTopLeft(find.byType(FunctionFrameView)).dx,
+        isNot(closeTo(opened.dx, 1)),
+      );
     });
 
     testWidgets('a double click on a node in a frame opens it from there', (
@@ -285,3 +360,5 @@ void main() {
     });
   });
 }
+
+const _mail = 'lib/deploy.dart#MailNotifier.notify';

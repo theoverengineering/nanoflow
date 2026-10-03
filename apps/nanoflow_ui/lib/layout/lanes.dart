@@ -115,15 +115,17 @@ Lanes assignLanes(
   LayoutOptions options,
 ) {
   final lanes = Lanes._(List<double>.filled(layers.length, 0));
-  // A layer is as wide as its widest node: a frame is wider than a tile.
-  // Its nodes stand at its left; an arrow out of a narrower one runs on to
-  // the layer's right side before it turns.
+  // A layer is as wide as its widest node: a frame is wider than a tile,
+  // a port has no width. Its nodes stand at its left; an arrow out of a
+  // narrower one runs on to the layer's right side before it turns. A layer
+  // only arrows pass is as wide as a tile.
   final widths = [
     for (final layer in layers)
-      layer.fold(options.tile, (most, item) {
-        final width = item.node?.widthOf(options) ?? 0;
-        return width > most ? width : most;
-      }),
+      [for (final item in layer) ?item.node?.widthOf(options)].fold<double?>(
+            null,
+            (most, w) => most == null || w > most ? w : most,
+          ) ??
+          options.tile,
   ];
   final r = options.cornerRadius;
   final r45 = r * math.tan(math.pi / 8);

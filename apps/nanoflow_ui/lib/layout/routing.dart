@@ -135,6 +135,7 @@ GraphLayout route(
               ],
             ),
       frame: node.framed?.placeIn(tile),
+      port: node.port,
     );
     for (final exit in node.exits) {
       final e = frame.exits[exit]!;

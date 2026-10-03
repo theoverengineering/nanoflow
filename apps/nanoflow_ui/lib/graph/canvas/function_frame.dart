@@ -1,10 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../layout/layout.dart' as layout;
 import 'canvas_style.dart';
-import 'copies_frame.dart';
 import 'frame_toggle.dart';
 
 /// The frame of a call expanded in place (decision 6;
@@ -44,20 +41,12 @@ class FunctionFrameView extends StatelessWidget {
     side: _inset,
     bottom: _inset,
     width:
-        _inset + _measure(title) + _titleGap + FrameToggle.size + _toggleInset,
+        _inset +
+        measureText(title, CanvasText.frameTitle) +
+        _titleGap +
+        FrameToggle.size +
+        _toggleInset,
   );
-
-  static double _measure(String text) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: CopiesFrameView.titleStyle),
-      textDirection: TextDirection.ltr,
-      textScaler: TextScaler.noScaling,
-      maxLines: 1,
-    )..layout();
-    final width = painter.width;
-    painter.dispose();
-    return math.max(0, width);
-  }
 
   @override
   Widget build(BuildContext context) => Stack(
@@ -78,7 +67,7 @@ class FunctionFrameView extends StatelessWidget {
         top: _titleTop,
         child: Text(
           title,
-          style: CopiesFrameView.titleStyle,
+          style: CanvasText.frameTitle,
           textScaler: TextScaler.noScaling,
           maxLines: 1,
           softWrap: false,

@@ -124,6 +124,34 @@ abstract final class CanvasText {
     color: CanvasColors.legendText,
   );
 
+  /// The title of a frame: `publish()`, `each pkg in packages`.
+  static const frameTitle = TextStyle(
+    inherit: false,
+    fontFamily: AppText.sans,
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+    color: Color(0xFFD6D6DC),
+  );
+
+  /// Across from the title of a frame of copies: `×3 · in parallel`.
+  static const frameCount = TextStyle(
+    inherit: false,
+    fontFamily: AppText.sans,
+    fontSize: 12,
+    height: 1.3,
+    color: Color(0xFFA9A9B2),
+  );
+
+  /// Under a frame of copies: `done 1 of 3`.
+  static const frameFooter = TextStyle(
+    inherit: false,
+    fontFamily: AppText.sans,
+    fontSize: 10,
+    height: 1.3,
+    color: Color(0xFF8E8E96),
+  );
+
   /// How [kind] is drawn. A name is measured bold: the selected step's node
   /// has it so, and it must fit where the layout keeps room for it.
   static TextStyle of(LabelKind kind) => switch (kind) {
@@ -133,13 +161,13 @@ abstract final class CanvasText {
   };
 }
 
-final Map<(String, LabelKind), double> _widths = {};
+final Map<(String, TextStyle), double> _widths = {};
 
-/// The width of [text] drawn as [kind] on the canvas: the layout's measurer.
-double measureLabel(String text, LabelKind kind) =>
-    _widths[(text, kind)] ??= () {
+/// The width of [text] drawn in [style] on one line, measured once.
+double measureText(String text, TextStyle style) =>
+    _widths[(text, style)] ??= () {
       final painter = TextPainter(
-        text: TextSpan(text: text, style: CanvasText.of(kind)),
+        text: TextSpan(text: text, style: style),
         textDirection: TextDirection.ltr,
         textScaler: TextScaler.noScaling,
         maxLines: 1,
@@ -148,3 +176,7 @@ double measureLabel(String text, LabelKind kind) =>
       painter.dispose();
       return width;
     }();
+
+/// The width of [text] drawn as [kind] on the canvas: the layout's measurer.
+double measureLabel(String text, LabelKind kind) =>
+    measureText(text, CanvasText.of(kind));

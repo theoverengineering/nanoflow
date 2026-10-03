@@ -148,8 +148,10 @@ List<String> checkLayout(GraphLayout layout) {
             : '${node.id}: bar is not level with the start in the frame',
       );
     }
-    if (bar.rect.top < node.tile.top + o.tileRadius - 1e-6 ||
-        bar.rect.bottom > node.tile.bottom - o.tileRadius + 1e-6) {
+    // A port's bar is on its frame's side, not on a tile.
+    if (!node.port &&
+        (bar.rect.top < node.tile.top + o.tileRadius - 1e-6 ||
+            bar.rect.bottom > node.tile.bottom - o.tileRadius + 1e-6)) {
       problems.add('${node.id}: bar runs onto the tile\'s corners');
     }
     for (var i = 1; i < bar.inputs.length; i++) {
@@ -279,6 +281,7 @@ List<String> _frameProblems(GraphLayout layout, NodeBox node) {
     }
   }
   for (final link in [?entry, ?exit]) {
+    if (link.length < 1e-6) continue;
     for (final edge in inner.edges) {
       if (crossingsBetween([link.a, link.b], edge.points) > 0) {
         problems.add('${node.id}: a link crosses an arrow in the frame');

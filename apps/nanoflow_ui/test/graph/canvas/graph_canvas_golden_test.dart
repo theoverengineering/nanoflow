@@ -50,7 +50,7 @@ void main() {
       ], const Opened('1', functionId: 'lib/publish.dart#upload'));
     await pumpScreen(
       tester,
-      GraphCanvas(model: model, onExpandNode: (_, _, _) {}),
+      GraphCanvas(model: model, onExpandNode: (_, _, _) async => false),
       size: reviewCanvas,
     );
     await settle(tester);

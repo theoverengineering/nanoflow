@@ -85,10 +85,17 @@ Map<GNode, Ports> assignPorts(
 ///
 /// A capsule counts as an exit plus half an exit for every arrow over one.
 ///
-/// A frame is as tall as it is made (`FramedBody`).
+/// A frame is as tall as it is made (`FramedBody`); a port only as tall as
+/// its exits and bar, which are drawn on its frame's side.
 double tileHeight(GNode node, LayoutOptions options) {
   if (node.framed case final framed?) return framed.height;
   final units = node.exits.fold(0.0, (sum, exit) => sum + exitUnits(exit));
+  if (node.port) {
+    return math.max(
+      units * options.exitGap,
+      node.inEdges.isEmpty ? 0 : barLength(node.inEdges.length, options),
+    );
+  }
   final exits = units == 0 ? 0.0 : (units + 1) * options.exitGap;
   final inputs = node.inEdges.isEmpty
       ? 0.0

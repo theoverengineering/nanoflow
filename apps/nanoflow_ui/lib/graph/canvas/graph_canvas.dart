@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' show PointMode;
 
@@ -6,25 +5,21 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nanoflow_model/nanoflow_model.dart'
-    show CallNode, CopiesNode, GraphBody, GraphFunction, GraphNode, StepNode;
+    show CopiesNode, GraphBody, GraphFunction;
 
 import '../../layout/layout.dart' as layout;
-import '../../state/body_path.dart';
 import '../../state/graph_model.dart';
-import '../../state/in_place.dart';
 import '../../state/session_view.dart';
 import '../../widgets/clickable.dart';
 import '../copy_switcher.dart';
+import 'canvas_bodies.dart';
 import 'canvas_marks.dart';
 import 'canvas_style.dart';
 import 'copies_frame.dart';
-import 'edges_painter.dart';
-import 'exit_labels.dart';
-import 'frame_toggle.dart';
-import 'function_frame.dart';
 import 'layout_geometry.dart';
 import 'legend.dart';
-import 'node_tile.dart';
+
+export 'canvas_bodies.dart' show ExpandNode, OpenNode, OpenStep;
 
 /// Moves the view of a [GraphCanvas] from outside it.
 class GraphCanvasController {
@@ -42,18 +37,6 @@ class GraphCanvasController {
   /// by the ids of the frames it is in and its own, joined by `/`: `5/2`.
   void revealNode(String id) => _state?._reveal(id);
 }
-
-/// What a double click on [node], a node of the body at [path], opens —
-/// or what its `+` expands in place —, at [position] on the screen.
-typedef OpenNode = void Function(
-  List<Opened> path,
-  GraphNode node,
-  Offset position,
-);
-
-/// Opens the step details window on the step node [node] of the body drawn,
-/// or of the frame drawn in place at [path].
-typedef OpenStep = void Function(StepNode node, List<Opened>? path);
 
 /// The graph canvas (docs/ui-spec.md «Холст», «Граф»; spec §9 «Граф»): one
 /// level of the graph of the selected session, or of the current graph
@@ -107,7 +90,7 @@ class GraphCanvas extends StatefulWidget {
   final OpenStep? onOpenStep;
 
   /// Expands a call or copies in place: on its `+`; without it, no `+`.
-  final OpenNode? onExpandNode;
+  final ExpandNode? onExpandNode;
 
   /// The room over the graph that fitting keeps free, for what floats over
   /// the top of the canvas; at most half the canvas. When it changes, the
@@ -142,11 +125,12 @@ class _GraphCanvasState extends State<GraphCanvas> {
   CopiesFrameBox? _frame;
 
   /// The body laid out, and what it is drawn with in JSON: another body
-  /// drawn the same keeps the layout and the view. With the nodes expanded
-  /// in it, what the layout was made of.
+  /// drawn the same keeps the layout and the view. What is laid out in
+  /// place in it, and which nodes those are.
   GraphBody? _body;
   String? _bodyJson;
-  String? _layoutKey;
+  Map<String, layout.ExpandedNode> _expanded = const {};
+  String _expansions = '';
   layout.GraphLayout? _layout;
 
   /// The node expanded or collapsed last, by its id on the canvas, and
@@ -214,7 +198,8 @@ class _GraphCanvasState extends State<GraphCanvas> {
     _layOut(
       _canvas.body,
       _canvas.file?.functions ?? const {},
-      _expandedOf(_canvas.frames, view),
+      expandedOf(_canvas.frames, view),
+      expansionsKeyOf(_canvas.frames),
     );
     final depth = _canvas.levels.length - 1;
     _marks = CanvasMarks.of(view, depth: depth);
@@ -226,39 +211,11 @@ class _GraphCanvasState extends State<GraphCanvas> {
         : CopiesFrameBox.around(
             graph.bounds.toRect(),
             title: 'each ${copies.label}',
-            count: frame?.countText ?? _plainCount,
+            count: frame?.countText ?? plainCopiesCount,
             switcher: frame == null ? null : CopySwitcher.widthOf(frame),
           );
     _drawing = graph == null ? null : _draw(graph, copies, frame, view);
   }
-
-  /// What the layout draws in place of [frames]: each one's body, with the
-  /// room its frame keeps, and the frames in it.
-  Map<String, layout.ExpandedNode> _expandedOf(
-    List<InPlaceFrame> frames,
-    SessionView? view,
-  ) => {
-    for (final frame in frames)
-      frame.nodeId: layout.ExpandedNode(
-        frame.level.body,
-        room: switch (frame.node) {
-          CopiesNode(:final label) => () {
-            final copies = view?.scopeOf(frame.path)?.copies;
-            return CopiesFrameBox.roomFor(
-              title: 'each $label',
-              count: copies?.countText ?? _plainCount,
-              switcher: copies == null ? null : CopySwitcher.widthOf(copies),
-              collapsible: true,
-            );
-          }(),
-          _ => FunctionFrameView.roomFor(frame.level.title),
-        },
-        expanded: _expandedOf(frame.frames, view),
-      ),
-  };
-
-  /// Across from the title of a frame of copies without a session.
-  static const _plainCount = '×n · in parallel';
 
   /// The copies whose body is drawn; `null` when the body drawn is not
   /// theirs.
@@ -275,30 +232,36 @@ class _GraphCanvasState extends State<GraphCanvas> {
   /// frame of copies round it.
   Rect get _extent => _frame?.extent ?? _layout!.bounds.toRect();
 
+  /// Lays out [body], the nodes of [expanded] in place in it — [expansions]
+  /// tells which those are —, unless it is laid out so already.
+  ///
+  /// Another body is fitted anew. Nodes expanded or collapsed fit the graph
+  /// again while the view is as fitting left it; else the node expanded or
+  /// collapsed stays where it was on the screen. What the session changes
+  /// — the room of a frame of copies for its switcher — keeps the view.
   void _layOut(
     GraphBody? body,
     Map<String, GraphFunction> functions,
     Map<String, layout.ExpandedNode> expanded,
+    String expansions,
   ) {
     // A body read once is drawn with the functions of its own file.
     var another = false;
     if (!identical(body, _body)) {
       _body = body;
-      final json = body == null ? null : jsonEncode(_keyOf(body, functions));
+      final json = body == null ? null : bodyKeyOf(body, functions);
       if (json != _bodyJson) {
         _bodyJson = json;
-        // Another graph: fitted anew, whatever was expanded.
         another = true;
         _needsFit = true;
         _anchor = null;
       }
     }
-    final key = expanded.isEmpty
-        ? _bodyJson
-        : jsonEncode([_bodyJson, _expandedKey(expanded, functions)]);
-    if (!another && key == _layoutKey) return;
+    final toggled = expansions != _expansions;
+    if (!another && !toggled && sameExpanded(expanded, _expanded)) return;
     final before = _layout;
-    _layoutKey = key;
+    _expanded = expanded;
+    _expansions = expansions;
     _layout = body == null
         ? null
         : layout.layoutBody(
@@ -307,12 +270,9 @@ class _GraphCanvasState extends State<GraphCanvas> {
             options: _options,
             expanded: expanded,
           );
-    // The graph drawn otherwise — nodes expanded or collapsed, a frame's
-    // room grown — fits again while the view is as fitting left it; else a
-    // node expanded or collapsed stays where it was on the screen.
+    if (before == null || another || !toggled) return;
     final anchor = _anchor;
     _anchor = null;
-    if (before == null || _needsFit) return;
     if (_fitted) {
       _needsFit = true;
       return;
@@ -323,38 +283,6 @@ class _GraphCanvasState extends State<GraphCanvas> {
       _offset = anchor.at - moved.tile.toRect().topLeft * _scale;
     }
   }
-
-  /// [body] as it is drawn: a call with its function's name and steps,
-  /// copies with the steps of the functions a copy calls.
-  static List<Object?> _keyOf(
-    GraphBody body,
-    Map<String, GraphFunction> functions,
-  ) => [
-    body.toJson(),
-    for (final node in body.nodes)
-      if (node is CallNode || node is CopiesNode)
-        [layout.nodeName(node, functions), layout.insideText(node, functions)],
-  ];
-
-  /// [expanded] as the layout draws it.
-  static List<Object?> _expandedKey(
-    Map<String, layout.ExpandedNode> expanded,
-    Map<String, GraphFunction> functions,
-  ) => [
-    for (final MapEntry(key: id, value: node) in expanded.entries)
-      [
-        id,
-        _keyOf(node.body, functions),
-        [
-          node.room.top,
-          node.room.side,
-          node.room.bottom,
-          node.room.width,
-          node.room.above,
-        ],
-        _expandedKey(node.expanded, functions),
-      ],
-  ];
 
   /// The node [id] on the canvas: of the body drawn, or of a frame drawn in
   /// place in it (`5/2`); the deepest of the path there is.
@@ -571,16 +499,16 @@ class _GraphCanvasState extends State<GraphCanvas> {
   ) {
     final extent = _extent;
     final box = _frame;
-    final layers = (frames: <Widget>[], lines: <Widget>[], tiles: <Widget>[]);
-    _drawBody(
-      graph,
-      _marks,
-      layers,
-      path: null,
-      ids: const [],
-      frames: _canvas.frames,
+    final layers = (BodyDrawer(
+      model: widget.model,
+      canvas: _canvas,
       view: view,
-    );
+      anchor: _anchorAt,
+      unanchor: () => _anchor = null,
+      onOpenNode: widget.onOpenNode,
+      onOpenStep: widget.onOpenStep,
+      onExpandNode: widget.onExpandNode,
+    )..draw(graph, _marks, frames: _canvas.frames)).layers;
     return RepaintBoundary(
       child: SizedBox(
         width: extent.width,
@@ -593,7 +521,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
                 child: CopiesFrameView(
                   box: box,
                   title: 'each ${copies.label}',
-                  count: frame?.countText ?? _plainCount,
+                  count: frame?.countText ?? plainCopiesCount,
                   footer: frame?.footer,
                   switcher: frame == null
                       ? null
@@ -610,8 +538,6 @@ class _GraphCanvasState extends State<GraphCanvas> {
               top: -extent.top,
               width: graph.bounds.width,
               height: graph.bounds.height,
-              // Frames under the arrows, the arrows under the tiles: the
-              // painters let clicks through to the frames' buttons.
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [...layers.frames, ...layers.lines, ...layers.tiles],
@@ -622,172 +548,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
       ),
     );
   }
-
-  /// Draws [graph], the layout of the body drawn — or, at [path], of the
-  /// body of a frame drawn in place —, with [marks]: its arrows and exits
-  /// in [layers]' lines, its nodes in its tiles; [frames], the nodes
-  /// expanded in it, are frames in [layers]' frames, their bodies drawn in
-  /// turn. The ids on the canvas of its nodes start with [ids].
-  void _drawBody(
-    layout.GraphLayout graph,
-    CanvasMarks marks,
-    _Layers layers, {
-    required List<Opened>? path,
-    required List<String> ids,
-    required List<InPlaceFrame> frames,
-    required SessionView? view,
-  }) {
-    final bodyPath = path ?? _canvas.path;
-    layers.lines
-      ..add(
-        Positioned.fill(
-          child: CustomPaint(painter: EdgesPainter(graph, marks)),
-        ),
-      )
-      ..add(
-        Positioned.fill(
-          child: CustomPaint(painter: ExitsPainter(graph, marks)),
-        ),
-      );
-    for (final node in graph.nodes.values) {
-      final id = [...ids, node.id].join('/');
-      final box = node.frame;
-      final frame = frames.where((f) => f.nodeId == node.id).firstOrNull;
-      if (box != null && frame != null) {
-        final scope = view?.scopeOf(frame.path);
-        layers.frames.add(
-          _frameOf(
-            node,
-            frame,
-            scope,
-            id: id,
-            collapse: () {
-              _anchorAt(id);
-              widget.model.collapseNode(bodyPath, node.id);
-            },
-          ),
-        );
-        _drawBody(
-          box.inner,
-          CanvasMarks.ofFrame(scope),
-          layers,
-          path: frame.path,
-          ids: [...ids, node.id],
-          frames: frame.frames,
-          view: view,
-        );
-        continue;
-      }
-      layers.tiles.add(
-        Positioned.fromRect(
-          rect: NodeTile.areaOf(node),
-          child: NodeTile(
-            node: node,
-            id: id,
-            marks: marks.node(node.id),
-            selected: marks.selected(node.id),
-            allCopies: marks.allCopies,
-            copies: marks.copies(node.id),
-            onTap: marks.isPlain || node.node == null
-                ? null
-                : () => widget.model.clickNode(node.id, path: path),
-            onDoubleTap: _opener(node, path),
-            onExpand: _expander(node, bodyPath, id),
-          ),
-        ),
-      );
-    }
-  }
-
-  /// The frame of the node [node] expanded in place, [frame], with what
-  /// the session shows in it, [scope]: a call's outline and title, or the
-  /// copies' stack with their switcher; its `−` [collapse]s it.
-  Widget _frameOf(
-    layout.NodeBox node,
-    InPlaceFrame frame,
-    FrameScope? scope, {
-    required String id,
-    required VoidCallback collapse,
-  }) {
-    final rect = node.tile.toRect();
-    final key = FrameToggle.collapseKeyOf(id);
-    final copiesNode = frame.node;
-    if (copiesNode is! CopiesNode) {
-      return Positioned.fromRect(
-        rect: rect,
-        child: FunctionFrameView(
-          title: frame.level.title,
-          onCollapse: collapse,
-          collapseKey: key,
-        ),
-      );
-    }
-    final copies = scope?.copies;
-    final box = CopiesFrameBox.at(rect, switcher: copies != null);
-    return Positioned.fromRect(
-      rect: box.extent,
-      child: CopiesFrameView(
-        box: box,
-        title: 'each ${copiesNode.label}',
-        count: copies?.countText ?? _plainCount,
-        footer: copies?.footer,
-        onCollapse: collapse,
-        collapseKey: key,
-        switcher: copies == null
-            ? null
-            : CopySwitcher(
-                frame: copies,
-                hintOf: widget.model.hintOf,
-                onSelect: (copyId) =>
-                    widget.model.selectCopyAt(frame.path, copyId),
-              ),
-      ),
-    );
-  }
-
-  /// What a double click on [node] of the body drawn — or of the frame
-  /// drawn in place at [path] — does: opens a call or copies, when it opens
-  /// anything; the details of a step.
-  ValueChanged<Offset>? _opener(layout.NodeBox node, List<Opened>? path) {
-    final graphNode = node.node;
-    if (graphNode is StepNode) {
-      final open = widget.onOpenStep;
-      return open == null ? null : (_) => open(graphNode, path);
-    }
-    final open = widget.onOpenNode;
-    if (graphNode == null || open == null) return null;
-    final functions = _canvas.file?.functions ?? const {};
-    if (openings(graphNode, functions).isEmpty) return null;
-    return (position) => open(path ?? _canvas.path, graphNode, position);
-  }
-
-  /// What the `+` of [node], a node of the body at [path] with the id [id]
-  /// on the canvas, does: expands a call or copies in place, when it opens
-  /// anything; none for any other node.
-  ValueChanged<Offset>? _expander(
-    layout.NodeBox node,
-    List<Opened> path,
-    String id,
-  ) {
-    final graphNode = node.node;
-    final expand = widget.onExpandNode;
-    if (graphNode == null || expand == null) return null;
-    final functions = _canvas.file?.functions ?? const {};
-    if (openings(graphNode, functions).isEmpty) return null;
-    return (position) {
-      _anchorAt(id);
-      expand(path, graphNode, position);
-    };
-  }
 }
-
-/// What the canvas draws, bottom to top: the frames drawn in place, the
-/// arrows and exits, the tiles.
-typedef _Layers = ({
-  List<Widget> frames,
-  List<Widget> lines,
-  List<Widget> tiles,
-});
 
 /// The canvas's dots, 22 px apart at full size, moving with the graph.
 /// Zoomed far out, every other one is left out, and so on.

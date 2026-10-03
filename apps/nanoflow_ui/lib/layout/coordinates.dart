@@ -46,13 +46,15 @@ double overTile(NodeKind kind) {
 }
 
 /// The room the marks over a tile take: badges in its top right corner, the
-/// tiles stacked behind it; over a frame, what is drawn over it.
-double marksAbove(GNode node) =>
-    math.max(12, (node.framed?.room.above ?? overTile(node.kind)) + 4);
+/// tiles stacked behind it; over a frame, what is drawn over it. None over
+/// a port.
+double marksAbove(GNode node) => node.port
+    ? 0
+    : math.max(12, (node.framed?.room.above ?? overTile(node.kind)) + 4);
 
 /// The room under a tile: its name and place; a marker's state badge.
-/// Nothing is under a frame: its title is in it.
-double textsBelow(GNode node) => node.framed != null
+/// Nothing is under a frame — its title is in it — or a port.
+double textsBelow(GNode node) => node.framed != null || node.port
     ? 0
     : node.isMarker
     ? 12
@@ -438,7 +440,10 @@ final class NodeFrame {
 ///
 /// The tile of an expanded node is its frame: no name or place under it,
 /// no state badge, the input bar and the exits level with its body's start
-/// and end, and over it only what is drawn with the frame.
+/// and end, and over it only what is drawn with the frame. A port has no
+/// width and no marks; nothing of its exits is drawn, and its bar is the
+/// frame's side: arrows leave it straight, and come to it no further than
+/// their heads.
 NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   final o = options;
   final framed = node.framed;
@@ -467,7 +472,7 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
     tile.bottom + placeTop,
     placeHeight,
   );
-  final above = framed?.room.above;
+  final above = node.port ? 0.0 : framed?.room.above;
   final marks = switch (above) {
     null => Rect.fromLTRB(
       tilesBehind(node.kind) > 0 ? tile.left + stackInset : tile.right - 60,
@@ -483,7 +488,7 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       tile.top,
     ),
   };
-  final status = framed != null
+  final status = framed != null || node.port
       ? Rect.fromLTRB(tile.right, tile.bottom, tile.right, tile.bottom)
       : Rect.fromLTRB(
           tile.right - 10,
@@ -497,7 +502,7 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       : Rect.fromLTRB(
           tile.left - o.barWidth / 2 - o.arrowGap - o.arrowLength,
           barMiddle - port.barHalf,
-          tile.left + o.barWidth / 2,
+          node.port ? tile.left : tile.left + o.barWidth / 2,
           barMiddle + port.barHalf,
         );
   final counterWidth =
@@ -527,13 +532,17 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       label == null ? x + _chipOffset : label.right + _chipSpacing,
       chipTop,
     );
-    final reach = counter.x + counterWidth + _chipSpacing * 2 - x;
-    final area = Rect.fromLTRB(
-      x - _dotRadius,
-      math.min(chipTop, top - _dotRadius),
-      x + reach,
-      bottom + _dotRadius,
-    );
+    final reach = node.port
+        ? 0.0
+        : counter.x + counterWidth + _chipSpacing * 2 - x;
+    final area = node.port
+        ? Rect.fromLTRB(x, top, x, bottom)
+        : Rect.fromLTRB(
+            x - _dotRadius,
+            math.min(chipTop, top - _dotRadius),
+            x + reach,
+            bottom + _dotRadius,
+          );
     exits[exit] = ExitFrame._(
       exit: exit,
       x: x,

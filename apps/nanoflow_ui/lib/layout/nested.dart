@@ -83,9 +83,12 @@ final class FramedBody {
     required this.exit,
   });
 
-  /// [inner], the layout of the body of [node] — one end, after everything
-  /// else — in a frame with [room] round it: tall and wide enough besides
-  /// for the input bar and the exits on its sides, off its corners.
+  /// [inner], the layout of the body of [node] — its start first and its
+  /// end last, ports — in a frame with [room] round it: its start on the
+  /// frame's left side, its end on the right side, and the room's sides
+  /// only where the body has none of them; tall and wide enough besides for
+  /// the input bar and the exits on its sides, off its corners. A frame
+  /// wider than its body has the room to spare right of it.
   factory FramedBody.of(
     GNode node,
     GraphLayout inner,
@@ -114,8 +117,10 @@ final class FramedBody {
         bottom = math.max(bottom, r + half - (body.height - at));
       }
     }
+    final left = entry == null ? room.side : 0.0;
+    final right = exit == null ? room.side : 0.0;
     final width = [
-      body.width + 2 * room.side,
+      body.width + left + right,
       room.width,
       options.tile,
     ].reduce(math.max);
@@ -127,7 +132,10 @@ final class FramedBody {
       room: room,
       width: width,
       height: height,
-      innerAt: Point((width - body.width) / 2, top),
+      innerAt: Point(
+        entry == null && exit != null ? width - right - body.width : left,
+        top,
+      ),
       entry: entry == null ? null : top + entry,
       exit: exit == null ? null : top + exit,
     );
@@ -223,6 +231,7 @@ GraphLayout shiftLayout(GraphLayout layout, Point by) {
             ),
             null => null,
           },
+          port: n.port,
         ),
     },
     exits: [

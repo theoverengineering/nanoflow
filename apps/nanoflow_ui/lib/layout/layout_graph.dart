@@ -290,6 +290,7 @@ final class GNode {
     this.fullName,
     this.place,
     this.inside,
+    this.port = false,
   });
 
   /// The position of the node in the layout's order: the start marker, the
@@ -320,11 +321,16 @@ final class GNode {
   /// Whether this is the start marker or an end marker.
   bool get isMarker => kind == NodeKind.start || kind == NodeKind.end;
 
+  /// Whether this is the start or the end of a body in a frame: not a tile,
+  /// but where the frame's side is — no width, no marks, nothing written.
+  final bool port;
+
   /// The body of a call or copies expanded in place: the node is its frame.
   FramedBody? framed;
 
-  /// The width of the node's tile, or of its frame.
-  double widthOf(LayoutOptions options) => framed?.width ?? options.tile;
+  /// The width of the node's tile, or of its frame; none for a [port].
+  double widthOf(LayoutOptions options) =>
+      port ? 0 : framed?.width ?? options.tile;
 
   /// The node's exits, in the order their first edges have in the body.
   final List<GExit> exits = [];
@@ -410,8 +416,8 @@ final class LayoutGraph {
   ///
   /// A body [inFrame] has one end marker, [endMarker], that every edge
   /// `to: null` goes to; step 2 puts it after everything else, and the
-  /// start marker before everything else, so that the links from the
-  /// frame's sides to them cross nothing.
+  /// start marker before everything else. Both are ports ([GNode.port]):
+  /// the frame's sides, where its arrows come in and go out.
   factory LayoutGraph.ofBody(
     GraphBody body, {
     Map<String, GraphFunction> functions = const {},
@@ -434,6 +440,7 @@ final class LayoutGraph {
           NodeKind.end => 'end',
           _ => insideText(node!, functions),
         },
+        port: inFrame && node == null,
       );
       nodes.add(gnode);
       return gnode;

@@ -135,14 +135,17 @@ class _GraphScreenState extends State<GraphScreen> {
 
   /// The `+` on [node], a node of the body at [path], at [position]:
   /// expands it in place as it opens; for a call of several functions, as
-  /// the one chosen from a menu there.
-  Future<void> _expandNode(
+  /// the one chosen from a menu there. Whether it did: the menu may be
+  /// left without a choice.
+  Future<bool> _expandNode(
     List<Opened> path,
     GraphNode node,
     Offset position,
   ) async {
     final opened = await _opening(node, position);
-    if (opened != null) _model.expandNode(path, opened);
+    if (opened == null) return false;
+    _model.expandNode(path, opened);
+    return true;
   }
 
   /// How [node] opens: as it alone can, or as chosen from a menu at

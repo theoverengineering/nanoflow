@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../layout/layout.dart' as layout;
-import '../../theme.dart';
 import 'canvas_style.dart';
 import 'frame_toggle.dart';
 
@@ -26,9 +25,9 @@ final class CopiesFrameBox {
     bool collapsible = false,
   }) {
     final header =
-        _measure(title, CopiesFrameView.titleStyle) +
+        measureText(title, CanvasText.frameTitle) +
         _titleGap +
-        _measure(count, CopiesFrameView.countStyle) +
+        measureText(count, CanvasText.frameCount) +
         (collapsible ? _toggleGap + FrameToggle.size : 0);
     return layout.FrameRoom(
       top:
@@ -96,18 +95,6 @@ final class CopiesFrameBox {
   static const _bodyGap = 14.0;
   static const _bottom = 30.0;
   static const _toggleGap = 8.0;
-
-  static double _measure(String text, TextStyle style) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      textScaler: TextScaler.noScaling,
-      maxLines: 1,
-    )..layout();
-    final width = painter.width;
-    painter.dispose();
-    return width;
-  }
 }
 
 /// The frame round the body of copies drawn on the canvas (decisions 10
@@ -154,31 +141,6 @@ class CopiesFrameView extends StatelessWidget {
 
   /// How far up and to the right each outline behind the frame is.
   static const stackStep = 6.0;
-
-  static const titleStyle = TextStyle(
-    inherit: false,
-    fontFamily: AppText.sans,
-    fontSize: 12,
-    fontWeight: FontWeight.w600,
-    height: 1.3,
-    color: Color(0xFFD6D6DC),
-  );
-
-  static const countStyle = TextStyle(
-    inherit: false,
-    fontFamily: AppText.sans,
-    fontSize: 12,
-    height: 1.3,
-    color: Color(0xFFA9A9B2),
-  );
-
-  static const footerStyle = TextStyle(
-    inherit: false,
-    fontFamily: AppText.sans,
-    fontSize: 10,
-    height: 1.3,
-    color: Color(0xFF8E8E96),
-  );
 
   static const _radius = 12.0;
 
@@ -227,7 +189,7 @@ class CopiesFrameView extends StatelessWidget {
         Positioned(
           left: frame.left + inset,
           top: frame.top + CopiesFrameBox._titleTop,
-          child: text(title, titleStyle),
+          child: text(title, CanvasText.frameTitle),
         ),
         Positioned(
           right:
@@ -238,7 +200,7 @@ class CopiesFrameView extends StatelessWidget {
                   ? 0
                   : CopiesFrameBox._toggleGap + FrameToggle.size),
           top: frame.top + CopiesFrameBox._titleTop,
-          child: text(count, countStyle),
+          child: text(count, CanvasText.frameCount),
         ),
         if (onCollapse case final collapse?)
           Positioned(
@@ -259,7 +221,7 @@ class CopiesFrameView extends StatelessWidget {
           Positioned(
             right: box.extent.width - frame.right + inset,
             bottom: box.extent.height - frame.bottom + 8,
-            child: text(footer, footerStyle, key: footerKey),
+            child: text(footer, CanvasText.frameFooter, key: footerKey),
           ),
       ],
     );

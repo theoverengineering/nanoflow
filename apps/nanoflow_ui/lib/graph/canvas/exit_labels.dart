@@ -74,6 +74,8 @@ class ExitsPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final background = Paint()..color = CanvasColors.background;
     for (final exit in graph.exits) {
+      // The arrows of a frame's start leave its side, where its bar is.
+      if (graph.nodes[exit.node]?.port ?? false) continue;
       final tone = marks.exit(exit.node, exit.index);
       final anchor = exit.anchor.toOffset();
       switch (exit.shape) {

@@ -51,8 +51,9 @@ void main() {
       frame = call.frame!;
     });
 
-    test('the call is a frame round the layout of its function: one start, '
-        'its nodes, one end', () {
+    test('the call is a frame round the layout of its function: its nodes '
+        'between one start and one end, ports on the frame\'s sides with no '
+        'tile', () {
       expect(frame.inner.nodes.keys, [
         startMarker,
         '1',
@@ -62,6 +63,16 @@ void main() {
         endMarker,
       ]);
       expect(layout.nodes['1']!.frame, isNull);
+      final start = frame.inner.nodes[startMarker]!;
+      final end = frame.inner.nodes[endMarker]!;
+      for (final port in [start, end]) {
+        expect(port.port, isTrue);
+        expect(port.tile.width, 0);
+      }
+      expect(start.tile.left, call.tile.left);
+      expect(end.tile.left, call.tile.right);
+      expect(layout.nodes[startMarker]!.port, isFalse);
+      expect(layout.nodes[endMarker]!.port, isFalse);
     });
 
     test('keeps every rule of step 9, in the frame too', () {
@@ -69,13 +80,13 @@ void main() {
       expect(checkLayout(frame.inner), isEmpty);
     });
 
-    test('the body sits in the frame under its title row, with room on '
-        'every side', () {
+    test('the body sits in the frame under its title row, from side to '
+        'side, with room under it', () {
       const room = FrameRoom();
       final tile = call.tile;
       final body = frame.inner.bounds;
-      expect(body.left - tile.left, greaterThanOrEqualTo(room.side - 1e-9));
-      expect(tile.right - body.right, greaterThanOrEqualTo(room.side - 1e-9));
+      expect(body.left, closeTo(tile.left, 1e-9));
+      expect(body.right, closeTo(tile.right, 1e-9));
       expect(body.top - tile.top, closeTo(room.top, 1e-9));
       expect(tile.bottom - body.bottom, closeTo(room.bottom, 1e-9));
       for (final node in frame.inner.nodes.values) {
@@ -102,7 +113,7 @@ void main() {
       for (final edge in layout.edges) {
         final touches = _borderTouches(edge, call.tile);
         if (edge.from == '5') {
-          // It leaves from the right side, where the end's link meets it.
+          // It leaves from the right side, where the end is.
           expect(touches, [edge.points.first], reason: '$edge');
           expect(edge.points.first.x, call.tile.right);
         } else {
@@ -112,16 +123,27 @@ void main() {
       expect(layout.edges.where((e) => e.to == '5'), isNotEmpty);
     });
 
-    test('arrows come in level with the start, and go out level with the '
-        'end: a link joins each to its marker', () {
+    test('arrows come in level with the start and go on from the frame\'s '
+        'left side to the first node; the arrows to the end come to its '
+        'right side, where those out of the frame leave', () {
       final start = frame.inner.nodes[startMarker]!.tile;
-      final end = frame.inner.nodes[endMarker]!.tile;
-      final entry = frame.entry!;
-      expect(entry.a, Point(call.tile.left, start.center.y));
-      expect(entry.b, Point(start.left, start.center.y));
-      final exit = frame.exit!;
-      expect(exit.a, Point(end.right, end.center.y));
-      expect(exit.b, Point(call.tile.right, end.center.y));
+      final end = frame.inner.nodes[endMarker]!;
+      expect(frame.entry!.a, frame.entry!.b, reason: 'nothing to link');
+      expect(frame.exit!.a, frame.exit!.b, reason: 'nothing to link');
+      final into = frame.inner.edges.where((e) => e.from == startMarker);
+      expect(into.single.points.first, Point(call.tile.left, start.center.y));
+      expect(into.single.to, '1');
+      final o = layout.options;
+      final entry =
+          o.minInputStraight + o.arrowLength + o.arrowGap + o.barWidth / 2;
+      expect(
+        frame.inner.nodes['1']!.tile.left - call.tile.left,
+        closeTo(entry, 1e-9),
+        reason: 'the first node is as near the side as an arrow lets it',
+      );
+      for (final edge in frame.inner.edges.where((e) => e.to == endMarker)) {
+        expect(edge.tip.x, call.tile.right - o.barWidth / 2 - o.arrowGap);
+      }
 
       final bar = call.bar!;
       expect((bar.rect.top + bar.rect.bottom) / 2, closeTo(start.center.y, 0));
@@ -129,7 +151,7 @@ void main() {
         expect(edge.tip.y, inInclusiveRange(bar.rect.top, bar.rect.bottom));
       }
       final out = layout.exits.where((x) => x.node == '5').single;
-      expect(out.anchor, Point(call.tile.right, end.center.y));
+      expect(out.anchor, Point(call.tile.right, end.tile.center.y));
     });
 
     test('the start is first in the body and the end last, alone in their '
@@ -270,15 +292,17 @@ void main() {
       },
     );
     final call = layout.nodes['5']!;
-    final body = call.frame!.inner.bounds;
+    final frame = call.frame!;
+    final body = frame.inner.bounds;
     expect(call.tile.width, 1200);
     expect(body.top - call.tile.top, 70);
     expect(call.tile.bottom - body.bottom, 30);
-    // A body narrower than the frame is in its middle.
-    expect(
-      body.left - call.tile.left,
-      closeTo(call.tile.right - body.right, 1e-9),
-    );
+    // A body narrower than the frame starts at its left side; a link goes
+    // on from its end to the right side.
+    expect(body.left, call.tile.left);
+    final end = frame.inner.nodes[endMarker]!.tile;
+    expect(frame.exit!.a, Point(end.right, end.center.y));
+    expect(frame.exit!.b, Point(call.tile.right, end.center.y));
     expect(call.marks.top, call.tile.top - 12);
     expect(checkLayout(layout), isEmpty);
   });
@@ -314,6 +338,10 @@ void main() {
     final call = layout.nodes['5']!;
     expect(call.frame!.entry, isNull);
     expect(call.frame!.exit, isNull);
+    final body = call.frame!.inner.bounds;
+    const room = FrameRoom();
+    expect(body.left - call.tile.left, closeTo(room.side, 1e-9));
+    expect(call.tile.right - body.right, closeTo(room.side, 1e-9));
     final bar = call.bar!.rect;
     expect((bar.top + bar.bottom) / 2, closeTo(call.tile.center.y, 1e-9));
     expect(checkLayout(layout), isEmpty);

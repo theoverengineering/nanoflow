@@ -51,6 +51,7 @@ final class NodeBox {
     required this.status,
     required this.bar,
     this.frame,
+    this.port = false,
   });
 
   /// The body node's id, [startMarker], or an end marker's ([endMarkerAt]).
@@ -98,6 +99,11 @@ final class NodeBox {
   /// The input bar; `null` when no arrow comes in.
   final InputBar? bar;
 
+  /// Whether this is the start or the end of a body in a frame: a point on
+  /// the frame's side, [tile] without width; neither it, its exit nor its
+  /// bar is drawn — the frame's bar and exit are there.
+  final bool port;
+
   /// The body of a call or copies expanded in place, [tile] its frame;
   /// `null` for a node drawn as a tile. A frame has no name or place under
   /// it: [nameRect] and [placeRect] are empty.
@@ -108,8 +114,10 @@ final class NodeBox {
 /// its layout, and the links from the frame's sides to its start and end.
 ///
 /// Arrows into the node point at the bar on the frame's left side, level
-/// with the body's start; arrows out leave the frame's right side level
-/// with the body's end. The links run straight across the room between.
+/// with the body's start, and those of the body go on from there; the
+/// body's arrows to its end come to the frame's right side, where arrows
+/// out of the node leave. The start and end are ports on the sides; a link
+/// runs straight to a side they are off — a title wider than the body.
 final class FrameBox {
   FrameBox({required this.inner, required this.entry, required this.exit});
 
@@ -118,12 +126,12 @@ final class FrameBox {
   /// right of everything else in it.
   final GraphLayout inner;
 
-  /// From the frame's left side to the body's start; `null` when the body
-  /// has no start.
+  /// From the frame's left side to the body's start, none long when it is
+  /// on the side; `null` when the body has no start.
   final Segment? entry;
 
-  /// From the body's end to the frame's right side; `null` when the body
-  /// has no end.
+  /// From the body's end to the frame's right side, none long when it is on
+  /// the side; `null` when the body has no end.
   final Segment? exit;
 }
 

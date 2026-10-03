@@ -4,6 +4,7 @@ import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/in_place.dart';
 import 'package:nanoflow_ui/state/session_view.dart';
 
+import '../layout/support.dart' show loadGraphFile;
 import 'support.dart';
 
 void main() {
@@ -315,6 +316,44 @@ void main() {
       expect(view.revealPathOf(j.steps[0].id), ['1']);
       final collapsed = viewOf(j, expansions: Expansions());
       expect(collapsed.revealPathOf(j.steps[3].id), ['2']);
+    });
+
+    test('a call in place marks its function\'s steps on their nodes, the '
+        'selected one ringed', () {
+      final release = loadGraphFile('release');
+      const publish = Opened('5', functionId: 'lib/publish.dart#publish');
+      final j =
+          Journal('r1r1-session', workflow: 'release', graph: release.toJson())
+            ..step('plan', 1, end: 2, place: 'lib/release.dart:16')
+            ..step('upload', 3, end: 4, place: 'lib/publish.dart:12')
+            ..step('verify', 5, place: 'lib/publish.dart:13');
+      final levels = bodyLevels(
+        release.workflowNamed('release')!,
+        release.functions,
+        const [],
+      );
+      final view = SessionView.of(
+        j.data,
+        now: now,
+        documents: noDocuments,
+        graphFile: null,
+        stepId: j.steps[2].id,
+        levels: levels,
+        frames: inPlaceFrames(
+          levels,
+          release.functions,
+          Expansions()..expand(const [], publish),
+        ),
+      );
+      final scope = view.scopeOf(const [publish])!;
+      expect(scope.copies, isNull);
+      expect(scope.marks.of('1')!.state, NodeState.visited);
+      expect(scope.marks.of('2')!.state, NodeState.running);
+      expect(scope.marks.of('4')!.state, NodeState.notVisited);
+      expect(scope.marks.selected, {'2'});
+      // The level drawn has them in the call.
+      expect(view.marks!.of('5')!.state, NodeState.running);
+      expect(view.revealPathOf(j.steps[2].id), ['5', '2']);
     });
 
     group('copies in copies', () {
