@@ -45,6 +45,14 @@ final class Flow {
   Future<FlowSession<R>> start<I, R>(
     Future<R> Function(Flow f, I input) workflow,
     I input,
+  ) => _start(workflow, input, const {});
+
+  /// [start], for a session whose steps of the keys in [saved] have finished
+  /// before with those results.
+  Future<FlowSession<R>> _start<I, R>(
+    Future<R> Function(Flow f, I input) workflow,
+    I input,
+    Map<String, Object?> saved,
   ) async {
     final name = workflowNameOf(workflow);
     _checkJson<I>(input);
@@ -56,7 +64,7 @@ final class Flow {
       input: (value: input),
       code: await codeHashOf(directory),
     );
-    final session = _Session(this, handle, package);
+    final session = _Session(this, handle, package, saved);
     return FlowSession._(
       handle.session.id,
       session.run(() => workflow(this, input)),
@@ -91,6 +99,20 @@ final class Flow {
   }
 }
 
+/// Starts a session of [workflow] as [Flow.start] does, as one whose steps of
+/// the keys in [saved] have finished before with those results: such a step
+/// returns its result and neither runs nor writes anything (spec §4.6, a step
+/// from the journal).
+///
+/// For tests of the keys, until a resumed session takes the results from its
+/// journal.
+Future<FlowSession<R>> startWithSaved<I, R>(
+  Flow flow,
+  Future<R> Function(Flow f, I input) workflow,
+  I input,
+  Map<String, Object?> saved,
+) => flow._start(workflow, input, saved);
+
 /// A session [Flow.start] has started.
 final class FlowSession<R> {
   FlowSession._(this.id, this.result);
@@ -105,7 +127,7 @@ final class FlowSession<R> {
 
 /// A session that runs in this process.
 final class _Session {
-  _Session(Flow flow, this._handle, this._package)
+  _Session(Flow flow, this._handle, this._package, this._saved)
     : _projectDir = flow.directory,
       _outside = Zone.current {
     _zone = KeyedZone(zoneValues: {flow: this});
@@ -116,6 +138,9 @@ final class _Session {
 
   /// The package of the project, for the places of steps.
   final String? _package;
+
+  /// The results of the steps that finished before, by key.
+  final Map<String, Object?> _saved;
 
   /// The zone the session was started from. The library's own work for the
   /// session — writing its steps — runs there, not in the session's zone,
@@ -150,11 +175,19 @@ final class _Session {
 
   /// Calls the step [name] in the current context of the session's code;
   /// [trace] is the stack of the call.
+  ///
+  /// A step that finished before gives its result and writes nothing;
+  /// any other runs live.
   Future<T> step<T>(
     String name,
     FutureOr<T> Function() body,
     StackTrace trace,
-  ) => _zone.step(name, (step) => _outside.run(() => _live(step, body, trace)));
+  ) => _zone.step(name, (step) {
+    if (_saved.containsKey(step.key)) {
+      return Future<T>.value(_saved[step.key] as T);
+    }
+    return _outside.run(() => _live(step, body, trace));
+  });
 
   /// Runs [body] as [step] and writes it: the step's record, `step-started`,
   /// then its result and `step-finished`, or `step-failed`.

@@ -22,6 +22,13 @@
 // same: in the prototype the numbers in a step's context counted the
 // callbacks of its body too, and after a resume the steps that followed a
 // call there moved to other keys and ran again.
+//
+// And a step hands its result over in a future of the zone the session's zone
+// was forked from, whatever gave it. Code that adds a listener to a future
+// that is done already schedules a microtask in that future's zone; in the
+// session's zone that microtask would take a number in the context of the
+// code awaiting the step, but only when the step happened to be done first,
+// and only when its result was not a live one, which comes from outside.
 
 import 'dart:async';
 import 'dart:convert';
@@ -39,12 +46,15 @@ String contextHash(String s) =>
 /// the code that awaits it in the step's context.
 final class KeyedZone {
   /// A zone forked from the current one, with [zoneValues].
-  KeyedZone({Map<Object?, Object?>? zoneValues}) {
-    _zone = Zone.current.fork(
+  KeyedZone({Map<Object?, Object?>? zoneValues}) : _parent = Zone.current {
+    _zone = _parent.fork(
       specification: _specification(),
       zoneValues: zoneValues,
     );
   }
+
+  /// The zone this one was forked from: the futures of steps belong to it.
+  final Zone _parent;
 
   late final Zone _zone;
 
@@ -67,18 +77,22 @@ final class KeyedZone {
   ///
   /// [start] is called at once, in the step's own context, with the step's
   /// key: it gives the step's result, saved or from [KeyedStep.runBody]. The
-  /// code that calls the step schedules the same callbacks either way.
+  /// result is handed over in a future of the zone this one was forked from,
+  /// so the code that calls the step and awaits it schedules the same
+  /// callbacks either way, and whenever it awaits.
   Future<T> step<T>(String name, Future<T> Function(KeyedStep step) start) {
     final caller = _current;
     final key = '$name#${caller.nextStep(name)}@${contextHash(caller.id)}';
     // One context for every code that takes the step's result: what takes
     // it twice goes on numbering where it was.
     final context = _Context.ofStep(key);
+    // The body's own context. A step called in the body follows this step:
+    // its `after` is this step's key.
     final own = _Context.child(context, 0);
-    final value = _with(
-      own,
-      () => start(KeyedStep._(this, own, name, key, caller.after)),
-    );
+    final value = _with(own, () {
+      final result = start(KeyedStep._(this, own, name, key, caller.after));
+      return _parent.run(() => result.then((v) => v));
+    });
     return _StepFuture(this, context, value);
   }
 
