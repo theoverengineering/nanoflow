@@ -45,7 +45,7 @@ Binding where the spec is silent.
 - **D10 — exec dies with the process.** The bash wrapper of `exec` (kept from today's `packages/nanoflow/lib/src/exec.dart`) also watches a pipe from the Dart process (an extra fd kept open by Dart); when it reads EOF it stops the group exactly as on TERM. Verified by killing the Dart process with SIGKILL in a test.
 - **D11 — describe on fixtures.** `describePackage(String dir, {String? packageName})`: `packageName` defaults to the `name:` in `<dir>/pubspec.yaml`. Fixture packages under `packages/nanoflow_describe/test/fixtures/<name>/` have `lib/`/`bin/` but no `pubspec.yaml`, so the analyzer resolves `package:nanoflow` through the workspace's package config.
 - **D12 — Step names in the graph.** `StepNode.name` is the literal; a non-literal name is the expression source, with a warning.
-- **D13 — UI place matching.** A step maps to the `StepNode` whose `place` equals the step's `place`, or whose `place` the step's `place` ends with after a `/`.
+- **D13 — UI place matching.** A step maps to every `StepNode` whose `place` equals the step's `place`, or whose `place` the step's `place` ends with after a `/` (several nodes share a place when `finally` is drawn once per way out of a `try`).
 - **D14 — Old graph model.** `packages/nanoflow_model/lib/src/graph.dart` (README format) stays until Task 12 removes its last user (the UI) and deletes it.
 
 ---
