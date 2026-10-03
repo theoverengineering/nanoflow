@@ -19,16 +19,18 @@ import 'processes.dart';
 /// waits on the kqueue and sends back the pids that exited. [close] wakes it
 /// with an `EVFILT_USER` event, waits for it to end and closes the kqueue.
 ///
-/// A pending [exitOf] keeps the program running, as a wait for the OS does.
-/// Nothing else of the adapter does, closed or not: the background isolate
-/// waits in `kevent` half a second at a time, so the Dart VM, ending, stops
-/// it within that time.
+/// A pending [exitOf] keeps the program running, as a wait for the OS does,
+/// and so does a [close] until the background isolate has ended. Nothing
+/// else of the adapter does, closed or not: the background isolate waits in
+/// `kevent` half a second at a time, so the Dart VM, ending, stops it within
+/// that time.
 final class MacProcesses implements Processes {
   /// The kqueue, made by the first [exitOf].
   int? _kq;
 
   /// The port the watcher isolate sends the pids that exited to. It keeps
-  /// the program running only while a wait is pending.
+  /// the program running only while a wait is pending, or [close] waits for
+  /// the watcher to end.
   RawReceivePort? _exits;
 
   /// The watcher isolate, once spawned.
@@ -207,7 +209,7 @@ final class MacProcesses implements Processes {
 
   /// Keeps the program running while a wait is pending, as a wait for the
   /// OS does, and no longer: an adapter that nothing waits on does not keep
-  /// it, closed or not.
+  /// it.
   void _holdWhileWaiting() => _exits?.keepIsolateAlive = _waits.isNotEmpty;
 }
 
