@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow_process/nanoflow_process.dart';
@@ -118,6 +119,22 @@ void main() {
       other.kill(ProcessSignal.sigkill);
       await otherExited.timeout(exitWait);
     });
+
+    test('completes as the process dies, not when the watcher next looks: '
+        'it waits on the OS for half a second at a time', () async {
+      // Were the exit seen only at the end of each wait, every kill would be
+      // told up to half a second late, and five of them not all early.
+      for (var i = 0; i < 5; i++) {
+        final child = await sleeping();
+        final exited = processes.exitOf(child.pid);
+        await expectPending(exited, const Duration(milliseconds: 100));
+
+        final told = Stopwatch()..start();
+        child.kill(ProcessSignal.sigkill);
+        await exited.timeout(exitWait);
+        expect(told.elapsed, lessThan(const Duration(milliseconds: 250)));
+      }
+    });
   });
 
   group('close', () {
@@ -173,6 +190,31 @@ void main() {
         0,
         reason: await stderr,
       );
+    });
+
+    test('is not needed for the program to end once nothing waits, though a '
+        'pending wait keeps it running', () async {
+      final child = await sleeping();
+      final watcher = await Process.start(Platform.resolvedExecutable, [
+        'run',
+        'test/fixtures/watch_and_forget.dart',
+        '${child.pid}',
+      ]);
+      addTearDown(() => watcher.kill(ProcessSignal.sigkill));
+      final stderr = watcher.stderr.transform(utf8.decoder).join();
+      final lines = StreamIterator(
+        watcher.stdout.transform(utf8.decoder).transform(const LineSplitter()),
+      );
+
+      if (!await lines.moveNext()) fail('it ended at once: ${await stderr}');
+      expect(lines.current, 'watching');
+      await expectPending(watcher.exitCode, const Duration(milliseconds: 500));
+
+      child.kill(ProcessSignal.sigkill);
+      // The watcher waits on the kqueue still, and the program ends anyway.
+      expect(await watcher.exitCode.timeout(exitWait), 0, reason: await stderr);
+      expect(await lines.moveNext(), isTrue);
+      expect(lines.current, 'gone');
     });
   });
 }

@@ -19,13 +19,16 @@ import 'processes.dart';
 /// waits on the kqueue and sends back the pids that exited. [close] wakes it
 /// with an `EVFILT_USER` event, waits for it to end and closes the kqueue.
 ///
-/// Once [exitOf] was called, the program does not end until [close]: the
-/// background isolate waits in a blocking call.
+/// A pending [exitOf] keeps the program running, as a wait for the OS does.
+/// Nothing else of the adapter does, closed or not: the background isolate
+/// waits in `kevent` half a second at a time, so the Dart VM, ending, stops
+/// it within that time.
 final class MacProcesses implements Processes {
   /// The kqueue, made by the first [exitOf].
   int? _kq;
 
-  /// The port the watcher isolate sends the pids that exited to.
+  /// The port the watcher isolate sends the pids that exited to. It keeps
+  /// the program running only while a wait is pending.
   RawReceivePort? _exits;
 
   /// The watcher isolate, once spawned.
@@ -85,7 +88,9 @@ final class MacProcesses implements Processes {
     );
     switch (error) {
       case 0:
-        return (_waits[pid] = Completer<void>()).future;
+        final wait = _waits[pid] = Completer<void>();
+        _holdWhileWaiting();
+        return wait.future;
       case _esrch:
         return;
       default:
@@ -98,13 +103,14 @@ final class MacProcesses implements Processes {
 
   Future<void> _close() async {
     _waits.clear();
+    _holdWhileWaiting();
     final kq = _kq;
     if (kq == null) return;
     final woken = _wake(kq);
     if (!woken) {
-      // The watcher waits on in `kevent`, where a kill does not reach it.
-      // Closing the kqueue ends that wait, and the kill, or the kqueue that
-      // now fails, ends the watcher before it waits again.
+      // The kill reaches the watcher once it is back from `kevent`, within
+      // [_waitAtMost], before it waits again; and a wait on the closed kqueue
+      // fails, which ends the watcher too.
       _watcher?.kill(priority: Isolate.immediate);
       _closeFd(kq);
     }
@@ -132,7 +138,8 @@ final class MacProcesses implements Processes {
       _closeFd(kq);
       rethrow;
     }
-    final exits = _exits = RawReceivePort(_exited, 'nanoflow_process exits');
+    final exits = _exits = RawReceivePort(_exited, 'nanoflow_process exits')
+      ..keepIsolateAlive = false;
     _watcherEnded = _runWatcher(kq, exits.sendPort);
     return kq;
   }
@@ -140,20 +147,27 @@ final class MacProcesses implements Processes {
   /// Runs the watcher isolate on [kq] until it ends. When it ends before
   /// [close], or does not start, the waits fail.
   Future<void> _runWatcher(int kq, SendPort exits) async {
-    final ended = ReceivePort('nanoflow_process watcher ended');
+    final ended = Completer<void>();
+    // Does not keep the program running: in a program that never closes the
+    // adapter, the watcher runs until the program ends.
+    final endedPort = RawReceivePort(
+      (_) => ended.complete(),
+      'nanoflow_process watcher ended',
+    )..keepIsolateAlive = false;
     try {
       _watcher = await Isolate.spawn(
         _watchExits,
         (kq, exits),
-        onExit: ended.sendPort,
+        onExit: endedPort.sendPort,
         debugName: 'nanoflow_process watcher',
       );
     } catch (e) {
-      ended.close();
+      endedPort.close();
       _fail(e);
       return;
     }
-    await ended.first;
+    await ended.future;
+    endedPort.close();
     if (_closed == null) _fail(const OSError('Stopped watching for exits'));
   }
 
@@ -177,12 +191,21 @@ final class MacProcesses implements Processes {
     _failure = failure;
     final waits = [..._waits.values];
     _waits.clear();
+    _holdWhileWaiting();
     for (final wait in waits) {
       wait.completeError(failure);
     }
   }
 
-  void _exited(Object? pid) => _waits.remove(pid)?.complete();
+  void _exited(Object? pid) {
+    _waits.remove(pid)?.complete();
+    _holdWhileWaiting();
+  }
+
+  /// Keeps the program running while a wait is pending, as a wait for the
+  /// OS does, and no longer: an adapter that nothing waits on does not keep
+  /// it, closed or not.
+  void _holdWhileWaiting() => _exits?.keepIsolateAlive = _waits.isNotEmpty;
 }
 
 /// The time a `struct timeval` of [seconds] and [microseconds] holds, in
@@ -197,14 +220,23 @@ DateTime timeOfTimeval(int seconds, int microseconds) =>
 /// The watcher isolate: waits on the kqueue and sends the pid of every
 /// process that exits to the port, until the wake event comes or the kqueue
 /// fails.
+///
+/// It waits in `kevent` for [_waitAtMost] at a time, and then waits again:
+/// a kill reaches an isolate only once it is back from the OS, and the Dart
+/// VM, ending, waits for every isolate, so an isolate that waited in the OS
+/// for good would keep a program that never closes its adapter from ending.
+/// An event still ends the wait at once.
 void _watchExits((int, SendPort) args) {
   final (kq, exits) = args;
   final events = calloc<_KEvent>(_eventsAtOnce);
   final noWait = calloc<_Timespec>();
+  final wait = calloc<_Timespec>()
+    ..ref.seconds = _waitAtMost.inSeconds
+    ..ref.nanoseconds = _waitAtMost.inMicroseconds % 1000000 * 1000;
   try {
     while (true) {
-      // Blocks until events come.
-      var count = _kevent(kq, nullptr, 0, events, _eventsAtOnce, nullptr);
+      // Blocks until events come, or the time is up: then none came.
+      var count = _kevent(kq, nullptr, 0, events, _eventsAtOnce, wait);
       if (count == -1) {
         // A signal that reaches this thread, as the SIGCHLD of a child
         // process does, fails the wait with EINTR, and then it waits again.
@@ -227,7 +259,8 @@ void _watchExits((int, SendPort) args) {
   } finally {
     calloc
       ..free(events)
-      ..free(noWait);
+      ..free(noWait)
+      ..free(wait);
   }
 }
 
@@ -280,6 +313,10 @@ const _wakeIdent = 1;
 
 /// How many events the watcher takes from the kqueue at once.
 const _eventsAtOnce = 16;
+
+/// How long the watcher waits in `kevent` at a time: how late, at most, a
+/// kill reaches it.
+const _waitAtMost = Duration(milliseconds: 500);
 
 /// `struct kevent` of 64-bit macOS.
 final class _KEvent extends Struct {
