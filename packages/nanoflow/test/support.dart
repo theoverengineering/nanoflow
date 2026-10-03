@@ -38,10 +38,12 @@ String sessionDirOf(String projectDir, String sessionId) => [
 ].single;
 
 /// Every file under [dir], by its path relative to [dir], with what it
-/// holds.
+/// holds; but for `.owner.lock`, which tells who holds the session right now
+/// — it changes when the session is let go — and is not what the session
+/// writes.
 Map<String, String> filesUnder(String dir) => {
   for (final entity in Directory(dir).listSync(recursive: true))
-    if (entity is File)
+    if (entity is File && p.basename(entity.path) != ownerLockFileName)
       p.relative(entity.path, from: dir): entity.readAsStringSync(),
 };
 

@@ -9,6 +9,7 @@ import 'codecs.dart';
 import 'context.dart';
 import 'errors.dart';
 import 'exec.dart';
+import 'owner.dart';
 import 'project.dart';
 
 /// Runs workflows: ordinary async functions of a [Flow] and an input, whose
@@ -41,7 +42,10 @@ final class Flow {
   /// it, and the sessions go to `runs/` in it.
   final String directory;
 
-  late final FsStore _store = FsStore(runsDirOf(directory));
+  late final FsStore _store = FsStore(
+    runsDirOf(directory),
+    owner: currentOwner(),
+  );
 
   final _codecs = Codecs();
 
