@@ -1,6 +1,8 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' show LogCorrupted;
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
@@ -146,6 +148,96 @@ void main() {
     }
     expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
     expect(inCard('f0a5-session', find.text('3 steps')), findsOneWidget);
+  });
+
+  /// f0a5 ran on other code, and line 4 of its journal is not an event;
+  /// c3d4 was read whole.
+  Future<void> pumpIncomplete(WidgetTester tester) async {
+    final journal = Journal(
+      'f0a5-session',
+      workflow: 'release',
+      startedAt: -2131,
+      code: 'sha256:other',
+    )..step('plan', -2130, end: -2120, failed: true);
+    await pumpGraphScreen(
+      tester,
+      model: ownedModel(
+        file: releaseFile,
+        changes: [
+          ...changesOf([
+            journal,
+            Journal('c3d4-session', workflow: 'release')..step('plan', 1),
+          ]),
+          const LogCorrupted(
+            sessionId: 'f0a5-session',
+            line: 4,
+            text: '{"time": 1}',
+          ),
+        ],
+      ),
+      now: () => columnNow,
+    );
+  }
+
+  double middleOf(WidgetTester tester, String sessionId, String text) =>
+      tester.getCenter(inCard(sessionId, find.text(text))).dy;
+
+  testWidgets('a session whose journal was read incompletely is marked Log '
+      'read incompletely on the line of its other code, why in a tooltip, '
+      'and its status stays whole', (tester) async {
+    await pumpIncomplete(tester);
+
+    expect(
+      inCard('f0a5-session', find.text(logReadIncompletely)),
+      findsOneWidget,
+    );
+    expect(
+      middleOf(tester, 'f0a5-session', logReadIncompletely),
+      moreOrLessEquals(
+        middleOf(tester, 'f0a5-session', 'other code'),
+        epsilon: 1,
+      ),
+    );
+    expect(
+      inCard(
+        'f0a5-session',
+        find.byTooltip(
+          '$logReadIncompletely\nline 4 is not an event: {"time": 1}',
+        ),
+      ),
+      findsOneWidget,
+    );
+    final status = tester.renderObject<RenderParagraph>(
+      inCard('f0a5-session', find.text('Running for 47m 57s')),
+    );
+    expect(status.didExceedMaxLines, isFalse);
+    expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
+    expect(
+      inCard('c3d4-session', find.text(logReadIncompletely)),
+      findsNothing,
+    );
+  });
+
+  testWidgets('in the narrowest column the Log read incompletely mark goes '
+      'under the other code note instead of overflowing', (tester) async {
+    await pumpIncomplete(tester);
+    // The column's border, dragged as far left as it goes: 200 px.
+    await tester.dragFrom(
+      const Offset(271.5, 300),
+      const Offset(-200, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    expect(tester.getSize(find.byType(SessionsColumn)).width, 199);
+
+    expect(
+      middleOf(tester, 'f0a5-session', logReadIncompletely),
+      greaterThan(middleOf(tester, 'f0a5-session', 'other code')),
+    );
+    expect(
+      inCard('f0a5-session', find.text(logReadIncompletely)),
+      findsOneWidget,
+    );
   });
 
   testWidgets('counts the steps of each session', (tester) async {

@@ -94,8 +94,9 @@ class SessionsColumn extends StatelessWidget {
 }
 
 /// A session in the column: the day and time it started and its short id;
-/// its status with the time, `1 failed`, `other code` or `not checked`
-/// when its code is not its graph's, and how many steps it has.
+/// its status with the time, `1 failed`, and how many steps it has; `other
+/// code` or `not checked` when its code is not its graph's, and `Log read
+/// incompletely` when its journal was, why in a tooltip.
 class _SessionCard extends StatelessWidget {
   const _SessionCard({
     super.key,
@@ -131,6 +132,7 @@ class _SessionCard extends StatelessWidget {
     badge: summary.failedBadge,
     note: summary.codeNote,
     noteMuted: summary.code == CodeCheck.notChecked,
+    incompleteWhy: summary.incompleteWhy,
     end: Text(summary.stepsText, style: AppText.sessionRuns),
   );
 }
@@ -156,8 +158,10 @@ class _CurrentGraphItem extends StatelessWidget {
 /// A card of the column, a status [bar] on its left edge, the accent when
 /// [selected]: the [title] and the [id] on its first line; the [status], a
 /// red [badge] and the [end] on its second; an amber [note] — muted when
-/// [noteMuted] — on a line of its own, so that the status keeps its room.
-/// In a narrow column the title and the status give way first.
+/// [noteMuted] — and the `Log read incompletely` mark, [incompleteWhy] in
+/// its tooltip, on a line of their own, so that the status keeps its room;
+/// the mark goes under the note when the line is too narrow for both. In a
+/// narrow column the title and the status give way first.
 class _Item extends StatelessWidget {
   const _Item({
     required this.boxKey,
@@ -170,6 +174,7 @@ class _Item extends StatelessWidget {
     this.badge,
     this.note,
     this.noteMuted = false,
+    this.incompleteWhy,
     this.end,
     this.bar,
   });
@@ -186,6 +191,7 @@ class _Item extends StatelessWidget {
   final String? badge;
   final String? note;
   final bool noteMuted;
+  final String? incompleteWhy;
   final Widget? end;
   final Color? bar;
 
@@ -250,10 +256,16 @@ class _Item extends StatelessWidget {
                   ),
                   end,
                 ),
-                if (note case final text?)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _NoteBadge(text, muted: noteMuted),
+                if (note != null || incompleteWhy != null)
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (note case final text?)
+                        _NoteBadge(text, muted: noteMuted),
+                      if (incompleteWhy case final why?)
+                        Tooltip(message: why, child: const _IncompleteBadge()),
+                    ],
                   ),
               ],
             ),
@@ -313,6 +325,63 @@ class _NoteBadge extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// `Log read incompletely`: a small amber badge with a warning sign.
+class _IncompleteBadge extends StatelessWidget {
+  const _IncompleteBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    decoration: BoxDecoration(
+      color: AppColors.noteSurface,
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 4,
+      children: [
+        CustomPaint(size: const Size.square(10), painter: _WarningPainter()),
+        Text(
+          logReadIncompletely,
+          style: AppText.smallBadge.copyWith(color: AppColors.noteText),
+        ),
+      ],
+    ),
+  );
+}
+
+/// A triangle with `!` in it, in the note's amber.
+class _WarningPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 12);
+    final stroke = Paint()
+      ..color = AppColors.noteText
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas
+      ..drawPath(
+        Path()
+          ..moveTo(6, 1.5)
+          ..lineTo(11, 10.5)
+          ..lineTo(1, 10.5)
+          ..close(),
+        stroke,
+      )
+      ..drawLine(const Offset(6, 5), const Offset(6, 7.2), stroke)
+      ..drawCircle(
+        const Offset(6, 9),
+        0.75,
+        Paint()..color = AppColors.noteText,
+      );
+  }
+
+  @override
+  bool shouldRepaint(_WarningPainter old) => false;
 }
 
 /// What the column says without sessions.

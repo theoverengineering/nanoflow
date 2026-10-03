@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/freshness.dart' show CodeCheck;
+import 'package:nanoflow_ui/state/session_feed.dart' show SessionData;
 import 'package:nanoflow_ui/state/sessions.dart';
 
 import 'support.dart';
@@ -39,6 +40,41 @@ void main() {
         ).single.codeNote,
         'other code',
       );
+    });
+
+    test('whose journal was read incompletely is marked Log read '
+        'incompletely, why in its first five problems (ui-spec «Когда '
+        'что-то не так»)', () {
+      final journal = running();
+      SessionData withProblems(int count) => SessionData(
+        journal.session,
+        events: journal.events,
+        steps: journal.steps,
+        problems: [
+          for (var line = 1; line <= count; line++)
+            'line $line is not an event: {',
+        ],
+      );
+
+      final complete = summarize(journal.data, now)!;
+      expect(complete.incomplete, isFalse);
+      expect(complete.incompleteWhy, isNull);
+
+      final one = summarize(withProblems(1), now)!;
+      expect(one.incomplete, isTrue);
+      expect(logReadIncompletely, 'Log read incompletely');
+      expect(one.incompleteWhy, '''
+Log read incompletely
+line 1 is not an event: {''');
+
+      expect(summarize(withProblems(7), now)!.incompleteWhy, '''
+Log read incompletely
+line 1 is not an event: {
+line 2 is not an event: {
+line 3 is not an event: {
+line 4 is not an event: {
+line 5 is not an event: {
+and 2 more''');
     });
 
     test('starts at its session-started', () {

@@ -21,7 +21,8 @@ final class SessionSummary {
     required this.failedSteps,
     required this.firstLine,
     required this.code,
-  });
+    required List<String> problems,
+  }) : problems = List.unmodifiable(problems);
 
   final String id;
 
@@ -50,6 +51,25 @@ final class SessionSummary {
   /// How the code the session ran on stands against its graph; `null`
   /// while that is not known.
   final CodeCheck? code;
+
+  /// Why the session's journal was read incompletely
+  /// (`SessionData.problems`); empty when it was read whole.
+  final List<String> problems;
+
+  /// Whether the session is marked [logReadIncompletely].
+  bool get incomplete => problems.isNotEmpty;
+
+  /// The tooltip of the [logReadIncompletely] mark: the mark, then the
+  /// first [problemsShown] problems and how many more there are; `null`
+  /// without problems.
+  String? get incompleteWhy => incomplete
+      ? [
+          logReadIncompletely,
+          ...problems.take(problemsShown),
+          if (problems.length > problemsShown)
+            'and ${problems.length - problemsShown} more',
+        ].join('\n')
+      : null;
 
   /// `other code` for a session that ran on code its graph was not read
   /// from; `not checked` for one that recorded no hash of its code.
@@ -109,8 +129,17 @@ SessionSummary? summarize(
         .length,
     firstLine: dayAndTime(start, now),
     code: code,
+    problems: session.problems,
   );
 }
+
+/// The mark of a session whose journal was read incompletely: lines that
+/// are not events, events this version does not read, files that could not
+/// be read (ui-spec «Когда что-то не так»).
+const logReadIncompletely = 'Log read incompletely';
+
+/// The most problems the tooltip of [logReadIncompletely] lists.
+const problemsShown = 5;
 
 /// What the sessions column says instead of sessions when the workflow has
 /// none.
