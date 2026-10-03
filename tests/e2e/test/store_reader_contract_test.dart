@@ -118,8 +118,13 @@ void main() {
     await feed.settle();
 
     expect(feed.errors, isEmpty);
+    // The owner is left out: here the reader runs in the process that holds
+    // the session's lock, which a reader must never do — its reading of
+    // .owner.lock drops that lock. What the reader tells of an owner is
+    // pinned with the owner in a process of its own, in
+    // review_example_test.dart.
     expect(
-      feed.changes.where((c) => c is! EventAdded),
+      feed.changes.where((c) => c is! EventAdded && c is! OwnerChanged),
       unorderedEquals([
         SessionAdded(session.session),
         StepAdded(collect),
@@ -127,10 +132,6 @@ void main() {
         StepChanged(collectDone),
         for (final id in documents.keys)
           DocumentAdded(sessionId: sessionId, documentId: id),
-        // A store without an owner leaves .owner.lock empty: no owner, until
-        // the journal ends. Reading that file here, in the process that holds
-        // the session's lock, drops the lock; nothing here needs it.
-        OwnerChanged(sessionId: sessionId, owner: null, alive: false),
       ]),
     );
     expect(feed.changes.first, SessionAdded(session.session));

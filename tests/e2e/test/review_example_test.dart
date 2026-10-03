@@ -1,5 +1,6 @@
 // examples/review run as an app is run: with `dart run`, and compiled and
-// stamped; stopped with Ctrl+C and taken on again.
+// stamped; stopped with Ctrl+C, or killed while a reader watches the owner
+// of its session, and taken on again.
 @Timeout(Duration(seconds: 90))
 library;
 
@@ -7,9 +8,12 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart' show SessionBusyException;
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_process/nanoflow_process.dart';
+import 'package:nanoflow_reader/nanoflow_reader.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import 'support/feed.dart';
 import 'support/programs.dart';
 import 'support/wait.dart';
 
@@ -134,6 +138,35 @@ Future<void> expectReviewed(
       reason: step.name,
     );
   }
+}
+
+/// An `sh` that, put before the real one on `PATH`, stands in for inspect's
+/// check and holds it: it makes the file [checking] to tell the check runs,
+/// waits until there is the file [go], and then runs the real check.
+final class HeldCheck {
+  HeldCheck() {
+    final sh = File(p.join(dir, 'sh'))
+      ..writeAsStringSync(
+        "#!/bin/sh\n: > '$checking'\n"
+        "until [ -e '$go' ]; do sleep 0.05; done\n"
+        'exec /bin/sh "\$@"\n',
+      );
+    expect(Process.runSync('chmod', ['+x', sh.path]).exitCode, 0);
+  }
+
+  /// The directory of the `sh`, deleted after the test.
+  final String dir = tempDir();
+
+  /// Made each time the check starts.
+  String get checking => p.join(dir, 'checking');
+
+  /// Lets every check, waiting or to come, run.
+  String get go => p.join(dir, 'go');
+
+  /// What a program whose checks are held adds to its environment.
+  Map<String, String> get environment => {
+    'PATH': '$dir:${Platform.environment['PATH']}',
+  };
 }
 
 void main() {
@@ -264,23 +297,15 @@ void main() {
 
     test('Ctrl+C stops the session, which no other process can take on '
         'while it runs; exit 130, and --resume ends it', () async {
-      // An `sh` before the real one on PATH stands in for inspect's check:
-      // it tells it runs, then waits until it is stopped.
-      final fake = tempDir();
-      final checking = p.join(fake, 'checking');
-      final sh = File(p.join(fake, 'sh'))
-        ..writeAsStringSync(
-          "#!/bin/sh\n: > '$checking'\nwhile :; do sleep 0.05; done\n",
-        );
-      expect(Process.runSync('chmod', ['+x', sh.path]).exitCode, 0);
-
-      final first = await Running.start(
-        binary,
-        ['parseConfig'],
-        environment: {'PATH': '$fake:${Platform.environment['PATH']}'},
-      );
+      final check = HeldCheck();
+      final first = await Running.start(binary, [
+        'parseConfig',
+      ], environment: check.environment);
       final id = await first.firstLine();
-      await waitFor('inspect to run its check', File(checking).existsSync);
+      await waitFor(
+        'inspect to run its check',
+        File(check.checking).existsSync,
+      );
 
       expect(await run(binary, ['--resume', id]), (
         code: 1,
@@ -317,5 +342,81 @@ void main() {
         {for (final (i, step) in steps.indexed) step.id: i == 1 ? 2 : 1},
       );
     });
+
+    test('killed with SIGKILL in a step: the reader tells the owner of its '
+        'session gone within 5 s; --resume tells the new owner alive, then '
+        'session-finished, and nothing of the owner after it', () async {
+      final check = HeldCheck();
+      final first = await Running.start(binary, [
+        'parseConfig',
+      ], environment: check.environment);
+      final id = await first.firstLine();
+      await waitFor(
+        'inspect to run its check',
+        File(check.checking).existsSync,
+      );
+
+      final processes = MacProcesses();
+      addTearDown(processes.close);
+      Owner ownerOf(Running program) {
+        final pid = program.process.pid;
+        return Owner(pid: pid, started: processes.startOf(pid));
+      }
+
+      final firstOwner = ownerOf(first);
+      // The reader as the UI makes it: it takes the adapter of this OS, and
+      // closes it when the feed is cancelled at the end of the test.
+      final feed = Feed(FsReader(runsDir: runsDirOf(build)));
+      await feed.given(
+        OwnerChanged(sessionId: id, owner: firstOwner, alive: true),
+      );
+
+      final killed = Stopwatch()..start();
+      first.process.kill(ProcessSignal.sigkill);
+      await feed.given(
+        OwnerChanged(sessionId: id, owner: firstOwner, alive: false),
+      );
+      expect(killed.elapsed, lessThan(const Duration(seconds: 5)));
+      expect(await first.exitCode, -ProcessSignal.sigkill.signalNumber);
+
+      // Its check is held too, so that the session cannot end before the
+      // reader has looked at the new owner.
+      final resumed = await Running.start(binary, [
+        '--resume',
+        id,
+      ], environment: check.environment);
+      final resumedOwner = ownerOf(resumed);
+      expect(resumedOwner.pid, isNot(firstOwner.pid));
+      await feed.given(
+        OwnerChanged(sessionId: id, owner: resumedOwner, alive: true),
+      );
+      File(check.go).createSync();
+      expect(await resumed.exitCode, 0, reason: '${resumed.err}');
+      expect(resumed.lines, [id]);
+      await feed.settle();
+
+      expect(feed.errors, isEmpty);
+      final ofSession = [
+        for (final change in feed.changes)
+          if (change
+              case OwnerChanged(:final sessionId) ||
+                  EventAdded(:final sessionId)
+              when sessionId == id)
+            change,
+      ];
+      expect(ofSession.whereType<OwnerChanged>(), [
+        OwnerChanged(sessionId: id, owner: firstOwner, alive: true),
+        OwnerChanged(sessionId: id, owner: firstOwner, alive: false),
+        OwnerChanged(sessionId: id, owner: resumedOwner, alive: true),
+      ]);
+      expect(
+        ofSession.last,
+        isA<EventAdded>().having(
+          (change) => change.event,
+          'event',
+          isA<SessionFinished>(),
+        ),
+      );
+    }, testOn: 'mac-os');
   });
 }

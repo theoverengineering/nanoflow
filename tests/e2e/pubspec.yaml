@@ -1,5 +1,5 @@
 name: e2e
-description: End-to-end tests - the example and a workflow program run as processes, killed and resumed, and the store and the reader on one session.
+description: End-to-end tests - the example and a workflow program run as processes, killed and resumed, watched by the reader, and the store and the reader on one session.
 publish_to: none
 resolution: workspace
 environment:
@@ -11,6 +11,8 @@ dev_dependencies:
     path: ../../packages/nanoflow_describe
   nanoflow_model:
     path: ../../packages/nanoflow_model
+  nanoflow_process:
+    path: ../../packages/nanoflow_process
   nanoflow_reader:
     path: ../../packages/nanoflow_reader
   nanoflow_store:
