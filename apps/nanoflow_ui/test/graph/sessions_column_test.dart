@@ -150,6 +150,35 @@ void main() {
     expect(inCard('f0a5-session', find.text('3 steps')), findsOneWidget);
   });
 
+  testWidgets('a session resumed on changed code says so on its card', (
+    tester,
+  ) async {
+    await pumpGraphScreen(
+      tester,
+      model: ownedModel(
+        file: releaseFile,
+        changes: changesOf([
+          Journal('a1b2-session', workflow: 'release')
+            ..step('plan', 1, end: 5)
+            ..resume(6, code: 'sha256:edited')
+            ..step('build', 7),
+          Journal('c3d4-session', workflow: 'release', startedAt: -100)
+            ..step('plan', -99),
+        ]),
+      ),
+      now: () => columnNow,
+    );
+
+    expect(
+      inCard('a1b2-session', find.text(resumedOnChangedCode)),
+      findsOneWidget,
+    );
+    expect(
+      inCard('c3d4-session', find.text(resumedOnChangedCode)),
+      findsNothing,
+    );
+  });
+
   /// f0a5 ran on other code, and line 4 of its journal is not an event;
   /// c3d4 was read whole.
   Future<void> pumpIncomplete(WidgetTester tester) async {

@@ -50,6 +50,46 @@ void main() {
     return j;
   }
 
+  test('two steps called on one line mark each its own node; a step whose '
+      'name is an expression marks every node of its line', () {
+    // `await Future.wait([f.step('lint', …), f.step('test', …)]);` as
+    // `dart format` leaves it, then two steps named by expressions.
+    final check = GraphFunction(
+      id: 'lib/ci.dart#check',
+      name: 'check',
+      place: 'lib/ci.dart:1',
+      body: const GraphBody(
+        nodes: [
+          StepNode(id: '1', place: 'lib/ci.dart:2', name: 'lint'),
+          StepNode(id: '2', place: 'lib/ci.dart:2', name: 'test'),
+          StepNode(id: '3', place: 'lib/ci.dart:3', name: "'deploy-' + env"),
+          StepNode(id: '4', place: 'lib/ci.dart:3', name: "'notify-' + env"),
+        ],
+        edges: [],
+      ),
+    );
+    final session =
+        (Journal('c1d2-session', workflow: 'check')
+              ..step('lint', 1, end: 2, place: 'lib/ci.dart:2')
+              ..step('test', 1, end: 3, failed: true, place: 'lib/ci.dart:2')
+              ..step('deploy-prod', 4, end: 5, place: 'lib/ci.dart:3'))
+            .data;
+    final marks = GraphMarks.of(
+      check.body,
+      places: StepPlaces.of(check, {check.id: check}),
+      session: session,
+    );
+
+    expect(marks.of('1')!.state, NodeState.visited);
+    expect(marks.of('1')!.steps, 1);
+    expect(marks.of('2')!.state, NodeState.failed);
+    expect(marks.of('2')!.steps, 1);
+    for (final id in ['3', '4']) {
+      expect(marks.of(id)!.state, NodeState.visited, reason: id);
+      expect(marks.of(id)!.steps, 1, reason: id);
+    }
+  });
+
   group('marks of the workflow body', () {
     final session = inPlace().data;
     final marks = GraphMarks.of(

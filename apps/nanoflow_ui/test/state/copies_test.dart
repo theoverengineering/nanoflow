@@ -662,6 +662,51 @@ void main() {
         expect(outer.tagOf(j.steps[3].id), 'pkg 1 › target 2');
         expect(outer.levelCopies.single.copies, hasLength(4));
       });
+
+      test('the workflow body drawn, the outer copies not opened, names the '
+          'steps of the inner copies by both copies (decision 11)', () {
+        final j = nestedJournal();
+        final top = framesOf(
+          bodyLevels(nested, file.functions, const []),
+          places: placesOf('nested'),
+          session: j.data,
+        );
+        expect(top.frames, isEmpty);
+        expect(top.tagOf(j.steps[0].id), 'pkg 1', reason: 'fetch');
+        expect(top.tagOf(j.steps[3].id), 'pkg 1 › target 2');
+        expect(top.tagOf(j.steps[8].id), 'pkg 2 › target 2');
+        expect(top.copyOf(j.steps[8].id), 'pkg 2 › target 2');
+      });
+    });
+
+    test('the steps of copies in a function a call on the level drawn calls '
+        'are named by their copy', () {
+      final caller = GraphFunction(
+        id: 'lib/copies.dart#release',
+        name: 'release',
+        place: 'lib/copies.dart:40',
+        body: const GraphBody(
+          nodes: [
+            CallNode(
+              id: '1',
+              place: 'lib/copies.dart:41',
+              functions: ['lib/copies.dart#inPlace'],
+            ),
+          ],
+          edges: [],
+        ),
+      );
+      final functions = {...file.functions, caller.id: caller};
+      final j = inPlaceJournal();
+      final shown = framesOf(
+        bodyLevels(caller, functions, const []),
+        places: StepPlaces.of(caller, functions),
+        session: j.data,
+      );
+      // core, tool and cli started in that order.
+      expect(shown.tagOf(j.steps[1].id), 'pkg 1');
+      expect(shown.tagOf(j.steps[3].id), 'pkg 3');
+      expect(shown.tagOf(j.steps.first.id), isNull, reason: 'plan');
     });
   });
 

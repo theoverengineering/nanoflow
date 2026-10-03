@@ -42,6 +42,24 @@ void main() {
       );
     });
 
+    test('resumed on code other than the code it started on is marked '
+        'resumed on changed code (decision 7)', () {
+      expect(summarize(running().data, now)!.resumedNote, isNull);
+      final sameCode = running()..resume(200);
+      expect(summarize(sameCode.data, now)!.resumedNote, isNull);
+      final changed = running()
+        ..resume(200, code: 'sha256:edited', graphId: 'snapshot')
+        ..resume(300);
+      expect(summarize(changed.data, now)!.resumedNote, resumedOnChangedCode);
+      expect(resumedOnChangedCode, 'resumed on changed code');
+      // A code not recorded tells nothing.
+      final unknown = running()..resume(200, code: null);
+      expect(summarize(unknown.data, now)!.resumedNote, isNull);
+      final startedUnknown = Journal('b2c3-session', code: null)
+        ..resume(200, code: 'sha256:edited');
+      expect(summarize(startedUnknown.data, now)!.resumedNote, isNull);
+    });
+
     test('whose journal was read incompletely is marked Log read '
         'incompletely, why in its first five problems (ui-spec «Когда '
         'что-то не так»)', () {

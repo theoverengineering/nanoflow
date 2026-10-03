@@ -86,6 +86,18 @@ void main() {
       expect(graph.noSnapshot, isTrue);
     });
 
+    test('of a resume whose snapshot is null — there was no graph file then '
+        '— is the graph file, marked as without a snapshot, and the code '
+        'is checked against it', () {
+      final session = Journal('a1b2-session')
+        ..resume(10, code: 'sha256:now', graphId: 'snap');
+      final graph = graphOf(session, documents: {'snap': null});
+      expect(graph.graph, same(graphFile));
+      expect(graph.noSnapshot, isTrue);
+      expect(graph.unreadable, isFalse);
+      expect(graph.code, CodeCheck.matches);
+    });
+
     test('without a snapshot or a graph file is none', () {
       final graph = sessionGraphOf(
         Journal('a1b2-session', snapshot: false).data,

@@ -1,20 +1,15 @@
 import '../../layout/layout.dart';
 import '../../state/session_view.dart';
 
-/// How an arrow, an exit or an input bar is drawn (docs/ui-spec.md «Граф»).
-/// A session's tones go from the darkest to the one drawn over the rest.
+/// How an arrow, an exit or an input bar is drawn (docs/ui-spec.md «Граф»):
+/// a step records no way it took, so no way is highlighted.
 enum Tone {
-  /// `Current graph`: no session, so nothing was gone along.
+  /// As the graph draws it.
   plain,
 
-  /// No step of the session went along it: darker.
+  /// In the body of one copy, it leads to or from a node the copy has not
+  /// reached: darker.
   untaken,
-
-  /// Steps of the session went along it.
-  taken,
-
-  /// The selected way went along it: the accent color.
-  path,
 }
 
 /// What the selected session puts on the canvas, as the canvas asks for it
@@ -78,17 +73,15 @@ final class CanvasMarks {
   bool _unreached(String id) =>
       oneCopy && _marks?.of(id)?.state == NodeState.notVisited;
 
-  /// The tone of the exit [index] of [node].
-  Tone exit(String node, int index) =>
-      _unreached(node) ? Tone.untaken : Tone.plain;
+  /// The tone of the exits of [node].
+  Tone exit(String node) => _unreached(node) ? Tone.untaken : Tone.plain;
 
   /// The tone of [edge].
   Tone edge(EdgePath edge) =>
       _unreached(edge.from) || _unreached(edge.to) ? Tone.untaken : Tone.plain;
 
-  /// The tone of the input bar of [node], which [into] arrive at.
-  Tone bar(String node, Iterable<EdgePath> into) =>
-      _unreached(node) ? Tone.untaken : Tone.plain;
+  /// The tone of the input bar of [node].
+  Tone bar(String node) => _unreached(node) ? Tone.untaken : Tone.plain;
 
   /// The tone the legend shows back arrows in, the lightest they are drawn
   /// in; `null` when there are none of [back].

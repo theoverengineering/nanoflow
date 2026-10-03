@@ -1,5 +1,5 @@
 name: nanoflow_ui
-description: The nanoflow macOS app - watches a graph's runs live.
+description: The nanoflow macOS app - draws the workflows of a graph file and watches their sessions live.
 publish_to: none
 environment:
   sdk: ^3.13.0

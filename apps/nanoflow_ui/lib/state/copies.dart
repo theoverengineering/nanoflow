@@ -7,6 +7,12 @@
 /// every other step of the frame belongs to the copy of its predecessor. A
 /// rerun rewrites a record's `after`: the chain follows the record as it is
 /// now. Copies are numbered by when they started. Pure.
+///
+/// The limit of this: a copy of an outer frame is told by its first step.
+/// One with no step before its inner copies — `Future.wait([for (p in pkgs)
+/// Future.wait([for (t in targets) f.step('build', …)])])` — cannot be told
+/// apart: each step of its inner copies follows a step outside both frames,
+/// and so starts an outer copy of its own.
 library;
 
 import 'dart:convert';
@@ -70,8 +76,7 @@ List<Copy> copiesOf(
   Iterable<StepState>? steps,
 }) {
   final held = places.within(frame);
-  bool inside(Step? record) =>
-      record != null && places.of(record.place).any(held.contains);
+  bool inside(Step? record) => places.of(record).any(held.contains);
 
   // The first step of the copy of each step, by id: every step walked
   // gets it, so that each chain is walked once.
@@ -101,7 +106,6 @@ List<Copy> copiesOf(
     return first;
   }
 
-  final states = {for (final step in session.state.steps) step.stepId: step};
   final chains = <String, List<StepState>>{};
   for (final step in steps ?? session.state.steps) {
     final record = session.steps[step.stepId];
@@ -111,7 +115,7 @@ List<Copy> copiesOf(
   final started = [
     for (final MapEntry(key: first, value: chain) in chains.entries)
       (
-        first: states[first] ?? chain.first,
+        first: session.stateOf(first) ?? chain.first,
         chain: chain,
         at: chain
             .map((step) => step.startedAt)
@@ -204,8 +208,10 @@ final class CopiesFrame {
   };
 }
 
-/// The copies of a `copies` node of the level drawn, which is not opened:
-/// they name the steps in them.
+/// The copies of a `copies` node of the level drawn, which is not opened,
+/// or of one inside it — in the body of copies, or of a function a call
+/// calls — each numbered within the copy around it: they name the steps in
+/// them.
 typedef LevelCopies = ({CopiesNode node, List<Copy> copies});
 
 /// What the levels of the canvas show of a session: the copies frames they
@@ -217,7 +223,8 @@ final class ShownSteps {
 
   final List<CopiesFrame> frames;
 
-  /// The copies of the `copies` nodes of the level drawn.
+  /// The copies of the `copies` nodes of the level drawn and inside them,
+  /// the outer before the inner.
   final List<LevelCopies> levelCopies;
 
   /// The steps shown, in the order of their first `step-started`.
@@ -294,7 +301,9 @@ typedef _Part = ({String name, int? chosenAt});
 /// is a frame with its copies, the copy [selected] at its depth (by the id
 /// of its first step) shown; the steps of the levels below are that copy's.
 /// A selected copy the frame does not have shows all. The `copies` nodes of
-/// the last level, which is drawn, have their copies too.
+/// the last level, which is drawn, have their copies too, and so do those
+/// inside them: in the bodies of copies and of the functions calls call,
+/// each numbered within the copy around it (`pkg 1 › target 2`).
 ///
 /// Copies in copies are numbered within the copy of the frame around them;
 /// while that frame shows all its copies, none of the inner ones can be
@@ -343,11 +352,46 @@ ShownSteps framesOf(
       around = (node: node, copies: copies);
     }
   }
-  return ShownSteps._(List.unmodifiable(frames), [
-    if (levels.lastOrNull?.body case final body?)
-      for (final node in body.nodes.whereType<CopiesNode>())
-        (node: node, copies: copiesOf0(node)),
-  ], List.unmodifiable(steps));
+  final levelCopies = <LevelCopies>[];
+  // The copies of the copies nodes in [body] and inside them, each numbered
+  // within the group of steps it is in; a function in [entered] is not
+  // entered again.
+  void collect(
+    GraphBody body,
+    Iterable<List<StepState>> groups,
+    Set<String> entered,
+  ) {
+    for (final node in body.nodes) {
+      switch (node) {
+        case CopiesNode():
+          final copies = [
+            for (final group in groups)
+              ...copiesOf(node, places: places, session: session, steps: group),
+          ];
+          levelCopies.add((node: node, copies: copies));
+          collect(node.body, [for (final copy in copies) copy.steps], entered);
+        case CallNode():
+          for (final function in places.calledBy(node)) {
+            if (entered.contains(function.id)) continue;
+            collect(function.body, groups, {...entered, function.id});
+          }
+        case StepNode() || ConditionNode():
+      }
+    }
+  }
+
+  if (levels.lastOrNull?.body case final body?) {
+    collect(
+      body,
+      around?.copies.map((copy) => copy.steps) ?? [steps],
+      const {},
+    );
+  }
+  return ShownSteps._(
+    List.unmodifiable(frames),
+    levelCopies,
+    List.unmodifiable(steps),
+  );
 }
 
 /// `done 1 of 3`, `done 1 of 3 · 1 failed`.

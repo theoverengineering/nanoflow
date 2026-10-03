@@ -88,8 +88,8 @@ void main() {
     for (final edge in layout.edges) {
       expect(marks.edge(edge), Tone.plain);
     }
-    expect(marks.exit('1', 0), Tone.plain);
-    expect(marks.bar('2', layout.edges.where((e) => e.to == '2')), Tone.plain);
+    expect(marks.exit('1'), Tone.plain);
+    expect(marks.bar('2'), Tone.plain);
   });
 
   test('one copy shown: what leads to or from a node it has not reached is '
@@ -104,14 +104,14 @@ void main() {
     expect(marks.edge(edge('1', '2')), Tone.untaken);
     expect(marks.edge(edge('2', '3')), Tone.untaken);
     expect(marks.edge(edge('3', '(end)')), Tone.untaken);
-    expect(marks.exit('1', 0), Tone.plain);
-    expect(marks.exit('2', 0), Tone.untaken);
-    expect(marks.bar('1', const []), Tone.plain);
-    expect(marks.bar('2', const []), Tone.untaken);
+    expect(marks.exit('1'), Tone.plain);
+    expect(marks.exit('2'), Tone.untaken);
+    expect(marks.bar('1'), Tone.plain);
+    expect(marks.bar('2'), Tone.untaken);
     // All copies shown: plain.
     final all = marksOf(const [Opened('2')]);
     expect(all.edge(edge('2', '3')), Tone.plain);
-    expect(all.bar('3', const []), Tone.plain);
+    expect(all.bar('3'), Tone.plain);
   });
 
   test('back arrows are in the plain tone; none without them', () {

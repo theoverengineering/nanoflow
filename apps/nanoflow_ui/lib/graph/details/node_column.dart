@@ -150,7 +150,7 @@ class _Place extends StatelessWidget {
             child: SelectionArea(
               child: Text(
                 place ?? 'Not known: the step recorded no place',
-                style: place == null ? AppText.commandNote : AppText.commandBox,
+                style: place == null ? AppText.placeNote : AppText.placeBox,
               ),
             ),
           ),

@@ -25,7 +25,7 @@ abstract final class AppColors {
   static const control = Color(0xFF2A2B30);
   static const controlBorder = Color(0xFF3A3B41);
 
-  /// The primary button and the selected run.
+  /// The primary button; the accent of the app's theme.
   static const accent = Color(0xFF6D5DE8);
   static const onAccent = Color(0xFFFFFFFF);
 
@@ -92,10 +92,11 @@ abstract final class AppColors {
   /// Under the window's top bar.
   static const topBarBorder = Color(0xFF2E2F34);
 
-  /// A node's command, a duration after a time, a note.
+  /// A place in the code, the path of a step's directory, a duration after
+  /// a time, a note, the punctuation of JSON.
   static const textSubtle = Color(0xFF9A9BA2);
 
-  /// `from fix · 14:08:54`; the keys of JSON.
+  /// The keys of JSON.
   static const link = Color(0xFFB7ABFF);
 
   /// Numbers, and `true`, `false` and `null`, in data.
@@ -129,7 +130,7 @@ extension StepStatusColors on StepStatus {
   };
 }
 
-/// Text of the mockups: UI text in Geist; ids, paths, commands and logs in
+/// Text of the mockups: UI text in Geist; ids, places, paths and logs in
 /// Geist Mono. Sizes, weights and colors are the mockups' CSS.
 abstract final class AppText {
   static const sans = 'Geist';
@@ -233,7 +234,7 @@ abstract final class AppText {
   );
   static final sessionId = _style(mono, 11);
   static final sessionStatus = _style(sans, 12);
-  static final sessionRuns = _style(sans, 11.5, color: AppColors.textMuted);
+  static final sessionSteps = _style(sans, 11.5, color: AppColors.textMuted);
 
   /// `1 failed`, `2 errors`.
   static final smallBadge = _style(sans, 10.5);
@@ -263,7 +264,7 @@ abstract final class AppText {
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
-  static final logsRun = _style(sans, 12, color: AppColors.textMuted);
+  static final logsSteps = _style(sans, 12, color: AppColors.textMuted);
 
   /// `Step`, `Started`, `Took`; the timeline's axis.
   static final columnTitle = _style(sans, 10.5, color: AppColors.textFaint);
@@ -309,9 +310,9 @@ abstract final class AppText {
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
-  static final windowCommand = _style(mono, 11, color: AppColors.textSubtle);
+  static final windowPlace = _style(mono, 11, color: AppColors.textSubtle);
   static final visitText = _style(sans, 12, color: AppColors.textPrimary);
-  static final windowRun = _style(sans, 12, color: AppColors.textMuted);
+  static final windowCopy = _style(sans, 12, color: AppColors.textMuted);
   static final resultChip = _style(sans, 11.5);
 
   /// `PLACE IN CODE`, `THIS STEP`, `OUTPUT`: 0.09 em apart.
@@ -334,9 +335,8 @@ abstract final class AppText {
     12,
     color: AppColors.textAreaText,
   ).copyWith(height: 1.8);
-  static final commandBox = _style(mono, 12, color: AppColors.textPrimary);
-  static final commandNote = _style(sans, 11.5, color: AppColors.textSubtle);
-  static final target = _style(sans, 12, color: AppColors.textPrimary);
+  static final placeBox = _style(mono, 12, color: AppColors.textPrimary);
+  static final placeNote = _style(sans, 11.5, color: AppColors.textSubtle);
   static final factLabel = _style(sans, 12, color: AppColors.textMuted);
   static final factValue = _style(mono, 12, color: AppColors.textPrimary);
   static final factNote = _style(sans, 11.5, color: AppColors.textSubtle);

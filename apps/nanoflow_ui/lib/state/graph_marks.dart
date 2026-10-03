@@ -76,10 +76,10 @@ final class GraphMarks {
         if (node is! ConditionNode) node,
     ];
     List<String> nodesOf(String stepId) {
-      final place = session.steps[stepId]?.place;
+      final record = session.steps[stepId];
       return [
         for (final node in nodes)
-          if (places.isIn(place, node)) node.id,
+          if (places.isIn(record, node)) node.id,
       ];
     }
 

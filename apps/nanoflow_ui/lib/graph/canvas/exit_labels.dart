@@ -7,20 +7,19 @@ import 'layout_geometry.dart';
 
 /// An exit's label on its opaque chip.
 final class ExitChip {
-  const ExitChip(this.rect, this.text, this.color);
+  const ExitChip(this.rect, this.text);
 
   final Rect rect;
   final String text;
-  final Color color;
 }
 
 /// Paints the exits of a layout (docs/ui-spec.md «Граф»): dots, capsules,
-/// and the labels on chips of the canvas's color that arrows go behind. Over the arrows, under the tiles:
-/// a tile covers the half of a dot on its side, as in the mockups. Clicks
-/// go through it.
+/// and the labels on chips of the canvas's color that arrows go behind.
+/// Over the arrows, under the tiles: a tile covers the half of a dot on its
+/// side, as in the mockups. Clicks go through it.
 class ExitsPainter extends CustomPainter {
   ExitsPainter(this.graph, this.marks)
-    : chips = List.unmodifiable(_chipsOf(graph, marks));
+    : chips = List.unmodifiable(_chipsOf(graph));
 
   final layout.GraphLayout graph;
   final CanvasMarks marks;
@@ -35,20 +34,11 @@ class ExitsPainter extends CustomPainter {
   /// How far over a chip's bottom its text's baseline is.
   static const _baseline = 2.5;
 
-  static List<ExitChip> _chipsOf(layout.GraphLayout graph, CanvasMarks marks) {
-    final chips = <ExitChip>[];
-    for (final exit in graph.exits) {
-      final color = marks.exit(exit.node, exit.index) == Tone.path
-          ? CanvasColors.pathText
-          : CanvasColors.chipText;
-      final label = exit.label;
-      final labelRect = exit.labelRect;
-      if (label != null && labelRect != null) {
-        chips.add(ExitChip(labelRect.toRect(), label, color));
-      }
-    }
-    return chips;
-  }
+  static List<ExitChip> _chipsOf(layout.GraphLayout graph) => [
+    for (final exit in graph.exits)
+      if ((exit.label, exit.labelRect) case (final label?, final rect?))
+        ExitChip(rect.toRect(), label),
+  ];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -56,7 +46,7 @@ class ExitsPainter extends CustomPainter {
     for (final exit in graph.exits) {
       // The arrows of a frame's start leave its side, where its bar is.
       if (graph.nodes[exit.node]?.port ?? false) continue;
-      final tone = marks.exit(exit.node, exit.index);
+      final tone = marks.exit(exit.node);
       final anchor = exit.anchor.toOffset();
       switch (exit.shape) {
         case layout.ExitShape.dot:
@@ -89,7 +79,7 @@ class ExitsPainter extends CustomPainter {
       final text = TextPainter(
         text: TextSpan(
           text: chip.text,
-          style: CanvasText.chip.copyWith(color: chip.color),
+          style: CanvasText.chip.copyWith(color: CanvasColors.chipText),
         ),
         textDirection: TextDirection.ltr,
         textScaler: TextScaler.noScaling,
@@ -120,8 +110,7 @@ class ExitsPainter extends CustomPainter {
   }
 
   static Color _handleColor(Tone tone) => switch (tone) {
-    Tone.path => CanvasColors.path,
-    Tone.taken || Tone.plain => CanvasColors.taken,
+    Tone.plain => CanvasColors.plain,
     Tone.untaken => CanvasColors.untakenExit,
   };
 

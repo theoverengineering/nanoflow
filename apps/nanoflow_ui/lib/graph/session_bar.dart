@@ -9,8 +9,10 @@ import '../widgets/dot.dart';
 
 /// The session bar floating over the top of the canvas (docs/ui-spec.md
 /// «Холст»): `Session a1b2 · started 14:03:11 · ● running 12m 26s`, whose
-/// time goes on with the [clock]. The canvas moves under it; it stays.
-/// With `Current graph` selected there is no session, and no bar.
+/// time goes on with the [clock]; then `resumed on changed code` for a
+/// session resumed on other code than it started on. The canvas moves under
+/// it; it stays. With `Current graph` selected there is no session, and no
+/// bar.
 class SessionBar extends StatelessWidget {
   const SessionBar({super.key, required this.model, required this.clock});
 
@@ -38,9 +40,9 @@ class SessionBar extends StatelessWidget {
   );
 }
 
-/// The session's short id (the full one in a tooltip), when it started and
-/// how it is; only the id before it has started. Short of room, the status
-/// gives way.
+/// The session's short id (the full one in a tooltip), when it started, how
+/// it is, and whether it was resumed on changed code; only the id before it
+/// has started. Short of room, the status and that mark give way.
 class _Session extends StatelessWidget {
   const _Session({required this.id, required this.summary});
 
@@ -92,6 +94,18 @@ class _Session extends StatelessWidget {
                 ],
               ),
             ),
+            if (summary.resumedNote case final mark?) ...[
+              separator,
+              Flexible(
+                child: Text(
+                  mark,
+                  style: AppText.barLabel.copyWith(color: AppColors.noteText),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ],
         ],
       ),

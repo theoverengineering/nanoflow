@@ -190,8 +190,7 @@ StepRow _stepRow(
     name: record?.name ?? '',
     status: step.status,
     detail:
-        error ??
-        (record == null || places.onGraph(record.place) ? null : notOnGraph),
+        error ?? (record == null || places.onGraph(record) ? null : notOnGraph),
     failure: error != null,
     copy: copy,
     started: clockTime(step.startedAt),

@@ -8,32 +8,27 @@ import '../../layout/layout.dart' show LabelKind;
 import '../../theme.dart';
 import 'canvas_marks.dart' show Tone;
 
-/// The canvas's colors. Arrows, exits and input bars come in four tones
+/// The canvas's colors. Arrows, exits and input bars come in two tones
 /// (`Tone` in canvas_marks.dart).
 abstract final class CanvasColors {
   static const background = Color(0xFF27282C);
   static const gridDot = Color(0xFF3A3B41);
 
-  /// The selected way: `Tone.path`.
-  static const path = Color(0xFF9C8CFF);
-  static const pathText = Color(0xFFBDB3FF);
+  /// Arrows, exits and input bars as the graph draws them: `Tone.plain`.
+  static const plain = Color(0xFF6B6C73);
 
-  /// Arrows steps went along, not the selected way; and every arrow of
-  /// `Current graph`.
-  static const taken = Color(0xFF6B6C73);
-
-  /// Arrows no step went along: darker.
+  /// Arrows and input bars that lead to or from a node one copy shown has
+  /// not reached: `Tone.untaken`, darker; and such exits.
   static const untaken = Color(0xFF4A4B52);
   static const untakenExit = Color(0xFF55565C);
 
   /// The color of arrows, their heads and input bars in [tone].
   static Color line(Tone tone) => switch (tone) {
-    Tone.path => path,
-    Tone.taken || Tone.plain => taken,
+    Tone.plain => plain,
     Tone.untaken => untaken,
   };
 
-  /// Exit labels off the selected way.
+  /// Exit labels.
   static const chipText = Color(0xFF9A9BA2);
 
   /// A tile: its fill and border, its icon, its name and place under it.

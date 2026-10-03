@@ -272,7 +272,7 @@ class _TopBar extends StatelessWidget {
               if (place != null)
                 Text(
                   place,
-                  style: AppText.windowCommand,
+                  style: AppText.windowPlace,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -291,7 +291,7 @@ class _TopBar extends StatelessWidget {
             Text(
               copy,
               key: StepDetailsWindow.copyKey,
-              style: AppText.windowRun,
+              style: AppText.windowCopy,
             ),
         ],
         const Spacer(),

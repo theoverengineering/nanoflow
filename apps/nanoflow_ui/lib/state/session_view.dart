@@ -58,7 +58,9 @@ final class SessionGraph {
 
 /// The graph [session] is shown on: the document of its last
 /// `session-resumed` that names one, as [documents] has it, else its own
-/// `graph`, else [graphFile], the graph file as it is now.
+/// `graph`, else [graphFile], the graph file as it is now. A document whose
+/// value is `null` — a resume when there was no graph file — is no
+/// snapshot: the graph file then too.
 ///
 /// The code checked is the session's last: of its last `session-resumed`,
 /// else of its `session-started`. Its snapshot is that of the same moment.
@@ -73,10 +75,17 @@ SessionGraph sessionGraphOf(
   var noSnapshot = false;
   if (state.graphIds.lastOrNull case final snapshot?) {
     final document = documents[snapshot];
-    graph = document == null ? null : readGraphFile(document.value);
-    unreadable = document == null
-        ? documents.problemOf(snapshot) != null
-        : graph == null;
+    if (document != null && document.value == null) {
+      // The snapshot of a resume when there was no graph file, as the
+      // library wrote it before it wrote none then: no snapshot.
+      graph = graphFile;
+      noSnapshot = true;
+    } else {
+      graph = document == null ? null : readGraphFile(document.value);
+      unreadable = document == null
+          ? documents.problemOf(snapshot) != null
+          : graph == null;
+    }
   } else if (session.session.graph case final snapshot?) {
     graph = readGraphFile(snapshot);
     unreadable = graph == null;
@@ -349,9 +358,9 @@ ShownSteps _deepest(
   required List<InPlaceFrame> frames,
   required Map<String, FrameScope> scopes,
 }) {
-  final place = session.steps[stepId]?.place;
+  final record = session.steps[stepId];
   for (final frame in frames) {
-    if (!places.isIn(place, frame.node)) continue;
+    if (!places.isIn(record, frame.node)) continue;
     final scope = scopes[levelKey(frame.path)];
     if (scope == null) continue;
     return _deepest(

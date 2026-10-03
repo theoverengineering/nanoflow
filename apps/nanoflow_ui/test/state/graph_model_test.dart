@@ -413,6 +413,34 @@ void main() {
     });
   });
 
+  test('reads the last snapshot of every session listed, and no earlier '
+      'one: each card tells how its code stands without being shown', () {
+    run((async) {
+      final other = Journal('olde-session', startedAt: -600)
+        ..resume(-550, graphId: 'first-snapshot', code: 'sha256:first')
+        ..resume(-500, graphId: 'old-snapshot', code: 'sha256:old');
+      final shown = Journal('a1b2-session')
+        ..resume(10, graphId: 'snapshot', code: 'sha256:resumed');
+      // Described before the code it was resumed on was.
+      documents['old-snapshot'] = graphFileJson(fingerprint: 'sha256:first');
+      documents['snapshot'] = graphFileJson(fingerprint: 'sha256:resumed');
+      give(async, changesOf([other, shown]));
+
+      model.sessions(at(746));
+      async.elapse(const Duration(milliseconds: 100));
+
+      expect(read, unorderedEquals(['old-snapshot', 'snapshot']));
+      expect(
+        {for (final s in model.sessions(at(746))) s.id: s.code},
+        {
+          'a1b2-session': CodeCheck.matches,
+          'olde-session': CodeCheck.otherCode,
+        },
+      );
+      expect(model.selection.sessionId, 'a1b2-session');
+    });
+  });
+
   test('a snapshot that cannot be read is read again once the feed gives '
       'its document', () {
     run((async) {
@@ -738,10 +766,13 @@ void main() {
       expect(canvas.notes, isEmpty);
     });
 
-    test('has the places of the steps of its workflow', () {
+    test('has the step nodes of its workflow', () {
       final session = Journal('a1b2-session');
       final canvas = sessionCanvas(session.data, graphOf(session));
-      expect(canvas.places.nodePlaces, {'lib/review.dart:22'});
+      expect(
+        [for (final node in canvas.places.nodes) node.place],
+        ['lib/review.dart:22'],
+      );
     });
   });
 

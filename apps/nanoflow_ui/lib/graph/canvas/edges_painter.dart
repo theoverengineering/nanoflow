@@ -22,9 +22,8 @@ class EdgesPainter extends CustomPainter {
   final layout.GraphLayout graph;
   final CanvasMarks marks;
 
-  /// Line widths: the selected run's path is bolder.
+  /// The width of arrows and of the links in frames.
   static const _width = 1.6;
-  static const _pathWidth = 2.2;
 
   /// The arrowhead's half width; its length is the layout's.
   static const _headHalf = 3.9;
@@ -35,15 +34,11 @@ class EdgesPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final into = <String, List<layout.EdgePath>>{};
-    for (final edge in graph.edges) {
-      (into[edge.to] ??= []).add(edge);
-    }
     for (final node in graph.nodes.values) {
       final bar = node.bar;
       // The bar of a frame's end is its side: the frame's exit is there.
       if (bar == null || node.port) continue;
-      final tone = marks.bar(node.id, into[node.id] ?? const []);
+      final tone = marks.bar(node.id);
       canvas.drawRRect(
         RRect.fromRectAndRadius(bar.rect.toRect(), const Radius.circular(2)),
         Paint()..color = CanvasColors.line(tone),
@@ -53,8 +48,8 @@ class EdgesPainter extends CustomPainter {
       final frame = node.frame;
       if (frame == null) continue;
       for (final (link, tone) in [
-        (frame.entry, marks.bar(node.id, into[node.id] ?? const [])),
-        (frame.exit, marks.exit(node.id, 0)),
+        (frame.entry, marks.bar(node.id)),
+        (frame.exit, marks.exit(node.id)),
       ]) {
         if (link == null || link.length < 1e-6) continue;
         canvas.drawLine(
@@ -66,9 +61,9 @@ class EdgesPainter extends CustomPainter {
         );
       }
     }
-    // The selected run's path goes over the rest.
+    // The lighter over the darker.
     final tones = {for (final edge in graph.edges) edge: marks.edge(edge)};
-    for (final tone in Tone.values) {
+    for (final tone in const [Tone.untaken, Tone.plain]) {
       for (final edge in graph.edges) {
         if (tones[edge] == tone) _paintEdge(canvas, edge, tone);
       }
@@ -106,7 +101,7 @@ class EdgesPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..color = CanvasColors.line(tone)
-        ..strokeWidth = tone == Tone.path ? _pathWidth : _width,
+        ..strokeWidth = _width,
     );
     if (through) return;
     // The line ends at the arrowhead's base; the head draws the tip.

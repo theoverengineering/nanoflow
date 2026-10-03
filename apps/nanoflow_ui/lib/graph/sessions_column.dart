@@ -132,8 +132,9 @@ class _SessionCard extends StatelessWidget {
     badge: summary.failedBadge,
     note: summary.codeNote,
     noteMuted: summary.code == CodeCheck.notChecked,
+    resumedNote: summary.resumedNote,
     incompleteWhy: summary.incompleteWhy,
-    end: Text(summary.stepsText, style: AppText.sessionRuns),
+    end: Text(summary.stepsText, style: AppText.sessionSteps),
   );
 }
 
@@ -158,10 +159,11 @@ class _CurrentGraphItem extends StatelessWidget {
 /// A card of the column, a status [bar] on its left edge, the accent when
 /// [selected]: the [title] and the [id] on its first line; the [status], a
 /// red [badge] and the [end] on its second; an amber [note] — muted when
-/// [noteMuted] — and the `Log read incompletely` mark, [incompleteWhy] in
-/// its tooltip, on a line of their own, so that the status keeps its room;
-/// the mark goes under the note when the line is too narrow for both. In a
-/// narrow column the title and the status give way first.
+/// [noteMuted] — the amber [resumedNote] and the `Log read incompletely`
+/// mark, [incompleteWhy] in its tooltip, on a line of their own, so that
+/// the status keeps its room; a mark goes under the one before when the
+/// line is too narrow for both. In a narrow column the title and the status
+/// give way first.
 class _Item extends StatelessWidget {
   const _Item({
     required this.boxKey,
@@ -174,6 +176,7 @@ class _Item extends StatelessWidget {
     this.badge,
     this.note,
     this.noteMuted = false,
+    this.resumedNote,
     this.incompleteWhy,
     this.end,
     this.bar,
@@ -191,6 +194,7 @@ class _Item extends StatelessWidget {
   final String? badge;
   final String? note;
   final bool noteMuted;
+  final String? resumedNote;
   final String? incompleteWhy;
   final Widget? end;
   final Color? bar;
@@ -256,13 +260,17 @@ class _Item extends StatelessWidget {
                   ),
                   end,
                 ),
-                if (note != null || incompleteWhy != null)
+                if (note != null ||
+                    resumedNote != null ||
+                    incompleteWhy != null)
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
                     children: [
                       if (note case final text?)
                         _NoteBadge(text, muted: noteMuted),
+                      if (resumedNote case final text?)
+                        _NoteBadge(text, muted: false),
                       if (incompleteWhy case final why?)
                         Tooltip(message: why, child: const _IncompleteBadge()),
                     ],
@@ -304,7 +312,8 @@ class _DangerBadge extends StatelessWidget {
   );
 }
 
-/// `other code`: a small amber badge; `not checked` muted.
+/// `other code`, `resumed on changed code`: a small amber badge;
+/// `not checked` muted.
 class _NoteBadge extends StatelessWidget {
   const _NoteBadge(this.text, {required this.muted});
 

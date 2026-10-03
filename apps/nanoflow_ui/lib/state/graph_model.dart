@@ -30,7 +30,8 @@ export 'canvas_graph.dart';
 /// read; everything the screen shows is derived from it.
 ///
 /// It feeds new data to the [selection], and reads the snapshot of the
-/// session it is asked to show, and of no other. Listeners hear of any
+/// session it is asked to show, and those the sessions column checks the
+/// code of its sessions against. Listeners hear of any
 /// change; durations that grow with time need a clock besides (`LiveClock`).
 /// What it derives is computed once per change and second, so any number of
 /// widgets can ask for it.
@@ -201,16 +202,20 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// The sessions column at [now], newest first, the code of each checked
-  /// against its graph.
+  /// against its graph. Starts reading the snapshot of the last resume of
+  /// each that has one, which its code is checked against: it comes as a
+  /// change. Only resumes on other code write one, so there are few.
   List<SessionSummary> sessions(DateTime now) {
     final key = _key(now);
     if (key != _sessionsKey) {
+      final listed = workflowSessions;
+      for (final session in listed) {
+        outcomes.load(session.id, [?snapshotDocumentOf(session)]);
+      }
       _sessions = List.unmodifiable(
         sessionSummaries(
-          workflowSessions,
+          listed,
           now,
-          // A snapshot of a resume is read only for the session shown: the
-          // others are checked once it has been read.
           codeOf: (session) => sessionGraphOf(
             session,
             documents: outcomes,
@@ -396,7 +401,7 @@ class GraphModel extends ChangeNotifier {
     final shown = _shown(_now(), path);
     if (session == null || node == null || shown == null) return;
     final last = shown.steps
-        .where((s) => canvas.places.isIn(session.steps[s.stepId]?.place, node))
+        .where((s) => canvas.places.isIn(session.steps[s.stepId], node))
         .lastOrNull;
     if (last != null) selection.selectStep(session, last.stepId);
   }

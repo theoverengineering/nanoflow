@@ -21,6 +21,7 @@ final class SessionSummary {
     required this.failedSteps,
     required this.firstLine,
     required this.code,
+    required this.changedOnResume,
     required List<String> problems,
   }) : problems = List.unmodifiable(problems);
 
@@ -51,6 +52,15 @@ final class SessionSummary {
   /// How the code the session ran on stands against its graph; `null`
   /// while that is not known.
   final CodeCheck? code;
+
+  /// Whether a resume of the session ran on code other than the code it
+  /// started on (decision 7): its steps before that ran on other code. Both
+  /// hashes must be known.
+  final bool changedOnResume;
+
+  /// [resumedOnChangedCode] on the card and the session bar when the
+  /// session [changedOnResume]; `null` when not.
+  String? get resumedNote => changedOnResume ? resumedOnChangedCode : null;
 
   /// Why the session's journal was read incompletely
   /// (`SessionData.problems`); empty when it was read whole.
@@ -129,9 +139,19 @@ SessionSummary? summarize(
         .length,
     firstLine: dayAndTime(start, now),
     code: code,
+    changedOnResume: switch (state.codes) {
+      [final started?, ...final resumed] => resumed.any(
+        (code) => code != null && code != started,
+      ),
+      _ => false,
+    },
     problems: session.problems,
   );
 }
+
+/// The mark of a session resumed on code other than it started on
+/// (decision 7), on its card and the session bar.
+const resumedOnChangedCode = 'resumed on changed code';
 
 /// The mark of a session whose journal was read incompletely: lines that
 /// are not events, events this version does not read, files that could not

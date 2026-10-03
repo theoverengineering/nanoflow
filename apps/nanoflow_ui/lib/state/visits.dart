@@ -40,7 +40,7 @@ List<Visit> visitsTo(
   Iterable<StepState> steps,
   StepPlaces places,
   StepNode node,
-) => _visits(session, steps, (record) => places.isIn(record.place, node));
+) => _visits(session, steps, (record) => places.isIn(record, node));
 
 /// The visits like the step [stepId] of [session]: those of [steps] on the
 /// nodes it is on ([places]); for a step on no node, those at its very
@@ -53,13 +53,13 @@ List<Visit> visitsLike(
 ) {
   final step = session.steps[stepId];
   if (step == null) return const [];
-  final at = places.of(step.place);
+  final at = places.of(step);
   final visits = _visits(
     session,
     steps,
     (record) => at.isEmpty
         ? record.place == step.place && record.name == step.name
-        : places.of(record.place).any(at.contains),
+        : places.of(record).any(at.contains),
   );
   if (visits.any((visit) => visit.stepId == stepId)) return visits;
   final state = session.state.steps.where((s) => s.stepId == stepId);

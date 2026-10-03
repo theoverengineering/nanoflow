@@ -190,7 +190,7 @@ class _Title extends StatelessWidget {
                     if (header.copy case final copy?) ...[
                       TextSpan(
                         text: copy,
-                        style: AppText.logsRun.copyWith(
+                        style: AppText.logsSteps.copyWith(
                           color: AppColors.accentText,
                         ),
                       ),
@@ -199,7 +199,7 @@ class _Title extends StatelessWidget {
                     TextSpan(text: header.stepsText),
                   ],
                 ),
-                style: AppText.logsRun,
+                style: AppText.logsSteps,
                 maxLines: 1,
                 softWrap: false,
                 overflow: TextOverflow.ellipsis,

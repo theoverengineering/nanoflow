@@ -140,6 +140,24 @@ void main() {
       });
     });
 
+    test('gives the state of a step by its id, as the journal read so far '
+        'has it', () {
+      run((async) {
+        give(async, [
+          const SessionAdded(_session),
+          _event(_started(0)),
+          _event(_stepStarted(_collect.id, 1)),
+        ]);
+        final session = feed.session(_session.id)!;
+        expect(session.stateOf(_collect.id), same(session.state.steps.single));
+        expect(session.stateOf(_inspect.id), isNull);
+
+        give(async, [_event(_stepStarted(_inspect.id, 2))]);
+        expect(session.stateOf(_inspect.id), same(session.state.steps.last));
+        expect(session.stateOf(_inspect.id)!.startedAt, at(2));
+      });
+    });
+
     test('a step-started before its step-added counts at once', () {
       run((async) {
         give(async, [

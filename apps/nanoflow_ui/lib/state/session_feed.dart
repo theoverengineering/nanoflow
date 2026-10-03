@@ -36,6 +36,7 @@ final class SessionData {
   final Set<String> _documents = {};
   final List<String> _problems = [];
   SessionState? _state;
+  Map<String, StepState>? _statesById;
   List<Step>? _stepsInOrder;
   Map<String, Step>? _stepsByKey;
 
@@ -72,6 +73,13 @@ final class SessionData {
   /// What replaying the journal says.
   SessionState get state => _state ??= replaySession(_events);
 
+  /// The state of the step [stepId] in [state]; `null` for a step that has
+  /// not started. Looked up once per [state]: the copies of a frame look
+  /// up the first step of each.
+  StepState? stateOf(String stepId) => (_statesById ??= {
+    for (final step in state.steps) step.stepId: step,
+  })[stepId];
+
   void _addEvent(Event event) {
     switch (event) {
       case UnknownEvent(:final json):
@@ -82,6 +90,7 @@ final class SessionData {
       case KnownEvent():
         _events.add(event);
         _state = null;
+        _statesById = null;
         _stepsInOrder = null;
     }
   }
