@@ -1,0 +1,15 @@
+name: nanoflow_describe
+description: Reads the graph of every function with steps of a Dart package from its code, without running it, into the graph file.
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.13.0
+dependencies:
+  analyzer: ^14.4.0
+  nanoflow_model:
+    path: ../nanoflow_model
+  path: ^1.9.0
+dev_dependencies:
+  nanoflow:
+    path: ../nanoflow
+  test: ^1.25.0
