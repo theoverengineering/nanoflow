@@ -11,12 +11,13 @@ import 'package:nanoflow_process/nanoflow_process.dart';
 /// OS of this machine gives for it; `null` there when the adapter of the OS
 /// cannot tell.
 ///
-/// Worked out once per process, on first use: a process neither changes its
-/// pid nor starts again. The library gives it to the store, which only
-/// writes it.
+/// Worked out on first use, in each isolate, to the same value: a process
+/// neither changes its pid nor starts again. The library gives it to the
+/// store, which only writes it.
 Owner currentOwner() => _owner;
 
-/// What [currentOwner] gives; a top-level variable is set on first use.
+/// What [currentOwner] gives; a top-level variable is set on first use, and
+/// is the variable of an isolate.
 final Owner _owner = _ownerOfThisProcess();
 
 Owner _ownerOfThisProcess() {

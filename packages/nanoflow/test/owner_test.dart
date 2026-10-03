@@ -31,16 +31,19 @@ void hold(String who) {
   gates[who] = gate;
 }
 
-/// A session that waits in its step `hold` until its gate opens.
-Future<String> held(Flow f, String who) => f.step('hold', () async {
+/// Waits in the step `hold` until the gate of [who] opens.
+Future<String> _hold(Flow f, String who) => f.step('hold', () async {
   entered[who]!.complete();
   await gates[who]!.future;
   return 'held $who';
 });
 
-/// A session that fails after its step.
-Future<String> failsAfterStep(Flow f, String who) async {
-  await f.step('collect', () => 'change of $who');
+/// A session that waits in its step `hold` until its gate opens.
+Future<String> held(Flow f, String who) => _hold(f, who);
+
+/// A session that fails once its step `hold` has ended.
+Future<String> failsAfterHold(Flow f, String who) async {
+  await _hold(f, who);
   throw StateError('no way');
 }
 
@@ -65,7 +68,12 @@ void main() {
     expect(MacProcesses().startOf(pid), isNotNull);
     expect(
       recordOfThisProcess,
-      matches(RegExp(r'^\{"pid":\d+,"started":"[^"]+Z"\}$')),
+      matches(
+        RegExp(
+          r'^\{"pid":\d+,"started":"'
+          r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z"\}$',
+        ),
+      ),
     );
   });
 
@@ -106,9 +114,29 @@ void main() {
 
   test('a session that failed leaves .owner.lock empty', () async {
     final dir = await tempDir();
-    final session = await Flow(directory: dir).start(failsAfterStep, 'fails');
+    hold('fails');
+    final session = await Flow(directory: dir).start(failsAfterHold, 'fails');
+    await entered['fails']!.future;
+    expect(lockOf(dir, session.id), recordOfThisProcess);
 
+    gates['fails']!.complete();
     await expectLater(session.result, throwsA(isA<StateError>()));
+
+    expect(lockOf(dir, session.id), isEmpty);
+  });
+
+  test('a session whose store failed leaves .owner.lock empty', () async {
+    final dir = await tempDir();
+    hold('store');
+    final session = await Flow(directory: dir).start(held, 'store');
+    await entered['store']!.future;
+    expect(lockOf(dir, session.id), recordOfThisProcess);
+
+    // The step's result can no longer be written.
+    Directory(p.join(sessionDirOf(dir, session.id), documentsDirName))
+        .deleteSync(recursive: true);
+    gates['store']!.complete();
+    await expectLater(session.result, throwsA(isA<StorageException>()));
 
     expect(lockOf(dir, session.id), isEmpty);
   });

@@ -129,7 +129,7 @@ void main() {
     final sessionDir = sessionDirOf(dir, session.id);
 
     Directory(p.join(sessionDir, documentsDirName)).deleteSync(recursive: true);
-    final files = filesUnder(sessionDir);
+    final files = filesUnder(sessionDir, withOwner: false);
     gates['documents']!.complete('open');
 
     await expectLater(session.result, throwsA(isA<StorageException>()));
@@ -138,7 +138,7 @@ void main() {
       isA<StorageException>(),
     ]);
     expect(ranIn('documents'), ['first', 'wait']);
-    expect(filesUnder(sessionDir), files);
+    expect(filesUnder(sessionDir, withOwner: false), files);
     expect(await ownerCheck(dir, session.id), 'opened');
   });
 
@@ -196,7 +196,7 @@ void main() {
       final session = await flow.start(waitInStep, 'stopped');
       await waiting['stopped']!.future;
       final sessionDir = sessionDirOf(dir, session.id);
-      final files = filesUnder(sessionDir);
+      final files = filesUnder(sessionDir, withOwner: false);
 
       flow.stop();
       gates['stopped']!.complete('open');
@@ -207,7 +207,7 @@ void main() {
         isA<FlowStoppedException>(),
       ]);
       expect(ranIn('stopped'), ['first', 'wait']);
-      expect(filesUnder(sessionDir), files);
+      expect(filesUnder(sessionDir, withOwner: false), files);
       expect(await ownerCheck(dir, session.id), 'opened');
 
       waiting['stopped'] = Completer();
