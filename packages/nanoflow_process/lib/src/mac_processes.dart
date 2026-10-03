@@ -103,9 +103,12 @@ final class MacProcesses implements Processes {
 
   Future<void> _close() async {
     _waits.clear();
-    _holdWhileWaiting();
     final kq = _kq;
     if (kq == null) return;
+    // The program runs on until the watcher has ended: else a program that
+    // waits for this, with nothing else to keep it, would end before it
+    // completes.
+    _exits!.keepIsolateAlive = true;
     final woken = _wake(kq);
     if (!woken) {
       // The kill reaches the watcher once it is back from `kevent`, within

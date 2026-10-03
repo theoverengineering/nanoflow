@@ -31,6 +31,37 @@ Future<Process> sleeping([String seconds = '30']) async {
 /// The pid of a process that has exited and was reaped.
 Future<int> gonePid() async => (await Process.run('true', [])).pid;
 
+/// The program of the fixture test/fixtures/[name].dart, compiled as an
+/// app's code is: such a program ends sooner than under `dart run`, soon
+/// enough to show what lets it end too early.
+Future<String> compiled(String name) async {
+  final dir = await Directory.systemTemp.createTemp('nanoflow_process_test');
+  addTearDown(() => dir.delete(recursive: true));
+  final program = '${dir.path}/$name';
+  final result = await Process.run(Platform.resolvedExecutable, [
+    'compile',
+    'exe',
+    'test/fixtures/$name.dart',
+    '-o',
+    program,
+  ]);
+  if (result.exitCode != 0) {
+    fail('cannot compile $name: ${result.stdout}${result.stderr}');
+  }
+  return program;
+}
+
+/// Starts [program] with [arguments], killed when the test ends.
+Future<Process> start(String program, List<String> arguments) async {
+  final process = await Process.start(program, arguments);
+  addTearDown(() => process.kill(ProcessSignal.sigkill));
+  return process;
+}
+
+/// All that [stream] of a process gives, as text.
+Future<String> textOf(Stream<List<int>> stream) =>
+    stream.transform(utf8.decoder).join();
+
 void main() {
   late MacProcesses processes;
 
@@ -174,45 +205,40 @@ void main() {
       await processes.close();
     });
 
-    test('lets the program end with a wait pending', () async {
-      final watcher = await Process.start(Platform.resolvedExecutable, [
-        'run',
-        'test/fixtures/watch_and_close.dart',
-      ]);
-      addTearDown(() => watcher.kill(ProcessSignal.sigkill));
-      final stderr = watcher.stderr
-          .transform(const SystemEncoding().decoder)
-          .join();
-      watcher.stdout.drain<void>().ignore();
+    test('completes, and then lets the program end, with a wait '
+        'pending', () async {
+      final child = await sleeping();
+      final program = await compiled('watch_and_close');
 
-      expect(
-        await watcher.exitCode.timeout(const Duration(seconds: 30)),
-        0,
-        reason: await stderr,
-      );
+      // A program that ended during the close would end without a word, and
+      // mostly does when the close does not hold it: it is run a few times.
+      for (var i = 0; i < 3; i++) {
+        final run = await start(program, ['${child.pid}']);
+        final stdout = textOf(run.stdout);
+        final stderr = textOf(run.stderr);
+        expect(await run.exitCode.timeout(exitWait), 0, reason: await stderr);
+        expect(await stdout, 'closed\n');
+      }
     });
 
     test('is not needed for the program to end once nothing waits, though a '
         'pending wait keeps it running', () async {
       final child = await sleeping();
-      final watcher = await Process.start(Platform.resolvedExecutable, [
-        'run',
-        'test/fixtures/watch_and_forget.dart',
+      final run = await start(await compiled('watch_and_forget'), [
         '${child.pid}',
       ]);
-      addTearDown(() => watcher.kill(ProcessSignal.sigkill));
-      final stderr = watcher.stderr.transform(utf8.decoder).join();
+      final stderr = textOf(run.stderr);
       final lines = StreamIterator(
-        watcher.stdout.transform(utf8.decoder).transform(const LineSplitter()),
+        run.stdout.transform(utf8.decoder).transform(const LineSplitter()),
       );
 
       if (!await lines.moveNext()) fail('it ended at once: ${await stderr}');
       expect(lines.current, 'watching');
-      await expectPending(watcher.exitCode, const Duration(milliseconds: 500));
+      await expectPending(run.exitCode, const Duration(milliseconds: 500));
 
       child.kill(ProcessSignal.sigkill);
       // The watcher waits on the kqueue still, and the program ends anyway.
-      expect(await watcher.exitCode.timeout(exitWait), 0, reason: await stderr);
+      expect(await run.exitCode.timeout(exitWait), 0, reason: await stderr);
       expect(await lines.moveNext(), isTrue);
       expect(lines.current, 'gone');
     });
