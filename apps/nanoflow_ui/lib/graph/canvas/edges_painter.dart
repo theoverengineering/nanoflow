@@ -28,6 +28,11 @@ class EdgesPainter extends CustomPainter {
   /// The arrowhead's half width; its length is the layout's.
   static const _headHalf = 3.9;
 
+  /// An input bar's corners, and the outline of the canvas's colour round
+  /// it.
+  static const _barRadius = 2.0;
+  static const _barOutline = 1.0;
+
   /// The dashes of back arrows.
   static const _dash = 6.0;
   static const _gap = 5.0;
@@ -39,10 +44,21 @@ class EdgesPainter extends CustomPainter {
       // The bar of a frame's end is its side: the frame's exit is there.
       if (bar == null || node.port) continue;
       final tone = marks.bar(node.id);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(bar.rect.toRect(), const Radius.circular(2)),
-        Paint()..color = CanvasColors.line(tone),
-      );
+      final rect = bar.rect.toRect();
+      // Outlined in the canvas's colour, as an exit dot is: the bar stands
+      // out of the ring round the selected step's node, under the arrows.
+      canvas
+        ..drawRRect(
+          RRect.fromRectAndRadius(
+            rect.inflate(_barOutline),
+            const Radius.circular(_barRadius + _barOutline),
+          ),
+          Paint()..color = CanvasColors.background,
+        )
+        ..drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(_barRadius)),
+          Paint()..color = CanvasColors.line(tone),
+        );
     }
     for (final node in graph.nodes.values) {
       final frame = node.frame;

@@ -7,9 +7,11 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
+import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
 import 'package:nanoflow_ui/graph/canvas/edges_painter.dart';
 import 'package:nanoflow_ui/graph/canvas/exit_labels.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
+import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/legend.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/canvas/tile_marks.dart';
@@ -501,6 +503,31 @@ void main() {
       expect(
         tester.widget<Text>(find.text('plan')).style!.fontWeight,
         TileLook.of(NodeState.running).nameWeight,
+      );
+    });
+
+    testWidgets('has its input bar outlined in the canvas\'s colour, as its '
+        'exit dot is: the bar stands out of the ring round it', (tester) async {
+      await pumpCanvas(tester, planRunning());
+      final paint = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .firstWhere((paint) => paint.painter is EdgesPainter);
+      final bar = (paint.painter! as EdgesPainter).graph.nodes['1']!.bar!.rect
+          .toRect();
+      expect(
+        tester.renderObject(find.byWidget(paint)),
+        paints
+          ..rrect(
+            rrect: RRect.fromRectAndRadius(
+              bar.inflate(1),
+              const Radius.circular(3),
+            ),
+            color: CanvasColors.background,
+          )
+          ..rrect(
+            rrect: RRect.fromRectAndRadius(bar, const Radius.circular(2)),
+            color: CanvasColors.plain,
+          ),
       );
     });
   });
