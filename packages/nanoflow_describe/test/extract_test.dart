@@ -1953,6 +1953,150 @@ void main() {
     );
   });
 
+  test('draws no default for a switch on a record of types a switch must '
+      'cover, reads the list of a Future.wait after a named argument, and '
+      'tells apart methods of unnamed extensions', () async {
+    Map<String, Object?> step(String id, String name, int line) => {
+      'id': id,
+      'kind': 'step',
+      'name': name,
+      'place': 'lib/corners.dart:$line',
+    };
+    Map<String, Object?> edge(String? from, String? to, [String? label]) => {
+      'from': from,
+      'to': to,
+      'label': label,
+    };
+    expectFile(
+      await describeFixture('corners'),
+      await expectedFile(
+        'corners',
+        workflows: [],
+        functions: {
+          // The first unnamed extension of the file, then the second.
+          'lib/corners.dart#<extension 2>.announce': {
+            'name': 'announce',
+            'place': 'lib/corners.dart:49',
+            'body': {
+              'nodes': [step('1', 'shout', 49)],
+              'edges': [edge(null, '1'), edge('1', null)],
+            },
+          },
+          'lib/corners.dart#<extension>.announce': {
+            'name': 'announce',
+            'place': 'lib/corners.dart:45',
+            'body': {
+              'nodes': [step('1', 'announce', 45)],
+              'edges': [edge(null, '1'), edge('1', null)],
+            },
+          },
+          'lib/corners.dart#announceBoth': {
+            'name': 'announceBoth',
+            'place': 'lib/corners.dart:52',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'call',
+                  'functions': ['lib/corners.dart#<extension>.announce'],
+                  'place': 'lib/corners.dart:53',
+                },
+                {
+                  'id': '2',
+                  'kind': 'call',
+                  'functions': ['lib/corners.dart#<extension 2>.announce'],
+                  'place': 'lib/corners.dart:54',
+                },
+              ],
+              'edges': [edge(null, '1'), edge('1', '2'), edge('2', null)],
+            },
+          },
+          // A record with an int: the switch need not cover it.
+          'lib/corners.dart#retry': {
+            'name': 'retry',
+            'place': 'lib/corners.dart:22',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'switch ((urgent, tries))',
+                  'place': 'lib/corners.dart:23',
+                },
+                step('2', 'now', 25),
+                step('3', 'later', 27),
+              ],
+              'edges': [
+                edge(null, '1'),
+                edge('1', '2', '(true, _)'),
+                edge('1', '3', '(false, 0)'),
+                edge('1', null, 'default'),
+                edge('2', null),
+                edge('3', null),
+              ],
+            },
+          },
+          'lib/corners.dart#route': {
+            'name': 'route',
+            'place': 'lib/corners.dart:9',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'switch ((urgent, (speed, quiet)))',
+                  'place': 'lib/corners.dart:10',
+                },
+                step('2', 'page', 12),
+                step('3', 'mail', 14),
+                step('4', 'log', 16),
+                step('5', 'chat', 18),
+              ],
+              'edges': [
+                edge(null, '1'),
+                edge('1', '2', '(true, _)'),
+                edge('1', '3', '(false, (Speed.slow, _))'),
+                edge('1', '4', '(false, (Speed.fast, true))'),
+                edge('1', '5', '(false, (Speed.fast, false))'),
+                edge('2', null),
+                edge('3', null),
+                edge('4', null),
+                edge('5', null),
+              ],
+            },
+          },
+          'lib/corners.dart#ship': {
+            'name': 'ship',
+            'place': 'lib/corners.dart:31',
+            'body': {
+              'nodes': [
+                step('1', 'build', 33),
+                step('2', 'test', 34),
+                {
+                  'id': '3',
+                  'kind': 'copies',
+                  'label': 'target in targets',
+                  'place': 'lib/corners.dart:38',
+                  'body': {
+                    'nodes': [step('1', 'upload', 39)],
+                    'edges': [edge(null, '1'), edge('1', null)],
+                  },
+                },
+              ],
+              'edges': [
+                edge(null, '1'),
+                edge(null, '2'),
+                edge('1', '3'),
+                edge('2', '3'),
+                edge('3', null),
+              ],
+            },
+          },
+        },
+      ),
+    );
+  });
+
   test('writes the same file every time', () async {
     final first = await describePackage(fixture('release'), packageName: 'x');
     final second = await describePackage(fixture('release'), packageName: 'x');

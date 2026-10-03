@@ -37,7 +37,8 @@ const Duration _defaultPoll = Duration(milliseconds: 500);
 /// Prints to [out] and [err], stdout and stderr by default. `--watch` runs
 /// until [stop] completes, or until SIGINT when there is no [stop]; with
 /// [poll], it looks at the sources that often instead of being told of
-/// changes by the file system.
+/// changes by the file system. [describe] reads the package in place of
+/// [describePackage], for tests.
 Future<int> runDescribe(
   List<String> args, {
   required String cwd,
@@ -45,6 +46,7 @@ Future<int> runDescribe(
   StringSink? err,
   Future<void>? stop,
   Duration? poll,
+  Future<DescribeResult> Function(String packageDir) describe = describePackage,
 }) async {
   final errors = err ?? stderr;
   String? package;
@@ -77,6 +79,7 @@ Future<int> runDescribe(
     root: p.normalize(p.join(base, package ?? '.')),
     out: out ?? stdout,
     err: errors,
+    describe: describe,
   );
   if (!await Directory(command.root).exists()) {
     errors.writeln('no directory ${command.shown(command.root)}');
@@ -102,12 +105,14 @@ final class _Command {
     required this.root,
     required this.out,
     required this.err,
+    required this.describe,
   });
 
   final String cwd;
   final String root;
   final StringSink out;
   final StringSink err;
+  final Future<DescribeResult> Function(String packageDir) describe;
 
   String get _file => p.join(root, graphFileName);
 
@@ -124,7 +129,7 @@ final class _Command {
   /// Whether the graph file is what [write] would write, its `builds`
   /// aside: a stamped file is fresh.
   Future<int> check() async {
-    final result = await describePackage(root);
+    final result = await describe(root);
     final graph = result.graph;
     if (graph == null) {
       result.errors.forEach(err.writeln);
@@ -208,7 +213,10 @@ final class _Command {
         described = fingerprint;
         final errors = await _update();
         if (errors.isNotEmpty) err.writeln('describe failed: ${errors.first}');
-      } on FileSystemException catch (e) {
+      } catch (e) {
+        // Anything — a file that cannot be read, the analyzer or the
+        // extractor tripping on some code — ends this describe, not the
+        // watch.
         described = null; // read the sources again on the next change
         err.writeln('describe failed: $e');
       }
@@ -311,7 +319,7 @@ final class _Command {
   /// The file keeps the `builds` it has while the sources are the ones it
   /// was stamped with.
   Future<List<String>> _update() async {
-    final result = await describePackage(root);
+    final result = await describe(root);
     final graph = result.graph;
     if (graph == null) return result.errors;
     final old = _parse(await _read(_file));

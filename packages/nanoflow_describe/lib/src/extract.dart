@@ -192,7 +192,8 @@ final class _Package {
   void _declare(ExecutableElement element, Token name, FunctionBody body) {
     if (body is EmptyFunctionBody || body is NativeFunctionBody) return;
     final container = switch (element.enclosingElement) {
-      final InstanceElement type => '${type.name ?? ''}.',
+      InstanceElement(name: final name?) => '$name.',
+      InstanceElement() => '${_unnamedExtension(body)}.',
       _ => '',
     };
     _declarations[element.baseElement] = _Declaration(
@@ -391,12 +392,12 @@ final class _Package {
     return false;
   }
 
-  /// Whether [futures] is the first argument of `Future.wait`.
+  /// Whether [futures] is the first positional argument of `Future.wait`.
   bool _isWaited(Expression futures) {
     final node = _outermost(futures);
     final parent = node.parent;
     return parent is ArgumentList &&
-        parent.arguments.firstOrNull == node &&
+        _firstPositional(parent) == node &&
         _isFutureWait(parent.parent!);
   }
 
@@ -1088,7 +1089,8 @@ final class _Body {
         _connect(into, step);
         return [(step, null)];
       case MethodInvocation() when _package._isFutureWait(e):
-        final futures = e.argumentList.arguments.first.argumentExpression;
+        final futures = _firstPositional(e.argumentList);
+        if (futures == null) return into;
         return _parallel(futures, into, scope);
       case FunctionExpressionInvocation(:final function)
           when function.unParenthesized is FunctionExpression:
@@ -1397,12 +1399,43 @@ bool _matchesAll(GuardedPattern pattern) =>
     };
 
 /// Whether a switch on [e] matches every value without a `default`: Dart
-/// requires it for `bool`, enums and sealed types.
-bool _isExhaustive(Expression e) {
-  final element = e.staticType?.element;
+/// requires it for `bool`, enums, sealed types and records of them.
+bool _isExhaustive(Expression e) => _mustBeCovered(e.staticType);
+
+/// Whether a switch on a value of [type] must cover every value: [type] is
+/// `bool`, an enum, a sealed type, or a record whose fields all are.
+bool _mustBeCovered(DartType? type) {
+  if (type is RecordType) {
+    return [
+      for (final field in type.positionalFields) field.type,
+      for (final field in type.namedFields) field.type,
+    ].every(_mustBeCovered);
+  }
+  final element = type?.element;
   return element is EnumElement ||
       (element is ClassElement && element.isSealed) ||
-      e.staticType?.isDartCoreBool == true;
+      type?.isDartCoreBool == true;
+}
+
+/// The first positional argument in [arguments], or `null`: a named one may
+/// come before it, as in `Future.wait(eagerError: true, [ … ])`.
+Expression? _firstPositional(ArgumentList arguments) => arguments.arguments
+    .where((argument) => argument is! NamedArgument)
+    .firstOrNull
+    ?.argumentExpression;
+
+/// The name in an id of the unnamed extension that [node] is in:
+/// `<extension>` for the first unnamed extension of its file,
+/// `<extension 2>` for the second, and so on.
+String _unnamedExtension(AstNode node) {
+  final extension = node.thisOrAncestorOfType<ExtensionDeclaration>()!;
+  final unnamed = [
+    for (final declaration in (node.root as CompilationUnit).declarations)
+      if (declaration is ExtensionDeclaration && declaration.name == null)
+        declaration,
+  ];
+  final n = unnamed.indexOf(extension) + 1;
+  return n == 1 ? '<extension>' : '<extension $n>';
 }
 
 bool _isWithin(AstNode node, AstNode ancestor) {

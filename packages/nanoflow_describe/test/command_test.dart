@@ -301,6 +301,41 @@ void main() {
     });
   }
 
+  test('--watch goes on after a describe throws anything, and describes '
+      'again on the next change', () async {
+    final stop = Completer<void>();
+    addTearDown(() {
+      if (!stop.isCompleted) stop.complete();
+    });
+    var calls = 0;
+    final code = runDescribe(
+      ['--watch'],
+      cwd: dir,
+      out: out,
+      err: err,
+      stop: stop.future,
+      poll: const Duration(milliseconds: 100),
+      describe: (packageDir) async {
+        // An analyzer that fails on the first run, as on code it trips on.
+        if (++calls == 1) throw StateError('the analyzer tripped');
+        return describePackage(packageDir);
+      },
+    );
+    await until('the failure', () => err.toString().isNotEmpty);
+    expect(
+      err.toString(),
+      'describe failed: Bad state: the analyzer tripped\n',
+    );
+
+    await edit((text) => text.replaceFirst("'collect'", "'gather'"));
+    await until('the write', () => out.toString().isNotEmpty);
+    expect(out.toString(), 'wrote nanoflow.graph.json\n');
+    expect(await graphFile().readAsString(), await described());
+
+    stop.complete();
+    expect(await code, 0);
+  });
+
   test('the program stops watching on SIGINT', () async {
     final process = await Process.start(Platform.resolvedExecutable, [
       'run',
