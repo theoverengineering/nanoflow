@@ -213,27 +213,76 @@ void main() {
       ]);
     });
 
-    test('gives session-finished and never not alive when the session ends '
-        'before its process exits', () async {
+    test('gives session-finished and never not alive when the session ends, '
+        'its owner lets it go and its process exits', () async {
       processes.start(owner.pid, started);
       final (:session, :dir) = writeOwned(record(owner));
       final feed = Feed(runsDir, processes: processes);
       await feed.settle();
       final mark = feed.changes.length;
 
+      // The order of the library and the store: the last event, the lock let
+      // go, then the exit.
       final finished = SessionFinished(time: at(5), outputId: null);
       append(dir, line(finished));
+      writeLock(dir, '');
       processes.exit(owner.pid);
       await feed.settle();
       await feed.settle();
       // The session is over: whatever its .owner.lock says now is not told.
-      writeLock(dir, '');
+      writeLock(dir, record(resumer));
       await feed.settle();
       await feed.settle();
 
       expect(feed.since(mark), [
         EventAdded(sessionId: session.id, event: finished),
       ]);
+    });
+
+    test('gives session-finished and no owner-changed when the owner ends '
+        'the session, lets it go and exits as the reader first looks at '
+        'it', () async {
+      final port = _Spy(processes..start(owner.pid, started));
+      final (:session, :dir) = writeOwned(record(owner));
+      final finished = SessionFinished(time: at(5), outputId: null);
+      port.beforeStartOf = () {
+        append(dir, line(finished));
+        writeLock(dir, '');
+        processes.exit(owner.pid);
+      };
+
+      final feed = Feed(runsDir, processes: port);
+      await feed.settle();
+      await feed.settle();
+
+      expect(port.calls, contains('startOf ${owner.pid}'));
+      expect(feed.changes, [
+        SessionAdded(session),
+        EventAdded(sessionId: session.id, event: begun),
+        EventAdded(sessionId: session.id, event: finished),
+      ]);
+    });
+
+    test('tells nothing when the owner before a resume exits after the new '
+        'owner was told', () async {
+      processes
+        ..start(owner.pid, started)
+        ..start(resumer.pid, resumer.started!);
+      final (:session, :dir) = writeOwned(record(owner));
+      final feed = Feed(runsDir, processes: processes);
+      await feed.settle();
+      final mark = feed.changes.length;
+
+      writeLock(dir, record(resumer));
+      await feed.settle();
+      await feed.settle();
+      expect(feed.since(mark), [changed(session, resumer, true)]);
+
+      processes.exit(owner.pid);
+      await feed.settle();
+      await feed.settle();
+
+      expect(feed.since(mark), [changed(session, resumer, true)]);
     });
 
     test('keeps what it told, without an error, while .owner.lock does not '
@@ -384,6 +433,9 @@ final class _Spy implements Processes {
   /// How many times [close] was called.
   int closes = 0;
 
+  /// Runs once, when [startOf] is next called, before it answers.
+  void Function()? beforeStartOf;
+
   final List<Completer<void>> _waits = [];
 
   @override
@@ -392,6 +444,9 @@ final class _Spy implements Processes {
   @override
   DateTime? startOf(int pid) {
     calls.add('startOf $pid');
+    final before = beforeStartOf;
+    beforeStartOf = null;
+    before?.call();
     return fake.startOf(pid);
   }
 

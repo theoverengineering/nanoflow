@@ -7,7 +7,7 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_process/nanoflow_process.dart';
 
 /// What became of the process of an owner that is watched.
-enum Fate {
+enum _Fate {
   /// It exited.
   exited,
 
@@ -23,14 +23,20 @@ enum Fate {
 /// owner's process is watched with [Processes.exitOf] before its start is
 /// compared with [Processes.startOf]: a process that exits in between is
 /// told gone all the same. An exit, or a watch that fails, is told on
-/// [news]; a scan after it tells the session's owner not alive, or alive
-/// unknown, once it has read the journal that process wrote.
+/// [news], so that a scan looks again.
+///
+/// A scan [observe]s the owner of a session before it reads the session's
+/// journal, and [tell]s what it observed after, only while the journal goes
+/// on. An owner writes the last event of a session before it lets the
+/// session go or its process exits: the journal read after the observation
+/// holds that event, and a session that ended is never told without an
+/// owner, or with one that is not alive.
 final class Owners {
   Owners(this._processes);
 
   final Processes _processes;
 
-  /// The sessions whose owner has been told, by id.
+  /// The sessions whose owner has been observed, by id.
   final Map<String, _Told> _sessions = {};
 
   final StreamController<void> _news = StreamController<void>();
@@ -41,51 +47,42 @@ final class Owners {
   /// watching it fails.
   Stream<void> get news => _news.stream;
 
-  /// What has become of the process of the owner of the session [sessionId]
-  /// so far: `null` while it runs, or when it is not watched.
+  /// The owner of the session [sessionId] now, from its `.owner.lock` at
+  /// [lockFile], and whether it is alive: the `owner-changed` for [tell] to
+  /// give once the session's journal has been read.
   ///
-  /// A scan takes it before it reads the session's journal: then the journal
-  /// holds all that a process that exited wrote.
-  Fate? fateOf(String sessionId) => _sessions[sessionId]?.watch?.fate;
-
-  /// Reads the owner of the session [sessionId] from its `.owner.lock` at
-  /// [lockFile] and gives `owner-changed` to [out] when the owner, or whether
-  /// it is alive, differs from what was given last, or nothing was.
-  ///
-  /// A new owner is watched. The owner given before is not alive when its
-  /// [fate], taken before the journal was read, is that it exited, and
-  /// unknown when watching it failed.
+  /// An owner other than the one told last is watched. The one told last is
+  /// not alive once its process has exited, and unknown once watching it
+  /// failed.
   ///
   /// A file that is not there, or empty, records no owner. A file that does
   /// not hold an owner is being written, its new record over the old one:
-  /// what was given stays, and the next scan reads it again. Throws an
-  /// [IOException] when the file cannot be read.
-  Future<void> update(
-    String sessionId,
-    String lockFile,
-    Fate? fate,
-    EventSink<Change> out,
-  ) async {
+  /// then it gives `null`, what was told stays, and the next scan reads it
+  /// again. Throws an [IOException] when the file cannot be read.
+  Future<OwnerChanged?> observe(String sessionId, String lockFile) async {
     final record = await _read(lockFile);
-    if (record == null) return;
+    if (record == null) return null;
     final told = _sessions[sessionId] ??= _Told();
     final last = told.change;
     final owner = record.owner;
     final alive = last == null || owner != last.owner
         ? _watch(sessionId, told, owner)
-        : switch (fate) {
+        : switch (told.watch?.fate) {
             null => last.alive,
-            Fate.exited => false,
-            Fate.unknown => null,
+            _Fate.exited => false,
+            _Fate.unknown => null,
           };
-    final change = OwnerChanged(
-      sessionId: sessionId,
-      owner: owner,
-      alive: alive,
-    );
-    if (change == last) return;
-    told.change = change;
-    out.add(change);
+    return OwnerChanged(sessionId: sessionId, owner: owner, alive: alive);
+  }
+
+  /// Gives [observed], which [observe] gave before the session's journal was
+  /// read, to [out] when it differs from what was told last of the session,
+  /// or nothing was. A scan tells only while the session's journal goes on.
+  void tell(OwnerChanged observed, EventSink<Change> out) {
+    final told = _sessions[observed.sessionId];
+    if (told == null || observed == told.change) return;
+    told.change = observed;
+    out.add(observed);
   }
 
   /// Forgets the owner of the session [sessionId] and stops telling its
@@ -110,8 +107,8 @@ final class Owners {
     final watch = told.watch = _Watch();
     unawaited(
       Future.sync(() => _processes.exitOf(owner.pid)).then(
-        (_) => _heard(sessionId, watch, Fate.exited),
-        onError: (Object _) => _heard(sessionId, watch, Fate.unknown),
+        (_) => _heard(sessionId, watch, _Fate.exited),
+        onError: (Object _) => _heard(sessionId, watch, _Fate.unknown),
       ),
     );
     return Owner(pid: owner.pid, started: _processes.startOf(owner.pid)) ==
@@ -120,7 +117,7 @@ final class Owners {
 
   /// Takes the [fate] of the process [watch] waits for, and tells [news] when
   /// that is still the process of the owner of the session [sessionId].
-  void _heard(String sessionId, _Watch watch, Fate fate) {
+  void _heard(String sessionId, _Watch watch, _Fate fate) {
     watch.fate = fate;
     if (!_closed && _sessions[sessionId]?.watch == watch) _news.add(null);
   }
@@ -160,5 +157,5 @@ final class _Told {
 /// A wait for the exit of the process of an owner.
 final class _Watch {
   /// What has become of the process; `null` while it runs.
-  Fate? fate;
+  _Fate? fate;
 }

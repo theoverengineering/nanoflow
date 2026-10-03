@@ -21,8 +21,8 @@ import 'tail.dart';
 /// read once more after the scan that read its last event: that scan may
 /// have listed the session's steps before the last of them was put in place.
 ///
-/// The owner of a session whose journal goes on is read in every scan, after
-/// the journal, and told by [owners].
+/// The owner of a session whose journal goes on is looked at in every scan
+/// before its journal is read, and told by [owners] after it.
 final class Scanner {
   Scanner({required this.runsDir, required this.owners});
 
@@ -46,7 +46,7 @@ final class Scanner {
   /// `outputId` of its `step-finished`, or with another `after` when it runs
   /// again — its journal's new complete lines, then its new documents, then,
   /// while its journal goes on, `owner-changed` when its owner or whether it
-  /// is alive has changed (see [Owners.update]).
+  /// is alive has changed (see [Owners]).
   ///
   /// Newest first: a feed of a long history gives first the sessions that
   /// are likely to be looked at.
@@ -109,9 +109,18 @@ final class Scanner {
     for (final stepDir in steps ?? const <String>[]) {
       await _scanStep(session, stepDir, out);
     }
-    // Taken before the journal is read: an owner's process that has exited
-    // by now wrote all it did, and the journal read next has it.
-    final fate = owners.fateOf(sessionId);
+    // Looked at before the journal is read, and told after it only while the
+    // journal goes on: an owner that has let the session go, or exited, by
+    // now wrote all it did, its last event too, and the journal read next
+    // has it.
+    final lockFile = p.join(dir, ownerLockFileName);
+    final owner = lastRead
+        ? null
+        : await _attempt(
+            lockFile,
+            out,
+            () => owners.observe(sessionId, lockFile),
+          );
     final journal = session.journal;
     final lines = await _attempt(journal.path, out, journal.readLines);
     for (final (:number, :bytes) in lines ?? const <Line>[]) {
@@ -143,13 +152,8 @@ final class Scanner {
     }
     if (session.lastRead) {
       owners.drop(sessionId);
-    } else {
-      final lockFile = p.join(dir, ownerLockFileName);
-      await _attempt(
-        lockFile,
-        out,
-        () => owners.update(sessionId, lockFile, fate, out),
-      );
+    } else if (owner != null) {
+      owners.tell(owner, out);
     }
     session.ended =
         lastRead &&

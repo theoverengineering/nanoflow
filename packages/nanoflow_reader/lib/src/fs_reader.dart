@@ -78,9 +78,11 @@ final class FsReader {
   /// While a session's journal goes on, `owner-changed` tells its owner from
   /// `.owner.lock` and whether the owner's process is alive: first after the
   /// session's other changes of the first read, then each time either
-  /// changes. When the process exits, the session is read to the end of its
-  /// journal first: a session that ended comes with its last event and no
-  /// more `owner-changed`.
+  /// changes; the exit of the process makes the reader look at once. The
+  /// owner is looked at before the session's journal is read, and told after
+  /// it: an owner writes the last event before it lets the session go or
+  /// exits, so a session that ended comes with its last event and no
+  /// `owner-changed` that says its owner is gone.
   Stream<Change> changes() => _changes;
 
   /// The value of the document [documentId] of the session [sessionId].
