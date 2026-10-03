@@ -578,6 +578,28 @@ void main() {
       );
       expect(Directory(handle.dir).existsSync(), isFalse);
     });
+
+    test('a step that steps() listed fails as a write into its directory '
+        'does: openLog through failed, setStepOutput with a '
+        'FileSystemException', () async {
+      final created = await newSession();
+      await newStep(created);
+      await created.release();
+      final opened = (await FsStore(p.dirname(created.dir))
+          .openSession(created.session.id))!;
+      addTearDown(opened.release);
+      final [step] = await opened.steps();
+      await Directory(opened.dir).delete(recursive: true);
+
+      final log = opened.openLog(step.id)..add(utf8.encode('lost\n'));
+      await log.close();
+
+      expect(await log.failed, isA<FileSystemException>());
+      await expectLater(
+        opened.setStepOutput(step, newId()),
+        throwsA(isA<FileSystemException>()),
+      );
+    });
   });
 
   group('a session that is being removed', () {

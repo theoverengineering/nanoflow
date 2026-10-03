@@ -395,50 +395,7 @@ void main() {
         throwsA(isA<CodecException>().having((e) => e.type, 'type', Change)),
       );
       expect(filesUnder(sessionDirOf(dir, id)), files);
-    });
-
-    test('for a step taken from the journal: the step throws it, without '
-        'running or writing anything', () async {
-      final dir = await tempDir();
-      final id = await writeSession(
-        dir,
-        'takesReport',
-        'x',
-        build: (handle) async {
-          final step = await handle.createStep(
-            name: 'report',
-            key: 'report#1@${h('')}',
-            after: null,
-            place: null,
-          );
-          await handle.appendEvent(
-            StepStarted(time: systemClock(), stepId: step.id),
-          );
-          final outputId = await handle.writeDocument('not a report');
-          await handle.appendEvent(
-            StepFinished(
-              time: systemClock(),
-              stepId: step.id,
-              outputId: outputId,
-            ),
-          );
-        },
-      );
-
-      final session = await withCodecs(dir).resume(takesReport, id);
-
-      expect(
-        await session.result,
-        startsWith('CodecException: Report: the JSON does not decode: '),
-      );
-      expect(ran, isEmpty);
-      expect(eventNamesOf(dir, id), [
-        'session-started',
-        'step-started',
-        'step-finished',
-        'session-resumed',
-        'session-finished',
-      ]);
+      expect(await ownerCheck(dir, id), 'opened');
     });
 
     test('for the result of a finished session: its result', () async {
@@ -461,6 +418,63 @@ void main() {
         session.result,
         throwsA(isA<CodecException>().having((e) => e.type, 'type', Report)),
       );
+    });
+  });
+
+  test('a step whose saved result no longer comes back as its type runs '
+      'again, in its record, and its new result is saved', () async {
+    final dir = await tempDir();
+    late Step written;
+    final id = await writeSession(
+      dir,
+      'takesReport',
+      'x',
+      build: (handle) async {
+        written = await handle.createStep(
+          name: 'report',
+          key: 'report#1@${h('')}',
+          after: null,
+          place: null,
+        );
+        await handle.appendEvent(
+          StepStarted(time: systemClock(), stepId: written.id),
+        );
+        final outputId = await handle.writeDocument('not a report');
+        await handle.appendEvent(
+          StepFinished(
+            time: systemClock(),
+            stepId: written.id,
+            outputId: outputId,
+          ),
+        );
+        await handle.setStepOutput(written, outputId);
+      },
+    );
+
+    final session = await withCodecs(dir).resume(takesReport, id);
+
+    expect(await session.result, 'no CodecException');
+    expect(ran, ['report']);
+    final handle = await openSession(dir, id);
+    final events = await eventsOf(handle);
+    expect(events.map((e) => e.name), [
+      'session-started',
+      'step-started',
+      'step-finished',
+      'session-resumed',
+      'step-started',
+      'step-finished',
+      'session-finished',
+    ]);
+    final [step] = replaySession(events).steps;
+    expect(step.stepId, written.id);
+    expect(step.starts, 2);
+    final [record] = await handle.steps();
+    expect(record.id, written.id);
+    expect(record.outputId, step.outputId);
+    expect(await handle.documentValue(step.outputId!), {
+      'title': 'x',
+      'issues': 1,
     });
   });
 }

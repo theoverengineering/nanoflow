@@ -60,10 +60,18 @@ final class SessionHandle {
 
   /// The records of the session's steps, ordered by directory name: in the
   /// order they were created.
-  Future<List<Step>> steps() async => [
-    for (final step in _builtDirs(_stepsDir))
-      await readModel(p.join(step.path, stepFileName), Step.fromJson),
-  ];
+  ///
+  /// Their directories are kept, as [createStep] keeps the one it builds: a
+  /// step whose directory is removed later fails as a write into it does,
+  /// and [openLog] gives its log, which fails.
+  Future<List<Step>> steps() async {
+    final steps = <Step>[];
+    for (final dir in _builtDirs(_stepsDir)) {
+      _stepDirs[dir.id] = dir.path;
+      steps.add(await readModel(p.join(dir.path, stepFileName), Step.fromJson));
+    }
+    return steps;
+  }
 
   /// The value of the document [documentId].
   Future<Object?> documentValue(String documentId) async => (await readModel(
@@ -155,7 +163,10 @@ final class SessionHandle {
   /// Opens the log of the step [stepId] for appending: a step that runs
   /// again adds to the log it has.
   ///
-  /// The log throws no error of its file: [StepLog.failed] gives it.
+  /// The log throws no error of its file: [StepLog.failed] gives it, also
+  /// for a step whose directory, built by [createStep] or listed by [steps],
+  /// is gone. Throws an [ArgumentError] for a step the session does not
+  /// have.
   StepLog openLog(String stepId) =>
       StepLog._(File(p.join(_stepDir(stepId), logFileName)));
 

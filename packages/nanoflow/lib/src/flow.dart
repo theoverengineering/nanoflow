@@ -113,9 +113,10 @@ final class Flow {
   /// step that finished before gives its saved result instead of running.
   ///
   /// A step is taken from the journal when its key has a `step-finished`
-  /// there and the step it followed then (`after`) is the one it follows
-  /// now; any other step runs live, in the record of its key when the
-  /// session has one. Writes `session-resumed` with the hash of the code,
+  /// there, the step it followed then (`after`) is the one it follows now,
+  /// and its saved result comes back from JSON as the type the code
+  /// declares now (see [addCodec]); any other step runs live, in the record
+  /// of its key when the session has one. Writes `session-resumed` with the hash of the code,
   /// and when that is not the code the session ran last, the graph file as
   /// it is now.
   ///
@@ -123,10 +124,9 @@ final class Flow {
   /// the result is its saved result, or a [SessionFailedException] with its
   /// saved error and stack trace.
   ///
-  /// The input, the results of the steps taken from the journal and the
-  /// saved result come back from JSON as the types the code declares (see
-  /// [addCodec]); one that does not is a [CodecException]: for a step, its
-  /// exception, and for the result, the session's.
+  /// The input and the saved result come back from JSON as the types the
+  /// code declares (see [addCodec]); one that does not is a
+  /// [CodecException]: for the result, the session's.
   ///
   /// Throws, having written no event: an [ArgumentError] when [workflow] is
   /// not a top-level function or a static method; a [FlowStoppedException]
@@ -453,7 +453,8 @@ final class _Session {
   /// [trace] is the stack of the call.
   ///
   /// A step that finished before following the same step gives its result
-  /// and writes nothing; any other runs live.
+  /// and writes nothing, when its result still comes back from JSON as a
+  /// [T]; any other runs live.
   Future<T> step<T>(
     String name,
     FutureOr<T> Function() body,
@@ -463,15 +464,21 @@ final class _Session {
     if (_ended) {
       throw StateError('step "$name" was called after its session ended');
     }
-    return _zone.step(name, (step) {
-      final saved = _journal.saved[step.key];
-      if (saved != null && saved.after == step.after) {
-        return _outside.run(
-          () => Future.sync(() => _flow._codecs.decode<T>(saved.value)),
-        );
-      }
-      return _outside.run(() => _live(step, body, trace));
-    });
+    return _zone.step(
+      name,
+      (step) => _outside.run(() {
+        final saved = _journal.saved[step.key];
+        if (saved != null && saved.after == step.after) {
+          try {
+            return Future.value(_flow._codecs.decode<T>(saved.value));
+          } on CodecException {
+            // Not a result of this step as the code has it now, as one that
+            // followed another step is not: it runs again (spec §4.6).
+          }
+        }
+        return _live(step, body, trace);
+      }),
+    );
   }
 
   /// Runs [body] as [step] and writes it: `step-started`, then its result
@@ -644,34 +651,16 @@ final class _StepOutput implements ProgramLog {
       return false;
     }
     // Outside the session's zone: writing to the log schedules callbacks.
-    return _session._outside.run(() {
-      final log = _log ??= _open();
-      if (log == null) return false;
-      log.add(bytes);
-      return true;
-    });
+    _session._outside.run(() => (_log ??= _open()).add(bytes));
+    return true;
   }
 
-  /// Opens the step's log; `null` when its directory is gone.
-  StepLog? _open() {
-    final StepLog log;
-    try {
-      log = _session._handle.openLog(_stepId);
-    } on FileSystemException catch (e) {
-      _session._failed(StorageException(e));
-      return null;
-    } on ArgumentError {
-      // The record was there when the step started.
-      _session._failed(
-        StorageException(
-          FileSystemException(
-            'Cannot find the directory of the step $_stepId',
-            _session._handle.dir,
-          ),
-        ),
-      );
-      return null;
-    }
+  /// Opens the step's log, whose failure is the session's.
+  ///
+  /// The record of the step was created or listed by the session's handle,
+  /// which so knows its directory even when it is gone: the log then fails.
+  StepLog _open() {
+    final log = _session._handle.openLog(_stepId);
     unawaited(log.failed.then((e) => _session._failed(StorageException(e))));
     return log;
   }
