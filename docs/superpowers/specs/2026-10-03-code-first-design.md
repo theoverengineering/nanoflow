@@ -447,7 +447,7 @@ dart run nanoflow_describe stamp build/review   # §6.3; копия файла �
 шагами. Граф тела — граф потока управления, сведённый к узлам §6.1:
 
 - последовательность, `if`/`else`, `if-case`, `switch` (исчерпывающий по
-  `enum`, `bool`, `sealed` или с `case _` — без `default`) и
+  `enum`, `bool`, `sealed`, записи из них или с `case _` — без `default`) и
   `switch`-выражение, `while`, `do`, `for(;;)`, `for … in`,
   `break`/`continue`, `return`, `throw` (путь кончается; брошенное внутри
   `try` и пойманное его `catch` идёт дальше после `try`, через `finally`, —
