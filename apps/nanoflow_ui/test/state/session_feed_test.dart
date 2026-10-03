@@ -244,6 +244,26 @@ void main() {
         });
       });
 
+      test('told again as it was, the listeners hear nothing', () {
+        run((async) {
+          give(async, [
+            const SessionAdded(_session),
+            _event(_started(0)),
+            owned(false),
+          ]);
+          async.elapse(const Duration(milliseconds: 50));
+          notified = 0;
+
+          give(async, [owned(false)]);
+          async.elapse(const Duration(milliseconds: 50));
+          expect(notified, 0);
+
+          give(async, [owned(false, Owner(pid: 4343, started: at(30)))]);
+          async.elapse(const Duration(milliseconds: 50));
+          expect(notified, 1);
+        });
+      });
+
       test('given before its session waits for it: the last one counts', () {
         run((async) {
           give(async, [owned(true), owned(false)]);

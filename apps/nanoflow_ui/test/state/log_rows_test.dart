@@ -85,18 +85,32 @@ void main() {
               ..processGone())
             .data;
 
-    test('its running step is interrupted: not striped, and took until the '
-        'last event, whenever it is now', () {
+    test('its running step is interrupted: when it would have ended is not '
+        'known, so it took — ; its bar, not striped, runs to the end of the '
+        'scale, whenever it is now', () {
       for (final time in [now, at(2000)]) {
         final rows = stepRows(interrupted(), time: time);
         final notify = rows[3];
         expect(notify.name, 'notify');
         expect(notify.status, StartOutcome.interrupted);
         expect(notify.striped, isFalse);
-        expect(notify.duration, const Duration(seconds: 700 - 612));
+        expect(notify.duration, isNull);
+        expect(notify.took, '—');
+        expect(notify.barStart, closeTo(612 / 700, 1e-9));
         expect(notify.barEnd, 1);
         expect(rows.last.status, StartOutcome.finished);
+        expect(rows.last.took, '1m 20s');
       }
+    });
+
+    test('killed in the middle of a step, the start of which is the last '
+        'event of the journal: no 0.0s', () {
+      final row = stepRows((mockupJournal()..processGone()).data).last;
+      expect(row.name, 'notify');
+      expect(row.status, StartOutcome.interrupted);
+      expect(row.took, '—');
+      expect(row.barStart, 1);
+      expect(row.barEnd, 1);
     });
 
     test('its time scale ends at its last event, and it has no end row: '

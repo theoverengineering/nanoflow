@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/material.dart' show Text;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
@@ -12,6 +13,7 @@ import 'package:nanoflow_ui/graph/details/step_details_window.dart';
 import 'package:nanoflow_ui/graph/logs/step_details_pane.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
+import 'package:nanoflow_ui/theme.dart';
 import 'package:nanoflow_ui/widgets/icons.dart';
 import 'package:nanoflow_ui/widgets/spinner.dart';
 import 'package:path/path.dart' as p;
@@ -297,18 +299,16 @@ void main() {
       model: ownedModel(
         graph: graphFileNamed('review'),
         file: reviewFile,
-        changes:
-            (reviewSession()
-                  ..step('archive', 620, end: 700)
-                  ..processGone())
-                .changes,
+        changes: (reviewSession()..processGone()).changes,
         documents: reviewDocuments,
         files: reviewFiles(),
       ),
     );
     await doubleClick(tester, '7');
 
-    expect(topBar(tester), endsWith('Visit 1 of 1 interrupted · 1m 28s'));
+    // Killed in the middle of notify: when it would have ended is not
+    // known.
+    expect(topBar(tester), endsWith('Visit 1 of 1 interrupted'));
     expect(
       find.descendant(of: window(), matching: find.byType(Spinner)),
       findsNothing,
@@ -320,6 +320,14 @@ void main() {
     expect(
       textIn(tester, find.byKey(NodeColumn.descriptionKey)),
       endsWith('Finished — Starts 14:13:23 interrupted — the process stopped'),
+    );
+    // The start says so as docs/design/step-details.html has it: amber.
+    expect(
+      tester
+          .widget<Text>(find.text('interrupted — the process stopped'))
+          .style!
+          .color,
+      AppColors.noteText,
     );
     expect(
       inColumn(

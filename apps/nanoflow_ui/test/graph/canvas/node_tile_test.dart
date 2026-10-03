@@ -206,7 +206,7 @@ void main() {
     });
 
     testWidgets('a step running turns its sign; one interrupted, its process '
-        'gone (owner spec §6), is framed as interrupted starts are said, a pause on its '
+        'gone (owner spec §6), is framed in a muted grey, a pause on its '
         'corner that does not turn', (tester) async {
       await pumpTile(
         tester,
@@ -230,6 +230,7 @@ void main() {
       );
       expect(find.byType(Spinner), findsNothing);
       expect(tileLook(tester, 'step').border!.top.color, AppColors.interrupted);
+      expect(tileLook(tester, 'step').color, CanvasColors.tileFill);
       final badge = tester.widget<StateBadge>(find.byType(StateBadge));
       expect(badge.mark, BadgeMark.pause);
       expect(badge.fill, AppColors.interrupted);

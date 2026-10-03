@@ -114,18 +114,12 @@ void main() {
     });
 
     testWidgets('in a session whose process is gone, the step that was '
-        'running is interrupted: its pause, a plain bar, a Took that took '
-        'until the last event and stands still (owner spec §6)', (
-      tester,
-    ) async {
+        'running is interrupted: its pause, a bar not filled to the end of '
+        'the scale, a Took not known (owner spec §6)', (tester) async {
       var now = columnNow;
       await pumpReview(
         tester,
-        model: endedModel(
-          (session) => session
-            ..step('archive', 620, end: 700)
-            ..processGone(),
-        ),
+        model: endedModel((session) => session.processGone()),
         now: () => now,
       );
 
@@ -137,16 +131,19 @@ void main() {
         ),
         findsNothing,
       );
-      final bar = tester.widget<StepBar>(
-        find.byKey(StepTrack.barKey('a1b2-notify-5')),
+      final bar = find.byKey(StepTrack.barKey('a1b2-notify-5'));
+      expect(tester.widget<StepBar>(bar).status, StartOutcome.interrupted);
+      expect(tester.widget<StepBar>(bar).striped, isFalse);
+      expect(
+        find.descendant(of: bar, matching: find.byType(ColoredBox)),
+        findsNothing,
+        reason: 'not filled',
       );
-      expect(bar.status, StartOutcome.interrupted);
-      expect(bar.striped, isFalse);
-      expect(textIn(tester, row('a1b2-notify-5')), endsWith('1m 28s'));
+      expect(textIn(tester, row('a1b2-notify-5')), endsWith('14:13:23 —'));
 
       now = now.add(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
-      expect(textIn(tester, row('a1b2-notify-5')), endsWith('1m 28s'));
+      expect(textIn(tester, row('a1b2-notify-5')), endsWith('14:13:23 —'));
     });
 
     testWidgets('says of a step that is on no node: not on the graph', (

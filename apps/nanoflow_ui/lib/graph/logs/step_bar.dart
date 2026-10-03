@@ -57,7 +57,8 @@ class StepTrack extends StatelessWidget {
   );
 }
 
-/// A step's bar in the color of its state; striped while it runs.
+/// A step's bar in the color of its state; striped while it runs; only
+/// outlined once it was interrupted: when it would have ended is not known.
 class StepBar extends StatelessWidget {
   const StepBar({
     super.key,
@@ -71,12 +72,19 @@ class StepBar extends StatelessWidget {
   final double radius;
 
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(radius),
-    child: striped
-        ? const CustomPaint(painter: _StripesPainter())
-        : ColoredBox(color: status.color),
-  );
+  Widget build(BuildContext context) => status == StartOutcome.interrupted
+      ? DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: status.color),
+            borderRadius: BorderRadius.circular(radius),
+          ),
+        )
+      : ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: striped
+              ? const CustomPaint(painter: _StripesPainter())
+              : ColoredBox(color: status.color),
+        );
 }
 
 /// The mockup's `repeating-linear-gradient(135deg, #F2A93B 0 4px, #C98526

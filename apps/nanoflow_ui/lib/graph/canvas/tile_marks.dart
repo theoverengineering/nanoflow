@@ -109,12 +109,12 @@ final class TileLook {
   );
 
   /// A step that was running when the process of its session went: framed
-  /// in the amber that says so in the step details window.
+  /// muted, as nothing goes on.
   static const interrupted = TileLook(
     fill: CanvasColors.tileFill,
     border: AppColors.interrupted,
     borderWidth: 2,
-    icon: AppColors.interrupted,
+    icon: CanvasColors.icon,
     name: CanvasColors.name,
     nameWeight: FontWeight.w600,
     place: CanvasColors.place,
@@ -165,21 +165,20 @@ class StateBadge extends StatelessWidget {
   );
 }
 
-/// A check or an exclamation mark in white, or a pause dark on the light
-/// amber, as [RunningBadge] writes on the amber of running: 10 units.
+/// A check or an exclamation mark in white, or a pause in the canvas's
+/// color on the light grey of interrupted: 10 units.
 class _MarkPainter extends CustomPainter {
   _MarkPainter(this.mark);
 
   final BadgeMark mark;
 
   static const _white = Color(0xFFFFFFFF);
-  static const _dark = Color(0xFF1F1606);
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.scale(size.width / 10);
     final stroke = Paint()
-      ..color = mark == BadgeMark.pause ? _dark : _white
+      ..color = mark == BadgeMark.pause ? CanvasColors.background : _white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.9
       ..strokeCap = StrokeCap.round

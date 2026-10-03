@@ -238,9 +238,11 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
         } else {
           (_waitingProblems[sessionId] ??= []).add(problem);
         }
-      case OwnerChanged(:final sessionId):
+      case OwnerChanged(:final sessionId, :final owner, :final alive):
         final session = _sessions[sessionId];
         if (session != null) {
+          // Told again as it was: nothing to redraw.
+          if (session.owner == owner && session.alive == alive) return;
           session._owned(change);
         } else {
           _waitingOwners[sessionId] = change;

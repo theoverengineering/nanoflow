@@ -75,9 +75,9 @@ abstract final class AppColors {
   static const noteText = Color(0xFFF2C27A);
 
   /// Something interrupted — its process stopped before it ended: its
-  /// status bar, dot, sign and text. The amber of notes, as the step
-  /// details window says `interrupted — the process stopped`.
-  static const interrupted = noteText;
+  /// status bar, dot, sign, frame and text. Muted, as nothing goes on: not
+  /// the amber of running.
+  static const interrupted = textMuted;
 
   /// The selected step's row: its left bar, its name.
   static const accentLine = Color(0xFF9C8CFF);

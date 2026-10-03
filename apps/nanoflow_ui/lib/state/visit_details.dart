@@ -14,7 +14,8 @@ import 'texts.dart';
 import 'visits.dart';
 
 /// How the step went, at the top of the window: `finished · 4m 02s`,
-/// `running · 2m 14s`, `failed · 0.1s`, `interrupted · 1m 28s`.
+/// `running · 2m 14s`, `failed · 0.1s`; `interrupted` alone: when it would
+/// have ended is not known.
 typedef StepResult = ({StartOutcome status, String text});
 
 /// A start of the step, as the window lists it: `14:09:20`, and how it
@@ -122,8 +123,10 @@ VisitDetails visitDetails({
   final index = visits.indexWhere((visit) => visit.stepId == details.stepId);
   final state = visits[index].state;
   final status = outcomeOf(session, state);
+  // Not shown for an interrupted step: when it would have ended is not
+  // known.
   final took = formatDuration(
-    (state.finishedAt ?? session.timeAt(now)).difference(state.startedAt),
+    (state.finishedAt ?? now).difference(state.startedAt),
   );
   return VisitDetails._(
     name: details.name,
@@ -131,7 +134,12 @@ VisitDetails visitDetails({
     visits: visits,
     index: index,
     step: details,
-    result: (status: status, text: '${status.name} · $took'),
+    result: (
+      status: status,
+      text: status == StartOutcome.interrupted
+          ? status.name
+          : '${status.name} · $took',
+    ),
     facts: StepFacts._(
       started: clockTimeMillis(state.startedAt),
       finished: state.finishedAt == null

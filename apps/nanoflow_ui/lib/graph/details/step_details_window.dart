@@ -438,7 +438,7 @@ class _VisitSwitcher extends StatelessWidget {
 }
 
 /// `finished · 4m 02s` in green; failed in red, running in amber,
-/// interrupted in the amber of notes.
+/// `interrupted` muted.
 class _ResultChip extends StatelessWidget {
   const _ResultChip(this.result);
 
@@ -458,8 +458,8 @@ class _ResultChip extends StatelessWidget {
         AppColors.running,
       ),
       StartOutcome.interrupted => (
-        AppColors.noteSurface,
-        AppColors.runningBorder,
+        AppColors.control,
+        AppColors.controlBorder,
         AppColors.interrupted,
       ),
       StartOutcome.failed => (

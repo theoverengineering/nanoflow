@@ -64,9 +64,17 @@ void main() {
     });
 
     test('of a step that was running when the process of its session went: '
-        'interrupted, its time stopped at the last event (owner spec §6)', () {
-      final j = journal()..processGone();
-      for (final time in [now, at(2000)]) {
+        'interrupted, how long it ran not known (owner spec §6)', () {
+      // Killed in the middle of verify 3: the start of the step is the
+      // last event of the journal.
+      final killed = Journal('a1b2-session', workflow: 'inPlace')
+        ..step('verify', 9.118, end: 251.524, place: copiesAt(8))
+        ..step('verify', 612, place: copiesAt(8));
+      for (final (j, time) in [
+        (journal()..processGone(), now),
+        (journal()..processGone(), at(2000)),
+        (killed..processGone(), now),
+      ]) {
         final session = j.data;
         final details = visitDetails(
           session: session,
@@ -76,7 +84,7 @@ void main() {
           now: time,
         );
         expect(details.result!.status, StartOutcome.interrupted);
-        expect(details.result!.text, 'interrupted · 1m 28s');
+        expect(details.result!.text, 'interrupted');
         expect(details.facts!.finished, isNull);
         expect(details.facts!.took, isNull);
         expect(details.facts!.starts, [

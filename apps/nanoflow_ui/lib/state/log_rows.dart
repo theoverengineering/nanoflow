@@ -72,12 +72,15 @@ final class StepRow extends LogRow {
   /// The time of the first `step-started`: `14:03:11`.
   final String started;
 
-  /// To the outcome of the last start, or to now while the step runs; to
-  /// the session's last event once it is interrupted.
-  final Duration duration;
+  /// To the outcome of the last start, or to now while the step runs;
+  /// `null` once it is interrupted: when it would have ended is not known.
+  final Duration? duration;
 
-  /// [duration] as shown: `2m 29s`.
-  String get took => formatDuration(duration);
+  /// [duration] as shown: `2m 29s`; `—` when it is not known.
+  String get took => switch (duration) {
+    final d? => formatDuration(d),
+    null => '—',
+  };
 
   /// How many times the step started.
   final int starts;
@@ -86,7 +89,8 @@ final class StepRow extends LogRow {
   String? get startsText => starts > 1 ? '$starts starts' : null;
 
   /// Where the step's bar begins and ends on the session's time scale, from
-  /// 0 to 1.
+  /// 0 to 1; an interrupted step's runs to the end of the scale, the
+  /// session's last event.
   final double barStart;
   final double barEnd;
 
@@ -191,17 +195,20 @@ StepRow _stepRow(
 ) {
   final record = session.steps[step.stepId];
   final error = step.status == StepStatus.failed ? step.error : null;
+  final status = outcomeOf(session, step);
   final end = step.finishedAt ?? session.timeAt(now);
   return StepRow._(
     stepId: step.stepId,
     name: record?.name ?? '',
-    status: outcomeOf(session, step),
+    status: status,
     detail:
         error ?? (record == null || places.onGraph(record) ? null : notOnGraph),
     failure: error != null,
     copy: copy,
     started: clockTime(step.startedAt),
-    duration: end.difference(step.startedAt),
+    duration: status == StartOutcome.interrupted
+        ? null
+        : end.difference(step.startedAt),
     starts: step.starts,
     barStart: scale.fraction(step.startedAt),
     barEnd: scale.fraction(end),

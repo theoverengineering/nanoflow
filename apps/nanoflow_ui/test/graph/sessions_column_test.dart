@@ -119,6 +119,8 @@ void main() {
 
     final status = inCard('a1b2-session', find.text('Interrupted after 5s'));
     expect(status, findsOneWidget);
+    // Muted: nothing goes on — not the amber of running.
+    expect(AppColors.interrupted, AppColors.textMuted);
     expect(colorOf(tester, status), AppColors.interrupted);
     expect(barOf(tester, 'a1b2-session'), AppColors.interrupted);
     expect(
