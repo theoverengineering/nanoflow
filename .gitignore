@@ -5,3 +5,5 @@ pubspec_overrides.yaml
 **/runs/
 .superpowers/
 .DS_Store
+# Copies of the review fixture that the describe command tests make
+packages/nanoflow_describe/test/fixtures/.tmp-*/

@@ -262,6 +262,10 @@ void main() {
   ]) {
     test('--watch rewrites the file on every change, $how', () async {
       final stop = Completer<void>();
+      // A test that fails leaves no watcher running.
+      addTearDown(() {
+        if (!stop.isCompleted) stop.complete();
+      });
       final code = runDescribe(
         ['--watch'],
         cwd: dir,
@@ -331,6 +335,9 @@ void main() {
       ['stamp', 'a', 'b'],
       ['--package'],
       ['extra'],
+      // A flag is no value of the option before it.
+      ['--package', '--watch'],
+      ['stamp', '--check'],
     ]) {
       err.clear();
       expect(await run(args), 2, reason: '$args');

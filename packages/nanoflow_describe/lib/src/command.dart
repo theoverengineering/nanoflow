@@ -50,13 +50,16 @@ Future<int> runDescribe(
   String? package;
   String? binary;
   final modes = <String>[];
+  // Whether a value follows the argument at i: a flag is none.
+  bool valueAfter(int i) =>
+      i + 1 < args.length && !args[i + 1].startsWith('--');
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
-      case '--package' when package == null && i + 1 < args.length:
+      case '--package' when package == null && valueAfter(i):
         package = args[++i];
       case '--watch' || '--check':
         modes.add(args[i]);
-      case 'stamp' when i + 1 < args.length:
+      case 'stamp' when valueAfter(i):
         modes.add('stamp');
         binary = args[++i];
       default:
