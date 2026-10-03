@@ -13,8 +13,8 @@ import 'support/golden.dart';
 
 void main() {
   final home = Platform.environment['HOME']!;
-  final review = '$home/Projects/review/review.yaml';
-  final release = '$home/work/deploy/release.yaml';
+  final review = '$home/Projects/review/nanoflow.graph.json';
+  final release = '$home/work/deploy/nanoflow.graph.json';
   final now = DateTime(2026, 9, 21, 14);
 
   testWidgets('the app starts on the start screen, goes to a graph and back', (
@@ -28,16 +28,16 @@ void main() {
       tester,
       NanoflowApp(
         recent: recent,
-        shell: Shell(environment: const {}),
+        shell: Shell(),
         pickFile: () async => null,
         exists: (_) => true,
         now: () => now,
-        openModel: (_, _) => ownedModel(),
+        openModel: (_) => ownedModel(),
       ),
     );
     expect(find.byType(StartScreen), findsOneWidget);
 
-    await tester.tap(find.text('review.yaml'));
+    await tester.tap(find.text('review'));
     await tester.pumpAndSettle();
     expect(find.byType(StartScreen), findsNothing);
     expect(find.byType(GraphScreen), findsOneWidget);
@@ -49,8 +49,8 @@ void main() {
     expect(find.byType(StartScreen), findsOneWidget);
     expect(find.text('Opened just now'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.text('review.yaml')).dy,
-      lessThan(tester.getTopLeft(find.text('release.yaml')).dy),
+      tester.getTopLeft(find.text('review')).dy,
+      lessThan(tester.getTopLeft(find.text('deploy')).dy),
     );
   });
 }

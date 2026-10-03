@@ -55,8 +55,7 @@ void main() {
     await tester.pumpWidget(
       NanoflowApp(
         recent: RecentGraphs(await SharedPreferences.getInstance()),
-        // Without nanoflow-yaml: the sessions are what is looked at.
-        shell: Shell(environment: const {'PATH': '/usr/bin:/bin'}),
+        shell: Shell(),
         pickFile: () async => graphFile,
       ),
     );

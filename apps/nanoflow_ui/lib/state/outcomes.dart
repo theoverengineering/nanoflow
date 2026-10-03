@@ -3,12 +3,13 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 
 import 'batched_notifier.dart';
 
-/// A fork's outcome, once read: any JSON value, `null` included.
+/// The value of a document, once read: any JSON value, `null` included.
 typedef Outcome = ({Object? value});
 
-/// What is known of the outcomes of forks: read, failed to read, or not yet.
+/// What is known of the values of documents: read, failed to read, or not
+/// yet.
 abstract interface class KnownOutcomes {
-  /// The outcome in the document [documentId], or `null` while it is not
+  /// The value of the document [documentId], or `null` while it is not
   /// known.
   Outcome? operator [](String documentId);
 
@@ -23,18 +24,18 @@ typedef ReadDocument = Future<Object?> Function(
   String documentId,
 );
 
-/// The outcomes of fork steps: the values of their output documents, read
-/// when first asked for and kept.
+/// The values of documents, such as the snapshots of the graph file a
+/// session took when it resumed, read when first asked for and kept.
 ///
 /// The feed tells only that a document is there; its value is read on
-/// request. An outcome is unknown until it has been read. A document that
+/// request. A value is unknown until it has been read. A document that
 /// could not be read is read again once the feed gives it again.
 class Outcomes extends ChangeNotifier
     with BatchedNotifier
     implements KnownOutcomes {
   Outcomes(this._read, {this.batch = const Duration(milliseconds: 50)});
 
-  /// Outcomes read by [reader].
+  /// Values read by [reader].
   Outcomes.read(
     FsReader reader, {
     Duration batch = const Duration(milliseconds: 50),

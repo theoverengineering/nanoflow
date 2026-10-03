@@ -1,17 +1,28 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// A graph file opened earlier.
 typedef RecentGraph = ({String path, DateTime openedAt});
 
+/// Whether [path] names a graph file: `nanoflow.graph.json`, or another
+/// `*.graph.json`.
+bool isGraphFile(String path) {
+  final name = p.basename(path);
+  return name.endsWith('.graph.json') && name.length > '.graph.json'.length;
+}
+
 /// The start screen's `Recently opened` list: newest first, each path once.
 ///
 /// Kept in the app's preferences as a JSON list of `{path, openedAt}`, the
-/// time in UTC ISO-8601. Changes show at once; saving them finishes later,
-/// and a save that fails is reported to [FlutterError.reportError] rather
-/// than to the caller: the list on screen stays right either way.
+/// time in UTC ISO-8601. Only graph files are listed ([isGraphFile]): what
+/// the app opened when graphs were YAML files cannot be opened now.
+///
+/// Changes show at once; saving them finishes later, and a save that fails
+/// is reported to [FlutterError.reportError] rather than to the caller: the
+/// list on screen stays right either way.
 class RecentGraphs extends ChangeNotifier {
   RecentGraphs(this._prefs) : _graphs = _read(_prefs.getString(_key));
 
@@ -63,10 +74,11 @@ class RecentGraphs extends ChangeNotifier {
         for (final entry in (json.decode(
           stored,
         ) as List<Object?>).cast<Map<String, Object?>>())
-          (
-            path: entry['path']! as String,
-            openedAt: DateTime.parse(entry['openedAt']! as String),
-          ),
+          if (entry['path']! as String case final path when isGraphFile(path))
+            (
+              path: path,
+              openedAt: DateTime.parse(entry['openedAt']! as String),
+            ),
       ];
     } on Object {
       return [];

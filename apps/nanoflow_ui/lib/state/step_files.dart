@@ -4,9 +4,9 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 /// log as it grows, the values of its documents, and the files they are in
 /// (docs/ui-spec.md «Logs», «Окно деталей шага»).
 abstract interface class StepFiles {
-  /// The log of the step [stepId] of the run [runId]: the text written so
-  /// far, then what is appended, until cancelled.
-  Stream<String> stepLog(String sessionId, String runId, String stepId);
+  /// The log of the step [stepId] of the session [sessionId]: the text
+  /// written so far, then what is appended, until cancelled.
+  Stream<String> stepLog(String sessionId, String stepId);
 
   /// The value of the document [documentId].
   Future<Object?> documentValue(String sessionId, String documentId);
@@ -31,8 +31,8 @@ final class ReaderFiles implements StepFiles {
   final FsReader _reader;
 
   @override
-  Stream<String> stepLog(String sessionId, String runId, String stepId) =>
-      _reader.stepLog(sessionId, runId, stepId);
+  Stream<String> stepLog(String sessionId, String stepId) =>
+      _reader.stepLog(sessionId, stepId);
 
   @override
   Future<Object?> documentValue(String sessionId, String documentId) =>

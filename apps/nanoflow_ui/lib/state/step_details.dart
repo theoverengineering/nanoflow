@@ -1,3 +1,5 @@
+// migrated in Task 12: still on the old model (runs, the README graph,
+// GraphSource); it does not compile until then.
 /// What the details of the selected step show: which step it is, and
 /// whether it has its input and output documents (docs/ui-spec.md «Logs»:
 /// «Детали шага»). Pure.

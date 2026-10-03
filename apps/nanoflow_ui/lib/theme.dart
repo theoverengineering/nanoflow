@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show StepStatus;
-
-import 'state/runs.dart' show RunPhase;
-import 'state/sessions.dart' show SessionStatus;
+import 'package:nanoflow_model/nanoflow_model.dart'
+    show SessionStatus, StepStatus;
 
 /// Colors of the mockups in docs/design/ (their HTML has the exact values).
 abstract final class AppColors {
@@ -122,17 +120,6 @@ extension SessionStatusColors on SessionStatus {
     SessionStatus.running => AppColors.running,
     SessionStatus.failed => AppColors.dangerText,
     SessionStatus.finished => AppColors.finishedText,
-  };
-}
-
-/// The colors a run's state is shown in: how it ended, at the end of its
-/// steps in `Logs`.
-extension RunPhaseColors on RunPhase {
-  Color get textColor => switch (this) {
-    RunPhase.running => AppColors.running,
-    RunPhase.finished => AppColors.finishedText,
-    RunPhase.failed => AppColors.dangerText,
-    RunPhase.notStarted || RunPhase.split => AppColors.textMuted,
   };
 }
 
@@ -382,6 +369,15 @@ abstract final class AppText {
   static final stepPath = _style(mono, 10.5, color: AppColors.textSubtle);
   static final outputTab = _style(sans, 12, color: AppColors.textMuted);
 }
+
+/// The MaterialApp around every screen, in the app's theme; tests show
+/// screens in it too.
+Widget appFrame({required Widget home}) => MaterialApp(
+  title: 'nanoflow',
+  theme: nanoflowTheme(),
+  debugShowCheckedModeBanner: false,
+  home: home,
+);
 
 /// The app's dark theme.
 ThemeData nanoflowTheme() => ThemeData(

@@ -1,3 +1,5 @@
+// migrated in Task 12: still on the old model (runs, the README graph,
+// GraphSource); it does not compile until then.
 /// A session's runs as the canvas and the `Logs` panel show them: in the
 /// order they were created, in their state, with the steps each one shows
 /// (docs/ui-spec.md «Холст»). Pure.

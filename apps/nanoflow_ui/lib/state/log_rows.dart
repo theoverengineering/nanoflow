@@ -1,3 +1,5 @@
+// migrated in Task 12: still on the old model (runs, the README graph,
+// GraphSource); it does not compile until then.
 /// The `Logs` panel: its title and the rows of the steps list
 /// (docs/ui-spec.md «Logs»). Pure: the time is passed in.
 library;

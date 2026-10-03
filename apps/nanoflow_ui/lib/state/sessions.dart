@@ -9,18 +9,6 @@ import 'session_feed.dart';
 import 'texts.dart';
 import 'texts.dart' as texts show shortId;
 
-/// Where a session is (ui-spec «Сессии»).
-enum SessionStatus {
-  /// At least one run has not ended.
-  running,
-
-  /// Every run has ended, at least one with `run-failed`.
-  failed,
-
-  /// Every run has ended, none failed.
-  finished,
-}
-
 /// A session's card in the sessions column and its strip over the canvas.
 final class SessionSummary {
   SessionSummary._({
@@ -28,8 +16,8 @@ final class SessionSummary {
     required this.startedAt,
     required this.status,
     required this.duration,
-    required this.runs,
-    required this.failedRuns,
+    required this.steps,
+    required this.failedSteps,
     required this.firstLine,
   });
 
@@ -37,20 +25,22 @@ final class SessionSummary {
 
   String get shortId => texts.shortId(id);
 
-  /// The first `run-started` of the session's runs, in UTC.
+  /// The session's `session-started`, in UTC.
   final DateTime startedAt;
 
+  /// As its last event tells: running until `session-finished` or
+  /// `session-failed`.
   final SessionStatus status;
 
-  /// From [startedAt] to the end of the last run; for a running session, to
-  /// now.
+  /// From [startedAt] to the session's last event; for a running session,
+  /// to now.
   final Duration duration;
 
-  /// How many runs the session has.
-  final int runs;
+  /// How many steps the session has started.
+  final int steps;
 
-  /// How many of them failed.
-  final int failedRuns;
+  /// How many of them failed the last time they ran.
+  final int failedSteps;
 
   /// The day and time the session started: `Today · 14:03:11`.
   final String firstLine;
@@ -62,13 +52,14 @@ final class SessionSummary {
     SessionStatus.finished => 'Finished in ${formatDuration(duration)}',
   };
 
-  /// `1 failed` next to the status of a running session with failed runs.
-  String? get failedBadge => status == SessionStatus.running && failedRuns > 0
-      ? '$failedRuns failed'
+  /// `1 failed` next to the status of a running session with failed steps:
+  /// the workflow caught what they threw, or has not yet.
+  String? get failedBadge => status == SessionStatus.running && failedSteps > 0
+      ? '$failedSteps failed'
       : null;
 
-  /// `1 run`, `3 runs`.
-  String get runsText => count(runs, 'run');
+  /// `1 step`, `8 steps`.
+  String get stepsText => count(steps, 'step');
 
   /// `started 14:03:11`, on the strip over the canvas.
   String get startedText => 'started ${clockTime(startedAt)}';
@@ -82,60 +73,34 @@ final class SessionSummary {
   };
 }
 
-/// The summary of [session] at [now]; `null` while none of its runs has a
-/// `run-started`: a session has no start time before that.
+/// The summary of [session] at [now]; `null` while its `session-started`
+/// has not been read: a session has no start time before that.
 SessionSummary? summarize(SessionData session, DateTime now) {
-  final start = sessionStart(session);
+  final state = session.state;
+  final start = state.startedAt;
   if (start == null) return null;
-  final runs = session.runs.values;
-  final ended = runs.every((run) => run.state.isEnded);
-  final failed = runs.where((run) => run.state.status == RunStatus.failed);
   return SessionSummary._(
     id: session.id,
     startedAt: start,
-    status: !ended
-        ? SessionStatus.running
-        : failed.isNotEmpty
-        ? SessionStatus.failed
-        : SessionStatus.finished,
-    duration: (sessionEnd(session) ?? now).difference(start),
-    runs: runs.length,
-    failedRuns: failed.length,
+    status: state.status,
+    duration: (state.finishedAt ?? now).difference(start),
+    steps: state.steps.length,
+    failedSteps: state.steps
+        .where((step) => step.status == StepStatus.failed)
+        .length,
     firstLine: dayAndTime(start, now),
   );
 }
 
-/// The first `run-started` of [session]'s runs; `null` before there is one.
-DateTime? sessionStart(SessionData session) {
-  DateTime? start;
-  for (final run in session.runs.values) {
-    final time = run.started?.time;
-    if (time != null && (start == null || time.isBefore(start))) start = time;
-  }
-  return start;
-}
-
-/// When the last run of [session] ended; `null` while a run goes on.
-DateTime? sessionEnd(SessionData session) {
-  DateTime? end;
-  for (final run in session.runs.values) {
-    final time = run.state.finishedAt;
-    if (time == null) return null;
-    if (end == null || time.isAfter(end)) end = time;
-  }
-  return end;
-}
-
-/// What the sessions column says instead of sessions when the graph has
+/// What the sessions column says instead of sessions when the workflow has
 /// none.
-const noRunsYet = 'No runs yet';
+const noSessionsYet = 'No sessions yet';
 
-/// How to start a session of the YAML graph [graphFile]: sessions are read
-/// from the `runs` directory next to it, where `nanoflow run` started from
-/// its directory puts them.
-String noRunsHint(String graphFile) =>
-    "Start a session from the graph's directory: "
-    'nanoflow run -- nanoflow-yaml ${p.basename(graphFile)}';
+/// Where the sessions of the graph file [graphFile] come from: the workflow
+/// library writes them to the `runs` directory next to it.
+String noSessionsHint(String graphFile) =>
+    'Sessions of the workflow appear as it runs: '
+    'they are read from runs/ next to ${p.basename(graphFile)}.';
 
 /// The summaries of [sessions] that have started, newest first.
 List<SessionSummary> sessionSummaries(
@@ -149,7 +114,7 @@ List<SessionSummary> sessionSummaries(
 List<SessionData> sessionsNewestFirst(Iterable<SessionData> sessions) {
   final started = [
     for (final session in sessions)
-      if (sessionStart(session) case final start?) (session, start),
+      if (session.state.startedAt case final start?) (session, start),
   ];
   started.sort((a, b) {
     final byTime = b.$2.compareTo(a.$2);
@@ -157,3 +122,19 @@ List<SessionData> sessionsNewestFirst(Iterable<SessionData> sessions) {
   });
   return [for (final (session, _) in started) session];
 }
+
+/// Those of [sessions] that ran the workflow [workflowId] of [graph]: whose
+/// workflow name the graph file finds it by (`GraphFile.workflowNamed`).
+/// Every session while no graph file has been read: nothing tells the
+/// workflows apart.
+List<SessionData> sessionsOfWorkflow(
+  Iterable<SessionData> sessions,
+  GraphFile? graph,
+  String? workflowId,
+) => [
+  for (final session in sessions)
+    if (graph == null ||
+        (workflowId != null &&
+            graph.workflowNamed(session.session.workflow)?.id == workflowId))
+      session,
+];

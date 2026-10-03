@@ -142,7 +142,7 @@ void main() {
         body: LogsPanel(
           model: model,
           clock: clock,
-          shell: Shell(environment: const {}),
+          shell: Shell(),
           graphFile: reviewFile,
           collapsed: false,
           onToggle: () {},

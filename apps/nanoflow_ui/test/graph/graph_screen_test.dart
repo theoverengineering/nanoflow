@@ -88,7 +88,7 @@ void main() {
     tester,
   ) async {
     final opened = <(String, Shell)>[];
-    final shell = Shell(environment: const {});
+    final shell = Shell();
     final model = mockupModel();
     await pumpScreen(
       tester,

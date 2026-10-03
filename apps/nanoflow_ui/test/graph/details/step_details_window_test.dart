@@ -497,7 +497,6 @@ void main() {
       await pumpGraphScreen(
         tester,
         shell: Shell(
-          environment: const {},
           run: (executable, arguments) async {
             ran.add([executable, ...arguments]);
             return ProcessResult(0, 0, '', '');

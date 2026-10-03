@@ -9,56 +9,62 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 
 import 'batched_notifier.dart';
 
-/// A run as the feed has given it so far: the run, its steps, its journal.
+/// A session as the feed has given it so far: the session, its steps, its
+/// journal, its documents.
 ///
 /// The feed keeps adding to it; what it gives out are read-only views.
-final class RunData {
-  RunData(
-    this.run, {
+final class SessionData {
+  SessionData(
+    this.session, {
     Iterable<Event> events = const [],
     Iterable<Step> steps = const [],
+    Iterable<String> documents = const [],
     Iterable<String> problems = const [],
   }) {
     events.forEach(_addEvent);
-    for (final step in steps) {
-      _steps[step.id] = step;
-    }
+    steps.forEach(_addStep);
+    _documents.addAll(documents);
     _problems.addAll(problems);
   }
 
-  final Run run;
+  final Session session;
 
-  String get id => run.id;
+  String get id => session.id;
 
   final List<KnownEvent> _events = [];
   final Map<String, Step> _steps = {};
+  final Set<String> _documents = {};
   final List<String> _problems = [];
-  final Map<String, StepFinished> _finishes = {};
-  RunStarted? _started;
-  RunState? _state;
+  SessionState? _state;
+  List<Step>? _stepsInOrder;
 
-  /// The run's known events in the order of its journal.
+  /// The session's known events in the order of its journal.
   List<KnownEvent> get events => UnmodifiableListView(_events);
 
-  /// The run's steps by id, in the order they were given. A step may start
-  /// before it is given here: the [state] has it from its `step-started`.
+  /// The records of the session's steps by id, in the order they were
+  /// given. A step may start before its record is given here: the [state]
+  /// has it from its `step-started`.
   Map<String, Step> get steps => UnmodifiableMapView(_steps);
 
-  /// Why the run's journal was read incompletely: lines that are not events,
-  /// events this version does not read, files of the run that could not be
-  /// read. The app marks such a run `Log read incompletely`.
+  /// The records of the session's steps in the order of their first
+  /// `step-started`; a step whose record has not been given yet is left out.
+  List<Step> get stepsInOrder => _stepsInOrder ??= List.unmodifiable([
+    for (final step in state.steps) ?_steps[step.stepId],
+  ]);
+
+  /// The ids of the session's documents that have been written in full.
+  Set<String> get documents => UnmodifiableSetView(_documents);
+
+  /// Why the session's journal was read incompletely: lines that are not
+  /// events, events this version does not read, files of the session that
+  /// could not be read. The app marks such a session `Log read
+  /// incompletely`.
   List<String> get problems => UnmodifiableListView(_problems);
 
   bool get incomplete => _problems.isNotEmpty;
 
   /// What replaying the journal says.
-  RunState get state => _state ??= replay(run.id, _events);
-
-  /// The run's `run-started`; `null` before it is given.
-  RunStarted? get started => _started;
-
-  /// The `step-finished` of the step [stepId], or `null`.
-  StepFinished? finishOf(String stepId) => _finishes[stepId];
+  SessionState get state => _state ??= replaySession(_events);
 
   void _addEvent(Event event) {
     switch (event) {
@@ -67,88 +73,49 @@ final class RunData {
           'an event this version does not read: '
           '${jsonEncode(json)}',
         );
-        return;
       case KnownEvent():
         _events.add(event);
         _state = null;
+        _stepsInOrder = null;
     }
-    switch (event) {
-      case RunStarted():
-        _started ??= event;
-      case StepFinished(:final stepId):
-        _finishes[stepId] = event;
-      default:
-    }
+  }
+
+  void _addStep(Step step) {
+    _steps[step.id] = step;
+    _stepsInOrder = null;
   }
 }
 
-/// A session as the feed has given it so far.
-final class SessionData {
-  SessionData(
-    this.session, {
-    Iterable<RunData> runs = const [],
-    Iterable<String> documents = const [],
-  }) {
-    runs.forEach(_addRun);
-    _documents.addAll(documents);
-  }
-
-  final Session session;
-
-  String get id => session.id;
-
-  final Map<String, RunData> _runs = {};
-  final Set<String> _documents = {};
-
-  /// The session's runs by id, in the order they were given.
-  Map<String, RunData> get runs => UnmodifiableMapView(_runs);
-
-  /// The ids of the session's documents that have been written in full.
-  Set<String> get documents => UnmodifiableSetView(_documents);
-
-  /// The graph the session runs by, or `null` when what it holds is not a
-  /// graph.
-  late final Graph? graph = _parseGraph();
-
-  Graph? _parseGraph() {
-    try {
-      return Graph.fromJson(session.graph);
-    } on FormatException {
-      return null;
-    }
-  }
-
-  void _addRun(RunData run) => _runs[run.id] = run;
-}
-
-/// Everything a reader's change feed has given for one graph, indexed: the
-/// sessions, their runs, the runs' steps and journals, the documents.
+/// Everything a reader's change feed has given for the `runs` directory of
+/// a graph file, indexed: the sessions with their steps, journals and
+/// documents.
 ///
-/// Changes may come in any order but one: a run's events come in the order of
-/// its journal. What comes before the thing it belongs to waits for it.
+/// Changes may come in any order but one: a session's events come in the
+/// order of its journal. What comes before the session it belongs to waits
+/// for it.
 ///
 /// Listeners hear of changes at most once per [batch]: a feed gives a large
 /// storage thousands of changes at once.
 class SessionFeed extends ChangeNotifier with BatchedNotifier {
-  /// [runPath] gives a run's directory: errors of the feed about files under
-  /// it mark that run [RunData.incomplete].
+  /// [sessionPath] gives a session's directory: errors of the feed about
+  /// files under it mark that session [SessionData.incomplete].
   SessionFeed(
     Stream<Change> changes, {
-    String? Function(String runId)? runPath,
+    String? Function(String sessionId)? sessionPath,
     this.batch = const Duration(milliseconds: 50),
-  }) : _runPath = runPath ?? ((_) => null) {
+  }) : _sessionPath = sessionPath ?? ((_) => null) {
     _subscription = changes.listen(_apply, onError: _error);
   }
 
-  /// The changes of [reader], with its run directories.
+  /// The changes of [reader], with its session directories.
   SessionFeed.read(
     FsReader reader, {
     Duration batch = const Duration(milliseconds: 50),
-  }) : this(reader.changes(), runPath: reader.runPath, batch: batch);
+  }) : this(reader.changes(), sessionPath: reader.sessionPath, batch: batch);
 
   @override
   final Duration batch;
-  final String? Function(String runId) _runPath;
+  final String? Function(String sessionId) _sessionPath;
 
   final StreamController<DocumentAdded> _documentsAdded =
       StreamController.broadcast();
@@ -156,16 +123,14 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
   late final StreamSubscription<Change> _subscription;
 
   final Map<String, SessionData> _sessions = {};
-  final Map<String, RunData> _runs = {};
 
-  // What came before the thing it belongs to, by the id of that thing.
-  final Map<String, List<RunData>> _waitingRuns = {};
-  final Map<String, Set<String>> _waitingDocuments = {};
-  final Map<String, List<Step>> _waitingSteps = {};
+  // What came before the session it belongs to, by the session's id.
+  final Map<String, Map<String, Step>> _waitingSteps = {};
   final Map<String, List<Event>> _waitingEvents = {};
+  final Map<String, Set<String>> _waitingDocuments = {};
   final Map<String, List<String>> _waitingProblems = {};
 
-  /// Errors of the feed that no run claims.
+  /// Errors of the feed that no session claims.
   final List<String> _problems = [];
 
   /// The sessions by id, in the order they were given.
@@ -177,53 +142,34 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
   /// before may be readable now.
   Stream<DocumentAdded> get documentsAdded => _documentsAdded.stream;
 
-  /// Files the feed could not read that belong to no run it has given: a
-  /// session or a run that is not there for that reason.
+  /// Files the feed could not read that belong to no session it has given:
+  /// a session that is not there for that reason.
   List<String> get problems => UnmodifiableListView(_problems);
 
   void _apply(Change change) {
     switch (change) {
       case SessionAdded(:final session):
-        _sessions[session.id] = SessionData(
+        final data = _sessions[session.id] = SessionData(
           session,
-          runs: _waitingRuns.remove(session.id) ?? const [],
+          events: _waitingEvents.remove(session.id) ?? const [],
+          steps: _waitingSteps.remove(session.id)?.values ?? const [],
           documents: _waitingDocuments.remove(session.id) ?? const {},
-        );
-      case RunAdded(:final run):
-        final data = _runs[run.id] = RunData(
-          run,
-          events: _waitingEvents.remove(run.id) ?? const [],
-          steps: _waitingSteps.remove(run.id) ?? const [],
-          problems: _waitingProblems.remove(run.id) ?? const [],
+          problems: _waitingProblems.remove(session.id) ?? const [],
         );
         _claimProblems(data);
-        final session = _sessions[run.sessionId];
-        if (session != null) {
-          session._addRun(data);
-        } else {
-          (_waitingRuns[run.sessionId] ??= []).add(data);
-        }
       case StepAdded(:final step) || StepChanged(:final step):
-        final run = _runs[step.runId];
-        if (run != null) {
-          run._steps[step.id] = step;
+        final session = _sessions[step.sessionId];
+        if (session != null) {
+          session._addStep(step);
         } else {
-          final waiting = _waitingSteps[step.runId] ??= [];
-          waiting
-            ..removeWhere((s) => s.id == step.id)
-            ..add(step);
+          (_waitingSteps[step.sessionId] ??= {})[step.id] = step;
         }
-      case EventAdded(:final event):
-        final runId = switch (event) {
-          KnownEvent(:final runId) => runId,
-          UnknownEvent(:final runId) => runId,
-        };
-        if (runId == null) break;
-        final run = _runs[runId];
-        if (run != null) {
-          run._addEvent(event);
+      case EventAdded(:final sessionId, :final event):
+        final session = _sessions[sessionId];
+        if (session != null) {
+          session._addEvent(event);
         } else {
-          (_waitingEvents[runId] ??= []).add(event);
+          (_waitingEvents[sessionId] ??= []).add(event);
         }
       case DocumentAdded(:final sessionId, :final documentId):
         _documentsAdded.add(change);
@@ -233,8 +179,14 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
         } else {
           (_waitingDocuments[sessionId] ??= {}).add(documentId);
         }
-      case LogCorrupted(:final runId, :final line, :final text):
-        _addProblem(runId, 'line $line is not an event: $text');
+      case LogCorrupted(:final sessionId, :final line, :final text):
+        final problem = 'line $line is not an event: $text';
+        final session = _sessions[sessionId];
+        if (session != null) {
+          session._problems.add(problem);
+        } else {
+          (_waitingProblems[sessionId] ??= []).add(problem);
+        }
     }
     _changed();
   }
@@ -246,37 +198,34 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
       FormatException(:final message) => message,
       _ => '$error',
     };
-    final run = _runs.values.where((run) => _isUnder(problem, run)).firstOrNull;
-    if (run != null) {
-      run._problems.add(problem);
+    final session = _sessions.values
+        .where((session) => _isUnder(problem, session))
+        .firstOrNull;
+    if (session != null) {
+      session._problems.add(problem);
     } else {
       _problems.add(problem);
     }
     _changed();
   }
 
-  /// Moves the problems of the feed under [run]'s directory to [run].
-  void _claimProblems(RunData run) {
-    final mine = _problems.where((problem) => _isUnder(problem, run)).toList();
+  /// Moves the problems of the feed under [session]'s directory to
+  /// [session].
+  void _claimProblems(SessionData session) {
+    final mine = _problems
+        .where((problem) => _isUnder(problem, session))
+        .toList();
     if (mine.isEmpty) return;
-    run._problems.addAll(mine);
+    session._problems.addAll(mine);
     _problems.removeWhere(mine.contains);
   }
 
-  /// Whether [problem], which starts with a path, is about a file of [run].
-  bool _isUnder(String problem, RunData run) {
-    final dir = _runPath(run.id);
+  /// Whether [problem], which starts with a path, is about a file of
+  /// [session].
+  bool _isUnder(String problem, SessionData session) {
+    final dir = _sessionPath(session.id);
     return dir != null &&
         (problem.startsWith('$dir/') || problem.startsWith('$dir:'));
-  }
-
-  void _addProblem(String runId, String problem) {
-    final run = _runs[runId];
-    if (run != null) {
-      run._problems.add(problem);
-    } else {
-      (_waitingProblems[runId] ??= []).add(problem);
-    }
   }
 
   void _changed() => notifyLater();

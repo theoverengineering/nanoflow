@@ -1,92 +1,90 @@
-// Sessions written as journals, the way the engine writes them, for the
-// tests of what the app derives from them.
+// Sessions written as journals, the way the workflow library writes them,
+// and graph files as describe writes them, for the tests of what the app
+// derives from them.
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/state/freshness.dart';
+import 'package:nanoflow_ui/state/graph_file_source.dart';
 import 'package:nanoflow_ui/state/outcomes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
 import 'package:nanoflow_ui/state/step_files.dart';
 
-/// The README's review graph, as a session holds it.
-const reviewGraph = <String, Object?>{
-  'start': 'collect',
-  'types': {
-    'Request': {
-      'type': 'object',
-      'required': ['branch'],
-      'properties': {
-        'branch': {'type': 'string'},
+/// The fingerprint of the code [reviewGraphFile] was read from.
+const reviewCode = 'sha256:review-code';
+
+/// A graph file of the package `review_example` with two workflows,
+/// `review` and `release`, as describe writes it; [fingerprint], [builds]
+/// and [warnings] as given.
+Map<String, Object?> graphFileJson({
+  String fingerprint = reviewCode,
+  Map<String, String> builds = const {},
+  List<Map<String, Object?>> warnings = const [],
+  String reviewStep = 'collect',
+}) => {
+  'format': 1,
+  'package': 'review_example',
+  'fingerprint': fingerprint,
+  'sources': {'bin/main.dart': 'sha256:aa11', 'lib/review.dart': 'sha256:9f2c'},
+  'builds': builds,
+  'workflows': ['lib/review.dart#review', 'lib/release.dart#release'],
+  'functions': {
+    'lib/review.dart#review': {
+      'name': 'review',
+      'place': 'lib/review.dart:21',
+      'body': {
+        'nodes': [
+          {
+            'id': '1',
+            'kind': 'step',
+            'name': reviewStep,
+            'place': 'lib/review.dart:22',
+          },
+        ],
+        'edges': [
+          {'from': null, 'to': '1', 'label': null},
+          {'from': '1', 'to': null, 'label': null},
+        ],
       },
     },
-    'Change': {
-      'type': 'object',
-      'required': ['id', 'path'],
-      'properties': {
-        'id': {'type': 'string'},
-        'path': {'type': 'string'},
-      },
-    },
-    'Report': {
-      'type': 'object',
-      'required': ['change', 'findings'],
-      'properties': {
-        'change': {r'$ref': '#/Change'},
-        'findings': {
-          'type': 'array',
-          'items': {'type': 'string'},
-        },
+    'lib/release.dart#release': {
+      'name': 'release',
+      'place': 'lib/release.dart:9',
+      'body': {
+        'nodes': [
+          {
+            'id': '1',
+            'kind': 'step',
+            'name': 'plan',
+            'place': 'lib/release.dart:10',
+          },
+        ],
+        'edges': [
+          {'from': null, 'to': '1', 'label': null},
+          {'from': '1', 'to': null, 'label': null},
+        ],
       },
     },
   },
-  'nodes': {
-    'collect': {
-      'command': 'nodes/collect/run.sh',
-      'in': {r'$ref': '#/Request'},
-      'out': {r'$ref': '#/Change'},
-      'then': 'is-empty',
-    },
-    'is-empty': {
-      'decide': 'nodes/is-empty/run.sh',
-      'in': {r'$ref': '#/Change'},
-      'then': 'discard',
-      'else': 'inspect',
-    },
-    'inspect': {
-      'command': 'nodes/inspect/run.sh',
-      'in': {r'$ref': '#/Change'},
-      'out': {r'$ref': '#/Report'},
-      'then': 'verdict',
-    },
-    'verdict': {
-      'decide': 'nodes/verdict/run.sh',
-      'in': {r'$ref': '#/Report'},
-      'then': {
-        'accepted': ['publish', 'notify'],
-        'returned': 'fix',
-      },
-    },
-    'fix': {
-      'command': 'nodes/fix/run.sh',
-      'in': {r'$ref': '#/Report'},
-      'out': {r'$ref': '#/Change'},
-      'then': 'inspect',
-    },
-    'publish': {
-      'command': 'nodes/publish/run.sh',
-      'in': {r'$ref': '#/Report'},
-    },
-    'discard': {
-      'command': 'nodes/discard/run.sh',
-      'in': {r'$ref': '#/Change'},
-    },
-    'notify': {
-      'command': 'nodes/notify/run.sh',
-      'in': {r'$ref': '#/Report'},
-    },
-  },
+  'warnings': warnings,
 };
+
+/// [graphFileJson] read.
+GraphFile reviewGraphFile({
+  String fingerprint = reviewCode,
+  Map<String, String> builds = const {},
+  List<Map<String, Object?>> warnings = const [],
+  String reviewStep = 'collect',
+}) => GraphFile.fromJson(
+  graphFileJson(
+    fingerprint: fingerprint,
+    builds: builds,
+    warnings: warnings,
+    reviewStep: reviewStep,
+  ),
+);
 
 /// 14:03:11 local time on 2026-09-21: when the mockups' session a1b2 starts.
 final DateTime t0 = DateTime(2026, 9, 21, 14, 3, 11).toUtc();
@@ -95,110 +93,100 @@ final DateTime t0 = DateTime(2026, 9, 21, 14, 3, 11).toUtc();
 DateTime at(num seconds) =>
     t0.add(Duration(milliseconds: (seconds * 1000).round()));
 
-/// A run's journal, written event by event.
+/// A session and its journal, written event by event.
 final class Journal {
-  /// A run that starts at [node] at [startedAt] (seconds after [t0]); no
-  /// `run-started` yet when [startedAt] is `null`.
+  /// The session [id] of [workflow] holding [graph], created at [startedAt]
+  /// (seconds after [t0]) by [code]; no `session-started` yet when
+  /// [startedAt] is `null`.
   Journal(
     this.id, {
-    this.parent,
-    required this.node,
-    required num? startedAt,
-    this.sessionId = 'a1b2-session',
-  }) {
+    this.workflow = 'review',
+    Map<String, Object?>? graph,
+    bool snapshot = true,
+    num? startedAt = 0,
+    String? code = reviewCode,
+  }) : graph = snapshot ? graph ?? graphFileJson() : null {
     if (startedAt != null) {
-      events.add(RunStarted(runId: id, time: at(startedAt), node: node));
+      events.add(SessionStarted(time: at(startedAt), code: code));
     }
   }
 
   final String id;
-  final String? parent;
-  final String node;
-  final String sessionId;
+  final String workflow;
+  final Map<String, Object?>? graph;
   final List<Event> events = [];
   final List<Step> steps = [];
 
-  /// A step of [node] given [input], started at [start], again at each of
-  /// [restarts], and finished at [end] with [exit] and [output]; running
+  Session get session =>
+      Session(id: id, workflow: workflow, graph: graph, inputId: null);
+
+  /// A step [name] started at [start], again at each of [restarts], and
+  /// finished at [end] with [output], or failed then when [failed]; running
   /// without [end]. Returns its id.
   String step(
-    String node,
+    String name,
     num start, {
     num? end,
-    int exit = 0,
-    String? input,
+    bool failed = false,
     String? output,
+    String? place,
     List<num> restarts = const [],
   }) {
-    final stepId = '${id.substring(0, 4)}-$node-${steps.length}';
+    final stepId = '${id.substring(0, 4)}-$name-${steps.length}';
     steps.add(
       Step(
         id: stepId,
-        runId: id,
-        inputId: input,
-        outputId: output,
-        log: 'command.log',
+        sessionId: id,
+        name: name,
+        key: '$name#1@0000000000000000',
+        after: steps.lastOrNull?.key,
+        place: place,
+        outputId: failed ? null : output,
+        log: logFileName,
       ),
     );
     for (final time in [start, ...restarts]) {
-      events.add(
-        StepStarted(runId: id, time: at(time), stepId: stepId, node: node),
-      );
+      events.add(StepStarted(time: at(time), stepId: stepId));
     }
     if (end != null) {
       events.add(
-        StepFinished(
-          runId: id,
-          time: at(end),
-          stepId: stepId,
-          exitCode: exit,
-          outputId: output,
-        ),
+        failed
+            ? StepFailed(
+                time: at(end),
+                stepId: stepId,
+                error: 'StateError: $name failed',
+                stack: '#0 main',
+              )
+            : StepFinished(time: at(end), stepId: stepId, outputId: output),
       );
     }
     return stepId;
   }
 
-  void fail(String stepId, num time, String error) => events.add(
-    RunFailed(runId: id, time: at(time), stepId: stepId, error: error),
-  );
+  /// The session goes on at [time] by [code], with a new snapshot of the
+  /// graph in the document [graphId].
+  void resume(num time, {String? code = reviewCode, String? graphId}) =>
+      events.add(SessionResumed(time: at(time), code: code, graphId: graphId));
 
-  void split(num time) => events.add(RunSplit(runId: id, time: at(time)));
+  void finish(num time) =>
+      events.add(SessionFinished(time: at(time), outputId: null));
 
-  void finish(num time) => events.add(RunFinished(runId: id, time: at(time)));
+  void fail(num time, String error) =>
+      events.add(SessionFailed(time: at(time), error: error, stack: '#0 main'));
 
-  RunData get data => RunData(
-    Run(id: id, sessionId: sessionId, parentId: parent),
-    events: events,
-    steps: steps,
-  );
+  SessionData get data => SessionData(session, events: events, steps: steps);
+
+  /// The changes a reader gives for this session.
+  List<Change> get changes => [
+    SessionAdded(session),
+    for (final step in steps) StepAdded(step),
+    for (final event in events) EventAdded(sessionId: id, event: event),
+  ];
 }
 
-/// A session of [runs] holding [graph].
-SessionData sessionOf(
-  List<Journal> runs, {
-  String id = 'a1b2-session',
-  Map<String, Object?> graph = reviewGraph,
-}) => SessionData(
-  Session(id: id, graph: graph),
-  runs: [for (final run in runs) run.data],
-);
-
-/// The changes a reader gives for the session [sessionId] holding [graph]
-/// and its runs [journals].
-List<Change> changesOf(
-  List<Journal> journals, {
-  String sessionId = 'a1b2-session',
-  Map<String, Object?> graph = reviewGraph,
-}) => [
-  SessionAdded(Session(id: sessionId, graph: graph)),
-  for (final journal in journals) ...[
-    RunAdded(
-      Run(id: journal.id, sessionId: sessionId, parentId: journal.parent),
-    ),
-    for (final step in journal.steps) StepAdded(step),
-    for (final event in journal.events) EventAdded(event),
-  ],
+/// The changes a reader gives for [journals].
+List<Change> changesOf(List<Journal> journals) => [
+  for (final journal in journals) ...journal.changes,
 ];
 
 /// Outcomes known by document id, and documents that could not be read.
@@ -221,79 +209,6 @@ final class _Outcomes implements KnownOutcomes {
   String? problemOf(String documentId) => _failed[documentId];
 }
 
-/// What app reads for docs/design/graph.png: session a1b2 at 14:15:37.
-///
-/// Run k7f2 went collect, is-empty (else), inspect, verdict (returned), fix,
-/// inspect (started twice), verdict (accepted) and split into c3d4, which
-/// finished publish, and e5f6, which runs notify.
-final class Mockup {
-  Mockup() {
-    k7f2
-      ..step('collect', 0, end: 149, input: 'request', output: 'change-1')
-      ..step(
-        'is-empty',
-        149,
-        end: 150,
-        input: 'change-1',
-        output: 'is-empty-outcome',
-      )
-      ..step('inspect', 150, end: 342, input: 'change-1', output: 'report-1')
-      ..step(
-        'verdict',
-        342,
-        end: 342.4,
-        input: 'report-1',
-        output: 'verdict-outcome-1',
-      )
-      ..step('fix', 343, end: 369, input: 'report-1', output: 'change-2')
-      ..step(
-        'inspect',
-        369,
-        restarts: [400],
-        end: 611,
-        input: 'change-2',
-        output: 'report-2',
-      )
-      ..step(
-        'verdict',
-        611,
-        end: 611.3,
-        input: 'report-2',
-        output: 'verdict-outcome-2',
-      )
-      ..split(611.4);
-    c3d4
-      ..step('publish', 612, end: 640, input: 'report-2')
-      ..finish(640);
-    e5f6.step('notify', 612, input: 'report-2');
-  }
-
-  /// 14:15:37: the session has been running for 12m 26s.
-  static final DateTime now = at(746);
-
-  final k7f2 = Journal('k7f2-run', node: 'collect', startedAt: 0);
-  final c3d4 = Journal(
-    'c3d4-run',
-    parent: 'k7f2-run',
-    node: 'publish',
-    startedAt: 611.4,
-  );
-  final e5f6 = Journal(
-    'e5f6-run',
-    parent: 'k7f2-run',
-    node: 'notify',
-    startedAt: 611.4,
-  );
-
-  final KnownOutcomes outcomes = outcomesOf({
-    'is-empty-outcome': false,
-    'verdict-outcome-1': 'returned',
-    'verdict-outcome-2': 'accepted',
-  });
-
-  SessionData get session => sessionOf([k7f2, c3d4, e5f6]);
-}
-
 /// Step logs, documents and their files as a test sets them.
 final class FakeFiles implements StepFiles {
   /// [logs] and [documents] by step and document id; [logErrors] are what
@@ -312,7 +227,7 @@ final class FakeFiles implements StepFiles {
        documentPaths = {...documentPaths},
        logErrors = {...logErrors};
 
-  /// What each step's command has written to its log so far.
+  /// What each step has written to its log so far.
   final Map<String, String> logs;
   final Map<String, Object?> documents;
   final Map<String, String> stepPaths;
@@ -328,7 +243,7 @@ final class FakeFiles implements StepFiles {
   Iterable<String> get followed =>
       _followers.entries.where((e) => e.value.isNotEmpty).map((e) => e.key);
 
-  /// The step [stepId]'s command writes [text] to its log.
+  /// The step [stepId] writes [text] to its log.
   void append(String stepId, String text) {
     logs[stepId] = '${logs[stepId] ?? ''}$text';
     for (final follower in [...?_followers[stepId]]) {
@@ -345,7 +260,7 @@ final class FakeFiles implements StepFiles {
   }
 
   @override
-  Stream<String> stepLog(String sessionId, String runId, String stepId) {
+  Stream<String> stepLog(String sessionId, String stepId) {
     late final StreamController<String> controller;
     controller = StreamController<String>(
       onListen: () {
@@ -383,4 +298,70 @@ final class FakeFiles implements StepFiles {
   @override
   String? documentPath(String sessionId, String documentId) =>
       documentPaths[documentId];
+}
+
+/// A graph file, its error and whether it is missing, as the test sets
+/// them; nothing is read.
+final class FixedGraphFile extends GraphFileSource {
+  FixedGraphFile([this._graph, String file = '/nowhere/$graphFileName'])
+    : super(file: file);
+
+  GraphFile? _graph;
+  String? _error;
+  bool _fileMissing = false;
+
+  /// Whether the source has been disposed.
+  bool disposed = false;
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  GraphFile? get graph => _graph;
+
+  /// The file has been read again: [graph] is in it now.
+  set graph(GraphFile? graph) {
+    _graph = graph;
+    notifyListeners();
+  }
+
+  @override
+  String? get error => _error;
+
+  set error(String? error) {
+    _error = error;
+    notifyListeners();
+  }
+
+  @override
+  bool get fileMissing => _fileMissing;
+
+  set fileMissing(bool missing) {
+    _fileMissing = missing;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    disposed = true;
+    super.dispose();
+  }
+}
+
+/// The freshness of a graph file as the test sets it; nothing is checked.
+final class FixedFreshness extends FreshnessWatch {
+  FixedFreshness(super.source);
+
+  Freshness? _freshness;
+
+  @override
+  void start() {}
+
+  @override
+  Freshness? get freshness => _freshness;
+
+  set freshness(Freshness? freshness) {
+    _freshness = freshness;
+    notifyListeners();
+  }
 }

@@ -1,3 +1,5 @@
+// migrated in Task 12: still on the old model (runs, the README graph,
+// GraphSource); it does not compile until then.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';

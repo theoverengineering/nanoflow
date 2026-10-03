@@ -9,6 +9,7 @@ import '../platform/home_path.dart';
 import '../theme.dart';
 import '../widgets/clickable.dart';
 import '../widgets/dashed_border.dart';
+import '../widgets/failure_note.dart';
 import 'icons.dart';
 import 'recent_graphs.dart';
 import 'relative_time.dart';
@@ -16,21 +17,35 @@ import 'relative_time.dart';
 /// Asks the user for a graph file; null when they cancel.
 typedef PickFile = Future<String?> Function();
 
-/// The system open dialog for a graph file: `.yaml` or `.yml`.
+/// The system open dialog for a graph file, `nanoflow.graph.json`: it
+/// offers JSON files, since macOS tells files apart by their last extension
+/// only.
 Future<String?> pickGraphFile() async {
   final file = await openFile(
     acceptedTypeGroups: const [
-      XTypeGroup(label: 'YAML', extensions: ['yaml', 'yml']),
+      XTypeGroup(label: 'nanoflow graph', extensions: ['json']),
     ],
   );
   return file?.path;
 }
 
+/// How the start screen names the graph file at [path]: by the directory
+/// it is in, the project's, since every graph file is `nanoflow.graph.json`.
+String graphTitle(String path) => p.basename(p.dirname(path));
+
+/// Said when the file chosen in the open dialog is not a graph file.
+String notAGraphFile(String path) =>
+    '${p.basename(path)} is not a graph file: open nanoflow.graph.json';
+
 /// Whether a file is still at [path].
 bool fileExists(String path) => File(path).existsSync();
 
 /// The screen the app starts on: `Open graph` and the graphs opened before
-/// (docs/ui-spec.md «Стартовый экран», docs/design/start.html).
+/// (docs/ui-spec.md «Стартовый экран», docs/design/start.html; spec §9
+/// «Открыть»).
+///
+/// It opens graph files only ([isGraphFile]); another file chosen in the
+/// open dialog gets a note instead.
 class StartScreen extends StatefulWidget {
   const StartScreen({
     super.key,
@@ -71,7 +86,12 @@ class _StartScreenState extends State<StartScreen> {
 
   Future<void> _openFromDialog() async {
     final path = await widget.pickFile();
-    if (path != null) widget.onOpen(path);
+    if (path == null || !mounted) return;
+    if (isGraphFile(path)) {
+      widget.onOpen(path);
+    } else {
+      showFailureNote(context, notAGraphFile(path));
+    }
   }
 
   void _openRecent(String path) {
@@ -153,7 +173,7 @@ class _Title extends StatelessWidget {
             Text('Graphs', style: AppText.pageTitle),
             const SizedBox(height: 6),
             Text(
-              'Open a graph file to watch its runs live.',
+              'Open a graph file to watch its sessions live.',
               style: AppText.pageHint,
             ),
           ],
@@ -223,7 +243,7 @@ class _RecentCard extends StatelessWidget {
           Expanded(
             child: _NameAndPath(
               name: Text(
-                p.basename(path),
+                graphTitle(path),
                 style: AppText.cardTitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -274,7 +294,7 @@ class _MissingCard extends StatelessWidget {
                 children: [
                   Flexible(
                     child: Text(
-                      p.basename(path),
+                      graphTitle(path),
                       style: AppText.cardTitle.copyWith(
                         color: AppColors.textFaint,
                         decoration: TextDecoration.lineThrough,
@@ -326,7 +346,8 @@ class _MissingCard extends StatelessWidget {
   );
 }
 
-/// The file name over its full path, `~` for the home directory.
+/// The graph's name over the full path of its file, `~` for the home
+/// directory.
 class _NameAndPath extends StatelessWidget {
   const _NameAndPath({
     required this.name,

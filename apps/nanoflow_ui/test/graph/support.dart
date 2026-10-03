@@ -339,9 +339,9 @@ Future<GraphModel> pumpGraphScreen(
     tester,
     GraphScreen(
       path: path ?? reviewFile,
-      shell: shell ?? Shell(environment: const {}),
+      shell: shell ?? Shell(),
       onBack: onBack ?? () {},
-      openModel: (_, _) => shown,
+      openModel: (_) => shown,
       now: now ?? () => Mockup.now,
     ),
     size: size,

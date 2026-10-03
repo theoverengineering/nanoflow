@@ -4,9 +4,9 @@ import 'package:nanoflow_ui/start/recent_graphs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  const review = '/Users/me/Projects/review/review.yaml';
-  const release = '/Users/me/work/deploy/release.yaml';
-  const index = '/Users/me/sandbox/index.yaml';
+  const review = '/Users/me/Projects/review/nanoflow.graph.json';
+  const release = '/Users/me/work/deploy/nanoflow.graph.json';
+  const index = '/Users/me/sandbox/nanoflow.graph.json';
   final monday = DateTime.utc(2026, 9, 21, 9);
   final tuesday = DateTime.utc(2026, 9, 22, 9);
   final wednesday = DateTime.utc(2026, 9, 23, 9);
@@ -88,15 +88,34 @@ void main() {
   test('a stored list that cannot be read starts empty', () async {
     for (final stored in [
       'not json',
-      '{"path": "/a.yaml"}',
-      '[{"path": "/a.yaml"}]',
-      '[{"path": "/a.yaml", "openedAt": "yesterday"}]',
+      '{"path": "/a/nanoflow.graph.json"}',
+      '[{"path": "/a/nanoflow.graph.json"}]',
+      '[{"path": "/a/nanoflow.graph.json", "openedAt": "yesterday"}]',
+      '[{"path": 1, "openedAt": "2026-09-21T09:00:00.000Z"}]',
     ]) {
       final recent = RecentGraphs(await preferences({'recentGraphs': stored}));
       expect(recent.graphs, isEmpty, reason: stored);
       await recent.opened(index, monday);
       expect(recent.graphs, [(path: index, openedAt: monday)]);
     }
+  });
+
+  test('graphs opened before graph files were JSON are not listed', () async {
+    final prefs = await preferences({
+      'recentGraphs':
+          '[{"path": "/Users/me/review.yaml", '
+          '"openedAt": "2026-09-21T09:00:00.000Z"}, '
+          '{"path": "$review", "openedAt": "2026-09-22T09:00:00.000Z"}]',
+    });
+    expect(RecentGraphs(prefs).graphs, [(path: review, openedAt: tuesday)]);
+  });
+
+  test('a graph file is named *.graph.json', () {
+    expect(isGraphFile(review), isTrue);
+    expect(isGraphFile('/Users/me/build/review.graph.json'), isTrue);
+    expect(isGraphFile('/Users/me/review.yaml'), isFalse);
+    expect(isGraphFile('/Users/me/package.json'), isFalse);
+    expect(isGraphFile('/Users/me/graph.json'), isFalse);
   });
 
   test('a list that cannot be saved is reported and still shown', () async {

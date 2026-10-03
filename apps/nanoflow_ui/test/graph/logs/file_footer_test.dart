@@ -14,7 +14,6 @@ void main() {
   /// A shell whose `open` exits with [exitCode]; what it was asked to run
   /// goes to [ran].
   Shell shellOpening(List<List<String>> ran, {int exitCode = 0}) => Shell(
-    environment: const {},
     run: (executable, arguments) async {
       ran.add([executable, ...arguments]);
       return ProcessResult(0, exitCode, '', '');

@@ -25,10 +25,7 @@ const taskCanvas = Size(2000 - 272, 1000 - 48 - 280);
 /// programs are started.
 final class FixedSource extends GraphSource {
   FixedSource(this._graph)
-    : super(
-        file: '/nowhere/review.yaml',
-        shell: Shell(environment: const {}),
-      );
+    : super(file: '/nowhere/review.yaml', shell: Shell());
 
   Graph? _graph;
   List<String> _errors = const [];

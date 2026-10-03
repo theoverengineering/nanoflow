@@ -1,7 +1,7 @@
 import 'dart:io';
 
 /// [path] with the home directory written as `~`, the way the mockups show
-/// paths: `~/Projects/review/review.yaml`. [home] defaults to `$HOME`.
+/// paths: `~/Projects/review/nanoflow.graph.json`. [home] defaults to `$HOME`.
 String abbreviateHome(String path, {String? home}) {
   var dir = home ?? Platform.environment['HOME'] ?? '';
   while (dir.endsWith('/')) {

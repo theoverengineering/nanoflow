@@ -1,3 +1,5 @@
+// migrated in Task 12: still on the old model (runs, the README graph,
+// GraphSource); it does not compile until then.
 /// What a session puts on its graph: node states, run markers, visit and
 /// arrow counters, the selected run's path (docs/ui-spec.md «Граф»). Pure.
 library;

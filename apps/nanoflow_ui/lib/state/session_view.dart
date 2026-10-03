@@ -1,5 +1,5 @@
 /// What the graph screen shows of a session, derived from what the feed has
-/// given (docs/ui-spec.md «Сессии», «Холст», «Граф», «Logs»).
+/// given (docs/ui-spec.md «Сессии»; spec §9 «Сессия»).
 ///
 /// Pure: no I/O, the time is passed in. Widgets draw what is here and decide
 /// nothing about it. The parts are in their own files, exported here.
@@ -7,109 +7,114 @@ library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-import 'graph_marks.dart';
-import 'log_rows.dart';
+import 'freshness.dart';
+import 'graph_file_source.dart';
 import 'outcomes.dart';
-import 'runs.dart';
 import 'session_feed.dart';
 import 'sessions.dart';
-import 'step_details.dart';
 
-export 'graph_marks.dart';
-export 'log_rows.dart';
-export 'runs.dart';
+export 'freshness.dart' show CodeCheck;
 export 'sessions.dart';
-export 'step_details.dart';
 
-/// The selected run as the canvas and the `Logs` panel show it.
-final class RunView {
-  RunView._(
-    this.chip,
-    this.header,
-    List<RunStep> steps,
-    List<LogRow> rows,
-    this.scale,
-    this.path,
-  ) : steps = List.unmodifiable(steps),
-      rows = List.unmodifiable(rows);
+/// The graph a session is shown on, and how the code it ran on stands
+/// against it (spec §9 «Сессия», decision 8).
+final class SessionGraph {
+  const SessionGraph._({
+    required this.graph,
+    required this.noSnapshot,
+    required this.unreadable,
+    required this.code,
+  });
 
-  final RunChip chip;
+  /// The graph file the session is shown on: the snapshot of its last
+  /// resume that has one, else the one it was created with, else the graph
+  /// file. `null` while the snapshot is being read, when it cannot be read,
+  /// and when there is neither a snapshot nor a graph file.
+  final GraphFile? graph;
 
-  final LogsHeader header;
+  /// Whether the session holds no snapshot, so that [graph] is the graph
+  /// file's: «у сессии нет снимка».
+  final bool noSnapshot;
 
-  /// Its steps, inherited ones first.
-  final List<RunStep> steps;
+  /// Whether the session's snapshot cannot be read: its document cannot,
+  /// or what it holds is not a graph file.
+  final bool unreadable;
 
-  final List<LogRow> rows;
-
-  /// The time scale the [rows]' bars are on.
-  final TimeScale scale;
-
-  final RunPath path;
+  /// Whether the session's last code is that of [graph]; `null` without
+  /// [graph].
+  final CodeCheck? code;
 }
+
+/// The graph [session] is shown on: the document of its last
+/// `session-resumed` that names one, as [documents] has it, else its own
+/// `graph`, else [graphFile], the graph file as it is now.
+///
+/// The code checked is the session's last: of its last `session-resumed`,
+/// else of its `session-started`. Its snapshot is that of the same moment.
+SessionGraph sessionGraphOf(
+  SessionData session, {
+  required KnownOutcomes documents,
+  required GraphFile? graphFile,
+}) {
+  final state = session.state;
+  final GraphFile? graph;
+  var unreadable = false;
+  var noSnapshot = false;
+  if (state.graphIds.lastOrNull case final snapshot?) {
+    final document = documents[snapshot];
+    graph = document == null ? null : readGraphFile(document.value);
+    unreadable = document == null
+        ? documents.problemOf(snapshot) != null
+        : graph == null;
+  } else if (session.session.graph case final snapshot?) {
+    graph = readGraphFile(snapshot);
+    unreadable = graph == null;
+  } else {
+    graph = graphFile;
+    noSnapshot = true;
+  }
+  return SessionGraph._(
+    graph: graph,
+    noSnapshot: noSnapshot,
+    unreadable: unreadable,
+    code: graph == null ? null : checkCode(state.codes.lastOrNull, graph),
+  );
+}
+
+/// The document with the snapshot [session] is shown on, which is read on
+/// request; `null` when its snapshot is in the session itself, or it has
+/// none.
+String? snapshotDocumentOf(SessionData session) =>
+    session.state.graphIds.lastOrNull;
 
 /// Everything the graph screen shows of a session at a moment.
 final class SessionView {
   SessionView._({
     required this.summary,
     required this.graph,
-    required this.runs,
-    required this.marks,
-    required this.run,
-    required this.step,
+    required this.stepId,
   });
 
-  /// [session] at [now], with the run [runId] and its step [stepId]
-  /// selected.
+  /// [session] at [now], with its step [stepId] selected; its snapshot
+  /// documents as [documents] has them, the graph file as [graphFile] is
+  /// now.
   factory SessionView.of(
     SessionData session, {
     required DateTime now,
-    required KnownOutcomes outcomes,
-    String? runId,
+    required KnownOutcomes documents,
+    required GraphFile? graphFile,
     String? stepId,
-  }) {
-    final run = runId == null ? null : session.runs[runId];
-    RunView? runView;
-    if (run != null) {
-      final steps = stepsOfRun(session, run.id);
-      runView = RunView._(
-        RunChip(run, problems: runProblems(session, run, outcomes)),
-        logsHeader(session, run.id, steps: steps),
-        steps,
-        logRows(session, run.id, outcomes: outcomes, now: now),
-        timeScale(session, now),
-        pathOf(session, run.id, outcomes, steps: steps),
-      );
-    }
-    return SessionView._(
-      summary: summarize(session, now),
-      graph: session.graph,
-      runs: List.unmodifiable(runChips(session, outcomes)),
-      marks: GraphMarks.of(session, outcomes),
-      run: runView,
-      step: run == null || stepId == null
-          ? null
-          : stepDetails(session, run.id, stepId, steps: runView?.steps),
-    );
-  }
+  }) => SessionView._(
+    summary: summarize(session, now),
+    graph: sessionGraphOf(session, documents: documents, graphFile: graphFile),
+    stepId: stepId,
+  );
 
-  /// `null` while no run of the session has started.
+  /// `null` while the session's `session-started` has not been read.
   final SessionSummary? summary;
 
-  /// The graph the session holds; `null` when it is not a graph.
-  final Graph? graph;
+  final SessionGraph graph;
 
-  /// The run switcher.
-  final List<RunChip> runs;
-
-  final GraphMarks marks;
-
-  /// The selected run; `null` when none is.
-  final RunView? run;
-
-  /// The selected step of the selected run; `null` when none is.
-  final StepDetails? step;
-
-  /// The node of the selected step: ringed on the canvas.
-  String? get selectedNode => step?.node;
+  /// The selected step; `null` when none is.
+  final String? stepId;
 }

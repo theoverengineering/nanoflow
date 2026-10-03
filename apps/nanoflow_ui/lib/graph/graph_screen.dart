@@ -1,3 +1,5 @@
+// migrated in Task 11/12: still on the old model (runs, the README graph,
+// GraphSource); it does not compile until then.
 import 'dart:math' as math;
 import 'dart:ui' show AppExitResponse;
 
@@ -11,19 +13,19 @@ import '../state/visits.dart';
 import '../theme.dart';
 import 'canvas/graph_canvas.dart';
 import 'details/step_details_window.dart';
-import 'graph_errors.dart';
+import 'graph_notes.dart';
 import 'header.dart';
 import 'logs/logs_panel.dart';
 import 'session_bar.dart';
 import 'sessions_column.dart';
 import 'split_view.dart';
 
-/// Opens the model of the graph file [file], starting programs with [shell].
-typedef OpenModel = GraphModel Function(String file, Shell shell);
+/// Opens the model of the graph file [file].
+typedef OpenModel = GraphModel Function(String file);
 
 /// One graph file's screen (docs/ui-spec.md «Экран графа»): the header, the
 /// sessions column, and the canvas over the `Logs` panel, the session bar
-/// and what is wrong with the current graph floating over the canvas. The
+/// and the notes on the graph (`GraphNotes`) floating over the canvas. The
 /// borders of the column and of the panel move.
 ///
 /// `Open` in `Logs` opens the step details window over it all on the
@@ -35,7 +37,7 @@ typedef OpenModel = GraphModel Function(String file, Shell shell);
 /// window, which stays on its visit.
 ///
 /// The screen owns the [GraphModel] of its file: it opens it as it opens,
-/// and disposes it, with the programs it started, when it is left or the
+/// and disposes it, with what follows the files, when it is left or the
 /// app quits.
 class GraphScreen extends StatefulWidget {
   const GraphScreen({
@@ -79,10 +81,10 @@ class _GraphScreenState extends State<GraphScreen> {
   /// Whether the `Logs` panel is folded to its title.
   bool _logsFolded = false;
 
-  /// How tall the problems over the canvas are; 0 without any.
-  double _problemsHeight = 0;
+  /// How tall the notes over the canvas are; 0 without any.
+  double _notesHeight = 0;
 
-  /// Where the problems and the session bar float over the canvas.
+  /// Where the notes and the session bar float over the canvas.
   static const _overCanvas = EdgeInsets.fromLTRB(16, 12, 16, 60);
 
   /// What the step details window shows, while it is open: a node, at the
@@ -92,7 +94,7 @@ class _GraphScreenState extends State<GraphScreen> {
   @override
   void initState() {
     super.initState();
-    _model = widget.openModel(widget.path, widget.shell);
+    _model = widget.openModel(widget.path);
     _clock = LiveClock(now: widget.now);
     // Quitting the app does not dispose the screen.
     _lifecycle = AppLifecycleListener(onExitRequested: _quitting);
@@ -202,12 +204,12 @@ class _GraphScreenState extends State<GraphScreen> {
                     now: _clock.now,
                     controller: _canvas,
                     onOpenStep: _openNode,
-                    // The graph is fitted clear of the problems too.
+                    // The graph is fitted clear of the notes too.
                     topInset: math.max(
                       GraphCanvas.sessionBarRoom,
-                      _problemsHeight == 0
+                      _notesHeight == 0
                           ? 0
-                          : _overCanvas.top * 2 + _problemsHeight,
+                          : _overCanvas.top * 2 + _notesHeight,
                     ),
                   ),
                 ),
@@ -221,10 +223,13 @@ class _GraphScreenState extends State<GraphScreen> {
                 Positioned.fill(
                   child: Padding(
                     padding: _overCanvas,
-                    child: GraphProblems(
-                      model: _model,
-                      onHeight: (height) =>
-                          setState(() => _problemsHeight = height),
+                    child: ListenableBuilder(
+                      listenable: _model,
+                      builder: (context, _) => GraphNotes(
+                        notes: _model.canvas.notes,
+                        onHeight: (height) =>
+                            setState(() => _notesHeight = height),
+                      ),
                     ),
                   ),
                 ),

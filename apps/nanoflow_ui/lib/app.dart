@@ -9,14 +9,6 @@ import 'start/start_screen.dart';
 import 'state/graph_model.dart';
 import 'theme.dart';
 
-/// The MaterialApp around every screen; golden tests show screens in it too.
-Widget appFrame({required Widget home}) => MaterialApp(
-  title: 'nanoflow',
-  theme: nanoflowTheme(),
-  debugShowCheckedModeBanner: false,
-  home: home,
-);
-
 /// The app: it starts on the start screen, opens one graph at a time, and
 /// the graph screen's `Graphs` leads back.
 class NanoflowApp extends StatelessWidget {

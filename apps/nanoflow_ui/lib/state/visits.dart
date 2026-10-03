@@ -1,3 +1,5 @@
+// migrated in Task 12: still on the old model (runs, the README graph,
+// GraphSource); it does not compile until then.
 /// The visits to a node in a session, and what the step details window
 /// tells of one: where its input came from and when it was started
 /// (docs/ui-spec.md «Окно деталей шага»). Pure.

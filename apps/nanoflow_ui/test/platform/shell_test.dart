@@ -5,246 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 
 void main() {
-  late Directory tmp;
-
-  setUp(() => tmp = Directory.systemTemp.createTempSync('nanoflow_shell_test'));
-  tearDown(() => tmp.deleteSync(recursive: true));
-
-  /// An executable shell script in [tmp].
-  String script(String name, String body) {
-    final file = File('${tmp.path}/$name')
-      ..writeAsStringSync('#!/bin/sh\n$body\n');
-    Process.runSync('chmod', ['+x', file.path]);
-    return file.path;
-  }
-
-  /// A login shell like zsh: `-l -c` reads the profile, which sets PATH to
-  /// [path]; `-i -l -c` also reads the rc file, which adds [rc] in front.
-  /// [interactive] false refuses `-i`. Any other arguments are refused too.
-  String loginShell(
-    String path, {
-    String profile = '',
-    String rc = '',
-    bool interactive = true,
-  }) => script('login-shell', '''
-if [ "\$1" = -i ]; then
-  ${interactive ? 'interactive=yes' : 'exit 64'}
-  shift
-fi
-[ "\$#" = 3 ] && [ "\$1" = -l ] && [ "\$2" = -c ] || exit 64
-$profile
-PATH='$path'
-if [ "\$interactive" = yes ] && [ -n '$rc' ]; then PATH='$rc':"\$PATH"; fi
-eval "\$3"''');
-
-  group('PATH', () {
-    test('comes from the interactive login shell, which reads the rc file '
-        'too', () async {
-      final shell = Shell(
-        terminal: false,
-        environment: {
-          'SHELL': loginShell(
-            '/opt/homebrew/bin:/usr/bin',
-            rc: '/Users/me/.pub-cache/bin',
-          ),
-          'PATH': '/usr/bin',
-        },
-      );
-      expect(
-        await shell.path(),
-        '/Users/me/.pub-cache/bin:/opt/homebrew/bin:/usr/bin',
-      );
-    });
-
-    test(
-      'comes from a login shell that is not interactive when -i fails',
-      () async {
-        final shell = Shell(
-          terminal: false,
-          environment: {
-            'SHELL': loginShell(
-              '/opt/homebrew/bin:/usr/bin',
-              interactive: false,
-            ),
-            'PATH': '/usr/bin',
-          },
-        );
-        expect(await shell.path(), '/opt/homebrew/bin:/usr/bin');
-      },
-    );
-
-    test('skips what the profile prints before and after it', () async {
-      final shell = Shell(
-        terminal: false,
-        environment: {
-          'SHELL': loginShell(
-            '/login/bin',
-            profile: "echo Welcome; printf 'no newline'; trap 'echo bye' EXIT",
-          ),
-          'PATH': '/usr/bin',
-        },
-      );
-      expect(await shell.path(), '/login/bin');
-    });
-
-    test('is the process PATH, without asking the shell, when the app runs in '
-        'a terminal', () async {
-      final calls = File('${tmp.path}/calls');
-      final shell = Shell(
-        terminal: true,
-        environment: {
-          'SHELL': loginShell(
-            '/login/bin',
-            profile: 'echo call >> ${calls.path}',
-          ),
-          'PATH': '/terminal/bin:/usr/bin',
-        },
-      );
-      expect(await shell.path(), '/terminal/bin:/usr/bin');
-      expect(calls.existsSync(), isFalse);
-    });
-
-    test('asks the shells in a session of their own, so that an interactive '
-        'shell cannot take over the terminal the app runs in', () async {
-      final modes = <ProcessStartMode>[];
-      final shell = Shell(
-        terminal: false,
-        environment: {
-          'SHELL': loginShell('/login/bin', interactive: false),
-          'PATH': '/usr/bin',
-        },
-        start:
-            (
-              executable,
-              arguments, {
-              workingDirectory,
-              environment,
-              mode = ProcessStartMode.normal,
-            }) {
-              modes.add(mode);
-              return Process.start(
-                executable,
-                arguments,
-                workingDirectory: workingDirectory,
-                environment: environment,
-                mode: mode,
-              );
-            },
-      );
-      expect(await shell.path(), '/login/bin');
-      expect(modes, [
-        ProcessStartMode.detachedWithStdio,
-        ProcessStartMode.detachedWithStdio,
-      ]);
-    });
-
-    test('is resolved once', () async {
-      final calls = File('${tmp.path}/calls');
-      final shell = Shell(
-        terminal: false,
-        environment: {
-          'SHELL': loginShell(
-            '/login/bin',
-            profile: 'echo call >> ${calls.path}',
-          ),
-          'PATH': '/usr/bin',
-        },
-      );
-      expect(await shell.path(), '/login/bin');
-      expect(await shell.path(), '/login/bin');
-      expect(calls.readAsLinesSync(), ['call']);
-    });
-
-    final failing = <String, String Function()>{
-      'the login shell fails': () => script('sh', 'exit 1'),
-      'the login shell prints nothing': () => script('sh', 'exit 0'),
-      'the login shell prints an empty PATH': () => loginShell(''),
-      'the login shell does not exist': () => '${tmp.path}/no-such-shell',
-      'SHELL is empty': () => '',
-    };
-    for (final MapEntry(key: reason, value: shellPath) in failing.entries) {
-      test('is the process PATH when $reason', () async {
-        final shell = Shell(
-          terminal: false,
-          environment: {'SHELL': shellPath(), 'PATH': '/usr/bin:/bin'},
-        );
-        expect(await shell.path(), '/usr/bin:/bin');
-      });
-    }
-
-    test('is the process PATH when SHELL is not set', () async {
-      expect(
-        await Shell(
-          terminal: false,
-          environment: {'PATH': '/usr/bin:/bin'},
-        ).path(),
-        '/usr/bin:/bin',
-      );
-    });
-
-    test('is the process PATH when the login shell hangs', () async {
-      final shell = Shell(
-        terminal: false,
-        environment: {
-          'SHELL': script('sh', 'exec sleep 2'),
-          'PATH': '/usr/bin:/bin',
-        },
-        timeout: const Duration(milliseconds: 200),
-      );
-      expect(await shell.path(), '/usr/bin:/bin');
-    });
-
-    test(
-      'does not wait for a program the profile leaves holding the output',
-      () async {
-        final shell = Shell(
-          terminal: false,
-          environment: {
-            'SHELL': loginShell('/login/bin', profile: 'sleep 3 &'),
-            'PATH': '/usr/bin',
-          },
-        );
-        final watch = Stopwatch()..start();
-        expect(await shell.path(), '/login/bin');
-        expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
-      },
-    );
-
-    test('gives up on the output after the timeout when a program the '
-        'profile leaves holds it', () async {
-      final shell = Shell(
-        terminal: false,
-        environment: {
-          'SHELL': script('sh', 'sleep 3 & exit 0'),
-          'PATH': '/usr/bin:/bin',
-        },
-        timeout: const Duration(milliseconds: 200),
-      );
-      final watch = Stopwatch()..start();
-      expect(await shell.path(), '/usr/bin:/bin');
-      expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
-    });
-  });
-
-  test('findExecutable looks through the resolved PATH in order', () async {
-    final first = Directory('${tmp.path}/first')..createSync();
-    final second = Directory('${tmp.path}/second')..createSync();
-    File('${first.path}/nanoflow').writeAsStringSync('not executable');
-    final nanoflow = File('${second.path}/nanoflow')
-      ..writeAsStringSync('#!/bin/sh\n');
-    Process.runSync('chmod', ['+x', nanoflow.path]);
-    Directory('${first.path}/nanoflow-yaml').createSync();
-    final shell = Shell(
-      terminal: false,
-      environment: {
-        'SHELL': loginShell('${first.path}::${second.path}'),
-        'PATH': '/usr/bin',
-      },
-    );
-    expect(await shell.findExecutable('nanoflow'), nanoflow.path);
-    expect(await shell.findExecutable('nanoflow-yaml'), isNull);
-  });
-
   group('opening a file', () {
     final runs = <List<String>>[];
     late int exitCode;
@@ -254,7 +14,6 @@ eval "\$3"''');
       runs.clear();
       exitCode = 0;
       shell = Shell(
-        environment: const {},
         run: (executable, arguments) async {
           runs.add([executable, ...arguments]);
           return ProcessResult(0, exitCode, '', '');
@@ -263,136 +22,39 @@ eval "\$3"''');
     });
 
     test('revealInFinder selects it in Finder', () async {
-      expect(await shell.revealInFinder('/Users/me/review.yaml'), isTrue);
+      expect(
+        await shell.revealInFinder('/Users/me/review/nanoflow.graph.json'),
+        isTrue,
+      );
       expect(runs, [
-        ['/usr/bin/open', '-R', '/Users/me/review.yaml'],
+        ['/usr/bin/open', '-R', '/Users/me/review/nanoflow.graph.json'],
       ]);
     });
 
     test('openInEditor opens it in the default text editor', () async {
-      expect(await shell.openInEditor('/Users/me/review.yaml'), isTrue);
+      expect(
+        await shell.openInEditor('/Users/me/review/nanoflow.graph.json'),
+        isTrue,
+      );
       expect(runs, [
-        ['/usr/bin/open', '-t', '/Users/me/review.yaml'],
+        ['/usr/bin/open', '-t', '/Users/me/review/nanoflow.graph.json'],
       ]);
     });
 
     test('reports that open failed', () async {
       exitCode = 1;
-      expect(await shell.revealInFinder('/Users/me/gone.yaml'), isFalse);
-      expect(await shell.openInEditor('/Users/me/gone.yaml'), isFalse);
+      expect(await shell.revealInFinder('/Users/me/gone.json'), isFalse);
+      expect(await shell.openInEditor('/Users/me/gone.json'), isFalse);
     });
 
     test('reports that open could not start', () async {
       final shell = Shell(
-        environment: const {},
         run: (executable, arguments) async =>
             throw ProcessException(executable, arguments, 'not found', 2),
       );
-      expect(await shell.revealInFinder('/Users/me/review.yaml'), isFalse);
-      expect(await shell.openInEditor('/Users/me/review.yaml'), isFalse);
+      expect(await shell.revealInFinder('/Users/me/review.json'), isFalse);
+      expect(await shell.openInEditor('/Users/me/review.json'), isFalse);
     });
-  });
-
-  group('start', () {
-    test('starts a program with the resolved PATH', () async {
-      final started = <Object?>[];
-      final shell = Shell(
-        environment: {'PATH': '/login/bin'},
-        start:
-            (
-              executable,
-              arguments, {
-              workingDirectory,
-              environment,
-              mode = ProcessStartMode.normal,
-            }) {
-              started.addAll([
-                executable,
-                arguments.skip(2).toList(),
-                workingDirectory,
-                environment,
-                mode,
-              ]);
-              return Process.start('/bin/echo', const []);
-            },
-      );
-      final process = await shell.start('/opt/bin/nanoflow-yaml', [
-        'review.yaml',
-        '--graph',
-        '--watch',
-      ], workingDirectory: '/Users/me/review');
-      await process.exitCode;
-      expect(started, [
-        '/bin/sh',
-        ['sh', '/opt/bin/nanoflow-yaml', 'review.yaml', '--graph', '--watch'],
-        '/Users/me/review',
-        {'PATH': '/login/bin'},
-        ProcessStartMode.normal,
-      ]);
-    });
-
-    test('gives the program its stdin, its output and its exit code', () async {
-      final shell = Shell(environment: {'PATH': '/usr/bin:/bin'});
-      final process = await shell.start('/bin/sh', [
-        '-c',
-        r'read line; printf "%s|%s" "$line" "$PATH"; echo oops >&2; exit 3',
-      ]);
-      process.stdin.writeln('hello');
-      await process.stdin.close();
-      expect(
-        await process.stdout.transform(const SystemEncoding().decoder).join(),
-        'hello|/usr/bin:/bin',
-      );
-      expect(
-        await process.stderr.transform(const SystemEncoding().decoder).join(),
-        'oops\n',
-      );
-      expect(await process.exitCode, 3);
-    });
-
-    test('kill stops the program with every process it started', () async {
-      final pids = File('${tmp.path}/pids');
-      final shell = Shell(environment: {'PATH': '/usr/bin:/bin'});
-      final process = await shell.start(
-        script('watcher', 'sleep 3 & echo \$! > ${pids.path}; wait'),
-        const [],
-      );
-      while (!pids.existsSync() || pids.readAsStringSync().isEmpty) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      final child = pids.readAsStringSync().trim();
-      process.kill();
-      expect(await process.exitCode, isNot(0));
-      final deadline = DateTime.now().add(const Duration(seconds: 2));
-      while (Process.runSync('kill', ['-0', child]).exitCode == 0) {
-        if (DateTime.now().isAfter(deadline)) fail('$child still runs');
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-    });
-  });
-
-  test('a program the app started stops when the app dies', () async {
-    final pid = File('${tmp.path}/pid');
-    final program = script('watcher', 'echo \$\$ > ${pid.path}; exec sleep 5');
-    // A stand-in for the app: it starts the program as Shell.start does, and
-    // is killed without a chance to stop it.
-    final app = await Process.start('/bin/sh', [
-      '-c',
-      r'/bin/sh -c "$1" sh "$2" & wait',
-      'app',
-      Shell.groupScript,
-      program,
-    ]);
-    while (!pid.existsSync() || pid.readAsStringSync().isEmpty) {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    app.kill(ProcessSignal.sigkill);
-    final deadline = DateTime.now().add(const Duration(seconds: 4));
-    final watcher = pid.readAsStringSync().trim();
-    while (Process.runSync('kill', ['-0', watcher]).exitCode == 0) {
-      if (DateTime.now().isAfter(deadline)) fail('$watcher still runs');
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    }
   });
 
   testWidgets('copyToClipboard puts the text on the clipboard', (tester) async {
@@ -410,9 +72,9 @@ eval "\$3"''');
         null,
       ),
     );
-    await Shell(environment: const {}).copyToClipboard('/Users/me/review.yaml');
+    await Shell().copyToClipboard('/Users/me/review/nanoflow.graph.json');
     expect(copied, [
-      {'text': '/Users/me/review.yaml'},
+      {'text': '/Users/me/review/nanoflow.graph.json'},
     ]);
   });
 }

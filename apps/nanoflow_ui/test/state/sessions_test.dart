@@ -1,189 +1,168 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/sessions.dart';
 
 import 'support.dart';
 
 void main() {
-  final mockup = Mockup();
-  final now = Mockup.now;
+  /// 14:15:37, 12m 26s after [t0].
+  final now = at(746);
+
+  /// Session a1b2: collect finished, inspect running.
+  Journal running() => Journal('a1b2-session')
+    ..step('collect', 1, end: 149, output: 'change')
+    ..step('inspect', 150);
 
   group('a session (ui-spec «Сессии»)', () {
-    test('starts at its first run-started', () {
-      final late = Journal('late-run', node: 'collect', startedAt: 30)
-        ..step('collect', 30);
-      final early = Journal('earl-run', node: 'collect', startedAt: 5)
-        ..step('collect', 5);
-      expect(summarize(sessionOf([late, early]), now)!.startedAt, at(5));
+    test('starts at its session-started', () {
+      final session = Journal('a1b2-session', startedAt: 5)..resume(30);
+      expect(summarize(session.data, now)!.startedAt, at(5));
     });
 
-    test('with a run not ended is running: Running for 12m 26s', () {
-      final summary = summarize(mockup.session, now)!;
+    test('without a last event is running: Running for 12m 26s', () {
+      final summary = summarize(running().data, now)!;
       expect(summary.status, SessionStatus.running);
       expect(summary.statusText, 'Running for 12m 26s');
     });
 
-    test('whose runs have all ended, one with run-failed, is failed: '
-        'Failed in 6m 18s', () {
-      final ok = Journal('okok-run', node: 'collect', startedAt: 0);
-      ok.step('collect', 0, end: 10);
-      ok.finish(10);
-      final bad = Journal('badd-run', node: 'collect', startedAt: 0);
-      bad.fail(
-        bad.step('collect', 0, end: 378, exit: 1),
-        378,
-        'exited with code 1',
-      );
-      final summary = summarize(sessionOf([ok, bad]), now)!;
+    test('that ends with session-failed is failed: Failed in 6m 18s', () {
+      final session = running()..fail(378, 'StateError: inspect failed');
+      final summary = summarize(session.data, now)!;
       expect(summary.status, SessionStatus.failed);
       expect(summary.statusText, 'Failed in 6m 18s');
     });
 
-    test('whose runs have all ended without failures is finished: '
-        'Finished in 3m 04s', () {
-      final run = Journal('done-run', node: 'collect', startedAt: 0);
-      run.step('collect', 0, end: 184);
-      run.finish(184);
-      final summary = summarize(sessionOf([run]), now)!;
+    test('that ends with session-finished is finished: Finished in 3m 04s', () {
+      final session = Journal('a1b2-session')
+        ..step('collect', 1, end: 184)
+        ..finish(184);
+      final summary = summarize(session.data, now)!;
       expect(summary.status, SessionStatus.finished);
       expect(summary.statusText, 'Finished in 3m 04s');
     });
 
-    test('lasts from its first run-started to the end of its last run', () {
-      final parent = Journal('pare-run', node: 'collect', startedAt: 0);
-      parent.step('collect', 0, end: 10);
-      parent.split(10);
-      final longer = Journal(
-        'long-run',
-        parent: 'pare-run',
-        node: 'publish',
-        startedAt: 10,
-      );
-      longer.step('publish', 11, end: 200);
-      longer.finish(200);
-      final shorter = Journal(
-        'shor-run',
-        parent: 'pare-run',
-        node: 'notify',
-        startedAt: 10,
-      );
-      shorter.step('notify', 11, end: 20);
-      shorter.finish(20);
-      expect(
-        summarize(sessionOf([parent, longer, shorter]), now)!.duration,
-        const Duration(seconds: 200),
-      );
-    });
-
     test('that is running lasts until now', () {
       expect(
-        summarize(mockup.session, now)!.duration,
+        summarize(running().data, now)!.duration,
         const Duration(minutes: 12, seconds: 26),
       );
       expect(
-        summarize(mockup.session, at(800))!.duration,
+        summarize(running().data, at(800))!.duration,
         const Duration(seconds: 800),
       );
     });
 
-    test('a run not started yet keeps the session running', () {
-      final parent = Journal('pare-run', node: 'collect', startedAt: 0);
-      parent.step('collect', 0, end: 10);
-      parent.split(10);
-      final child = Journal(
-        'chil-run',
-        parent: 'pare-run',
-        node: 'notify',
-        startedAt: 10,
-      );
+    test('that is running with failed steps is marked 1 failed', () {
+      final failed = running()..step('notify', 160, end: 161, failed: true);
+      expect(summarize(failed.data, now)!.failedBadge, '1 failed');
+      expect(summarize(running().data, now)!.failedBadge, isNull);
       expect(
-        summarize(sessionOf([parent, child]), now)!.status,
-        SessionStatus.running,
+        summarize((failed..fail(170, 'StateError')).data, now)!.failedBadge,
+        isNull,
       );
     });
 
-    test('that is running with failed runs is marked 1 failed', () {
-      final failed = Journal('fail-run', node: 'collect', startedAt: 0);
-      failed.fail(
-        failed.step('collect', 0, end: 5, exit: 2),
-        5,
-        'exited with code 2',
+    test('a failed step that ran again and finished is not failed', () {
+      final session = running()
+        ..step('notify', 160, end: 161, failed: true)
+        ..resume(200);
+      session.events.add(
+        StepStarted(time: at(201), stepId: session.steps.last.id),
       );
-      final running = Journal('runn-run', node: 'collect', startedAt: 1)
-        ..step('collect', 1);
-      expect(
-        summarize(sessionOf([failed, running]), now)!.failedBadge,
-        '1 failed',
+      session.events.add(
+        StepFinished(
+          time: at(202),
+          stepId: session.steps.last.id,
+          outputId: null,
+        ),
       );
-      expect(summarize(mockup.session, now)!.failedBadge, isNull);
-      expect(summarize(sessionOf([failed]), now)!.failedBadge, isNull);
+      expect(summarize(session.data, now)!.failedBadge, isNull);
     });
 
-    test('counts its runs: 1 run, 3 runs', () {
-      expect(summarize(mockup.session, now)!.runsText, '3 runs');
-      expect(summarize(sessionOf([mockup.k7f2]), now)!.runsText, '1 run');
+    test('counts its steps: 1 step, 2 steps', () {
+      expect(summarize(running().data, now)!.stepsText, '2 steps');
+      final one = Journal('a1b2-session')..step('collect', 1);
+      expect(summarize(one.data, now)!.stepsText, '1 step');
     });
 
     test('shows the local day and time it started: Today · 14:03:11', () {
-      expect(summarize(mockup.session, now)!.firstLine, 'Today · 14:03:11');
+      expect(summarize(running().data, now)!.firstLine, 'Today · 14:03:11');
       expect(
-        summarize(mockup.session, now.add(const Duration(days: 1)))!.firstLine,
+        summarize(running().data, now.add(const Duration(days: 1)))!.firstLine,
         'Yesterday · 14:03:11',
       );
     });
 
     test('is named by its short id', () {
-      expect(summarize(mockup.session, now)!.shortId, 'a1b2');
+      expect(summarize(running().data, now)!.shortId, 'a1b2');
     });
 
     test('strip reads started 14:03:11 and running 12m 26s', () {
-      final summary = summarize(mockup.session, now)!;
+      final summary = summarize(running().data, now)!;
       expect(summary.startedText, 'started 14:03:11');
       expect(summary.stripStatus, 'running 12m 26s');
       expect(
-        summarize(mockup.session, at(2 * 3600 + 54 * 60 + 27))!.stripStatus,
+        summarize(running().data, at(2 * 3600 + 54 * 60 + 27))!.stripStatus,
         'running 2h 54m 27s',
       );
     });
 
-    test('without a run-started yet is not listed', () {
-      final unread = Journal('unre-run', node: 'collect', startedAt: null);
-      expect(summarize(sessionOf([unread]), now), isNull);
-      expect(
-        sessionSummaries([
-          sessionOf([unread]),
-        ], now),
-        isEmpty,
-      );
+    test('without a session-started yet is not listed', () {
+      final unread = Journal('unre-session', startedAt: null);
+      expect(summarize(unread.data, now), isNull);
+      expect(sessionSummaries([unread.data], now), isEmpty);
+    });
+  });
+
+  test('a workflow without sessions says No sessions yet and where they '
+      'come from', () {
+    expect(noSessionsYet, 'No sessions yet');
+    expect(
+      noSessionsHint('/Users/me/Projects/review/nanoflow.graph.json'),
+      'Sessions of the workflow appear as it runs: '
+      'they are read from runs/ next to nanoflow.graph.json.',
+    );
+  });
+
+  test('sessions are listed newest first', () {
+    final older = Journal('olde-session', startedAt: -3600).data;
+    final newer = Journal('newe-session').data;
+    expect(
+      [
+        for (final s in sessionSummaries([older, newer], now)) s.id,
+      ],
+      ['newe-session', 'olde-session'],
+    );
+    expect(
+      [
+        for (final s in sessionsNewestFirst([older, newer])) s.id,
+      ],
+      ['newe-session', 'olde-session'],
+    );
+  });
+
+  group('the sessions of a workflow', () {
+    final review = Journal('revi-session').data;
+    final release = Journal('rele-session', workflow: 'release').data;
+    final gone = Journal('gone-session', workflow: 'renamed').data;
+    final all = [review, release, gone];
+
+    test('are those whose workflow the graph file names it by', () {
+      final graph = reviewGraphFile();
+      expect(sessionsOfWorkflow(all, graph, 'lib/review.dart#review'), [
+        review,
+      ]);
+      expect(sessionsOfWorkflow(all, graph, 'lib/release.dart#release'), [
+        release,
+      ]);
     });
 
-    test('a graph without sessions says No runs yet and how to start one', () {
-      expect(noRunsYet, 'No runs yet');
-      expect(
-        noRunsHint('/Users/me/Projects/review/review.yaml'),
-        'Start a session from the graph\'s directory: '
-        'nanoflow run -- nanoflow-yaml review.yaml',
-      );
+    test('without a workflow selected are none', () {
+      expect(sessionsOfWorkflow(all, reviewGraphFile(), null), isEmpty);
     });
 
-    test('sessions are listed newest first', () {
-      final older = sessionOf([
-        Journal('olde-run', node: 'collect', startedAt: -3600),
-      ], id: 'olde-session');
-      final newer = sessionOf([
-        Journal('newe-run', node: 'collect', startedAt: 0),
-      ], id: 'newe-session');
-      expect(
-        [
-          for (final s in sessionSummaries([older, newer], now)) s.id,
-        ],
-        ['newe-session', 'olde-session'],
-      );
-      expect(
-        [
-          for (final s in sessionsNewestFirst([older, newer])) s.id,
-        ],
-        ['newe-session', 'olde-session'],
-      );
+    test('are all sessions while no graph file has been read', () {
+      expect(sessionsOfWorkflow(all, null, null), all);
     });
   });
 }
