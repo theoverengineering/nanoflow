@@ -27,6 +27,10 @@ dart format --output=none --set-exit-if-changed .
 
 dart analyze --fatal-infos "${dart_members[@]}"
 
+# The example's graph file must be what describe reads from its code now.
+echo "== describe --check: examples/review"
+(cd examples/review && dart run nanoflow_describe --check)
+
 for member in "${dart_members[@]}"; do
   if [[ -d $member/test ]]; then
     echo "== dart test: $member"
