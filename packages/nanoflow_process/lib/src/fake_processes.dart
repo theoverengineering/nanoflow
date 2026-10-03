@@ -4,8 +4,8 @@ import 'processes.dart';
 
 /// [Processes] for tests: a test starts and ends the processes by hand.
 ///
-/// Not [supported], it behaves as an adapter that cannot tell: [startOf] is
-/// `null` and [exitOf] never completes, whatever was started.
+/// When not [supported], it behaves as an adapter that cannot tell:
+/// [startOf] is `null` and [exitOf] never completes, whatever was started.
 final class FakeProcesses implements Processes {
   FakeProcesses({this.supported = true});
 

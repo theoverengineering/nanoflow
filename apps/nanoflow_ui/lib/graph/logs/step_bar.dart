@@ -123,7 +123,7 @@ class _StripesPainter extends CustomPainter {
 }
 
 /// A step's sign: a green check finished, the turning sign running, a red
-/// cross failed, an amber pause interrupted.
+/// cross failed, a grey pause interrupted.
 class StepIcon extends StatelessWidget {
   const StepIcon(this.status, {super.key});
 

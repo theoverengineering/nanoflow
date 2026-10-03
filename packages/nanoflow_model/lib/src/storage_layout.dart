@@ -26,7 +26,8 @@ const stepFileName = 'step.json';
 const logFileName = 'step.log';
 
 /// File in a session directory whose lock the process that owns the session
-/// holds. Its name starts with `.`: readers skip it.
+/// holds; its record names that process (see `Owner`). Readers open it by
+/// its path; directory listings skip `.` names.
 const ownerLockFileName = '.owner.lock';
 
 /// The place in the owner lock file whose single byte is locked: the owner
