@@ -10,10 +10,16 @@ import 'session_handle.dart';
 /// The sessions in a `runs` directory, as the process that runs them keeps
 /// them.
 final class FsStore {
-  FsStore(this.runsDir, {this._clock = systemClock});
+  FsStore(this.runsDir, {this._owner, this._clock = systemClock});
 
   /// The `runs` directory in the project directory.
   final String runsDir;
+
+  /// The process that runs the sessions the store holds: written into the
+  /// lock file of each, `.owner.lock`, while the store holds it, and cleared
+  /// when the handle lets the session go. `null` writes none: the file stays
+  /// empty.
+  final Owner? _owner;
 
   final Clock _clock;
 
@@ -21,7 +27,7 @@ final class FsStore {
   ///
   /// The session's lock is taken before anything is written to it: the
   /// handle holds it, so no other process can open the session (see
-  /// [openSession]). Builds the whole session under `runs/.tmp-<id>/` and
+  /// [openSession]). The store's owner is written into the lock file. Builds the whole session under `runs/.tmp-<id>/` and
   /// renames it into place: `session.json` with [graph], the `documents`
   /// directory with the input document (when [input] is given), the empty
   /// `steps` directory and `log.jsonl` with `session-started` and [code].
@@ -46,7 +52,7 @@ final class FsStore {
         createParent: true,
         build: (dir) async {
           // A lock on an open file outlives the rename of its directory.
-          final taken = lock = await lockSession(dir, id);
+          final taken = lock = await lockSession(dir, id, owner: _owner);
           await Directory(p.join(dir, documentsDirName)).create();
           await Directory(p.join(dir, stepsDirName)).create();
           final inputId = input == null
@@ -80,8 +86,9 @@ final class FsStore {
   ///
   /// The session's directory is the one whose name ends with the id; a name
   /// that starts with `.` belongs to a session that was never finished being
-  /// created. Takes the session's lock, which the handle holds, and then cuts
-  /// an incomplete last line off the journal.
+  /// created. Takes the session's lock, which the handle holds, writes the
+  /// store's owner into the lock file in place of the owner before, and then
+  /// cuts an incomplete last line off the journal.
   ///
   /// Throws a [SessionBusyException], having changed nothing, when another
   /// process holds the lock: one that created or opened the session and
@@ -91,7 +98,9 @@ final class FsStore {
   Future<SessionHandle?> openSession(String sessionId) async {
     final dirs = await _sessionDirs();
     final dir = dirs.where((dir) => dir.id == sessionId).firstOrNull;
-    return dir == null ? null : loadSessionHandle(dir.path, sessionId, _clock);
+    return dir == null
+        ? null
+        : loadSessionHandle(dir.path, sessionId, _clock, _owner);
   }
 
   /// Ids of the sessions of [workflow] whose journal has no

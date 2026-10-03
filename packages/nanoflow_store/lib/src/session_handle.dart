@@ -183,9 +183,10 @@ final class SessionHandle {
   StepLog openLog(String stepId) =>
       StepLog._(File(p.join(_stepDir(stepId), logFileName)));
 
-  /// Gives up the session's lock: another process may own the session from
-  /// now on. Reading through the handle still works; writing through it must
-  /// not be done any more.
+  /// Gives up the session's lock, having emptied the lock file, which no
+  /// longer names an owner: another process may own the session from now on.
+  /// Reading through the handle still works; writing through it must not be
+  /// done any more.
   Future<void> release() async {
     final lock = _lock;
     _lock = null;
@@ -329,16 +330,17 @@ SessionHandle movedSessionHandle(SessionHandle handle, String dir) =>
 /// opening it.
 ///
 /// Takes the session's lock first: throws a [SessionBusyException] when
-/// another process holds it, and changes nothing. Then cuts an incomplete
-/// last line off the journal: the process that owned the session died while
-/// writing it, and the next event must start on a line of its own. Not
-/// exported.
+/// another process holds it, and changes nothing. Then writes [owner] into
+/// the lock file, as [lockSession] does. Then cuts an incomplete last line
+/// off the journal: the process that owned the session died while writing it,
+/// and the next event must start on a line of its own. Not exported.
 Future<SessionHandle> loadSessionHandle(
   String dir,
   String sessionId,
   Clock clock,
+  Owner? owner,
 ) async {
-  final lock = await lockSession(dir, sessionId);
+  final lock = await lockSession(dir, sessionId, owner: owner);
   try {
     final session = await readModel(
       p.join(dir, sessionFileName),
