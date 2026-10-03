@@ -18,6 +18,7 @@ import '../../state/graph_marks.dart';
 import '../../widgets/dashed_border.dart';
 import '../../widgets/icons.dart';
 import 'canvas_style.dart';
+import 'frame_toggle.dart';
 import 'layout_geometry.dart';
 import 'tile_marks.dart';
 
@@ -37,20 +38,29 @@ import 'tile_marks.dart';
 /// node has the accent ring. The looks and the badges are in
 /// tile_marks.dart.
 ///
+/// A call or copies that can be expanded in place has `+` in its tile's
+/// top right corner: [onExpand], told where on the screen (decision 6).
+///
 /// The canvas places it at [areaOf] the node; of all that, only the tile
 /// and its state's badge are clicked. A click is [onTap], a double click
 /// [onDoubleTap], told where on the screen; a tile with neither is not
 /// clicked.
+///
+/// Its keys are of the node's [id] on the canvas: a node in a frame drawn
+/// in place by the ids of the frames it is in and its own, joined by `/`.
 class NodeTile extends StatelessWidget {
   NodeTile({
     required this.node,
+    String? id,
     this.marks,
     this.selected = false,
     this.allCopies = false,
     this.copies = copiesBadge,
     this.onTap,
     this.onDoubleTap,
-  }) : super(key: keyOf(node.id));
+    this.onExpand,
+  }) : id = id ?? node.id,
+       super(key: keyOf(id ?? node.id));
 
   /// The key of the widget of the node [id].
   static Key keyOf(String id) => ValueKey(('node', id));
@@ -62,6 +72,9 @@ class NodeTile extends StatelessWidget {
   static Key runningKeyOf(String id) => ValueKey(('running', id));
 
   final layout.NodeBox node;
+
+  /// The node's id on the canvas.
+  final String id;
 
   /// What the session's steps put on the node; `null` for `Current graph`,
   /// a condition or a marker: the tile is drawn plain.
@@ -80,6 +93,9 @@ class NodeTile extends StatelessWidget {
   final VoidCallback? onTap;
   final ValueChanged<Offset>? onDoubleTap;
 
+  /// Expands the call or copies in place; `null` for a node that does not.
+  final ValueChanged<Offset>? onExpand;
+
   /// How far round the tile the widget reaches: the tiles stacked behind
   /// it, the badges, the ring.
   static const _margin = 16.0;
@@ -89,6 +105,16 @@ class NodeTile extends StatelessWidget {
 
   /// How far past the tile's right side the badge over it reaches.
   static const _overhang = 6.0;
+
+  /// How far in from the tile's top right corner the `+` is.
+  static const _toggleInset = 4.0;
+
+  /// Where on the screen the `+` built in [context] ends: the menu of a
+  /// call's functions opens there.
+  static Offset _globalOf(BuildContext context) {
+    final box = context.findRenderObject()! as RenderBox;
+    return box.localToGlobal(Offset(FrameToggle.size, FrameToggle.size));
+  }
 
   /// The canvas area a node's widget takes: its tile with what is drawn
   /// round it and over it, its texts.
@@ -146,6 +172,17 @@ class NodeTile extends StatelessWidget {
             top: tile.top - 9,
             child: count,
           ),
+        if (onExpand case final expand?)
+          Positioned(
+            left: tile.right - FrameToggle.size - _toggleInset,
+            top: tile.top + _toggleInset,
+            child: Builder(
+              builder: (context) => FrameToggle.expand(
+                key: FrameToggle.expandKeyOf(id),
+                onTap: () => expand(_globalOf(context)),
+              ),
+            ),
+          ),
         if (node.name case final name?)
           _text(
             local(node.nameRect),
@@ -176,7 +213,7 @@ class NodeTile extends StatelessWidget {
     // passed have nothing over them (docs/design/code-first/copies-frame.html).
     if (allCopies) {
       return marks.running > 0
-          ? RunningBadge(marks.running, key: runningKeyOf(node.id))
+          ? RunningBadge(marks.running, key: runningKeyOf(id))
           : null;
     }
     return switch (marks.visitsText) {
@@ -234,7 +271,7 @@ class NodeTile extends StatelessWidget {
     switch (node.kind) {
       case NodeKind.start || NodeKind.end:
         return DashedBorder(
-          key: tileKeyOf(node.id),
+          key: tileKeyOf(id),
           color: CanvasColors.markerBorder,
           radius: _radius,
           child: Center(
@@ -250,7 +287,7 @@ class NodeTile extends StatelessWidget {
           NodeKind.call ||
           NodeKind.copies:
         return DecoratedBox(
-          key: tileKeyOf(node.id),
+          key: tileKeyOf(id),
           decoration: BoxDecoration(
             color: look.fill,
             border: Border.fromBorderSide(

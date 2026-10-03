@@ -28,7 +28,7 @@ final class CopyChoices {
   /// through, by the depth of each level.
   Map<int, String> on(List<Opened> path) => {
     for (var depth = 1; depth <= path.length; depth++)
-      depth: ?_chosen[_levelKey(path.take(depth))],
+      depth: ?_chosen[levelKey(path.take(depth))],
   };
 
   /// Chooses the copy [copyId] — the id of its first step; all for `null`
@@ -36,7 +36,7 @@ final class CopyChoices {
   /// [path].
   void choose(String sessionId, List<Opened> path, int depth, String? copyId) {
     keepFor(sessionId);
-    final level = _levelKey(path.take(depth));
+    final level = levelKey(path.take(depth));
     _chosen = {
       for (final MapEntry(:key, :value) in _chosen.entries)
         if (key != level) key: value,
@@ -44,10 +44,16 @@ final class CopyChoices {
     };
   }
 
-  /// The path to a level, as a key.
-  static String _levelKey(Iterable<Opened> path) =>
-      [for (final opened in path) '${opened.nodeId}#${opened.functionId ?? ''}']
-          .join('/');
+  /// Of the frames at [paths], the one where a copy of the session
+  /// [sessionId] was chosen last; `null` when none has one chosen.
+  List<Opened>? lastChosen(String sessionId, Iterable<List<Opened>> paths) {
+    if (sessionId != _sessionId) return null;
+    final byKey = {for (final path in paths) levelKey(path): path};
+    for (final key in _chosen.keys.toList().reversed) {
+      if (byKey[key] case final path?) return path;
+    }
+    return null;
+  }
 }
 
 /// What the first step of [copy] gave, to tell the copy by (`copyHint`),

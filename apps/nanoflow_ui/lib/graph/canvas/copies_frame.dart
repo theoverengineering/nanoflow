@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../layout/layout.dart' as layout;
 import '../../theme.dart';
 import 'canvas_style.dart';
+import 'frame_toggle.dart';
 
 /// Where the frame round the body of copies is, in the coordinates of the
 /// body's layout: [frame] itself, and [extent], what is drawn of it with
@@ -11,49 +13,69 @@ import 'canvas_style.dart';
 final class CopiesFrameBox {
   const CopiesFrameBox._(this.frame, this.extent, this.switcherTop);
 
-  /// The frame round [body], the layout of the body of copies: room over it
-  /// for [title] and [count] on one line, then for a switcher [switcher]
-  /// wide when there is one (`null` without a session); room under it for
-  /// how the copies stand. The frame is as wide as the widest of them; the
-  /// body is in its middle.
+  /// The room the frame keeps round the body of copies: over it for
+  /// [title] and [count] on one line — and the `−` when it is
+  /// [collapsible], drawn in place —, then for a switcher [switcher] wide
+  /// when there is one (`null` without a session); under it for how the
+  /// copies stand; on its sides. The frame is as wide as the widest of
+  /// them; the outlines behind it reach over it and right of it.
+  static layout.FrameRoom roomFor({
+    required String title,
+    required String count,
+    required double? switcher,
+    bool collapsible = false,
+  }) {
+    final header =
+        _measure(title, CopiesFrameView.titleStyle) +
+        _titleGap +
+        _measure(count, CopiesFrameView.countStyle) +
+        (collapsible ? _toggleGap + FrameToggle.size : 0);
+    return layout.FrameRoom(
+      top:
+          _titleTop +
+          _titleHeight +
+          (switcher == null ? 0 : _rowGap + _switcherHeight) +
+          _bodyGap,
+      side: _side,
+      bottom: _bottom,
+      width: math.max(header, switcher ?? 0) + 2 * _inset,
+      above: 2 * CopiesFrameView.stackStep,
+    );
+  }
+
+  /// The frame round [body], the layout of the body of copies opened, with
+  /// the room [roomFor] keeps; the body in its middle.
   factory CopiesFrameBox.around(
     Rect body, {
     required String title,
     required String count,
     required double? switcher,
   }) {
-    final top =
-        _titleTop +
-        _titleHeight +
-        (switcher == null ? 0 : _rowGap + _switcherHeight) +
-        _bodyGap;
-    final header =
-        _measure(title, CopiesFrameView.titleStyle) +
-        _titleGap +
-        _measure(count, CopiesFrameView.countStyle);
-    final width = [
-      body.width + 2 * _side,
-      header + 2 * _inset,
-      (switcher ?? 0) + 2 * _inset,
-    ].reduce(math.max);
-    final left = body.center.dx - width / 2;
-    final frame = Rect.fromLTWH(
-      left,
-      body.top - top,
-      width,
-      top + body.height + _bottom,
-    );
-    return CopiesFrameBox._(
-      frame,
-      Rect.fromLTRB(
-        frame.left,
-        frame.top - 2 * CopiesFrameView.stackStep,
-        frame.right + 2 * CopiesFrameView.stackStep,
-        frame.bottom,
+    final room = roomFor(title: title, count: count, switcher: switcher);
+    final width = math.max(body.width + 2 * room.side, room.width);
+    return CopiesFrameBox.at(
+      Rect.fromLTWH(
+        body.center.dx - width / 2,
+        body.top - room.top,
+        width,
+        room.top + body.height + room.bottom,
       ),
-      switcher == null ? null : _titleTop + _titleHeight + _rowGap,
+      switcher: switcher != null,
     );
   }
+
+  /// The frame [frame], with a [switcher] or without.
+  factory CopiesFrameBox.at(Rect frame, {required bool switcher}) =>
+      CopiesFrameBox._(
+        frame,
+        Rect.fromLTRB(
+          frame.left,
+          frame.top - 2 * CopiesFrameView.stackStep,
+          frame.right + 2 * CopiesFrameView.stackStep,
+          frame.bottom,
+        ),
+        switcher ? _titleTop + _titleHeight + _rowGap : null,
+      );
 
   /// The frame.
   final Rect frame;
@@ -73,6 +95,7 @@ final class CopiesFrameBox {
   static const _switcherHeight = 22.0;
   static const _bodyGap = 14.0;
   static const _bottom = 30.0;
+  static const _toggleGap = 8.0;
 
   static double _measure(String text, TextStyle style) {
     final painter = TextPainter(
@@ -93,7 +116,8 @@ final class CopiesFrameBox {
 /// over the body, what the copies are of, `each pkg in packages`, and how
 /// many run side by side, `×3 · in parallel`; with a session, the copy
 /// [switcher] under them, and in the bottom right corner how the copies
-/// stand: `done 1 of 3`, `pkg 2 · now verify`.
+/// stand: `done 1 of 3`, `pkg 2 · now verify`. Drawn in place, `−` in its
+/// top right corner collapses it ([onCollapse]).
 ///
 /// It fills [box]'s extent; the body is drawn over it.
 class CopiesFrameView extends StatelessWidget {
@@ -104,6 +128,8 @@ class CopiesFrameView extends StatelessWidget {
     required this.count,
     this.switcher,
     this.footer,
+    this.onCollapse,
+    this.collapseKey,
   });
 
   final CopiesFrameBox box;
@@ -118,6 +144,13 @@ class CopiesFrameView extends StatelessWidget {
 
   /// `done 1 of 3`; `null` without a session.
   final String? footer;
+
+  /// Collapses the frame drawn in place to its tile; `null` for the body
+  /// opened.
+  final VoidCallback? onCollapse;
+
+  /// The key of the `−`.
+  final Key? collapseKey;
 
   /// How far up and to the right each outline behind the frame is.
   static const stackStep = 6.0;
@@ -197,10 +230,25 @@ class CopiesFrameView extends StatelessWidget {
           child: text(title, titleStyle),
         ),
         Positioned(
-          right: box.extent.width - frame.right + inset,
+          right:
+              box.extent.width -
+              frame.right +
+              inset +
+              (onCollapse == null
+                  ? 0
+                  : CopiesFrameBox._toggleGap + FrameToggle.size),
           top: frame.top + CopiesFrameBox._titleTop,
           child: text(count, countStyle),
         ),
+        if (onCollapse case final collapse?)
+          Positioned(
+            right: box.extent.width - frame.right + inset,
+            top:
+                frame.top +
+                CopiesFrameBox._titleTop +
+                (CopiesFrameBox._titleHeight - FrameToggle.size) / 2,
+            child: FrameToggle.collapse(key: collapseKey, onTap: collapse),
+          ),
         if ((switcher, box.switcherTop) case (final switcher?, final top?))
           Positioned(
             left: frame.left + inset,

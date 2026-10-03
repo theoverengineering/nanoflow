@@ -18,7 +18,8 @@ import 'step_list.dart';
 /// its title. With `Current graph` selected it is empty.
 ///
 /// A click on a step selects it and asks the canvas to show its node on
-/// the level drawn, or the call or copies it is in ([onRevealNode]);
+/// the level drawn, or the call or copies it is in — its node in their
+/// frame, when they are drawn in place ([onRevealNode]);
 /// running times go on with the [clock].
 class LogsPanel extends StatelessWidget {
   const LogsPanel({
@@ -104,10 +105,10 @@ class LogsPanel extends StatelessWidget {
                             following: model.selection.following,
                             onSelect: (row) {
                               model.selectStep(row.stepId);
-                              final node = view.marks
-                                  ?.nodesOf(row.stepId)
-                                  .firstOrNull;
-                              if (node != null) onRevealNode(node);
+                              final nodes = view.revealPathOf(row.stepId);
+                              if (nodes.isNotEmpty) {
+                                onRevealNode(nodes.join('/'));
+                              }
                             },
                           ),
                         ),

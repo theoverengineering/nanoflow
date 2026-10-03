@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
+import 'nested.dart';
+
 /// What a piece of text on the canvas is, for measuring its width.
 enum LabelKind {
   /// The label of an exit: `true`, `each`, `Channel.stable`.
@@ -318,6 +320,12 @@ final class GNode {
   /// Whether this is the start marker or an end marker.
   bool get isMarker => kind == NodeKind.start || kind == NodeKind.end;
 
+  /// The body of a call or copies expanded in place: the node is its frame.
+  FramedBody? framed;
+
+  /// The width of the node's tile, or of its frame.
+  double widthOf(LayoutOptions options) => framed?.width ?? options.tile;
+
   /// The node's exits, in the order their first edges have in the body.
   final List<GExit> exits = [];
 
@@ -389,7 +397,7 @@ final class GEdge {
 
 /// The graph as the layout sees it: nodes, exits and arrows.
 final class LayoutGraph {
-  LayoutGraph._(this.nodes, this.starts, this.edges);
+  LayoutGraph._(this.nodes, this.starts, this.edges, {required this.inFrame});
 
   /// Builds the layout's view of one level of the graph, [body]: a start
   /// marker the edges `from: null` leave, when there are any; the body's
@@ -399,9 +407,15 @@ final class LayoutGraph {
   /// edges. Calls are named after their functions in [functions].
   ///
   /// Edges between nodes the body does not have are left out.
+  ///
+  /// A body [inFrame] has one end marker, [endMarker], that every edge
+  /// `to: null` goes to; step 2 puts it after everything else, and the
+  /// start marker before everything else, so that the links from the
+  /// frame's sides to them cross nothing.
   factory LayoutGraph.ofBody(
     GraphBody body, {
     Map<String, GraphFunction> functions = const {},
+    bool inFrame = false,
   }) {
     final nodes = <GNode>[];
     final byId = <String?, GNode>{};
@@ -440,12 +454,15 @@ final class LayoutGraph {
     }
     final edges = <GEdge>[];
     var ends = 0;
+    GNode? end;
     for (final edge in body.edges) {
       final from = byId[edge.from];
       if (from == null) continue;
-      final to = edge.to == null
-          ? add(endMarkerAt(++ends), NodeKind.end)
-          : byId[edge.to];
+      final to = edge.to != null
+          ? byId[edge.to]
+          : inFrame
+          ? (end ??= add(endMarker, NodeKind.end))
+          : add(endMarkerAt(++ends), NodeKind.end);
       if (to == null) continue;
       var exit = from.exits.where((x) => x.label == edge.label).firstOrNull;
       if (exit == null) {
@@ -458,7 +475,7 @@ final class LayoutGraph {
       edges.add(arrow);
     }
     final start = byId[null];
-    return LayoutGraph._(nodes, [?start], edges);
+    return LayoutGraph._(nodes, [?start], edges, inFrame: inFrame);
   }
 
   /// The nodes in the layout's order: the start marker, the body's nodes,
@@ -470,6 +487,10 @@ final class LayoutGraph {
 
   /// Every arrow, in the body's order.
   final List<GEdge> edges;
+
+  /// Whether the body is in a frame: one end marker, after everything else;
+  /// the start marker before everything else.
+  final bool inFrame;
 }
 
 /// Something that takes a place in a layer: a node, or a pass point of a long

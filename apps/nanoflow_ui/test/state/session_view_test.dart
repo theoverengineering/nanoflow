@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' show GraphFunction;
 import 'package:nanoflow_ui/state/body_path.dart';
+import 'package:nanoflow_ui/state/in_place.dart';
 import 'package:nanoflow_ui/state/session_view.dart';
 
 import 'support.dart';
@@ -214,6 +216,172 @@ void main() {
       expect(view.marks!.of('1')!.steps, 1);
       expect(view.marks!.selected, {'2'});
       expect(view.copyOf(j.steps[3].id), 'pkg 2');
+    });
+  });
+
+  group('frames drawn in place (decision 6)', () {
+    final file = copiesGraphFile();
+    final inPlace = file.functions['lib/copies.dart#inPlace']!;
+    final nested = file.functions['lib/copies.dart#nested']!;
+    const copies = Opened('2');
+
+    /// inPlace over core and tool, tool's verify running.
+    Journal journal() =>
+        Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
+          ..step('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
+          ..step('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
+          ..step('upload', 3, end: 5, place: copiesAt(7), key: 'ut', after: 'p')
+          ..step('verify', 6, place: copiesAt(8), key: 'vt', after: 'ut');
+
+    /// The top level of [workflow] drawn, the nodes [expansions] has
+    /// expanded in place; [chosen] the copies chosen by the path to their
+    /// frame, Logs following the frame at [follow].
+    SessionView viewOf(
+      Journal j, {
+      GraphFunction? workflow,
+      Expansions? expansions,
+      Map<String, Map<int, String>> chosen = const {},
+      List<Opened>? follow,
+      String? stepId,
+    }) {
+      final levels = bodyLevels(workflow ?? inPlace, file.functions, const []);
+      return SessionView.of(
+        j.data,
+        now: now,
+        documents: noDocuments,
+        graphFile: null,
+        stepId: stepId,
+        levels: levels,
+        frames: inPlaceFrames(
+          levels,
+          file.functions,
+          expansions ?? (Expansions()..expand(const [], copies)),
+        ),
+        copiesIn: (path) => chosen[levelKey(path)] ?? const {},
+        follow: follow,
+      );
+    }
+
+    test('copies in place show what their body shows when opened: all '
+        'copies, how many are on each step, done 1 of 2', () {
+      final view = viewOf(journal());
+      final scope = view.scopeOf(const [copies])!;
+      expect(scope.copies!.footer, 'done 1 of 2');
+      expect(scope.copies!.countText, '×2 · in parallel');
+      expect(scope.copies!.selected, isNull);
+      expect(scope.marks.of('2')!.running, 1);
+      expect(scope.marks.of('1')!.steps, 2);
+      // The level drawn and Logs are as without the frame.
+      expect(view.marks!.of('2')!.copies, 2);
+      expect(view.logs.header.text, '4 steps');
+    });
+
+    test('a copy chosen in place: the frame shows its steps alone, and Logs '
+        'follow it as when its body is opened', () {
+      final j = journal();
+      final view = viewOf(
+        j,
+        chosen: {
+          levelKey(const [copies]): {1: j.steps[2].id},
+        },
+        follow: const [copies],
+      );
+      final scope = view.scopeOf(const [copies])!;
+      expect(scope.copies!.selected!.number, 2);
+      expect(scope.copies!.footer, 'pkg 2 · now verify');
+      expect(scope.marks.of('1')!.steps, 1);
+      expect(view.logs.header.text, 'pkg 2 · 2 steps');
+      expect(view.logs.rows.whereType<StepRow>().map((row) => row.copy), [
+        null,
+        null,
+      ]);
+      // Without following it, Logs show the level drawn.
+      final unfollowed = viewOf(
+        j,
+        chosen: {
+          levelKey(const [copies]): {1: j.steps[2].id},
+        },
+      );
+      expect(unfollowed.logs.header.text, '4 steps');
+      expect(unfollowed.scopeOf(const [copies])!.marks.of('1')!.steps, 1);
+    });
+
+    test('the selected step is ringed in its frame, and is found there to '
+        'be revealed', () {
+      final j = journal();
+      final view = viewOf(j, stepId: j.steps[3].id);
+      expect(view.scopeOf(const [copies])!.marks.selected, {'2'});
+      expect(view.revealPathOf(j.steps[3].id), ['2', '2']);
+      expect(view.revealPathOf(j.steps[0].id), ['1']);
+      final collapsed = viewOf(j, expansions: Expansions());
+      expect(collapsed.revealPathOf(j.steps[3].id), ['2']);
+    });
+
+    group('copies in copies', () {
+      const pkg = Opened('1');
+      const target = Opened('2');
+
+      /// nested over core, built for arm and x64.
+      Journal nestedJournal() {
+        final j = Journal(
+          '7c3e-session',
+          workflow: 'nested',
+          graph: copiesGraphJson(),
+        );
+        j.step('fetch', 1, end: 3, place: copiesAt(27), key: 'f', after: null);
+        for (final t in ['arm', 'x64']) {
+          j.step('build', 4, place: copiesAt(30), key: 'b$t', after: 'f');
+        }
+        return j;
+      }
+
+      Expansions both() => Expansions()
+        ..expand(const [], pkg)
+        ..expand(const [pkg], target);
+
+      test('Logs name the copies of a step in the frames it is in', () {
+        final j = nestedJournal();
+        final view = viewOf(j, workflow: nested, expansions: both());
+        expect(view.logs.rows.whereType<StepRow>().map((row) => row.copy), [
+          'pkg 1',
+          'pkg 1 › target 1',
+          'pkg 1 › target 2',
+        ]);
+        expect(view.copyOf(j.steps[2].id), 'pkg 1 › target 2');
+      });
+
+      test('Logs following the outer copy name the inner copy chosen in a '
+          'frame in it: their title does not', () {
+        final j = nestedJournal();
+        final view = viewOf(
+          j,
+          workflow: nested,
+          expansions: both(),
+          chosen: {
+            levelKey(const [pkg]): {1: j.steps[0].id},
+            levelKey(const [pkg, target]): {1: j.steps[0].id, 2: j.steps[2].id},
+          },
+          follow: const [pkg],
+        );
+        expect(view.logs.header.text, 'pkg 1 · 3 steps');
+        expect(view.logs.rows.whereType<StepRow>().map((row) => row.copy), [
+          null,
+          'target 1',
+          'target 2',
+        ]);
+      });
+
+      test('while the frame round shows all its copies, the inner one says '
+          'to choose there first', () {
+        final view = viewOf(
+          nestedJournal(),
+          workflow: nested,
+          expansions: both(),
+        );
+        final inner = view.scopeOf(const [pkg, target])!.copies!;
+        expect(inner.choosable, isFalse);
+        expect(inner.chooseFirst, 'choose the outer pkg first');
+      });
     });
   });
 }

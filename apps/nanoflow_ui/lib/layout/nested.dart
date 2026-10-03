@@ -1,0 +1,265 @@
+import 'dart:math' as math;
+
+import 'package:nanoflow_model/nanoflow_model.dart';
+
+import 'geometry.dart';
+import 'graph_layout.dart';
+import 'layout_graph.dart';
+import 'ports.dart';
+
+/// The room a frame keeps round the body it holds (decision 6,
+/// docs/design/code-first/function-frames.html): a row over the body for
+/// its title — and, for copies, the switcher —, its sides and its bottom,
+/// how wide it is at least, and how far what is drawn over it reaches.
+final class FrameRoom {
+  const FrameRoom({
+    this.top = 32,
+    this.side = 16,
+    this.bottom = 16,
+    this.width = 0,
+    this.above = 0,
+  });
+
+  /// From the frame's top to the body: the title row.
+  final double top;
+
+  /// Between the frame's sides and the body, at least: a body narrower
+  /// than the frame is in its middle.
+  final double side;
+
+  /// Between the body and the frame's bottom.
+  final double bottom;
+
+  /// The least width of the frame: its title row must fit.
+  final double width;
+
+  /// How far over the frame, and right of it, what is drawn with it
+  /// reaches: the outlines stacked behind copies.
+  final double above;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FrameRoom &&
+      other.top == top &&
+      other.side == side &&
+      other.bottom == bottom &&
+      other.width == width &&
+      other.above == above;
+
+  @override
+  int get hashCode => Object.hash(top, side, bottom, width, above);
+}
+
+/// A call or copies expanded in place: [body] — the function's, or a
+/// copy's — drawn in a frame instead of the node's tile, with the [room]
+/// the frame keeps round it, and the nodes of [body] expanded in turn.
+final class ExpandedNode {
+  const ExpandedNode(
+    this.body, {
+    this.room = const FrameRoom(),
+    this.expanded = const {},
+  });
+
+  final GraphBody body;
+
+  final FrameRoom room;
+
+  /// The nodes of [body] expanded in place, by id.
+  final Map<String, ExpandedNode> expanded;
+}
+
+/// The body of an expanded node laid out, and the frame round it: a node of
+/// the layout around as big as the frame. Arrows into the node come to the
+/// frame's left side level with the body's start, and leave its right side
+/// level with the body's end.
+final class FramedBody {
+  FramedBody._({
+    required this.inner,
+    required this.room,
+    required this.width,
+    required this.height,
+    required this.innerAt,
+    required this.entry,
+    required this.exit,
+  });
+
+  /// [inner], the layout of the body of [node] — one end, after everything
+  /// else — in a frame with [room] round it: tall and wide enough besides
+  /// for the input bar and the exits on its sides, off its corners.
+  factory FramedBody.of(
+    GNode node,
+    GraphLayout inner,
+    FrameRoom room,
+    LayoutOptions options,
+  ) {
+    final body = inner.bounds;
+    final entry = inner.nodes[startMarker]?.tile.center.y;
+    final exit = inner.nodes[endMarker]?.tile.center.y;
+    final r = options.tileRadius;
+    final inputs = node.inEdges.isEmpty
+        ? 0.0
+        : barLength(node.inEdges.length, options) / 2;
+    final exits =
+        node.exits.fold(0.0, (sum, x) => sum + exitUnits(x)) *
+        options.exitGap /
+        2;
+    var top = room.top;
+    var bottom = room.bottom;
+    var least = options.tile;
+    for (final (at, half) in [(entry, inputs), (exit, exits)]) {
+      if (at == null) {
+        least = math.max(least, 2 * (half + r));
+      } else {
+        top = math.max(top, r + half - at);
+        bottom = math.max(bottom, r + half - (body.height - at));
+      }
+    }
+    final width = [
+      body.width + 2 * room.side,
+      room.width,
+      options.tile,
+    ].reduce(math.max);
+    // A frame taller than its body and rooms has the room to spare under
+    // the body.
+    final height = math.max(least, top + body.height + bottom);
+    return FramedBody._(
+      inner: inner,
+      room: room,
+      width: width,
+      height: height,
+      innerAt: Point((width - body.width) / 2, top),
+      entry: entry == null ? null : top + entry,
+      exit: exit == null ? null : top + exit,
+    );
+  }
+
+  /// The body's layout, from (0, 0).
+  final GraphLayout inner;
+
+  /// The room the frame keeps round it.
+  final FrameRoom room;
+
+  /// The frame's size.
+  final double width;
+  final double height;
+
+  /// Where [inner]'s origin is in the frame.
+  final Point innerAt;
+
+  /// How far under the frame's top the arrows come in, level with the
+  /// body's start; `null` when it has none: in the frame's middle.
+  final double? entry;
+
+  /// How far under the frame's top the arrows go out, level with the
+  /// body's end; `null` when it has none: in the frame's middle.
+  final double? exit;
+
+  /// The offset of the arrows in from the frame's middle.
+  double get inputCentre => (entry ?? height / 2) - height / 2;
+
+  /// The offset of the exits from the frame's middle.
+  double get exitCentre => (exit ?? height / 2) - height / 2;
+
+  /// The frame of the node whose frame is [tile] on the canvas: [inner]
+  /// moved into it, with the links from its sides to the body's start and
+  /// end.
+  FrameBox placeIn(Rect tile) {
+    final at = Point(tile.left, tile.top) + innerAt;
+    final moved = shiftLayout(inner, at);
+    final start = moved.nodes[startMarker]?.tile;
+    final end = moved.nodes[endMarker]?.tile;
+    return FrameBox(
+      inner: moved,
+      entry: start == null
+          ? null
+          : Segment(
+              Point(tile.left, start.center.y),
+              Point(start.left, start.center.y),
+            ),
+      exit: end == null
+          ? null
+          : Segment(
+              Point(end.right, end.center.y),
+              Point(tile.right, end.center.y),
+            ),
+    );
+  }
+}
+
+/// [layout] moved by [by]: everything it draws, the frames in it too.
+GraphLayout shiftLayout(GraphLayout layout, Point by) {
+  Rect rect(Rect r) => r.shift(by);
+  Segment? segment(Segment? s) =>
+      s == null ? null : Segment(s.a + by, s.b + by);
+  return GraphLayout(
+    nodes: {
+      for (final MapEntry(key: id, value: n) in layout.nodes.entries)
+        id: NodeBox(
+          id: n.id,
+          kind: n.kind,
+          node: n.node,
+          name: n.name,
+          fullName: n.fullName,
+          place: n.place,
+          inside: n.inside,
+          layer: n.layer,
+          tile: rect(n.tile),
+          nameRect: rect(n.nameRect),
+          placeRect: rect(n.placeRect),
+          marks: rect(n.marks),
+          status: rect(n.status),
+          bar: switch (n.bar) {
+            final bar? => InputBar(
+              rect: rect(bar.rect),
+              inputs: [for (final y in bar.inputs) y + by.y],
+            ),
+            null => null,
+          },
+          frame: switch (n.frame) {
+            final frame? => FrameBox(
+              inner: shiftLayout(frame.inner, by),
+              entry: segment(frame.entry),
+              exit: segment(frame.exit),
+            ),
+            null => null,
+          },
+        ),
+    },
+    exits: [
+      for (final x in layout.exits)
+        ExitBox(
+          node: x.node,
+          index: x.index,
+          label: x.label,
+          shape: x.shape,
+          anchor: x.anchor + by,
+          handle: rect(x.handle),
+          labelRect: x.labelRect?.shift(by),
+          counterAt: x.counterAt + by,
+          reach: x.reach,
+        ),
+    ],
+    edges: [
+      for (final e in layout.edges)
+        EdgePath(
+          from: e.from,
+          exitIndex: e.exitIndex,
+          listIndex: e.listIndex,
+          to: e.to,
+          kind: e.kind,
+          points: [for (final p in e.points) p + by],
+          tip: e.tip + by,
+          pieces: [
+            for (final piece in e.pieces)
+              switch (piece) {
+                LinePiece(:final to) => LinePiece(to + by),
+                ArcPiece(:final to, :final radius, :final clockwise) =>
+                  ArcPiece(to + by, radius: radius, clockwise: clockwise),
+              },
+          ],
+        ),
+    ],
+    bounds: rect(layout.bounds),
+    options: layout.options,
+  );
+}

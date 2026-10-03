@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import 'body_path.dart';
 import 'freshness.dart';
+import 'in_place.dart';
 import 'session_feed.dart';
 import 'session_view.dart';
 import 'step_places.dart';
@@ -146,13 +147,18 @@ final class CanvasGraph {
     required this.workflow,
     required this.ofSession,
     required List<Opened> path,
+    Expansions? expansions,
     StepPlaces? places,
     this.placeholder,
     this.notes = const [],
   }) : levels = workflow == null
            ? const []
            : List.unmodifiable(bodyLevels(workflow, file!.functions, path)),
-       places = places ?? StepPlaces.of(workflow, file?.functions ?? const {});
+       places = places ?? StepPlaces.of(workflow, file?.functions ?? const {}) {
+    frames = expansions == null || levels.isEmpty
+        ? const []
+        : List.unmodifiable(inPlaceFrames(levels, file!.functions, expansions));
+  }
 
   /// The graph file whose functions the canvas draws: the graph file, or
   /// the session's snapshot of it; `null` when there is none to draw.
@@ -181,6 +187,10 @@ final class CanvasGraph {
   /// The body drawn: that of the last of the [levels].
   GraphBody? get body => levels.lastOrNull?.body;
 
+  /// The nodes of the [body] drawn expanded in place, and those in them
+  /// (decision 6).
+  late final List<InPlaceFrame> frames;
+
   /// The places of the step nodes of the [workflow]: which nodes a
   /// session's steps are on.
   final StepPlaces places;
@@ -192,13 +202,15 @@ final class CanvasGraph {
 
 /// The canvas of `Current graph`: the workflow [workflowId] (a
 /// `WorkflowChoice.id`) of [graph], the graph file [file] last read, down
-/// [path]; noted when the file is gone, its latest [error], its
-/// [freshness], its warnings, then [extraNotes] ([workflowNotes]).
+/// [path], the nodes [expansions] has expanded in place; noted when the
+/// file is gone, its latest [error], its [freshness], its warnings, then
+/// [extraNotes] ([workflowNotes]).
 CanvasGraph fileCanvas({
   required String file,
   required GraphFile? graph,
   required String? workflowId,
   List<Opened> path = const [],
+  Expansions? expansions,
   String? error,
   bool fileMissing = false,
   Freshness? freshness,
@@ -212,6 +224,7 @@ CanvasGraph fileCanvas({
     workflow: workflow,
     ofSession: false,
     path: path,
+    expansions: expansions,
     placeholder: graph == null
         ? noValidGraphYet
         : workflow != null
@@ -253,13 +266,14 @@ CanvasGraph fileCanvas({
 }
 
 /// The canvas of [session], shown on [graph]: its workflow on it, down
-/// [path]; noted when the session has no snapshot, when its code is not
-/// that of the graph or was not recorded, then [extraNotes]
-/// ([workflowNotes]).
+/// [path], the nodes [expansions] has expanded in place; noted when the
+/// session has no snapshot, when its code is not that of the graph or was
+/// not recorded, then [extraNotes] ([workflowNotes]).
 CanvasGraph sessionCanvas(
   SessionData session,
   SessionGraph graph, {
   List<Opened> path = const [],
+  Expansions? expansions,
   List<GraphNote> extraNotes = const [],
 }) {
   final file = graph.graph;
@@ -276,6 +290,7 @@ CanvasGraph sessionCanvas(
     workflow: workflow,
     ofSession: true,
     path: path,
+    expansions: expansions,
     places: places,
     placeholder: graph.unreadable
         ? unreadableSessionGraph

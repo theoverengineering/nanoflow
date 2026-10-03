@@ -8,8 +8,10 @@ import 'layout_geometry.dart';
 /// Paints the arrows of a layout and the input bars they point at
 /// (docs/ui-spec.md «Граф»): rounded corners, one arrowhead size, dashed
 /// back arrows, in the tones the marks give them, the lighter over the
-/// darker. Under the exits and the tiles: a tile
-/// covers the half of its bar on its side, as in the mockups.
+/// darker; and in each frame drawn in place, the links from its sides to
+/// the start and the end of its body, in the tones of its bar and exit.
+/// Under the exits and the tiles: a tile covers the half of its bar on its
+/// side, as in the mockups. Clicks go through it.
 class EdgesPainter extends CustomPainter {
   EdgesPainter(this.graph, this.marks);
 
@@ -41,6 +43,23 @@ class EdgesPainter extends CustomPainter {
         RRect.fromRectAndRadius(bar.rect.toRect(), const Radius.circular(2)),
         Paint()..color = CanvasColors.line(tone),
       );
+    }
+    for (final node in graph.nodes.values) {
+      final frame = node.frame;
+      if (frame == null) continue;
+      for (final (link, tone) in [
+        (frame.entry, marks.bar(node.id, into[node.id] ?? const [])),
+        (frame.exit, marks.exit(node.id, 0)),
+      ]) {
+        if (link == null) continue;
+        canvas.drawLine(
+          link.a.toOffset(),
+          link.b.toOffset(),
+          Paint()
+            ..color = CanvasColors.line(tone)
+            ..strokeWidth = _width,
+        );
+      }
     }
     // The selected run's path goes over the rest.
     final tones = {for (final edge in graph.edges) edge: marks.edge(edge)};
@@ -98,6 +117,9 @@ class EdgesPainter extends CustomPainter {
     }
     return dashes;
   }
+
+  @override
+  bool? hitTest(Offset position) => false;
 
   @override
   bool shouldRepaint(EdgesPainter old) =>

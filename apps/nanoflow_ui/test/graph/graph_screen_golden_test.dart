@@ -79,6 +79,57 @@ void main() {
     await expectGolden(tester, 'graph_copies');
   });
 
+  testWidgets('a running session on functions expanded in place: publish() '
+      'and upload() in it, its steps on their nodes, sign() done as a tile '
+      '(docs/design/code-first/function-frames.html)', (tester) async {
+    final graph = framesGraphFile();
+    String release(int line) => 'lib/release.dart:$line';
+    String publish(int line) => 'lib/publish.dart:$line';
+    final model = await pumpGraphScreen(
+      tester,
+      model: ownedModel(
+        file: releaseFile,
+        graph: graph,
+        changes: changesOf([
+          Journal(
+              'a1b2-session',
+              workflow: 'release',
+              graph: graph.toJson(),
+              code: graph.fingerprint,
+            )
+            ..step('plan', 0, end: 20, place: release(16))
+            ..step('build', 21, end: 140, place: release(18))
+            ..step('hash', 141, end: 150, place: publish(26))
+            ..step('signature', 151, end: 170, place: publish(27))
+            ..step('put', 171, place: publish(22)),
+        ]),
+      ),
+      now: () => columnNow,
+    );
+    const call = Opened('5', functionId: 'lib/publish.dart#publish');
+    model
+      ..expandNode(const [], call)
+      ..expandNode(const [
+        call,
+      ], const Opened('1', functionId: 'lib/publish.dart#upload'));
+    await settle(tester);
+    await expectGolden(tester, 'graph_frames');
+  });
+
+  testWidgets('copies expanded in place in a running session: the stack, '
+      'the switcher, how many are on each step, done 1 of 3 '
+      '(docs/design/code-first/copies-frame.html)', (tester) async {
+    final model = await pumpGraphScreen(
+      tester,
+      path: inlineFile,
+      model: copiesModel(),
+      now: () => columnNow,
+    );
+    model.expandNode(const [], const Opened('1'));
+    await settle(tester);
+    await expectGolden(tester, 'graph_copies_in_place');
+  });
+
   testWidgets('one copy: its path, pkg 2 · now verify, the ways it has '
       'not gone darker '
       '(docs/design/code-first/copy-switcher.html)', (tester) async {

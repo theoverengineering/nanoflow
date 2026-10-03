@@ -21,6 +21,10 @@ import 'layout_graph.dart';
 ///   rule a layout cannot always keep.)
 /// - Chips do not cover tiles, arrowheads or each other; nodes do not
 ///   overlap.
+/// - A frame holds the body in it, which keeps these rules in turn; its
+///   bar is level with the body's start and its exits with the body's end,
+///   and straight links join them across the frame's room. (An arrow
+///   passing through a frame passes through a tile.)
 List<String> checkLayout(GraphLayout layout) {
   final o = layout.options;
   final problems = <String>[];
@@ -135,9 +139,14 @@ List<String> checkLayout(GraphLayout layout) {
   for (final node in layout.nodes.values) {
     final bar = node.bar;
     if (bar == null) continue;
-    final middle = (node.tile.top + node.tile.bottom) / 2;
+    final middle =
+        node.frame?.entry?.a.y ?? (node.tile.top + node.tile.bottom) / 2;
     if (((bar.rect.top + bar.rect.bottom) / 2 - middle).abs() > 1e-6) {
-      problems.add('${node.id}: bar is not in the middle of the tile');
+      problems.add(
+        node.frame?.entry == null
+            ? '${node.id}: bar is not in the middle of the tile'
+            : '${node.id}: bar is not level with the start in the frame',
+      );
     }
     if (bar.rect.top < node.tile.top + o.tileRadius - 1e-6 ||
         bar.rect.bottom > node.tile.bottom - o.tileRadius + 1e-6) {
@@ -187,6 +196,10 @@ List<String> checkLayout(GraphLayout layout) {
       }
     }
   }
+  for (final node in layout.nodes.values) {
+    if (node.frame != null) problems.addAll(_frameProblems(layout, node));
+  }
+
   final boxes = layout.nodes.values.toList();
   for (var i = 0; i < boxes.length; i++) {
     for (var j = i + 1; j < boxes.length; j++) {
@@ -202,6 +215,80 @@ List<String> checkLayout(GraphLayout layout) {
     }
   }
   return problems;
+}
+
+/// What the frame of [node] breaks: the body is not in it, a link or an
+/// exit is off its place; and what the body in it breaks, after `id ›`.
+List<String> _frameProblems(GraphLayout layout, NodeBox node) {
+  final frame = node.frame!;
+  final tile = node.tile;
+  final inner = frame.inner;
+  final body = inner.bounds;
+  final problems = <String>[
+    if (body.left < tile.left - 1e-6 ||
+        body.top < tile.top - 1e-6 ||
+        body.right > tile.right + 1e-6 ||
+        body.bottom > tile.bottom + 1e-6)
+      '${node.id}: the body is not in the frame',
+  ];
+  final ends = inner.nodes.values.where((n) => n.kind == NodeKind.end);
+  if (ends.length > 1) problems.add('${node.id}: the body has several ends');
+  bool level(Segment link, Point from, Point to) =>
+      (link.a - from).length < 1e-6 && (link.b - to).length < 1e-6;
+  final start = inner.nodes[startMarker]?.tile;
+  final entry = frame.entry;
+  if ((start == null) != (entry == null) ||
+      start != null &&
+          !level(
+            entry!,
+            Point(tile.left, start.center.y),
+            Point(start.left, start.center.y),
+          )) {
+    problems.add('${node.id}: the link to the start is off its place');
+  }
+  final end = ends.firstOrNull?.tile;
+  final exit = frame.exit;
+  if ((end == null) != (exit == null) ||
+      end != null &&
+          !level(
+            exit!,
+            Point(end.right, end.center.y),
+            Point(tile.right, end.center.y),
+          )) {
+    problems.add('${node.id}: the link from the end is off its place');
+  }
+  // Exits side by side are round the link, a single one on it.
+  final outs = [
+    for (final out in layout.exits)
+      if (out.node == node.id) out.handle,
+  ];
+  if (exit != null && outs.isNotEmpty) {
+    final span = outs.reduce((a, b) => a.union(b));
+    if (exit.b.y < span.top - 1e-6 || exit.b.y > span.bottom + 1e-6) {
+      problems.add('${node.id}: the exits are off the end\'s link');
+    }
+  }
+  for (final other in inner.nodes.values) {
+    if (other.kind == NodeKind.end || other.id == startMarker) continue;
+    for (final link in [?entry, ?exit]) {
+      for (final rect in [other.tile, other.nameRect, other.placeRect]) {
+        if (Segment(link.a, link.b).entersInterior(rect)) {
+          problems.add('${node.id}: a link passes through ${other.id}');
+        }
+      }
+    }
+  }
+  for (final link in [?entry, ?exit]) {
+    for (final edge in inner.edges) {
+      if (crossingsBetween([link.a, link.b], edge.points) > 0) {
+        problems.add('${node.id}: a link crosses an arrow in the frame');
+      }
+    }
+  }
+  return [
+    ...problems,
+    for (final problem in checkLayout(inner)) '${node.id} › $problem',
+  ];
 }
 
 /// How many times arrows cross each other.

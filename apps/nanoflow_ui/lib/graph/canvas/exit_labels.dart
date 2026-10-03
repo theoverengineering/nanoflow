@@ -17,7 +17,8 @@ final class ExitChip {
 /// Paints the exits of a layout (docs/ui-spec.md «Граф»): dots, capsules,
 /// and the labels and counters on chips of the canvas's color that arrows go
 /// behind. Over the arrows, under the tiles:
-/// a tile covers the half of a dot on its side, as in the mockups.
+/// a tile covers the half of a dot on its side, as in the mockups. Clicks
+/// go through it.
 class ExitsPainter extends CustomPainter {
   ExitsPainter(this.graph, this.marks)
     : chips = List.unmodifiable(_chipsOf(graph, marks));
@@ -141,6 +142,9 @@ class ExitsPainter extends CustomPainter {
     Tone.taken || Tone.plain => CanvasColors.taken,
     Tone.untaken => CanvasColors.untakenExit,
   };
+
+  @override
+  bool? hitTest(Offset position) => false;
 
   @override
   bool shouldRepaint(ExitsPainter old) =>

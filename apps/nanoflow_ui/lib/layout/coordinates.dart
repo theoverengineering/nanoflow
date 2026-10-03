@@ -46,11 +46,17 @@ double overTile(NodeKind kind) {
 }
 
 /// The room the marks over a tile take: badges in its top right corner, the
-/// tiles stacked behind it.
-double marksAbove(GNode node) => math.max(12, overTile(node.kind) + 4);
+/// tiles stacked behind it; over a frame, what is drawn over it.
+double marksAbove(GNode node) =>
+    math.max(12, (node.framed?.room.above ?? overTile(node.kind)) + 4);
 
 /// The room under a tile: its name and place; a marker's state badge.
-double textsBelow(GNode node) => node.isMarker ? 12 : placeTop + placeHeight;
+/// Nothing is under a frame: its title is in it.
+double textsBelow(GNode node) => node.framed != null
+    ? 0
+    : node.isMarker
+    ? 12
+    : placeTop + placeHeight;
 
 /// How far a loop's far side is from the middle of its tile: [index] counts
 /// from the innermost loop on that side.
@@ -429,9 +435,19 @@ final class NodeFrame {
 }
 
 /// The frame of [node] with its tile's middle at [y] and left side at x = 0.
+///
+/// The tile of an expanded node is its frame: no name or place under it,
+/// no state badge, the input bar and the exits level with its body's start
+/// and end, and over it only what is drawn with the frame.
 NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   final o = options;
-  final tile = Rect.fromLTWH(0, y - port.height / 2, o.tile, port.height);
+  final framed = node.framed;
+  final tile = Rect.fromLTWH(
+    0,
+    y - port.height / 2,
+    node.widthOf(o),
+    port.height,
+  );
   Rect centred(String? text, LabelKind kind, double top, double height) {
     final middle = tile.center.x;
     if (text == null) return Rect.fromLTWH(middle, tile.bottom, 0, 0);
@@ -440,36 +456,49 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   }
 
   final name = centred(
-    node.name,
+    framed == null ? node.name : null,
     LabelKind.nodeName,
     tile.bottom + nameTop,
     nameHeight,
   );
   final place = centred(
-    node.place,
+    framed == null ? node.place : null,
     LabelKind.place,
     tile.bottom + placeTop,
     placeHeight,
   );
-  final marks = Rect.fromLTRB(
-    tilesBehind(node.kind) > 0 ? tile.left + stackInset : tile.right - 60,
-    tile.top - math.max(10, overTile(node.kind)),
-    tile.right + 8,
-    tile.top + 8,
-  );
-  final status = Rect.fromLTRB(
-    tile.right - 10,
-    tile.bottom - 10,
-    tile.right + 7,
-    tile.bottom + 7,
-  );
+  final above = framed?.room.above;
+  final marks = switch (above) {
+    null => Rect.fromLTRB(
+      tilesBehind(node.kind) > 0 ? tile.left + stackInset : tile.right - 60,
+      tile.top - math.max(10, overTile(node.kind)),
+      tile.right + 8,
+      tile.top + 8,
+    ),
+    0.0 => Rect.fromLTRB(tile.right, tile.top, tile.right, tile.top),
+    final above => Rect.fromLTRB(
+      tile.left,
+      tile.top - above,
+      tile.right + above,
+      tile.top,
+    ),
+  };
+  final status = framed != null
+      ? Rect.fromLTRB(tile.right, tile.bottom, tile.right, tile.bottom)
+      : Rect.fromLTRB(
+          tile.right - 10,
+          tile.bottom - 10,
+          tile.right + 7,
+          tile.bottom + 7,
+        );
+  final barMiddle = y + port.inputCentre;
   final bar = port.inputs.isEmpty
       ? null
       : Rect.fromLTRB(
           tile.left - o.barWidth / 2 - o.arrowGap - o.arrowLength,
-          y - port.barHalf,
+          barMiddle - port.barHalf,
           tile.left + o.barWidth / 2,
-          y + port.barHalf,
+          barMiddle + port.barHalf,
         );
   final counterWidth =
       math.max(

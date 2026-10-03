@@ -72,16 +72,33 @@ List<BodyLevel> bodyLevels(
 ) {
   final levels = [BodyLevel._(workflow.name, workflow.body, null)];
   for (final opened in path) {
-    final node = levels.last.body.node(opened.nodeId);
-    if (node == null || !openings(node, functions).contains(opened)) break;
-    levels.add(switch (node) {
-      CopiesNode(:final label, :final body) => BodyLevel._(label, body, opened),
-      _ => BodyLevel._(
-        functionTitle(opened.functionId!),
-        functions[opened.functionId]!.body,
-        opened,
-      ),
-    });
+    final level = levelOpened(levels.last.body, opened, functions);
+    if (level == null) break;
+    levels.add(level);
   }
   return levels;
 }
+
+/// The level [opened] opens in [body], whose calls go to [functions]; `null`
+/// when [body] has no such node, or it does not open so ([openings]).
+BodyLevel? levelOpened(
+  GraphBody body,
+  Opened opened,
+  Map<String, GraphFunction> functions,
+) {
+  final node = body.node(opened.nodeId);
+  if (node == null || !openings(node, functions).contains(opened)) return null;
+  return switch (node) {
+    CopiesNode(:final label, :final body) => BodyLevel._(label, body, opened),
+    _ => BodyLevel._(
+      functionTitle(opened.functionId!),
+      functions[opened.functionId]!.body,
+      opened,
+    ),
+  };
+}
+
+/// The path to a level, as a key: another path, another key.
+String levelKey(Iterable<Opened> path) =>
+    [for (final opened in path) '${opened.nodeId}#${opened.functionId ?? ''}']
+        .join('/');

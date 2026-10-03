@@ -195,10 +195,11 @@ final class CopiesFrame {
   /// What [copy] is called: `pkg 2`.
   String nameOf(Copy copy) => copyName(node, copy.number);
 
-  /// What the switcher says while no copy can be chosen: `choose a pkg one
-  /// level up`.
+  /// What the switcher says while no copy can be chosen: `choose the outer
+  /// pkg first` — the frame round it may be a level up or drawn round it in
+  /// place.
   String? get chooseFirst => switch (around) {
-    final around? => 'choose a ${_variableOf(around) ?? 'copy'} one level up',
+    final around? => 'choose the outer ${_variableOf(around) ?? 'copy'} first',
     null => null,
   };
 }
@@ -222,17 +223,17 @@ final class ShownSteps {
   /// The steps shown, in the order of their first `step-started`.
   final List<StepState> steps;
 
-  /// The names of the copies each step is in, frame by frame, with whether
-  /// the frame shows one copy.
-  final Map<String, List<({String name, bool chosen})>> _paths;
+  /// The names of the copies each step is in, frame by frame, with the
+  /// depth of the frame where it is the copy shown; `null` for any other.
+  final Map<String, List<_Part>> _paths;
 
-  static Map<String, List<({String name, bool chosen})>> _pathsOf(
+  static Map<String, List<_Part>> _pathsOf(
     List<CopiesFrame> frames,
     List<LevelCopies> levelCopies,
   ) {
-    final paths = <String, List<({String name, bool chosen})>>{};
-    void add(CopiesNode node, Copy copy, bool chosen) {
-      final name = (name: copyName(node, copy.number), chosen: chosen);
+    final paths = <String, List<_Part>>{};
+    void add(CopiesNode node, Copy copy, int? chosenAt) {
+      final name = (name: copyName(node, copy.number), chosenAt: chosenAt);
       for (final step in copy.steps) {
         (paths[step.stepId] ??= []).add(name);
       }
@@ -240,12 +241,16 @@ final class ShownSteps {
 
     for (final frame in frames) {
       for (final copy in frame.copies) {
-        add(frame.node, copy, copy.id == frame.selected?.id);
+        add(
+          frame.node,
+          copy,
+          copy.id == frame.selected?.id ? frame.depth : null,
+        );
       }
     }
     for (final (:node, :copies) in levelCopies) {
       for (final copy in copies) {
-        add(node, copy, false);
+        add(node, copy, null);
       }
     }
     return paths;
@@ -268,17 +273,22 @@ final class ShownSteps {
   };
 
   /// What a row of `Logs` says of the copies the step [stepId] is in, but
-  /// those chosen, which the title says: `pkg 2 › target 1`; `null` for a
-  /// step in none.
-  String? tagOf(String stepId) {
+  /// those chosen, which the title says — those chosen down to the level
+  /// [upTo], when the title is of a level above: `pkg 2 › target 1`;
+  /// `null` for a step in none.
+  String? tagOf(String stepId, {int? upTo}) {
     final names = [
-      for (final part
-          in _paths[stepId] ?? const <({String name, bool chosen})>[])
-        if (!part.chosen) part.name,
+      for (final part in _paths[stepId] ?? const <_Part>[])
+        if (part.chosenAt == null || upTo != null && part.chosenAt! > upTo)
+          part.name,
     ];
     return names.isEmpty ? null : names.join(' › ');
   }
 }
+
+/// The name of a copy a step is in, and the depth of its frame when it is
+/// the copy shown there.
+typedef _Part = ({String name, int? chosenAt});
 
 /// What [levels] show of [session]: each level opened from a `copies` node
 /// is a frame with its copies, the copy [selected] at its depth (by the id

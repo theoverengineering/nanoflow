@@ -31,7 +31,10 @@ GraphLayout route(
 
   final paths = <GEdge, List<Point>>{};
   for (final edge in graph.edges) {
-    final start = Point(leftOf(edge.from) + o.tile, exitY(edge));
+    final start = Point(
+      leftOf(edge.from) + frames[edge.from]!.tile.right,
+      exitY(edge),
+    );
     final end = Point(base(edge.to), inputY(edge));
     final points = <Point>[start];
     switch (edge.kind) {
@@ -102,6 +105,7 @@ GraphLayout route(
     final shift = Point(leftOf(node), 0) + origin;
     final port = ports[node]!;
     final bar = frame.bar;
+    final tile = frame.tile.shift(shift);
     nodes[node.id] = NodeBox(
       id: node.id,
       kind: node.kind,
@@ -111,7 +115,7 @@ GraphLayout route(
       place: node.place,
       inside: node.inside,
       layer: node.layer,
-      tile: frame.tile.shift(shift),
+      tile: tile,
       nameRect: frame.name.shift(shift),
       placeRect: frame.place.shift(shift),
       marks: frame.marks.shift(shift),
@@ -130,6 +134,7 @@ GraphLayout route(
                   node.item.y + port.inputAt[edge]! + shift.y,
               ],
             ),
+      frame: node.framed?.placeIn(tile),
     );
     for (final exit in node.exits) {
       final e = frame.exits[exit]!;

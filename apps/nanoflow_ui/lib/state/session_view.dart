@@ -12,6 +12,7 @@ import 'copies.dart';
 import 'freshness.dart';
 import 'graph_file_source.dart';
 import 'graph_marks.dart';
+import 'in_place.dart';
 import 'log_rows.dart';
 import 'outcomes.dart';
 import 'session_feed.dart';
@@ -100,6 +101,30 @@ String? snapshotDocumentOf(SessionData session) =>
 /// The `Logs` panel of a session: its title, its rows and their time scale.
 typedef LogsView = ({LogsHeader header, List<LogRow> rows, TimeScale scale});
 
+/// What a session shows in a frame drawn in place (decision 6): what its
+/// body would show opened — the copies frames down to it and the steps
+/// shown, those of the copies chosen in them — and their marks on its body.
+final class FrameScope {
+  FrameScope._(this.frame, this.shown, this.marks);
+
+  final InPlaceFrame frame;
+
+  /// The copies frames down to the frame's body, and the steps shown in it.
+  final ShownSteps shown;
+
+  /// What the steps shown put on the frame's body.
+  final GraphMarks marks;
+
+  /// The frame's own copies, the one chosen, how they stand; `null` for a
+  /// call.
+  CopiesFrame? get copies => shown.frames
+      .where((frame) => frame.depth == this.frame.path.length)
+      .firstOrNull;
+}
+
+/// No copies chosen in any frame.
+Map<int, String> _noCopies(List<Opened> path) => const {};
+
 /// Everything the graph screen shows of a session at a moment: its card,
 /// its graph, and its steps on the levels of the graph drawn — the copies
 /// frames gone down through, the steps shown, the `Logs`, the selected
@@ -114,6 +139,10 @@ final class SessionView {
     required this.logs,
     required this.step,
     required this.marks,
+    required this.logsShown,
+    required this._session,
+    required this._frames,
+    required this._scopes,
   });
 
   /// [session] at [now], with its step [stepId] selected; its snapshot
@@ -122,6 +151,11 @@ final class SessionView {
   /// the canvas, its steps found on them by [places] (by default, the
   /// places of its graph's workflow); [copies] the copy selected in each
   /// copies frame among them, by depth.
+  ///
+  /// [frames] are drawn in place in the last level: each shows what its
+  /// body would opened, the copies chosen down to it [copiesIn] the path
+  /// to it. `Logs` follow the frame at [follow], as they would its body
+  /// opened; the level drawn without it.
   factory SessionView.of(
     SessionData session, {
     required DateTime now,
@@ -131,6 +165,9 @@ final class SessionView {
     List<BodyLevel> levels = const [],
     StepPlaces? places,
     Map<int, String> copies = const {},
+    List<InPlaceFrame> frames = const [],
+    Map<int, String> Function(List<Opened> path) copiesIn = _noCopies,
+    List<Opened>? follow,
   }) {
     final graph = sessionGraphOf(
       session,
@@ -148,7 +185,42 @@ final class SessionView {
       session: session,
       selected: copies,
     );
-    final copy = shown.copy;
+    final scopes = <String, FrameScope>{
+      for (final frame in allFrames(frames))
+        levelKey(frame.path): () {
+          final inside = framesOf(
+            frame.levels,
+            places: places!,
+            session: session,
+            selected: copiesIn(frame.path),
+          );
+          return FrameScope._(
+            frame,
+            inside,
+            GraphMarks.of(
+              frame.level.body,
+              places: places,
+              session: session,
+              steps: inside.steps,
+              selectedStepId: stepId,
+            ),
+          );
+        }(),
+    };
+    final followed = follow == null ? null : scopes[levelKey(follow)];
+    final logs = followed?.shown ?? shown;
+    final copy = logs.copy;
+    // The title names the copies chosen down to the level Logs show; those
+    // chosen in frames in it, the rows do.
+    final depth = (followed?.frame.levels.length ?? levels.length) - 1;
+    String? tagOf(String stepId) => _deepest(
+      session,
+      places!,
+      stepId,
+      shown: logs,
+      frames: followed?.frame.frames ?? frames,
+      scopes: scopes,
+    ).tagOf(stepId, upTo: depth);
     return SessionView._(
       summary: summarize(session, now),
       graph: graph,
@@ -156,13 +228,13 @@ final class SessionView {
       places: places,
       shown: shown,
       logs: (
-        header: LogsHeader(shown.steps.length, copy: copy),
+        header: LogsHeader(logs.steps.length, copy: copy),
         rows: logRows(
           session,
-          steps: shown.steps,
+          steps: logs.steps,
           places: places,
           now: now,
-          copyOf: shown.tagOf,
+          copyOf: tagOf,
           end: copy == null,
         ),
         scale: timeScale(session, now),
@@ -177,6 +249,10 @@ final class SessionView {
               steps: shown.steps,
               selectedStepId: stepId,
             ),
+      logsShown: logs,
+      session: session,
+      frames: frames,
+      scopes: scopes,
     );
   }
 
@@ -209,7 +285,83 @@ final class SessionView {
   /// The steps shown, in the order of their first `step-started`.
   List<StepState> get steps => shown.steps;
 
+  /// What `Logs` show: the level drawn, or the frame drawn in place whose
+  /// copy they follow.
+  final ShownSteps logsShown;
+
+  final SessionData _session;
+
+  /// The frames drawn in place in the level drawn.
+  final List<InPlaceFrame> _frames;
+
+  /// What each frame drawn in place shows, by [levelKey] of its path.
+  final Map<String, FrameScope> _scopes;
+
+  /// What the frame drawn in place at [path] shows; `null` for one not
+  /// drawn.
+  FrameScope? scopeOf(List<Opened> path) => _scopes[levelKey(path)];
+
+  /// What the level drawn shows at [path] — its own when [path] is `null`
+  /// or no frame of it.
+  ShownSteps shownAt(List<Opened>? path) =>
+      path == null ? shown : scopeOf(path)?.shown ?? shown;
+
   /// The copies the step [stepId] is in: `pkg 2 › target 1`; `null` for a
-  /// step in no copies frame drawn.
-  String? copyOf(String stepId) => shown.copyOf(stepId);
+  /// step in no copies frame drawn. The frames drawn in place it is in
+  /// name them as its body opened would.
+  String? copyOf(String stepId) => _deepest(
+    _session,
+    places,
+    stepId,
+    shown: shown,
+    frames: _frames,
+    scopes: _scopes,
+  ).copyOf(stepId);
+
+  /// The nodes to show the step [stepId] at: the node of the level drawn
+  /// it is on or in, then, while that node is drawn in place, the node of
+  /// its frame it is on or in, and so on; none for a step at no node.
+  List<String> revealPathOf(String stepId) {
+    final nodes = <String>[];
+    var marks = this.marks;
+    var frames = _frames;
+    while (marks != null) {
+      final node = marks.nodesOf(stepId).firstOrNull;
+      if (node == null) break;
+      nodes.add(node);
+      final frame = frames.where((f) => f.nodeId == node).firstOrNull;
+      if (frame == null) break;
+      marks = scopeOf(frame.path)?.marks;
+      frames = frame.frames;
+    }
+    return nodes;
+  }
+}
+
+/// What names the copies of the step [stepId] of [session] best: the
+/// deepest frame drawn in place that holds it, from [frames] down — else
+/// [shown].
+ShownSteps _deepest(
+  SessionData session,
+  StepPlaces places,
+  String stepId, {
+  required ShownSteps shown,
+  required List<InPlaceFrame> frames,
+  required Map<String, FrameScope> scopes,
+}) {
+  final place = session.steps[stepId]?.place;
+  for (final frame in frames) {
+    if (!places.isIn(place, frame.node)) continue;
+    final scope = scopes[levelKey(frame.path)];
+    if (scope == null) continue;
+    return _deepest(
+      session,
+      places,
+      stepId,
+      shown: scope.shown,
+      frames: frame.frames,
+      scopes: scopes,
+    );
+  }
+  return shown;
 }

@@ -247,7 +247,7 @@ void main() {
     expect(chip(1), findsNothing);
     expect(
       textIn(tester, find.byKey(CopySwitcher.chooseFirstKey)),
-      'choose a pkg one level up',
+      'choose the outer pkg first',
     );
     expect(textIn(tester, footer()), 'done 0 of 4');
   });

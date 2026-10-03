@@ -111,25 +111,32 @@ Map<String, int> referenceCrossings() => (jsonDecode(
   File('test/layout/reference.json').readAsStringSync(),
 ) as Map<String, Object?>).map((name, count) => MapEntry(name, count! as int));
 
-/// Every coordinate of [layout] as text, to compare layouts.
-String describe(GraphLayout layout) {
-  final out = StringBuffer('bounds ${layout.bounds}\n');
+/// Every coordinate of [layout] as text, to compare layouts; of the
+/// layouts in its frames too, indented.
+String describe(GraphLayout layout, [String indent = '']) {
+  final out = StringBuffer('${indent}bounds ${layout.bounds}\n');
   for (final node in layout.nodes.values) {
     out.writeln(
-      '${node.id} ${node.kind} ${node.name} ${node.place} ${node.inside} '
-      'L${node.layer} ${node.tile} ${node.nameRect} ${node.placeRect} '
-      '${node.bar?.rect} ${node.bar?.inputs}',
+      '$indent${node.id} ${node.kind} ${node.name} ${node.place} '
+      '${node.inside} L${node.layer} ${node.tile} ${node.nameRect} '
+      '${node.placeRect} ${node.bar?.rect} ${node.bar?.inputs}',
     );
+    if (node.frame case final frame?) {
+      out
+        ..writeln('$indent  frame ${frame.entry} ${frame.exit}')
+        ..write(describe(frame.inner, '$indent    '));
+    }
   }
   for (final exit in layout.exits) {
     out.writeln(
-      '${exit.node}#${exit.index} ${exit.label} ${exit.shape} ${exit.anchor} '
+      '$indent${exit.node}#${exit.index} ${exit.label} ${exit.shape} '
+      '${exit.anchor} '
       '${exit.handle} ${exit.labelRect} ${exit.counterAt}',
     );
   }
   for (final edge in layout.edges) {
     out.writeln(
-      '${edge.from}#${edge.exitIndex}.${edge.listIndex}->${edge.to} '
+      '$indent${edge.from}#${edge.exitIndex}.${edge.listIndex}->${edge.to} '
       '${edge.kind} ${edge.points} ${edge.tip} ${edge.pieces}',
     );
   }

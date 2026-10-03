@@ -47,6 +47,18 @@ final class CanvasMarks {
     );
   }
 
+  /// The marks of [scope] on the body of a frame drawn in place: as on
+  /// that body opened; plain without a session.
+  factory CanvasMarks.ofFrame(FrameScope? scope) {
+    if (scope == null) return plain;
+    final copies = scope.copies;
+    return CanvasMarks._(
+      scope.marks,
+      allCopies: copies != null && copies.selected == null,
+      oneCopy: copies?.selected != null,
+    );
+  }
+
   static const plain = CanvasMarks._(null);
 
   final GraphMarks? _marks;

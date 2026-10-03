@@ -89,3 +89,48 @@ Future<void> settle(WidgetTester tester) async {
     await tester.pump(const Duration(milliseconds: 100));
   }
 }
+
+/// The release fixture as docs/design/code-first/function-frames.html has
+/// it: publish() uploads by calling upload(), which signs by calling
+/// sign() before it puts.
+GraphFile framesGraphFile() {
+  final json = graphFileNamed('release').toJson();
+  final functions = json['functions']! as Map<String, Object?>;
+  Map<String, Object?> step(String id, String name, int line) => {
+    'id': id,
+    'kind': 'step',
+    'name': name,
+    'place': 'lib/publish.dart:$line',
+  };
+  Map<String, Object?> call(String id, String function, int line) => {
+    'id': id,
+    'kind': 'call',
+    'functions': ['lib/publish.dart#$function'],
+    'place': 'lib/publish.dart:$line',
+  };
+  Map<String, Object?> chain(List<Map<String, Object?>> nodes) => {
+    'nodes': nodes,
+    'edges': [
+      for (var i = 0; i <= nodes.length; i++)
+        {
+          'from': i == 0 ? null : nodes[i - 1]['id'],
+          'to': i == nodes.length ? null : nodes[i]['id'],
+          'label': null,
+        },
+    ],
+  };
+  final publish = functions['lib/publish.dart#publish']! as Map;
+  final body = publish['body']! as Map;
+  (body['nodes']! as List)[0] = call('1', 'upload', 12);
+  functions['lib/publish.dart#upload'] = {
+    'name': 'upload',
+    'place': 'lib/publish.dart:20',
+    'body': chain([call('1', 'sign', 21), step('2', 'put', 22)]),
+  };
+  functions['lib/publish.dart#sign'] = {
+    'name': 'sign',
+    'place': 'lib/publish.dart:25',
+    'body': chain([step('1', 'hash', 26), step('2', 'signature', 27)]),
+  };
+  return GraphFile.fromJson(json);
+}

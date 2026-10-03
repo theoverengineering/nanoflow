@@ -863,6 +863,182 @@ void main() {
     });
   });
 
+  group('nodes expanded in place (decision 6)', () {
+    final release = loadGraphFile('release');
+    const publish = Opened('5', functionId: 'lib/publish.dart#publish');
+
+    List<String> frames() => [
+      for (final frame in model.canvas.frames) frame.level.title,
+    ];
+
+    test('a node expands in the level drawn, and collapses back', () {
+      run((async) {
+        graphFile.graph = release;
+        notified = 0;
+        model.expandNode(const [], publish);
+        expect(notified, greaterThan(0));
+        expect(frames(), ['publish()']);
+        expect(model.canvas.frames.single.path, const [publish]);
+        model.collapseNode(const [], '5');
+        expect(frames(), isEmpty);
+      });
+    });
+
+    test('stay as another session or Current graph is shown, and go for '
+        'another workflow or a graph file written again', () {
+      run((async) {
+        graphFile.graph = GraphFile.fromJson({
+          ...release.toJson(),
+          'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
+        });
+        give(
+          async,
+          changesOf([
+            Journal(
+              'r1r1-session',
+              workflow: 'release',
+              graph: release.toJson(),
+            ),
+            Journal(
+              'r2r2-session',
+              workflow: 'release',
+              graph: release.toJson(),
+              startedAt: 10,
+            ),
+          ]),
+        );
+        model.expandNode(const [], publish);
+        model.showSession('r1r1-session');
+        expect(frames(), ['publish()']);
+        model.selection.showCurrentGraph();
+        expect(frames(), ['publish()']);
+
+        model.selectWorkflow('lib/release.dart#release');
+        expect(frames(), ['publish()'], reason: 'the same workflow');
+        model.selectWorkflow('lib/publish.dart#publish');
+        model.selectWorkflow('lib/release.dart#release');
+        expect(frames(), isEmpty);
+
+        model.expandNode(const [], publish);
+        graphFile.graph = GraphFile.fromJson(graphFile.graph!.toJson());
+        expect(frames(), isEmpty);
+      });
+    });
+
+    group('in a session with copies', () {
+      const copies = Opened('2');
+
+      void open(FakeAsync async) {
+        graphFile.graph = copiesGraphFile();
+        give(
+          async,
+          changesOf([
+            Journal(
+                'a1b2-session',
+                workflow: 'inPlace',
+                graph: copiesGraphJson(),
+              )
+              ..step(
+                'plan',
+                1,
+                end: 2,
+                place: copiesAt(4),
+                key: 'p',
+                after: null,
+              )
+              ..step(
+                'upload',
+                3,
+                end: 4,
+                place: copiesAt(7),
+                key: 'uc',
+                after: 'p',
+              )
+              ..step(
+                'upload',
+                3,
+                end: 5,
+                place: copiesAt(7),
+                key: 'ut',
+                after: 'p',
+              )
+              ..step(
+                'verify',
+                6,
+                end: 7,
+                place: copiesAt(8),
+                key: 'vc',
+                after: 'uc',
+              )
+              ..step('verify', 8, place: copiesAt(8), key: 'vt', after: 'ut'),
+          ]),
+        );
+        model.expandNode(const [], copies);
+      }
+
+      test('a copy chosen in the frame is the one opening it shows; Logs '
+          'and the selection follow it', () {
+        run((async) {
+          open(async);
+          var view = model.sessionView(at(746))!;
+          final tool = view.scopeOf(const [copies])!.copies!.copies[1];
+          model.selectCopyAt(const [copies], tool.id);
+          view = model.sessionView(at(746))!;
+          expect(view.scopeOf(const [copies])!.copies!.selected!.number, 2);
+          expect(view.logs.header.text, 'pkg 2 · 2 steps');
+          expect(model.selection.stepId, 'a1b2-verify-4');
+
+          model.open(copies);
+          view = model.sessionView(at(746))!;
+          expect(view.frames.single.selected!.number, 2);
+          model.openLevel(0);
+          model.selectCopyAt(const [copies], null);
+          expect(model.sessionView(at(746))!.logs.header.text, '5 steps');
+        });
+      });
+
+      test('a click on a node in the frame selects its last step among '
+          'those the frame shows; a double click on a step there opens it', () {
+        run((async) {
+          open(async);
+          final core = model
+              .sessionView(at(746))!
+              .scopeOf(const [copies])!
+              .copies!
+              .copies
+              .first;
+          model.clickNode('2', path: const [copies]);
+          expect(model.selection.stepId, 'a1b2-verify-4');
+          model.selectCopyAt(const [copies], core.id);
+          model.clickNode('2', path: const [copies]);
+          expect(model.selection.stepId, 'a1b2-verify-3');
+          final verify =
+              model.canvas.frames.single.level.body.node('2')! as StepNode;
+          expect(
+            model.visitToOpen(verify, path: const [copies])!.stepId,
+            'a1b2-verify-3',
+          );
+        });
+      });
+
+      test('a node in a frame opens one level down from the frame', () {
+        run((async) {
+          graphFile.graph = copiesGraphFile();
+          model.selectWorkflow('lib/copies.dart#viaCall');
+          model.expandNode(const [], const Opened('1'));
+          model.open(
+            const Opened('1', functionId: 'lib/copies.dart#publish'),
+            from: const [Opened('1')],
+          );
+          expect(
+            [for (final level in model.canvas.levels) level.title],
+            ['viaCall', 'pkg in packages', 'publish()'],
+          );
+        });
+      });
+    });
+  });
+
   test('opens a graph file whose runs/ has a session of a workflow it does '
       'not have: noted, and reachable', () async {
     final dir = await Directory.systemTemp.createTemp('nanoflow_model_test');

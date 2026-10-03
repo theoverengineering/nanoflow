@@ -31,7 +31,9 @@ typedef OpenModel = GraphModel Function(String file);
 ///
 /// A double click on a call draws its function's body, on copies the body
 /// of a copy (`openings`); a call of an interface method first offers its
-/// implementations.
+/// implementations. The `+` on a call or copies draws that body in place,
+/// in a frame (decision 6), the same way; the model keeps what is expanded
+/// for any session of the workflow.
 ///
 /// `Open` in `Logs` opens the step details window over it all on the
 /// selected step; a double click on a step node, on the node's last step
@@ -119,12 +121,36 @@ class _GraphScreenState extends State<GraphScreen> {
     _model.dispose();
   }
 
-  /// A double click on [node] at [position]: draws what it opens; for a
-  /// call of several functions, the one chosen from a menu there.
-  Future<void> _openNode(GraphNode node, Offset position) async {
+  /// A double click on [node], a node of the body at [path], at
+  /// [position]: draws what it opens; for a call of several functions, the
+  /// one chosen from a menu there.
+  Future<void> _openNode(
+    List<Opened> path,
+    GraphNode node,
+    Offset position,
+  ) async {
+    final opened = await _opening(node, position);
+    if (opened != null) _model.open(opened, from: path);
+  }
+
+  /// The `+` on [node], a node of the body at [path], at [position]:
+  /// expands it in place as it opens; for a call of several functions, as
+  /// the one chosen from a menu there.
+  Future<void> _expandNode(
+    List<Opened> path,
+    GraphNode node,
+    Offset position,
+  ) async {
+    final opened = await _opening(node, position);
+    if (opened != null) _model.expandNode(path, opened);
+  }
+
+  /// How [node] opens: as it alone can, or as chosen from a menu at
+  /// [position]; `null` when it opens nothing or nothing is chosen.
+  Future<Opened?> _opening(GraphNode node, Offset position) async {
     final choices = openings(node, _model.canvas.file?.functions ?? const {});
-    if (choices.isEmpty) return;
-    if (choices.length == 1) return _model.open(choices.single);
+    if (choices.isEmpty) return null;
+    if (choices.length == 1) return choices.single;
     final overlay =
         Overlay.of(context).context.findRenderObject()! as RenderBox;
     final at = overlay.globalToLocal(position);
@@ -149,18 +175,19 @@ class _GraphScreenState extends State<GraphScreen> {
           ),
       ],
     );
-    if (functionId == null || !mounted) return;
-    _model.open(Opened(node.id, functionId: functionId));
+    if (functionId == null || !mounted) return null;
+    return Opened(node.id, functionId: functionId);
   }
 
   /// `Open` in `Logs`: the window on the selected [step].
   void _openStep(StepDetails step) =>
       setState(() => _details = (node: null, stepId: step.stepId));
 
-  /// A double click on the step node [node]: the window on the step it
-  /// opens on, which is selected; on the node alone when it has none.
-  void _openStepNode(StepNode node) {
-    final visit = _model.visitToOpen(node);
+  /// A double click on the step node [node] — of the frame drawn in place
+  /// at [path], when given: the window on the step it opens on, which is
+  /// selected; on the node alone when it has none.
+  void _openStepNode(StepNode node, List<Opened>? path) {
+    final visit = _model.visitToOpen(node, path: path);
     if (visit != null) _model.showVisit(visit.stepId);
     setState(() => _details = (node: node, stepId: visit?.stepId));
   }
@@ -274,6 +301,7 @@ class _GraphScreenState extends State<GraphScreen> {
             controller: _canvas,
             onOpenNode: _openNode,
             onOpenStep: _openStepNode,
+            onExpandNode: _expandNode,
             topInset: _notesHeight == 0
                 ? GraphCanvas.sessionBarRoom
                 : math.max(

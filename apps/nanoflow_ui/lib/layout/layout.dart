@@ -14,6 +14,7 @@ import 'graph_layout.dart';
 import 'lanes.dart';
 import 'layers.dart';
 import 'layout_graph.dart';
+import 'nested.dart';
 import 'ordering.dart';
 import 'ports.dart';
 import 'routing.dart';
@@ -47,18 +48,47 @@ export 'layout_graph.dart'
         reachableSteps,
         shortName,
         startMarker;
+export 'nested.dart' show ExpandedNode, FrameRoom;
 
 /// Lays out one level of the graph, [body], from a start marker to end
 /// markers (`LayoutGraph.ofBody`), its calls named after their functions in
 /// [functions]: steps 1 to 8 of `docs/graph-layout.md`.
+///
+/// The calls and copies of [expanded], by id, are drawn in place (decision
+/// 6): each is a frame round the layout of the body it is given, a node of
+/// [body]'s layout as big as the frame (`NodeBox.frame`). A body in a frame
+/// has one end, after everything else; the nodes it expands are frames in
+/// it, and so on. Other ids of [expanded] are left out.
 ///
 /// The same body always gets the same layout.
 GraphLayout layoutBody(
   GraphBody body, {
   Map<String, GraphFunction> functions = const {},
   LayoutOptions options = const LayoutOptions(),
+  Map<String, ExpandedNode> expanded = const {},
+}) => _layout(body, functions, options, expanded, inFrame: false);
+
+GraphLayout _layout(
+  GraphBody body,
+  Map<String, GraphFunction> functions,
+  LayoutOptions options,
+  Map<String, ExpandedNode> expanded, {
+  required bool inFrame,
 }) {
-  final g = LayoutGraph.ofBody(body, functions: functions);
+  final g = LayoutGraph.ofBody(body, functions: functions, inFrame: inFrame);
+  for (final node in g.nodes) {
+    if (node.kind != NodeKind.call && node.kind != NodeKind.copies) continue;
+    final open = expanded[node.id];
+    if (open == null) continue;
+    final inner = _layout(
+      open.body,
+      functions,
+      options,
+      open.expanded,
+      inFrame: true,
+    );
+    node.framed = FramedBody.of(node, inner, open.room, options);
+  }
   findBackEdges(g);
   assignLayers(g);
   final layers = buildLayers(g);

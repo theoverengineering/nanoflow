@@ -4,7 +4,8 @@ import 'geometry.dart';
 import 'layout_graph.dart';
 
 /// A laid out graph. Coordinates start at (0, 0), the top left corner of
-/// [bounds].
+/// [bounds] — but those of a body in a frame ([FrameBox.inner]) are the
+/// coordinates of the layout round it.
 final class GraphLayout {
   GraphLayout({
     required this.nodes,
@@ -49,6 +50,7 @@ final class NodeBox {
     required this.marks,
     required this.status,
     required this.bar,
+    this.frame,
   });
 
   /// The body node's id, [startMarker], or an end marker's ([endMarkerAt]).
@@ -95,6 +97,34 @@ final class NodeBox {
 
   /// The input bar; `null` when no arrow comes in.
   final InputBar? bar;
+
+  /// The body of a call or copies expanded in place, [tile] its frame;
+  /// `null` for a node drawn as a tile. A frame has no name or place under
+  /// it: [nameRect] and [placeRect] are empty.
+  final FrameBox? frame;
+}
+
+/// The body of a node expanded in place, in the node's frame (decision 6):
+/// its layout, and the links from the frame's sides to its start and end.
+///
+/// Arrows into the node point at the bar on the frame's left side, level
+/// with the body's start; arrows out leave the frame's right side level
+/// with the body's end. The links run straight across the room between.
+final class FrameBox {
+  FrameBox({required this.inner, required this.entry, required this.exit});
+
+  /// The body's layout, in the coordinates of the layout round it: its
+  /// bounds lie in the frame, under the frame's title row. It has one end,
+  /// right of everything else in it.
+  final GraphLayout inner;
+
+  /// From the frame's left side to the body's start; `null` when the body
+  /// has no start.
+  final Segment? entry;
+
+  /// From the body's end to the frame's right side; `null` when the body
+  /// has no end.
+  final Segment? exit;
 }
 
 /// The bar on a tile's left side that arrows point at.

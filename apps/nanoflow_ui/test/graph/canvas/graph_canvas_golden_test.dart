@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
+import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 
 import '../../support/golden.dart';
@@ -34,5 +35,25 @@ void main() {
       ),
     );
     await expectGolden(tester, 'canvas_copies');
+  });
+
+  testWidgets('publish() expanded in place, and upload() in it; sign() '
+      'left a tile (docs/design/code-first/function-frames.html)', (
+    tester,
+  ) async {
+    final model = modelOf(graph: framesGraphFile());
+    const publish = Opened('5', functionId: 'lib/publish.dart#publish');
+    model
+      ..expandNode(const [], publish)
+      ..expandNode(const [
+        publish,
+      ], const Opened('1', functionId: 'lib/publish.dart#upload'));
+    await pumpScreen(
+      tester,
+      GraphCanvas(model: model, onExpandNode: (_, _, _) {}),
+      size: reviewCanvas,
+    );
+    await settle(tester);
+    await expectGolden(tester, 'canvas_frames');
   });
 }

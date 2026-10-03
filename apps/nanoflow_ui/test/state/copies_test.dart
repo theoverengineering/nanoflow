@@ -628,7 +628,7 @@ void main() {
         final all = shownOf(j, {2: j.steps[8].id});
         final inner = all.frames.last;
         expect(inner.choosable, isFalse);
-        expect(inner.chooseFirst, 'choose a pkg one level up');
+        expect(inner.chooseFirst, 'choose the outer pkg first');
         expect(inner.selected, isNull);
         expect(inner.footer, 'done 0 of 4');
         expect(all.frames.first.choosable, isTrue);

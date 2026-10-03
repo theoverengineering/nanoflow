@@ -3,12 +3,17 @@ import 'layout_graph.dart';
 /// Step 2: puts every node in the layer of the longest forward path to it.
 ///
 /// Nodes with no forward arrow into them — the start marker among them — are
-/// layer 0, so every forward arrow goes right. Sets [GNode.layer].
+/// layer 0, so every forward arrow goes right. In a body in a frame
+/// ([LayoutGraph.inFrame]) the start marker is alone in layer 0 — other
+/// nodes nothing leads to are layer 1 — and the one end marker goes after
+/// every other node, alone in the last layer. Sets [GNode.layer].
 void assignLayers(LayoutGraph graph) {
   final done = <GNode>{};
+  final start = graph.starts.firstOrNull;
+  final first = graph.inFrame && start != null ? 1 : 0;
   int layerOf(GNode node) {
     if (done.contains(node)) return node.layer;
-    var layer = 0;
+    var layer = node == start ? 0 : first;
     for (final edge in node.inEdges) {
       if (edge.kind != EdgeKind.forward) continue;
       final before = layerOf(edge.from) + 1;
@@ -21,6 +26,15 @@ void assignLayers(LayoutGraph graph) {
 
   for (final node in graph.nodes) {
     layerOf(node);
+  }
+  // The one end of a body in a frame comes after everything else: alone in
+  // the last layer, nothing between it and the frame's right side.
+  if (graph.inFrame) {
+    final end = graph.nodes.where((n) => n.kind == NodeKind.end).firstOrNull;
+    if (end == null) return;
+    for (final node in graph.nodes) {
+      if (node != end && node.layer >= end.layer) end.layer = node.layer + 1;
+    }
   }
 }
 

@@ -118,7 +118,7 @@ void main() {
       await pumpCanvas(
         tester,
         modelOf(),
-        onOpenNode: (node, at) => opened.add((node.id, at)),
+        onOpenNode: (_, node, at) => opened.add((node.id, at)),
       );
 
       await doubleTap(tester, tile('5'));
@@ -138,7 +138,7 @@ void main() {
     });
 
     testWidgets('the pointer over a node that opens is a hand', (tester) async {
-      await pumpCanvas(tester, modelOf(), onOpenNode: (_, _) {});
+      await pumpCanvas(tester, modelOf(), onOpenNode: (_, _, _) {});
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       addTearDown(mouse.removePointer);
       MouseCursor cursor() =>
@@ -412,6 +412,19 @@ void main() {
     ) async {
       await pumpCanvas(tester, modelOf(noGraph: true));
       expect(find.text('No valid graph yet'), findsOneWidget);
+      expect(find.byType(NodeTile), findsNothing);
+    });
+
+    testWidgets('draws nothing once the graph drawn has gone', (tester) async {
+      final model = modelOf();
+      await pumpCanvas(tester, model);
+      expect(find.byType(NodeTile), findsWidgets);
+      graphFileOf(model).graph = GraphFile.fromJson({
+        ...graphFileNamed('release').toJson(),
+        'workflows': <String>[],
+      });
+      await settle(tester);
+      expect(find.text('The graph file has no workflows'), findsOneWidget);
       expect(find.byType(NodeTile), findsNothing);
     });
   });

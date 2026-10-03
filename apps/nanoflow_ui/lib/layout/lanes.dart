@@ -115,6 +115,16 @@ Lanes assignLanes(
   LayoutOptions options,
 ) {
   final lanes = Lanes._(List<double>.filled(layers.length, 0));
+  // A layer is as wide as its widest node: a frame is wider than a tile.
+  // Its nodes stand at its left; an arrow out of a narrower one runs on to
+  // the layer's right side before it turns.
+  final widths = [
+    for (final layer in layers)
+      layer.fold(options.tile, (most, item) {
+        final width = item.node?.widthOf(options) ?? 0;
+        return width > most ? width : most;
+      }),
+  ];
   final r = options.cornerRadius;
   final r45 = r * math.tan(math.pi / 8);
   final entry =
@@ -179,6 +189,8 @@ Lanes assignLanes(
       turn._roomDiagonal = roomDiagonal;
     }
 
+    // From the layer's right side: an exit of a node narrower than the
+    // layer is left of it.
     double reachOf(GEdge edge) =>
         leftEdge + frames[edge.from]!.exits[edge.exit]!.reach;
 
@@ -278,7 +290,7 @@ Lanes assignLanes(
 
     if (gap + 1 < layers.length) {
       lanes.left[gap + 1] = next;
-      right = next + options.tile;
+      right = next + widths[gap + 1];
     }
   }
   return lanes;

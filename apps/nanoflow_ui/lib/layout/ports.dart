@@ -36,6 +36,11 @@ final class Ports {
 
   /// Half the input bar's length; 0 when nothing comes in.
   double barHalf = 0;
+
+  /// Where the middle of the input bar is, and of the exits: the middle of
+  /// the tile; on a frame, level with the body's start and end.
+  double get inputCentre => node.framed?.inputCentre ?? 0;
+  double get exitCentre => node.framed?.exitCentre ?? 0;
 }
 
 /// Step 5: the order of every node's exits and inputs, for the current order
@@ -79,8 +84,11 @@ Map<GNode, Ports> assignPorts(
 /// tile's side, a marker's height for a marker.
 ///
 /// A capsule counts as an exit plus half an exit for every arrow over one.
+///
+/// A frame is as tall as it is made (`FramedBody`).
 double tileHeight(GNode node, LayoutOptions options) {
-  final units = node.exits.fold(0.0, (sum, exit) => sum + _units(exit));
+  if (node.framed case final framed?) return framed.height;
+  final units = node.exits.fold(0.0, (sum, exit) => sum + exitUnits(exit));
   final exits = units == 0 ? 0.0 : (units + 1) * options.exitGap;
   final inputs = node.inEdges.isEmpty
       ? 0.0
@@ -90,7 +98,7 @@ double tileHeight(GNode node, LayoutOptions options) {
 }
 
 /// The room [exit] takes on its tile, in exit gaps.
-double _units(GExit exit) =>
+double exitUnits(GExit exit) =>
     exit.isCapsule ? 1 + 0.5 * (exit.edges.length - 1) : 1;
 
 /// The length of an input bar with [count] inputs a port gap apart: half a
@@ -144,10 +152,10 @@ void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
     if (below) ...loops.reversed,
   ]);
 
-  final units = port.slots.fold(0.0, (sum, exit) => sum + _units(exit));
-  var cursor = -units * options.exitGap / 2;
+  final units = port.slots.fold(0.0, (sum, exit) => sum + exitUnits(exit));
+  var cursor = port.exitCentre - units * options.exitGap / 2;
   for (final exit in port.slots) {
-    final span = _units(exit) * options.exitGap;
+    final span = exitUnits(exit) * options.exitGap;
     final middle = cursor + span / 2;
     port.slotAt[exit] = middle;
     final count = exit.edges.length;
@@ -238,7 +246,8 @@ void _orderInputs(
   ]);
   final count = port.inputs.length;
   for (var i = 0; i < count; i++) {
-    port.inputAt[port.inputs[i]] = (i - (count - 1) / 2) * options.portGap;
+    port.inputAt[port.inputs[i]] =
+        port.inputCentre + (i - (count - 1) / 2) * options.portGap;
   }
   port.barHalf = count == 0 ? 0 : barLength(count, options) / 2;
 }
