@@ -361,7 +361,8 @@ runs/
 - `functions` — функции с шагами, по id `путь#имя` (метод — `путь#Класс.имя`).
   Граф функции описан один раз, сколько бы раз её ни вызывали.
 - `workflows` — функции, переданные первым аргументом в `Flow.start`,
-  `Flow.run` или `Flow.resume`.
+  `Flow.run` или `Flow.resume`; у каждой есть запись в `functions`, даже
+  без шагов.
 - `body` — граф одного уровня:
 
 ```json
@@ -431,8 +432,11 @@ dart run nanoflow_describe stamp build/review   # §6.3; копия файла �
 шагами. Граф тела — граф потока управления, сведённый к узлам §6.1:
 
 - последовательность, `if`/`else`, `if-case`, `switch` (исчерпывающий по
-  `enum`, `bool`, `sealed` — без `default`), `while`, `do`, `for(;;)`,
-  `for … in`, `break`/`continue`, `return`, `?:`, `&&`/`||` с шагами справа;
+  `enum`, `bool`, `sealed` или с `case _` — без `default`) и
+  `switch`-выражение, `while`, `do`, `for(;;)`, `for … in`,
+  `break`/`continue`, `return`, `throw` (путь кончается), `?:`, `&&`/`||` с
+  шагами справа; выход из `try` (`return`, `break`, `continue`) идёт через
+  `finally`;
 - `Future.wait` над списком: элементы — ветки; элемент `for` — `copies`;
   `Future.wait(xs.map((x) async {…}))` — `copies`;
 - замыкание, вызванное на месте, — его тело на месте вызова;
@@ -442,7 +446,8 @@ dart run nanoflow_describe stamp build/review   # §6.3; копия файла �
 - `try` — тело и `finally`; ветки `catch` не рисуются (предупреждение).
 
 Предупреждения (`warnings`): имя шага — не литерал; шаги в замыкании,
-переданном дальше; вызов функции с шагами вне исходников; `catch`.
+переданном дальше; шаги в локальной функции; вызов функции с шагами вне
+исходников; `catch`.
 
 ## 8. Чтение (`nanoflow_reader`)
 
