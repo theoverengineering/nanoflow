@@ -208,10 +208,17 @@ final class MacProcesses implements Processes {
   }
 
   /// Keeps the program running while a wait is pending, as a wait for the
-  /// OS does, and no longer: an adapter that nothing waits on does not keep
-  /// it.
-  void _holdWhileWaiting() => _exits?.keepIsolateAlive = _waits.isNotEmpty;
+  /// OS does, or [close] waits for the watcher to end, and no longer: an
+  /// adapter that nothing waits on does not keep it. An exit told while the
+  /// adapter closes leaves the program kept.
+  void _holdWhileWaiting() =>
+      _exits?.keepIsolateAlive = _waits.isNotEmpty || _closed != null;
 }
+
+/// Whether [processes] keeps the program running now. Tests ask it at a
+/// moment no program can be made to end at for sure.
+bool keepsProgramRunning(MacProcesses processes) =>
+    processes._exits?.keepIsolateAlive ?? false;
 
 /// The time a `struct timeval` of [seconds] and [microseconds] holds, in
 /// UTC, truncated to milliseconds: the microseconds are dropped, never

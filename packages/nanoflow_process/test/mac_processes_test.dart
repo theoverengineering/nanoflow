@@ -4,9 +4,11 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:nanoflow_process/nanoflow_process.dart';
-import 'package:nanoflow_process/src/mac_processes.dart' show timeOfTimeval;
+import 'package:nanoflow_process/src/mac_processes.dart'
+    show keepsProgramRunning, timeOfTimeval;
 import 'package:test/test.dart';
 
 /// How long a process may take to be told gone after it died.
@@ -169,6 +171,30 @@ void main() {
   });
 
   group('close', () {
+    test('keeps the program running until it completes, even when the exit '
+        'of a watched process comes in meanwhile', () async {
+      final child = await sleeping();
+      final exited = processes.exitOf(child.pid);
+      await expectPending(exited);
+      child.kill(ProcessSignal.sigkill);
+      // The watcher tells the exit meanwhile: it waits in this isolate's
+      // queue.
+      sleep(const Duration(milliseconds: 100));
+      final kept = Completer<bool>();
+      final ask = RawReceivePort(
+        (_) => kept.complete(keepsProgramRunning(processes)),
+      );
+      addTearDown(ask.close);
+
+      // Comes in after the exit, and before the watcher's end, which the
+      // close brings about.
+      ask.sendPort.send(null);
+      final closed = processes.close();
+
+      expect(await kept.future, isTrue);
+      await closed.timeout(exitWait);
+    });
+
     test('stops the watcher: a pending wait never completes, even when its '
         'process dies', () async {
       final child = await sleeping();
@@ -214,6 +240,23 @@ void main() {
       // mostly does when the close does not hold it: it is run a few times.
       for (var i = 0; i < 3; i++) {
         final run = await start(program, ['${child.pid}']);
+        final stdout = textOf(run.stdout);
+        final stderr = textOf(run.stderr);
+        expect(await run.exitCode.timeout(exitWait), 0, reason: await stderr);
+        expect(await stdout, 'closed\n');
+      }
+    });
+
+    test('completes, and then lets the program end, when the exit of a '
+        'watched process comes in while it closes', () async {
+      final program = await compiled('watch_and_close');
+
+      // A program that ended during the close would end without a word. When
+      // the exit lets go of it, it does in about one run of three: it is run
+      // often enough to show.
+      for (var i = 0; i < 15; i++) {
+        final child = await sleeping();
+        final run = await start(program, ['${child.pid}', '--kill']);
         final stdout = textOf(run.stdout);
         final stderr = textOf(run.stderr);
         expect(await run.exitCode.timeout(exitWait), 0, reason: await stderr);
