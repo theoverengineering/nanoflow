@@ -70,6 +70,25 @@ Future<String> release(Flow f, String version) async {
   return f.step('announce', () => work(results.join(' | ')));
 }
 
+/// A plain future started early, like an http.get, awaited later — done by
+/// then or not — then copies whose first await is not a step, with random
+/// pauses.
+Future<String> fetchLater(Flow f, String version) async {
+  final pending = work('src-$version');
+  await pause();
+  await pause();
+  final source = await pending;
+  final results = await Future.wait([
+    for (final pkg in ['core', 'tool'])
+      () async {
+        await pause(); // like http.get outside any step
+        final up = await f.step('upload', () => work('$pkg:$source'));
+        return f.step('verify', () => work('$up:verified'));
+      }(),
+  ]);
+  return f.step('announce', () => work(results.join(' | ')));
+}
+
 /// The step records of the session [sessionId] of [dir].
 Future<List<Step>> stepsOf(String dir, String sessionId) async =>
     (await openSession(dir, sessionId)).steps();
@@ -289,56 +308,62 @@ void main() {
     }
   });
 
-  group('the keys of steps', () {
-    test('are the same whatever the timing', () async {
-      final dir = await tempDir();
-      final flow = Flow(directory: dir);
-      Map<String, String?>? expected;
-      for (var seed = 1; seed <= 10; seed++) {
-        random = Random(seed);
-        final session = await flow.start(release, '1.0');
-        await session.result;
-        final steps = await stepsOf(dir, session.id);
-        final afters = {for (final s in steps) s.key: s.after};
-        expect(afters, hasLength(6));
-        expect(afters, expected ??= afters, reason: 'seed $seed');
-      }
-    });
+  for (final (title, workflow, count) in [
+    ('a step awaited later through Future.wait', release, 6),
+    ('a plain future awaited later', fetchLater, 5),
+  ]) {
+    group('the keys of steps after $title', () {
+      test('are the same whatever the timing', () async {
+        final dir = await tempDir();
+        final flow = Flow(directory: dir);
+        Map<String, String?>? expected;
+        for (var seed = 1; seed <= 10; seed++) {
+          random = Random(seed);
+          final session = await flow.start(workflow, '1.0');
+          await session.result;
+          final steps = await stepsOf(dir, session.id);
+          final afters = {for (final s in steps) s.key: s.after};
+          expect(afters, hasLength(count));
+          expect(afters, expected ??= afters, reason: 'seed $seed');
+        }
+      });
 
-    test('find the steps a session finished before, which then neither run '
-        'nor are written again', () async {
-      final dir = await tempDir();
-      final flow = Flow(directory: dir);
-      random = Random(1);
-      final first = await flow.start(release, '1.0');
-      final expected = await first.result;
-      final handle = await openSession(dir, first.id);
-      final results = {
-        for (final s in await handle.steps())
-          s.key: await handle.documentValue(s.outputId!),
-      };
-      final keys = results.keys.toList();
-      for (var seed = 2; seed < 13; seed++) {
-        random = Random(seed);
-        final saved = seed == 2
-            // The step awaited later alone: saved, it is done by the time
-            // Future.wait takes it.
-            ? {keys.singleWhere((k) => k.startsWith('download#'))}
-            : (keys.toList()..shuffle(random))
-                  .take(1 + random.nextInt(keys.length - 1))
-                  .toSet();
-        final again = await startWithSaved(flow, release, '1.0', {
-          for (final key in saved) key: results[key],
-        });
-        expect(await again.result, expected, reason: 'seed $seed');
-        expect(
-          {for (final s in await stepsOf(dir, again.id)) s.key},
-          keys.toSet().difference(saved),
-          reason: 'seed $seed, saved $saved',
-        );
-      }
+      test('find the steps a session finished before, which then neither '
+          'run nor are written again', () async {
+        final dir = await tempDir();
+        final flow = Flow(directory: dir);
+        random = Random(1);
+        final first = await flow.start(workflow, '1.0');
+        final expected = await first.result;
+        final handle = await openSession(dir, first.id);
+        // In the order the steps were created.
+        final results = {
+          for (final s in await handle.steps())
+            s.key: await handle.documentValue(s.outputId!),
+        };
+        final keys = results.keys.toList();
+        for (var seed = 2; seed < 13; seed++) {
+          random = Random(seed);
+          final saved = seed == 2
+              // The first step alone; in release the step awaited later,
+              // which, saved, is done by the time Future.wait takes it.
+              ? {keys.first}
+              : (keys.toList()..shuffle(random))
+                    .take(1 + random.nextInt(keys.length - 1))
+                    .toSet();
+          final again = await startWithSaved(flow, workflow, '1.0', {
+            for (final key in saved) key: results[key],
+          });
+          expect(await again.result, expected, reason: 'seed $seed');
+          expect(
+            {for (final s in await stepsOf(dir, again.id)) s.key},
+            keys.toSet().difference(saved),
+            reason: 'seed $seed, saved $saved',
+          );
+        }
+      });
     });
-  });
+  }
 
   group('f.step', () {
     test('outside a session is a StateError', () async {

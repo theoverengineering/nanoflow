@@ -2,18 +2,27 @@
 // prototypes/step_keys/lib/flow.dart.
 //
 // A session's code runs in a zone that gives every callback the code
-// schedules — above all the one continuation the VM registers for each call
+// registers — above all the one continuation the VM registers for each call
 // of an async function, at its first await — a context of its own: the
-// context it was scheduled in plus its number there. Code runs in one context
-// at a time and in the same order on every run, so the numbers are the same
-// on every run, whatever the timing, and copies side by side get different
-// ones even before their first step. Right after `await <step>` — when a call
-// is resumed with that step's very result — the call takes the step's context
+// context it was registered in plus its number among the callbacks registered
+// there. Code runs in one context at a time and in the same order on every
+// run, and registers its callbacks as it goes — `then` when called, a timer
+// or a microtask of its own when created — so the numbers are the same on
+// every run, whatever the timing, and copies side by side get different ones
+// even before their first step. Right after `await <step>` — when a call is
+// resumed with that step's very result — the call takes the step's context
 // instead; after any other await it keeps its own, so after
 // `await Future.wait(copies)` the parent goes on in its own context, whichever
 // copy finished last. A step's key is its name, its number among the steps of
 // that name in the context it is called in, and the hash of that context:
 // `upload#2@<h>`.
+//
+// A microtask or a timer as such takes no number: it runs in the context it
+// was scheduled in, and what it calls back was registered, and numbered, when
+// it was made. The VM schedules a microtask of its own to resume an await of
+// a future that is done already, and whether it is depends on the timing. Nor
+// does the registration the root zone makes when it is handed a microtask or
+// a timer to schedule: it registers the callback back in this zone.
 //
 // Unlike the prototype, a step's body runs in a context of its own, `~0` of
 // the step's, and not in the step's context itself, which is the context of
@@ -24,11 +33,9 @@
 // call there moved to other keys and ran again.
 //
 // And a step hands its result over in a future of the zone the session's zone
-// was forked from, whatever gave it. Code that adds a listener to a future
-// that is done already schedules a microtask in that future's zone; in the
-// session's zone that microtask would take a number in the context of the
-// code awaiting the step, but only when the step happened to be done first,
-// and only when its result was not a live one, which comes from outside.
+// was forked from, whatever gave it: a live step's result comes from there,
+// and a saved one then behaves the same in every respect, the zone in which a
+// late listener's microtask runs included.
 
 import 'dart:async';
 import 'dart:convert';
@@ -68,6 +75,10 @@ final class KeyedZone {
   /// The result a step is handing over right now, and the step's context.
   ({Object? value, _Context context})? _delivering;
 
+  /// Whether the zone is handing a microtask or a timer to the zone it was
+  /// forked from, which registers the callback back in this zone.
+  bool _scheduling = false;
+
   /// Runs [body] in the zone, in the root context.
   R run<R>(R Function() body) => _zone.run(() => _with(_root, body));
 
@@ -77,9 +88,9 @@ final class KeyedZone {
   ///
   /// [start] is called at once, in the step's own context, with the step's
   /// key: it gives the step's result, saved or from [KeyedStep.runBody]. The
-  /// result is handed over in a future of the zone this one was forked from,
-  /// so the code that calls the step and awaits it schedules the same
-  /// callbacks either way, and whenever it awaits.
+  /// code that calls the step registers the same callbacks either way, and
+  /// the result is handed over in a future of the zone this one was forked
+  /// from.
   Future<T> step<T>(String name, Future<T> Function(KeyedStep step) start) {
     final caller = _current;
     final key = '$name#${caller.nextStep(name)}@${contextHash(caller.id)}';
@@ -97,15 +108,20 @@ final class KeyedZone {
   }
 
   ZoneSpecification _specification() => ZoneSpecification(
+    // A microtask or a timer runs in the context it was scheduled in, and
+    // takes no number there.
     scheduleMicrotask: (self, parent, zone, f) {
-      final c = _current.child();
-      parent.scheduleMicrotask(zone, () => _with(c, f));
+      final c = _current;
+      _unnumbered(() => parent.scheduleMicrotask(zone, () => _with(c, f)));
     },
     createTimer: (self, parent, zone, duration, f) {
-      final c = _current.child();
-      return parent.createTimer(zone, duration, () => _with(c, f));
+      final c = _current;
+      return _unnumbered(
+        () => parent.createTimer(zone, duration, () => _with(c, f)),
+      );
     },
     registerCallback: <R>(self, parent, zone, R Function() f) {
+      if (_scheduling) return parent.registerCallback(zone, f);
       final c = _current.child();
       return parent.registerCallback(zone, () => _with(c, f));
     },
@@ -133,6 +149,20 @@ final class KeyedZone {
           );
         },
   );
+
+  /// Runs [schedule], which hands a microtask or a timer to the zone this one
+  /// was forked from. The root zone registers the callback it is handed in
+  /// the zone it schedules it for, this one: that registration takes no
+  /// number.
+  T _unnumbered<T>(T Function() schedule) {
+    final was = _scheduling;
+    _scheduling = true;
+    try {
+      return schedule();
+    } finally {
+      _scheduling = was;
+    }
+  }
 
   R _deliver<R, T>(_Context context, R Function(T) onValue, T value) =>
       _with(context, () {
@@ -192,8 +222,8 @@ final class _Context {
   /// result goes on in.
   _Context.ofStep(String key) : this._(key, null, 0, key);
 
-  /// The callback numbered [number] among those scheduled in [parent]; 0 is
-  /// a step's body.
+  /// The callback numbered [number] among those registered in [parent]; 0
+  /// is a step's body.
   _Context.child(_Context parent, int number)
     : this._(null, parent, number, parent.after);
 
@@ -201,24 +231,24 @@ final class _Context {
   /// callbacks never call a step.
   String? _id;
 
-  /// The context this one was scheduled in, until [_id] is known.
+  /// The context this one was registered in, until [_id] is known.
   _Context? _parent;
 
   final int _number;
 
   /// The key of the step whose result this context took last; `null` when
-  /// none. A callback gets the one of the context it was scheduled in.
+  /// none. A callback gets the one of the context it was registered in.
   final String? after;
 
-  /// How many callbacks were scheduled in this context so far.
-  int _scheduled = 0;
+  /// How many callbacks were registered in this context so far.
+  int _registered = 0;
 
   /// How many steps of each name were called in this context so far.
   Map<String, int>? _steps;
 
   /// `""` for the root, the key for a step's context, and for a callback's
   /// `h(parent + "/~" + number)`: the hash of the name of the context it was
-  /// scheduled in and its number there.
+  /// registered in and its number there.
   String get id {
     if (_id case final id?) return id;
     // Computed from the nearest context whose name is known down, without a
@@ -234,8 +264,8 @@ final class _Context {
     return _id!;
   }
 
-  /// A context for a callback scheduled in this one now.
-  _Context child() => _Context.child(this, ++_scheduled);
+  /// A context for a callback registered in this one now.
+  _Context child() => _Context.child(this, ++_registered);
 
   /// The number of a step of [name] called in this context now, from 1.
   int nextStep(String name) {

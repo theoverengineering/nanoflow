@@ -237,6 +237,24 @@ Future<void> waitedLaterThenCopies(Keyed f) async {
   note = await f.step('announce', () => work(results.join(' | ')));
 }
 
+/// A plain future started early, like an http.get, awaited later — done by
+/// then or not — then copies whose first await is not a step.
+Future<void> plainAwaitedLater(Keyed f) async {
+  final pending = work('src.tar');
+  await pause();
+  await pause();
+  final source = await pending;
+  final results = await Future.wait([
+    for (final pkg in ['core', 'tool'])
+      () async {
+        await pause(); // like http.get outside any step
+        final up = await f.step('upload', () => work('$pkg:$source'));
+        return f.step('verify', () => work('$up:verified'));
+      }(),
+  ]);
+  note = await f.step('announce', () => work(results.join(' | ')));
+}
+
 void main() {
   checkWorkflow('copies as a closure called in place', inPlace);
   checkWorkflow('copies as a closure given to map', viaMap);
@@ -259,6 +277,11 @@ void main() {
     'a step awaited later through Future.wait, then copies that begin with '
     'an await that is not a step',
     waitedLaterThenCopies,
+  );
+  checkWorkflow(
+    'a plain future awaited later, then copies that begin with an await '
+    'that is not a step',
+    plainAwaitedLater,
   );
 
   test('keys a step after the join in the parent, not in a copy', () async {
