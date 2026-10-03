@@ -380,6 +380,30 @@ void main() {
       expect(given.closes, 0);
     });
 
+    test('of its own has closed by the time the cancel of the feed '
+        'completes: an app waits for that before it quits', () async {
+      final closing = Completer<void>();
+      final own = _Spy(FakeProcesses())..closing = closing.future;
+      final feed = Feed.of(readerOwning(own, runsDir: runsDir));
+      // Lets the feed's own cancel at the end of the test complete.
+      addTearDown(() {
+        if (!closing.isCompleted) closing.complete();
+      });
+      await feed.settle();
+
+      var cancelled = false;
+      final cancel = feed.cancel().then((_) => cancelled = true);
+      // The cancel waits for a scan under way before it closes the port.
+      while (own.closes == 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      await pumpEventQueue();
+      expect(cancelled, isFalse);
+
+      closing.complete();
+      await cancel;
+    });
+
     test('is not asked again when the owner exits after the feed is '
         'cancelled: no scan runs to tell it', () async {
       final port = _Spy(processes..start(owner.pid, started));
@@ -433,6 +457,9 @@ final class _Spy implements Processes {
   /// How many times [close] was called.
   int closes = 0;
 
+  /// What [close] waits for before it completes, besides the fake.
+  Future<void>? closing;
+
   /// Runs once, when [startOf] is next called, before it answers.
   void Function()? beforeStartOf;
 
@@ -477,5 +504,6 @@ final class _Spy implements Processes {
   Future<void> close() async {
     closes++;
     await fake.close();
+    await closing;
   }
 }

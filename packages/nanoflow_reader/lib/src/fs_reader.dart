@@ -24,8 +24,9 @@ import 'tail.dart';
 final class FsReader {
   /// A reader of [runsDir] that asks [processes] whether the owners of
   /// sessions are alive. Without [processes] it makes the adapter of this OS,
-  /// [Processes.forPlatform], and closes it when the feed is cancelled; an
-  /// adapter it is given is the caller's to close.
+  /// [Processes.forPlatform], and closes it when the feed is cancelled: the
+  /// cancel completes once it has closed. An adapter it is given is the
+  /// caller's to close.
   FsReader({
     required String runsDir,
     Duration pollInterval = const Duration(milliseconds: 500),
