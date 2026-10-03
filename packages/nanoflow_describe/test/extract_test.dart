@@ -1638,6 +1638,321 @@ void main() {
     );
   });
 
+  test('takes a throw on after its try only when a catch clause that it '
+      'fits can finish normally', () async {
+    expectFile(
+      await describeFixture('catches'),
+      await expectedFile(
+        'catches',
+        workflows: [],
+        functions: {
+          // The catch returns: the throw leaves the function.
+          'lib/catches.dart#backup': {
+            'name': 'backup',
+            'place': 'lib/catches.dart:23',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'measure',
+                  'place': 'lib/catches.dart:25',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': 'free == 0',
+                  'place': 'lib/catches.dart:26',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'copy',
+                  'place': 'lib/catches.dart:27',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'verify',
+                  'place': 'lib/catches.dart:32',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '2', 'to': null, 'label': 'true'},
+                {'from': '2', 'to': '3', 'label': 'false'},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // The throw arm of ?: fits `on ArgumentError`.
+          'lib/catches.dart#convert': {
+            'name': 'convert',
+            'place': 'lib/catches.dart:73',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': "unit == 'km'",
+                  'place': 'lib/catches.dart:75',
+                },
+                {
+                  'id': '2',
+                  'kind': 'step',
+                  'name': 'scale',
+                  'place': 'lib/catches.dart:76',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'apply',
+                  'place': 'lib/catches.dart:78',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'report',
+                  'place': 'lib/catches.dart:82',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': 'true'},
+                {'from': '1', 'to': '4', 'label': 'false'},
+                {'from': '2', 'to': '3', 'label': null},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // A FormatException fits `on Exception`: the caught throw and the
+          // end of the body share one finally.
+          'lib/catches.dart#deploy': {
+            'name': 'deploy',
+            'place': 'lib/catches.dart:47',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'prepare',
+                  'place': 'lib/catches.dart:49',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': '!ready',
+                  'place': 'lib/catches.dart:50',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'ship',
+                  'place': 'lib/catches.dart:51',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'unlock',
+                  'place': 'lib/catches.dart:55',
+                },
+                {
+                  'id': '5',
+                  'kind': 'step',
+                  'name': 'announce',
+                  'place': 'lib/catches.dart:57',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '2', 'to': '3', 'label': 'false'},
+                {'from': '2', 'to': '4', 'label': 'true'},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': '5', 'label': null},
+                {'from': '5', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // A StateError passes `on HttpException` by and ends the path; an
+          // HttpException is taken on.
+          'lib/catches.dart#fetch': {
+            'name': 'fetch',
+            'place': 'lib/catches.dart:35',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'download',
+                  'place': 'lib/catches.dart:37',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': 'page.isEmpty',
+                  'place': 'lib/catches.dart:38',
+                },
+                {
+                  'id': '3',
+                  'kind': 'fork',
+                  'label': "page == 'busy'",
+                  'place': 'lib/catches.dart:39',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'parse',
+                  'place': 'lib/catches.dart:40',
+                },
+                {
+                  'id': '5',
+                  'kind': 'step',
+                  'name': 'store',
+                  'place': 'lib/catches.dart:44',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '2', 'to': '3', 'label': 'false'},
+                {'from': '3', 'to': '4', 'label': 'false'},
+                {'from': '3', 'to': '5', 'label': 'true'},
+                {'from': '4', 'to': '5', 'label': null},
+                {'from': '5', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // A loop without steps, left by a throw its catch rethrows.
+          'lib/catches.dart#importAll': {
+            'name': 'importAll',
+            'place': 'lib/catches.dart:85',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'for name in names',
+                  'place': 'lib/catches.dart:86',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': 'name.isEmpty',
+                  'place': 'lib/catches.dart:88',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'import',
+                  'place': 'lib/catches.dart:94',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': 'each'},
+                {'from': '1', 'to': '3', 'label': 'done'},
+                {'from': '2', 'to': '1', 'label': 'false'},
+                {'from': '3', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // The throw in a closure called in place is caught around it.
+          'lib/catches.dart#rotate': {
+            'name': 'rotate',
+            'place': 'lib/catches.dart:60',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'read',
+                  'place': 'lib/catches.dart:63',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': 'old.isEmpty',
+                  'place': 'lib/catches.dart:64',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'replace',
+                  'place': 'lib/catches.dart:65',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'audit',
+                  'place': 'lib/catches.dart:70',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '2', 'to': '3', 'label': 'false'},
+                {'from': '2', 'to': '4', 'label': 'true'},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // The catch logs and rethrows: the throw ends the path.
+          'lib/catches.dart#upload': {
+            'name': 'upload',
+            'place': 'lib/catches.dart:11',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'step',
+                  'name': 'check',
+                  'place': 'lib/catches.dart:13',
+                },
+                {
+                  'id': '2',
+                  'kind': 'fork',
+                  'label': '!ok',
+                  'place': 'lib/catches.dart:14',
+                },
+                {
+                  'id': '3',
+                  'kind': 'step',
+                  'name': 'send',
+                  'place': 'lib/catches.dart:15',
+                },
+                {
+                  'id': '4',
+                  'kind': 'step',
+                  'name': 'confirm',
+                  'place': 'lib/catches.dart:20',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '2', 'to': '3', 'label': 'false'},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': null, 'label': null},
+              ],
+            },
+          },
+        },
+        warnings: [
+          for (final line in [16, 28, 41, 52, 67, 79])
+            {
+              'place': 'lib/catches.dart:$line',
+              'message': 'catch clauses are not drawn',
+            },
+        ],
+      ),
+    );
+  });
+
   test('writes the same file every time', () async {
     final first = await describePackage(fixture('release'), packageName: 'x');
     final second = await describePackage(fixture('release'), packageName: 'x');

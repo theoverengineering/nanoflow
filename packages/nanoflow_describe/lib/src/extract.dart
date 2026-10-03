@@ -61,6 +61,7 @@ final class _Package {
   _Package(this._units, Map<String, String> paths)
     : _paths = {for (final unit in _units) unit.unit: paths[unit.path]!},
       _contents = {for (final unit in _units) unit.unit: unit.content},
+      _libraryOf = {for (final unit in _units) unit.unit: unit.libraryElement},
       _libraries = {for (final unit in _units) unit.libraryElement};
 
   final List<ResolvedUnitResult> _units;
@@ -70,6 +71,9 @@ final class _Package {
 
   /// The text of every unit.
   final Map<CompilationUnit, String> _contents;
+
+  /// The library of every unit, whose types its code uses.
+  final Map<CompilationUnit, LibraryElement> _libraryOf;
   final Set<LibraryElement> _libraries;
 
   final _declarations = <ExecutableElement, _Declaration>{};
@@ -396,6 +400,43 @@ final class _Package {
         _isFutureWait(parent.parent!);
   }
 
+  /// What the catch clauses of [s] do with a throw of [type] from its body
+  /// (spec §7.1); a [type] of `null` is not known, and only a clause that
+  /// catches anything surely takes it.
+  ///
+  /// The first clause the throw surely fits — one without a type, or with a
+  /// type that [type] is a subtype of — decides: it takes the throw on after
+  /// [s] when its block can finish normally, leaves the function when the
+  /// block ends in `return`, and throws on, what it rethrows or throws, when
+  /// the block ends in `rethrow` or `throw`. Without such a clause the throw
+  /// goes on out as it is.
+  (_Fate, DartType?) _fateOf(TryStatement s, DartType? type) {
+    final library = _libraryOf[s.root]!;
+    for (final clause in s.catchClauses) {
+      final on = clause.exceptionType?.type;
+      if (on != null &&
+          !library.typeSystem.isSubtypeOf(
+            type ?? library.typeProvider.objectType,
+            on,
+          )) {
+        continue;
+      }
+      return switch (clause.body.statements.lastOrNull) {
+        ReturnStatement() => (_Fate.returns, null),
+        ExpressionStatement(expression: RethrowExpression()) => (
+          _Fate.thrown,
+          type,
+        ),
+        ExpressionStatement(expression: ThrowExpression(:final expression)) => (
+          _Fate.thrown,
+          expression.staticType,
+        ),
+        _ => (_Fate.caught, null),
+      };
+    }
+    return (_Fate.thrown, type);
+  }
+
   /// [node] with the parentheses around it.
   AstNode _outermost(AstNode node) {
     var outer = node;
@@ -553,9 +594,9 @@ final class _Scope {
   /// Where a `continue` goes by the loop it continues.
   final Map<AstNode, _V> continues;
 
-  /// Ways out of a `throw` that a `catch` around it takes, to go on after
-  /// its `try`; `null` where nothing catches it and the path ends.
-  final List<_Out>? throws;
+  /// The innermost `try` whose body holds the statement, which a `throw`
+  /// there goes to; `null` where there is none and the path ends.
+  final _Try? throws;
 
   _Scope loop(AstNode loop, List<_Out> breaks, _V continues) => _Scope(
     returns: returns,
@@ -571,12 +612,68 @@ final class _Scope {
     throws: throws,
   );
 
-  _Scope catching(List<_Out> throws) => _Scope(
+  _Scope catching(_Try throws) => _Scope(
     returns: returns,
     breaks: breaks,
     continues: continues,
     throws: throws,
   );
+}
+
+/// What a catch clause does with a throw: takes it on after its `try`,
+/// leaves the function with a `return`, or throws on.
+enum _Fate { caught, returns, thrown }
+
+/// A `try` as a `throw` in its body sees it (spec §7.1): a catch clause may
+/// take the throw on after the `try`, turn it into a `return`, or let it go
+/// on out to the `try` around it.
+final class _Try {
+  _Try(
+    this._package,
+    this._statement,
+    this._outer, {
+    required this.returns,
+    required this.leaves,
+  });
+
+  final _Package _package;
+  final TryStatement _statement;
+
+  /// The `try` around this one.
+  final _Try? _outer;
+
+  /// Takes the ways out of a throw that a catch clause turns into a
+  /// `return`.
+  final void Function(List<_Out> exits) returns;
+
+  /// Takes the ways out of a throw that leaves the `try` for the one around
+  /// it, with the type of what it throws then.
+  final void Function(List<_Out> exits, DartType? type) leaves;
+
+  /// The ways out of the throws a catch clause takes on after the `try`.
+  final caught = <_Out>[];
+
+  /// Sends [exits], which throw a [type], where the catch clauses send
+  /// them; a throw that nothing takes on ends its path.
+  void send(List<_Out> exits, DartType? type) {
+    switch (_package._fateOf(_statement, type)) {
+      case (_Fate.caught, _):
+        caught.addAll(exits);
+      case (_Fate.returns, _):
+        returns(exits);
+      case (_Fate.thrown, final thrown) when _outer?.leads(thrown) ?? false:
+        leaves(exits, thrown);
+      case _:
+      // Nothing takes it on: the path ends here.
+    }
+  }
+
+  /// Whether a throw of [type] from the body goes anywhere but out of the
+  /// function: a catch clause here or around takes it on or returns.
+  bool leads(DartType? type) => switch (_package._fateOf(_statement, type)) {
+    (_Fate.thrown, final thrown) => _outer?.leads(thrown) ?? false,
+    _ => true,
+  };
 }
 
 /// The graph of one body: a function's or a copy's.
@@ -644,11 +741,14 @@ final class _Body {
           null => into,
         }, scope);
         return const [];
-      case ExpressionStatement(
-        expression: final Expression e &&
-            (ThrowExpression() || RethrowExpression()),
-      ):
-        return _throw(_children(e, into, scope), scope);
+      case ExpressionStatement(expression: final ThrowExpression e):
+        return _throw(
+          _children(e, into, scope),
+          e.expression.staticType,
+          scope,
+        );
+      case ExpressionStatement(expression: final RethrowExpression e):
+        return _throw(_children(e, into, scope), null, scope);
       case IfStatement():
         final condition = _expression(s.expression, into, scope);
         final label = switch (s.caseClause) {
@@ -738,44 +838,64 @@ final class _Body {
     }
   }
 
-  /// Throws from [exits]: a `catch` around them takes them on after its
-  /// `try`; otherwise the flow ends here, as a failure, and no edge leaves.
-  List<_Out> _throw(List<_Out> exits, _Scope scope) {
-    scope.throws?.addAll(exits);
+  /// Throws a [type] (`null` when not known) from [exits]: the `try` around
+  /// them sends them on (see [_Try]); without one the flow ends here, as a
+  /// failure, and no edge leaves.
+  List<_Out> _throw(List<_Out> exits, DartType? type, _Scope scope) {
+    scope.throws?.send(exits, type);
     return const [];
   }
 
   /// The body, then `finally`: every way out of the body, a `return`, a
   /// `break` or a `continue` too, goes through `finally` before it goes on.
-  /// `finally` is drawn once for each way out the body takes. A `throw` in
-  /// the body goes on after the `try` when it has `catch` clauses (they are
-  /// not drawn), and through `finally` to a `catch` around it otherwise.
+  /// `finally` is drawn once for each way out the body takes: the end of the
+  /// body and the throws a catch takes on share one. A `throw` in the body
+  /// goes where its catch clause (not drawn) sends it (see [_Try]), through
+  /// `finally` when it leaves the `try`.
   List<_Out> _try(TryStatement s, List<_Out> into, _Scope scope) {
     if (s.catchClauses.isNotEmpty &&
         (_package._hasSteps(s.body) ||
             s.catchClauses.any((c) => _package._hasSteps(c.body)))) {
       _package._warn(s.catchClauses.first, 'catch clauses are not drawn');
     }
-    final caught = s.catchClauses.isEmpty ? null : <_Out>[];
     final finallyBlock = s.finallyBlock;
     if (finallyBlock == null) {
-      if (caught == null) return _statement(s.body, into, scope);
-      return [..._statement(s.body, into, scope.catching(caught)), ...caught];
+      final caught = _Try(
+        _package,
+        s,
+        scope.throws,
+        returns: (exits) => _return(exits, scope),
+        leaves: (exits, type) => _throw(exits, type, scope),
+      );
+      return [
+        ..._statement(s.body, into, scope.catching(caught)),
+        ...caught.caught,
+      ];
     }
-    // The jumps out of the body stop here first.
+    // The jumps out of the body stop here first, and so do the throws that
+    // leave it, by what they throw.
+    final returns = <_Out>[];
+    final leaving = <DartType?, List<_Out>>{};
+    final caught = _Try(
+      _package,
+      s,
+      scope.throws,
+      returns: returns.addAll,
+      leaves: (exits, type) => (leaving[type] ??= []).addAll(exits),
+    );
     final jumps = _Scope(
-      returns: [],
+      returns: returns,
       breaks: {for (final target in scope.breaks.keys) target: []},
       continues: {for (final target in scope.continues.keys) target: _join()},
-      throws: caught ?? (scope.throws == null ? null : []),
+      throws: caught,
     );
     final exits = _statement(s.body, into, jumps);
-    final after = _statement(finallyBlock, [...exits, ...?caught], scope);
-    if (jumps.returns!.isNotEmpty) {
-      _return(_statement(finallyBlock, jumps.returns!, scope), scope);
+    final after = _statement(finallyBlock, [...exits, ...caught.caught], scope);
+    if (returns.isNotEmpty) {
+      _return(_statement(finallyBlock, returns, scope), scope);
     }
-    if (caught == null && (jumps.throws?.isNotEmpty ?? false)) {
-      _throw(_statement(finallyBlock, jumps.throws!, scope), scope);
+    for (final MapEntry(key: type, value: thrown) in leaving.entries) {
+      _throw(_statement(finallyBlock, thrown, scope), type, scope);
     }
     for (final MapEntry(key: target, value: breaks) in jumps.breaks.entries) {
       if (breaks.isNotEmpty) {
@@ -904,40 +1024,56 @@ final class _Body {
     return [...exits, ...breaks];
   }
 
-  /// Whether [s] has a `return`, a `throw` that no `catch` in [s] takes, or a
-  /// `break` or `continue` that leaves it. `catch` clauses are not drawn, so
-  /// what they do does not count.
+  /// Whether [s] has a `return`, a `throw` that no `catch` in [s] takes on
+  /// (see [_Package._fateOf]), or a `break` or `continue` that leaves it.
+  /// `catch` clauses are not drawn, so what they hold does not count.
   bool _jumpsOut(Statement s) {
     var jumps = false;
-    void visit(AstNode node, {required bool caught}) {
+    // [tries]: the `try` statements in [s] around [node], innermost last.
+    void visit(AstNode node, List<TryStatement> tries) {
       if (jumps) return;
       switch (node) {
-        case FunctionExpression() || CatchClause():
+        case FunctionExpression():
           return; // a return in a closure leaves the closure, not s
-        case TryStatement(
-          :final body,
-          :final catchClauses,
-          :final finallyBlock,
-        ):
-          visit(body, caught: caught || catchClauses.isNotEmpty);
-          if (finallyBlock != null) visit(finallyBlock, caught: caught);
+        case TryStatement(:final body, :final finallyBlock):
+          visit(body, [...tries, node]);
+          if (finallyBlock != null) visit(finallyBlock, tries);
         case ExpressionStatement(
-          expression: ThrowExpression() || RethrowExpression(),
+          expression: ThrowExpression(:final expression),
         ):
-          jumps = !caught;
+          jumps = _leaves(tries, expression.staticType);
+        case ExpressionStatement(expression: RethrowExpression()):
+          jumps = _leaves(tries, null);
         case ReturnStatement():
           jumps = true;
         case BreakStatement(:final target) || ContinueStatement(:final target):
           jumps = target == null || !_isWithin(target, s);
         default:
           for (final child in node.childEntities.whereType<AstNode>()) {
-            visit(child, caught: caught);
+            visit(child, tries);
           }
       }
     }
 
-    visit(s, caught: false);
+    visit(s, const []);
     return jumps;
+  }
+
+  /// Whether a throw of [type] in the bodies of [tries], innermost last,
+  /// leaves them: as a throw, or as a `return` of a catch clause.
+  bool _leaves(List<TryStatement> tries, DartType? type) {
+    var thrown = type;
+    for (final s in tries.reversed) {
+      switch (_package._fateOf(s, thrown)) {
+        case (_Fate.caught, _):
+          return false;
+        case (_Fate.returns, _):
+          return true;
+        case (_Fate.thrown, final next):
+          thrown = next;
+      }
+    }
+    return true;
   }
 
   // ---- expressions ------------------------------------------------------------
@@ -1034,9 +1170,14 @@ final class _Body {
   /// its path, as a `throw` statement does.
   List<_Out> _arm(Expression arm, List<_Out> into, _Scope scope) {
     final exits = _expression(arm, into, scope);
-    return arm.unParenthesized is ThrowExpression
-        ? _throw(exits, scope)
-        : exits;
+    return switch (arm.unParenthesized) {
+      ThrowExpression(:final expression) => _throw(
+        exits,
+        expression.staticType,
+        scope,
+      ),
+      _ => exits,
+    };
   }
 
   /// What `Future.wait` over [futures] runs: each element of a list starts
