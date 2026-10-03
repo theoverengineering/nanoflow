@@ -359,6 +359,16 @@ final class _Package {
         method.library.uri.toString() == 'dart:async';
   }
 
+  /// Whether [node] is `(a, b).wait` of `dart:async`, which runs the futures
+  /// of a record side by side.
+  bool _isRecordWait(PropertyAccess node) {
+    final getter = node.propertyName.element;
+    return getter != null &&
+        getter.name == 'wait' &&
+        getter.enclosingElement is ExtensionElement &&
+        getter.library?.uri.toString() == 'dart:async';
+  }
+
   /// Whether [closure] runs where it is written: called in place, or given
   /// to the `map` whose copies `Future.wait` runs.
   bool _runsHere(FunctionExpression closure) {
@@ -485,8 +495,12 @@ final class _Step extends _Drawn {
 }
 
 final class _Fork extends _Drawn {
-  _Fork(this.label, super.place);
+  _Fork(this.label, this.outcomes, super.place);
   final String label;
+
+  /// The labels of the ways out of the fork. One the flow cannot go on from
+  /// (a `throw`) has no edge.
+  final List<String> outcomes;
 
   @override
   GraphNode node(String id) =>
@@ -607,15 +621,17 @@ final class _Body {
       case Block():
         return _statements(s.statements, into, scope);
       case ReturnStatement():
-        final exits = switch (s.expression) {
+        _return(switch (s.expression) {
           final e? => _expression(e, into, scope),
           null => into,
-        };
-        if (scope.returns case final returns?) {
-          returns.addAll(exits);
-        } else {
-          _connect(exits, _exit);
-        }
+        }, scope);
+        return const [];
+      case ExpressionStatement(
+        expression: final Expression e &&
+            (ThrowExpression() || RethrowExpression()),
+      ):
+        // The flow ends here, as a failure: no edge leaves.
+        _children(e, into, scope);
         return const [];
       case IfStatement():
         final condition = _expression(s.expression, into, scope);
@@ -623,7 +639,7 @@ final class _Body {
           final c? => '${_source(s.expression)} ${_source(c)}',
           null => _source(s.expression),
         };
-        final fork = _fork(label, s.expression);
+        final fork = _fork(label, s.expression, _ifOutcomes);
         _connect(condition, fork);
         return [
           ..._statement(s.thenStatement, [(fork, 'true')], scope),
@@ -642,7 +658,11 @@ final class _Body {
           _connect(_statement(s.body, condition, inner), head);
           return breaks;
         }
-        final fork = _fork('while (${_source(s.condition)})', s.condition);
+        final fork = _fork(
+          'while (${_source(s.condition)})',
+          s.condition,
+          _ifOutcomes,
+        );
         _connect(condition, fork);
         _connect(_statement(s.body, [(fork, 'true')], inner), head);
         return [(fork, 'false'), ...breaks];
@@ -660,7 +680,11 @@ final class _Body {
           _connect(condition, head);
           return breaks;
         }
-        final fork = _fork('while (${_source(s.condition)})', s.condition);
+        final fork = _fork(
+          'while (${_source(s.condition)})',
+          s.condition,
+          _ifOutcomes,
+        );
         _connect(condition, fork);
         _connect([(fork, 'true')], head);
         return [(fork, 'false'), ...breaks];
@@ -683,19 +707,57 @@ final class _Body {
         );
         return [...exits, ...breaks];
       case TryStatement():
-        if (s.catchClauses.isNotEmpty &&
-            (_package._hasSteps(s.body) ||
-                s.catchClauses.any((c) => _package._hasSteps(c.body)))) {
-          _package._warn(s.catchClauses.first, 'catch clauses are not drawn');
-        }
-        final exits = _statement(s.body, into, scope);
-        return switch (s.finallyBlock) {
-          final f? => _statement(f, exits, scope),
-          null => exits,
-        };
+        return _try(s, into, scope);
       default:
         return _children(s, into, scope);
     }
+  }
+
+  /// Leaves the body, or the closure called in place, from [exits].
+  void _return(List<_Out> exits, _Scope scope) {
+    if (scope.returns case final returns?) {
+      returns.addAll(exits);
+    } else {
+      _connect(exits, _exit);
+    }
+  }
+
+  /// The body, then `finally`: every way out of the body, a `return`, a
+  /// `break` or a `continue` too, goes through `finally` before it goes on.
+  /// `finally` is drawn once for each way out the body takes.
+  List<_Out> _try(TryStatement s, List<_Out> into, _Scope scope) {
+    if (s.catchClauses.isNotEmpty &&
+        (_package._hasSteps(s.body) ||
+            s.catchClauses.any((c) => _package._hasSteps(c.body)))) {
+      _package._warn(s.catchClauses.first, 'catch clauses are not drawn');
+    }
+    final finallyBlock = s.finallyBlock;
+    if (finallyBlock == null) return _statement(s.body, into, scope);
+    // The jumps out of the body stop here first.
+    final jumps = _Scope(
+      returns: [],
+      breaks: {for (final target in scope.breaks.keys) target: []},
+      continues: {for (final target in scope.continues.keys) target: _join()},
+    );
+    final exits = _statement(s.body, into, jumps);
+    final after = _statement(finallyBlock, exits, scope);
+    if (jumps.returns!.isNotEmpty) {
+      _return(_statement(finallyBlock, jumps.returns!, scope), scope);
+    }
+    for (final MapEntry(key: target, value: breaks) in jumps.breaks.entries) {
+      if (breaks.isNotEmpty) {
+        scope.breaks[target]!.addAll(_statement(finallyBlock, breaks, scope));
+      }
+    }
+    for (final MapEntry(key: target, value: next) in jumps.continues.entries) {
+      if (_isEntered(next)) {
+        _connect(
+          _statement(finallyBlock, [(next, null)], scope),
+          scope.continues[target]!,
+        );
+      }
+    }
+    return after;
   }
 
   List<_Out> _for(ForStatement s, List<_Out> into, _Scope scope) {
@@ -708,6 +770,7 @@ final class _Body {
         final fork = _fork(
           'for ${_loopVariable(parts)} in ${_source(parts.iterable)}',
           parts.iterable,
+          const ['each', 'done'],
         );
         _connect([(head, null)], fork);
         _connect(
@@ -741,7 +804,7 @@ final class _Body {
         final List<_Out> out;
         if (parts.condition case final c?) {
           final condition = _expression(c, [(head, null)], scope);
-          final fork = _fork('for (; ${_source(c)};)', c);
+          final fork = _fork('for (; ${_source(c)};)', c, _ifOutcomes);
           _connect(condition, fork);
           bodyEntry = [(fork, 'true')];
           out = [(fork, 'false')];
@@ -763,22 +826,38 @@ final class _Body {
   }
 
   List<_Out> _switch(SwitchStatement s, List<_Out> into, _Scope scope) {
+    final labels = [
+      for (final member in s.members)
+        switch (member) {
+          SwitchDefault() => 'default',
+          SwitchCase(:final expression) => _source(expression),
+          SwitchPatternCase(:final guardedPattern) => _source(guardedPattern),
+        },
+    ];
+    final matchesAll =
+        _isExhaustive(s.expression) ||
+        s.members.any(
+          (member) => switch (member) {
+            SwitchDefault() => true,
+            SwitchPatternCase(:final guardedPattern) => _matchesAll(
+              guardedPattern,
+            ),
+            SwitchCase() => false,
+          },
+        );
     final value = _expression(s.expression, into, scope);
-    final fork = _fork('switch (${_source(s.expression)})', s.expression);
+    final fork = _fork('switch (${_source(s.expression)})', s.expression, [
+      ...labels,
+      if (!matchesAll) 'default',
+    ]);
     _connect(value, fork);
     final breaks = <_Out>[];
     final inner = scope.breaking(s, breaks);
     final exits = <_Out>[];
     // Cases with no statements of their own share the body of the next one.
     final pending = <String>[];
-    var matchesAll = _isExhaustive(s.expression);
-    for (final member in s.members) {
-      pending.add(switch (member) {
-        SwitchDefault() => 'default',
-        SwitchCase(:final expression) => _source(expression),
-        SwitchPatternCase(:final guardedPattern) => _source(guardedPattern),
-      });
-      if (member is SwitchDefault) matchesAll = true;
+    for (final (i, member) in s.members.indexed) {
+      pending.add(labels[i]);
       if (member.statements.isEmpty) continue;
       exits.addAll(
         _statements(member.statements, [
@@ -792,7 +871,8 @@ final class _Body {
     return [...exits, ...breaks];
   }
 
-  /// Whether [s] has a `return`, or a `break` or `continue` that leaves it.
+  /// Whether [s] has a `return`, a `throw`, or a `break` or `continue` that
+  /// leaves it.
   bool _jumpsOut(Statement s) {
     var jumps = false;
     void visit(AstNode node) {
@@ -800,7 +880,10 @@ final class _Body {
       switch (node) {
         case FunctionExpression():
           return; // a return in it leaves the closure
-        case ReturnStatement():
+        case ReturnStatement() ||
+            ExpressionStatement(
+              expression: ThrowExpression() || RethrowExpression(),
+            ):
           jumps = true;
         case BreakStatement(:final target) || ContinueStatement(:final target):
           jumps = target == null || !_isWithin(target, s);
@@ -835,20 +918,41 @@ final class _Body {
         final returns = <_Out>[];
         final exits = _body(closure.body, arguments, _Scope(returns: returns));
         return [...exits, ...returns];
+      case PropertyAccess(target: RecordLiteral(:final fields))
+          when _package._isRecordWait(e):
+        // `(a, b).wait`: each field starts here, side by side.
+        return [
+          for (final field in fields)
+            if (_package._hasSteps(field)) ..._expression(field, into, scope),
+        ];
       case ConditionalExpression():
         final condition = _expression(e.condition, into, scope);
-        final fork = _fork(_source(e.condition), e.condition);
+        final fork = _fork(_source(e.condition), e.condition, _ifOutcomes);
         _connect(condition, fork);
         return [
           ..._expression(e.thenExpression, [(fork, 'true')], scope),
           ..._expression(e.elseExpression, [(fork, 'false')], scope),
+        ];
+      case SwitchExpression(:final cases):
+        // Exhaustive by the language: no default.
+        final value = _expression(e.expression, into, scope);
+        final labels = [for (final c in cases) _source(c.guardedPattern)];
+        final fork = _fork(
+          'switch (${_source(e.expression)})',
+          e.expression,
+          labels,
+        );
+        _connect(value, fork);
+        return [
+          for (final (i, c) in cases.indexed)
+            ..._expression(c.expression, [(fork, labels[i])], scope),
         ];
       case BinaryExpression(:final operator)
           when (operator.type == TokenType.AMPERSAND_AMPERSAND ||
                   operator.type == TokenType.BAR_BAR) &&
               _package._hasSteps(e.rightOperand):
         final left = _expression(e.leftOperand, into, scope);
-        final fork = _fork(_source(e.leftOperand), e.leftOperand);
+        final fork = _fork(_source(e.leftOperand), e.leftOperand, _ifOutcomes);
         _connect(left, fork);
         final (
           evaluates,
@@ -973,8 +1077,8 @@ final class _Body {
     );
   }
 
-  _Fork _fork(String label, AstNode at) =>
-      _add(_Fork(label, _package._place(at)));
+  _Fork _fork(String label, AstNode at, List<String> outcomes) =>
+      _add(_Fork(label, outcomes, _package._place(at)));
 
   _Join _join() => _add(_Join());
 
@@ -989,17 +1093,24 @@ final class _Body {
     }
   }
 
+  /// Whether an edge leads to [v].
+  bool _isEntered(_V v) =>
+      _edges.values.any((edges) => edges.any((edge) => identical(edge.$2, v)));
+
   // ---- the body in the graph file ---------------------------------------------
 
   GraphBody _emit() {
     // A fork whose outcomes all lead to the same nodes decides nothing that
-    // can be seen: it is not drawn, as a join.
+    // can be seen: it is not drawn, as a join. An outcome without an edge
+    // (a throw) leads nowhere, which differs from anywhere.
     final hidden = <_V>{..._vertices.whereType<_Join>()};
     for (var changed = true; changed;) {
       changed = false;
       for (final fork in _vertices.whereType<_Fork>()) {
         if (hidden.contains(fork)) continue;
-        final outcomes = <String?, Set<_V>>{};
+        final outcomes = <String?, Set<_V>>{
+          for (final outcome in fork.outcomes) outcome: {},
+        };
         for (final (outcome, to) in _edges[fork] ?? const <(String?, _V)>[]) {
           (outcomes[outcome] ??= {}).addAll(_resolve({to}, hidden));
         }
@@ -1073,7 +1184,19 @@ final class _Body {
   };
 }
 
+/// The outcomes of an `if`, a loop condition, `?:`, `&&` and `||`.
+const _ifOutcomes = ['true', 'false'];
+
 bool _isTrue(Expression e) => e is BooleanLiteral && e.value;
+
+/// Whether a case matches every value: `_` or `var x`, untyped, unguarded.
+bool _matchesAll(GuardedPattern pattern) =>
+    pattern.whenClause == null &&
+    switch (pattern.pattern) {
+      WildcardPattern(type: null) ||
+      DeclaredVariablePattern(type: null) => true,
+      _ => false,
+    };
 
 /// Whether a switch on [e] matches every value without a `default`: Dart
 /// requires it for `bool`, enums and sealed types.
