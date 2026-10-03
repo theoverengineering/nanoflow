@@ -14,9 +14,15 @@ const bool isCompiled = bool.fromEnvironment('dart.vm.product');
 /// The project directory: where the graph file is and `runs/` goes.
 ///
 /// [directory] when given, made absolute. Otherwise, in a [compiled]
-/// program, the directory of [executable]; otherwise the nearest ancestor of
-/// [script] with a `pubspec.yaml`, or the directory of [script] when none has
-/// one. [executable] and [script] are the running program's by default.
+/// program, the directory of [executable]; otherwise, when [script] is a
+/// snapshot `dart run` made in `<root>/.dart_tool/pub/bin/<package>/`, the
+/// directory of `<package>` as `<root>/.dart_tool/package_config.json` gives
+/// it; otherwise the nearest ancestor of [script] with a `pubspec.yaml`, or
+/// the directory of [script] when none has one. [executable] and [script]
+/// are the running program's by default.
+///
+/// In a pub workspace `.dart_tool` is in the workspace root, whose
+/// `pubspec.yaml` is the nearest to such a snapshot, not the package's.
 String findProjectDir({
   String? directory,
   bool compiled = isCompiled,
@@ -28,10 +34,48 @@ String findProjectDir({
     return p.dirname(executable ?? Platform.resolvedExecutable);
   }
   final start = p.dirname((script ?? Platform.script).toFilePath());
+  if (_snapshotPackageDir(start) case final dir?) return dir;
   for (var dir = start; ; dir = p.dirname(dir)) {
     if (File(p.join(dir, 'pubspec.yaml')).existsSync()) return dir;
     if (p.dirname(dir) == dir) return start;
   }
+}
+
+/// The directory of the package whose snapshot `dart run` made in [dir],
+/// when [dir] is `<root>/.dart_tool/pub/bin/<package>`: the `rootUri` of
+/// `<package>` in `<root>/.dart_tool/package_config.json`, which is relative
+/// to that `.dart_tool`; `null` when [dir] is not such a directory or the
+/// config does not give the package.
+String? _snapshotPackageDir(String dir) {
+  final parts = p.split(dir);
+  final at = parts.length - 4;
+  if (at < 1 ||
+      parts[at] != '.dart_tool' ||
+      parts[at + 1] != 'pub' ||
+      parts[at + 2] != 'bin') {
+    return null;
+  }
+  final dartTool = p.joinAll(parts.take(at + 1));
+  try {
+    final config = jsonDecode(
+      File(p.join(dartTool, 'package_config.json')).readAsStringSync(),
+    );
+    if (config case {'packages': final List<Object?> packages}) {
+      for (final package in packages) {
+        if (package
+            case {'name': final String name, 'rootUri': final String rootUri}
+            when name == parts[at + 3]) {
+          final root = Uri.directory(dartTool).resolve(rootUri);
+          return p.normalize(root.toFilePath());
+        }
+      }
+    }
+  } on FileSystemException {
+    return null;
+  } on FormatException {
+    return null;
+  }
+  return null;
 }
 
 /// `Closure: (Flow, String) => Future<String> from Function 'review': static.`
@@ -115,6 +159,24 @@ Future<String?> codeHashOf(
     return null;
   }
 }
+
+/// The hash of the code this process runs, by project directory, as
+/// [runningCodeHashOf] took it.
+final _codeHashes = <String, Future<String?>>{};
+
+/// The hash of the code this process runs ([codeHashOf] of [projectDir]),
+/// taken once per process, on first use: the code does not change while the
+/// process runs, though its sources and its binary may. Sessions started
+/// after the sources are edited so have the hash the first one has.
+Future<String?> runningCodeHashOf(String projectDir) {
+  // A compiled program's hash is its binary's, whatever the directory.
+  final key = isCompiled ? '' : projectDir;
+  return _codeHashes.putIfAbsent(key, () => codeHashOf(projectDir));
+}
+
+/// Forgets the hashes [runningCodeHashOf] took: for tests, which change the
+/// sources of a project in this process.
+void forgetCodeHashes() => _codeHashes.clear();
 
 /// The graph file in [projectDir] as it is now, decoded; `null` when there is
 /// none or it is not a JSON object.

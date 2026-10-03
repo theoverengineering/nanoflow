@@ -60,7 +60,8 @@ final class ExecException implements Exception {
 /// log stays quiet the pipeline never ends, as in a shell. To wait for a ready
 /// line use `until grep -q listening server.log; do sleep 0.2; done`. Without
 /// perl the program starts with SIGPIPE ignored, and a writer that does not
-/// stop on a write error — `tail -f` on macOS, a shell loop — runs on forever.
+/// stop on a write error — `tail -f` on macOS, a shell loop — runs on
+/// forever.
 ///
 /// The program cannot ask anything on the terminal the app runs in: its
 /// group is not the terminal's foreground group, so a program that asks

@@ -6,14 +6,14 @@
 // value that is not JSON itself. It comes back by its type: the decoder of a
 // type is found from the type alone, as a type is made of JSON types —
 // `String`, `int`, `double`, `num`, `bool`, `Null`, `Object`, `Object?`,
-// `List<…>` and `Map<String, …>` of them, and `…?` — and of the types of the
-// codecs registered with `addCodec`. Dart does not take a type apart, but it
-// tells whether one type is a subtype of another (`<A>[] is List<B>`), so the
-// type is found by asking: is it a list, a map, nullable, this or that leaf?
-// One codec of `Report` so gives `Report?`, `List<Report>`,
-// `Map<String, Report>` and any nesting of them, and `List<List<String>>`
-// comes back as a `List<List<String>>`, not as the `List<dynamic>`
-// `jsonDecode` gives.
+// `List<…>` and `Map<String, …>` of them, and `…?` — and of the types
+// of the codecs registered with `addCodec`. Dart does not take a type apart,
+// but it tells whether one type is a subtype of another
+// (`<A>[] is List<B>`), so the type is found by asking: is it a list, a map,
+// nullable, this or that leaf? One codec of `Report` so gives `Report?`,
+// `List<Report>`, `Map<String, Report>` and any nesting of them, and
+// `List<List<String>>` comes back as a `List<List<String>>`, not as the
+// `List<dynamic>` `jsonDecode` gives.
 
 import 'dart:convert';
 
@@ -92,6 +92,10 @@ final class Codecs {
     return value;
   }
 
+  /// Whether [T] has a decoder: it is a JSON type, or made of JSON types and
+  /// types a codec has been registered for.
+  bool canDecode<T>() => _decoderOf<T>() != null;
+
   _Decoder? _decoderOf<T>() =>
       _decoders.putIfAbsent(T, () => _find(_TypeOf<T>(), (hole) => hole, 0));
 
@@ -99,8 +103,8 @@ final class Codecs {
   /// that, put in the hole, makes [context] [target]; `null` when there is
   /// none.
   ///
-  /// [context] is made of `List<…>`, `Map<String, …>` and `…?`, around one
-  /// hole, as `List<Map<String, _>>`; [depth] is how many of them.
+  /// [context] is made of `List<…>`, `Map<String, …>` and `…?`, around
+  /// one hole, as `List<Map<String, _>>`; [depth] is how many of them.
   _Decoder? _find(
     _TypeOf<Object?> target,
     _TypeOf<Object?> Function(_TypeOf<Object?> hole) context,

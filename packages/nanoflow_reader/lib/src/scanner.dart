@@ -36,8 +36,9 @@ final class Scanner {
 
   /// Gives to [out] what has appeared since the scan before: for each
   /// session, newest first, `session-added` (once), then its new steps and a
-  /// `step-changed` for a step that got its `outputId`, its journal's new
-  /// complete lines, then its new documents.
+  /// `step-changed` for a step whose `step.json` was rewritten — with the
+  /// `outputId` of its `step-finished`, or with another `after` when it runs
+  /// again — its journal's new complete lines, then its new documents.
   ///
   /// Newest first: a feed of a long history gives first the sessions that
   /// are likely to be looked at.
@@ -105,8 +106,12 @@ final class Scanner {
     for (final (:number, :bytes) in lines ?? const <Line>[]) {
       final change = _journalChange(sessionId, number, bytes);
       switch (change) {
-        case EventAdded(event: StepFinished(:final stepId, outputId: _?)):
-          session.finishedWithOutput.add(stepId);
+        case EventAdded(event: StepStarted(:final stepId)):
+          session.stepStarted(stepId);
+        case EventAdded(event: StepFinished(:final stepId, :final outputId)):
+          session.stepEnded(stepId, outputId);
+        case EventAdded(event: StepFailed(:final stepId)):
+          session.stepEnded(stepId, null);
         case EventAdded(event: SessionFinished() || SessionFailed()):
           session.lastRead = true;
         default:
@@ -129,30 +134,36 @@ final class Scanner {
         lastRead &&
         steps != null &&
         steps.every(session.steps.containsKey) &&
-        !session.awaitsAnyOutput &&
+        !session.steps.values.any(session.mayChange) &&
         documents != null;
   }
 
-  /// Gives a step that is new, or a step given without `outputId` whose
-  /// `step-finished` has one: its `step.json` is rewritten with the
-  /// `outputId` after that event is written.
+  /// Gives a step that is new, or a step given before whose `step.json` may
+  /// have been rewritten since (see [_Session.mayChange]) when it has been.
   Future<void> _scanStep(
     _Session session,
     String dir,
     EventSink<Change> out,
   ) async {
     final known = session.steps[dir];
-    if (known != null && !session.awaitsOutput(known.step)) return;
+    if (known != null && !session.mayChange(known)) return;
     final step = await _readModel(
       p.join(dir, stepFileName),
       Step.fromJson,
       out,
     );
     if (step == null) return;
+    // The journal is read after the steps: these are the `step-started` read
+    // before this read of `step.json`.
+    final starts = session.startsOf(step.id);
     if (known == null) {
-      session.steps[dir] = _stepsById[step.id] = _Step(step, dir);
+      session.steps[dir] = _stepsById[step.id] = _Step(step, dir)
+        ..startsRead = starts;
       out.add(StepAdded(step));
-    } else if (step.outputId != null) {
+      return;
+    }
+    known.startsRead = starts;
+    if (step != known.step) {
       known.step = step;
       out.add(StepChanged(step));
     }
@@ -286,8 +297,15 @@ final class _Session {
   /// Its steps, by directory.
   final Map<String, _Step> steps = {};
 
-  /// Ids of its steps whose `step-finished` has an `outputId`.
-  final Set<String> finishedWithOutput = {};
+  /// How many `step-started` of each of its steps have been read, by id.
+  final Map<String, int> _starts = {};
+
+  /// Ids of its steps whose last event read is `step-started`.
+  final Set<String> _running = {};
+
+  /// The `outputId` of the last `step-finished` read of each of its steps,
+  /// by id.
+  final Map<String, String> _outputs = {};
 
   /// Ids of its documents.
   final Set<String> documents = {};
@@ -299,14 +317,37 @@ final class _Session {
   /// more is written to it.
   bool ended = false;
 
-  /// Whether [step] was given without the `outputId` its `step-finished`
-  /// has: its `step.json` is rewritten with it.
-  bool awaitsOutput(Step step) =>
-      step.outputId == null && finishedWithOutput.contains(step.id);
+  /// Takes the `step-started` of the step [stepId].
+  void stepStarted(String stepId) {
+    _starts.update(stepId, (n) => n + 1, ifAbsent: () => 1);
+    _running.add(stepId);
+  }
 
-  /// Whether a step of it [awaitsOutput].
-  bool get awaitsAnyOutput =>
-      steps.values.any((given) => awaitsOutput(given.step));
+  /// Takes the `step-finished` with [outputId], or the `step-failed`
+  /// (`null`), of the step [stepId].
+  void stepEnded(String stepId, String? outputId) {
+    _running.remove(stepId);
+    if (outputId != null) _outputs[stepId] = outputId;
+  }
+
+  /// How many `step-started` of the step [stepId] have been read.
+  int startsOf(String stepId) => _starts[stepId] ?? 0;
+
+  /// Whether the `step.json` of [given] may have been rewritten since it
+  /// was read, and so is read again (D3):
+  /// - it was given without the `outputId` of its last `step-finished`:
+  ///   `step.json` is rewritten with it after that event is written;
+  /// - it runs again (a `step-started` that is not its first), and
+  ///   `step.json` is rewritten with the `after` of the new call right after
+  ///   that event: read again while that run goes on, and once after a
+  ///   `step-started` read since `step.json` was.
+  bool mayChange(_Step given) {
+    final id = given.step.id;
+    final output = _outputs[id];
+    if (output != null && given.step.outputId != output) return true;
+    final starts = startsOf(id);
+    return starts > 1 && (starts > given.startsRead || _running.contains(id));
+  }
 }
 
 /// A step given, as it was last given.
@@ -316,4 +357,8 @@ final class _Step {
   Step step;
 
   final String dir;
+
+  /// How many `step-started` of it had been read when its `step.json` was
+  /// last read.
+  int startsRead = 0;
 }

@@ -195,6 +195,69 @@ void main() {
       expect(feed.since(changedMark), [StepChanged(published)]);
     });
 
+    test('gives step-changed when a step that runs again in its record gets '
+        'another after, and then its new outputId', () async {
+      final runsDir = await newRunsDir();
+      final session = newSession();
+      final first = Document(id: newId(), sessionId: session.id, value: 1);
+      final collect = newStep(session.id).withOutput(first.id);
+      final sessionDir = writeSession(
+        runsDir,
+        session,
+        events: [
+          SessionStarted(time: at(0), code: 'sha256:a'),
+          StepStarted(time: at(1), stepId: collect.id),
+          StepFinished(time: at(2), stepId: collect.id, outputId: first.id),
+          SessionResumed(time: at(3), code: 'sha256:b', graphId: null),
+        ],
+      );
+      writeDocument(sessionDir, first);
+      final collectDir = writeStep(sessionDir, collect, startedAt: at(1));
+      final feed = Feed(runsDir);
+      await feed.settle();
+      final mark = feed.changes.length;
+
+      // The order of D3 for a rerun that follows another step: step-started,
+      // then step.json with the new after.
+      final rerun = StepStarted(time: at(4), stepId: collect.id);
+      append(sessionDir, line(rerun));
+      await feed.next<EventAdded>((change) => change.event == rerun);
+      final moved = collect.withAfter('other#1@e3b0c44298fc1c14');
+      rewriteStep(collectDir, moved);
+      await feed.next<StepChanged>();
+      await feed.settle();
+      await feed.settle();
+      expect(feed.since(mark), [
+        EventAdded(sessionId: session.id, event: rerun),
+        StepChanged(moved),
+      ]);
+      final finishedMark = feed.changes.length;
+
+      // Then document, step-finished, step.json with the new outputId.
+      final second = Document(id: newId(), sessionId: session.id, value: 2);
+      final finished = StepFinished(
+        time: at(5),
+        stepId: collect.id,
+        outputId: second.id,
+      );
+      writeDocument(sessionDir, second);
+      append(sessionDir, line(finished));
+      await feed.next<EventAdded>((change) => change.event == finished);
+      final done = moved.withOutput(second.id);
+      rewriteStep(collectDir, done);
+      await feed.next<StepChanged>((change) => change.step == done);
+      await feed.settle();
+      await feed.settle();
+      expect(
+        feed.since(finishedMark),
+        unorderedEquals([
+          EventAdded(sessionId: session.id, event: finished),
+          DocumentAdded(sessionId: session.id, documentId: second.id),
+          StepChanged(done),
+        ]),
+      );
+    });
+
     test('gives a session, its steps, events and documents as they '
         'appear', () async {
       final runsDir = await newRunsDir();

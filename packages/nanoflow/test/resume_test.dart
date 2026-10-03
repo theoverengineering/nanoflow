@@ -384,6 +384,24 @@ void main() {
       expect(handle.session.graph, isNull);
     });
 
+    test('on other code without a graph file writes no snapshot, and '
+        'session-resumed names none', () async {
+      final (:dir, :work) = await project();
+      File(p.join(work, 'go')).createSync();
+      final id = await writeSession(dir, work, code: 'sha256:old');
+
+      await (await Flow(directory: dir).resume(review, id)).result;
+
+      final handle = await openSession(dir, id);
+      final events = await eventsOf(handle);
+      final resumed = events.whereType<SessionResumed>().single;
+      expect(resumed.code, isNot('sha256:old'));
+      expect(resumed.graphId, isNull);
+      // The input, the output of each step and the result.
+      final documents = Directory(p.join(handle.dir, documentsDirName));
+      expect(documents.listSync(), hasLength(5));
+    });
+
     test('takes a finished step from the journal only when it follows the '
         'step it followed then; otherwise the step runs again in its '
         'record', () async {

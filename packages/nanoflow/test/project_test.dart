@@ -65,6 +65,55 @@ void main() {
       );
     });
 
+    test('under dart run in a pub workspace is the directory of the package '
+        'whose snapshot runs, as the package config gives it', () async {
+      // `dart run`, `dart run <pkg>` and `dart run :main` run a snapshot in
+      // the .dart_tool of the workspace root, whose pubspec.yaml is the
+      // nearest.
+      final dir = await tempDir();
+      put(dir, 'pubspec.yaml', 'name: _\nworkspace:\n  - packages/app\n');
+      put(dir, 'packages/app/pubspec.yaml', 'name: app\n');
+      put(
+        dir,
+        '.dart_tool/package_config.json',
+        jsonEncode({
+          'configVersion': 2,
+          'packages': [
+            {'name': 'other', 'rootUri': '../packages/other'},
+            {'name': 'app', 'rootUri': '../packages/app/'},
+          ],
+        }),
+      );
+      final snapshot = p.join(dir, '.dart_tool', 'pub', 'bin', 'app');
+      put(snapshot, 'app.dart-3.13.3.snapshot', '');
+      expect(
+        findProjectDir(
+          compiled: false,
+          script: Uri.file(p.join(snapshot, 'app.dart-3.13.3.snapshot')),
+        ),
+        p.join(dir, 'packages', 'app'),
+      );
+    });
+
+    test('under dart run takes the nearest pubspec.yaml when the package '
+        'config does not have the package', () async {
+      final dir = await tempDir();
+      put(dir, 'pubspec.yaml', 'name: app\n');
+      put(
+        dir,
+        '.dart_tool/package_config.json',
+        jsonEncode({'configVersion': 2, 'packages': <Object?>[]}),
+      );
+      final snapshot = p.join(dir, '.dart_tool', 'pub', 'bin', 'app');
+      expect(
+        findProjectDir(
+          compiled: false,
+          script: Uri.file(p.join(snapshot, 'app.dart-3.13.3.snapshot')),
+        ),
+        dir,
+      );
+    });
+
     test('is the directory of the binary in a compiled program', () async {
       final dir = await tempDir();
       put(dir, 'pubspec.yaml', 'name: review_example\n');
@@ -210,6 +259,40 @@ void main() {
       expect(
         await codeHashOf(dir, compiled: true, executable: binary),
         bytesHash([0, 1, 2, 255]),
+      );
+    });
+
+    test('of the sessions of a process is taken once, on first use: a '
+        'session started after the sources are edited has the code the '
+        'process runs', () async {
+      final dir = await tempDir();
+      put(dir, 'lib/review.dart', 'void review() {}\n');
+      final flow = Flow(directory: dir);
+      await flow.run(review, 'before');
+      put(dir, 'lib/review.dart', 'void review() { edited(); }\n');
+      await flow.run(review, 'after');
+
+      final codes = [
+        for (final id in sessionIds(dir))
+          ((await eventsOf(await openSession(dir, id))).first as SessionStarted)
+              .code,
+      ];
+      expect(codes, [
+        for (final _ in codes)
+          fingerprintOf({
+            'lib/review.dart': sourceHash(utf8.encode('void review() {}\n')),
+          }),
+      ]);
+      expect(codes, hasLength(2));
+
+      forgetCodeHashes();
+      expect(
+        await runningCodeHashOf(dir),
+        fingerprintOf({
+          'lib/review.dart': sourceHash(
+            utf8.encode('void review() { edited(); }\n'),
+          ),
+        }),
       );
     });
 

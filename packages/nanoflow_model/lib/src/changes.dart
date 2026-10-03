@@ -96,11 +96,13 @@ final class StepAdded extends Change {
   String toString() => 'StepAdded($step)';
 }
 
-/// A step got its `outputId`: the only change to a model already given out.
+/// The record of a step was rewritten: it got the `outputId` of its
+/// `step-finished`, or another `after` as it runs again. The only change to
+/// a model already given out.
 final class StepChanged extends Change {
   const StepChanged(this.step);
 
-  /// The whole step, with the new `outputId`.
+  /// The whole step, as it is now.
   final Step step;
 
   @override

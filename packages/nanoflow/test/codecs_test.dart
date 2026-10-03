@@ -187,6 +187,13 @@ Future<String> reportAsObject(Flow f, String x) =>
 Future<String> listAsIterable(Flow f, String x) =>
     codecErrorOf<Iterable<String>>(f, ['x']);
 
+/// The step `report`, which gives a [Report], then a gate.
+Future<Report> reportThenGate(Flow f, String x) async {
+  await keep(f, 'report', const Report('x', 1));
+  await passGate(f);
+  return f.step('result', () => body('result', const Report('x', 0)));
+}
+
 Future<String> describeChange(Flow f, Change change) async => change.branch;
 
 Future<Report> reportResult(Flow f, String x) async => const Report('x', 0);
@@ -419,6 +426,49 @@ void main() {
         throwsA(isA<CodecException>().having((e) => e.type, 'type', Report)),
       );
     });
+  });
+
+  test('a step whose saved result has a type without a codec now neither '
+      'runs nor writes: the session ends with the CodecException, and resumes '
+      'once the codec is registered', () async {
+    final dir = await tempDir();
+    gate = Completer();
+    atGate = Completer();
+    final flow = withCodecs(dir);
+    final first = await flow.start(reportThenGate, 'x');
+    await atGate.future;
+    flow.stop();
+    gate.complete();
+    await expectLater(first.result, throwsA(isA<FlowStoppedException>()));
+    expect(ran, ['report', 'gate']);
+    ran.clear();
+    final written = eventNamesOf(dir, first.id);
+
+    final withoutCodec = await plain(dir).resume(reportThenGate, first.id);
+
+    await expectLater(
+      withoutCodec.result,
+      throwsA(
+        isA<CodecException>()
+            .having((e) => e.type, 'type', Report)
+            .having((e) => e.reason, 'reason', contains('addCodec')),
+      ),
+    );
+    expect(ran, isEmpty);
+    expect(eventNamesOf(dir, first.id), [...written, 'session-resumed']);
+    expect(await ownerCheck(dir, first.id), 'opened');
+
+    final resumed = await withCodecs(dir).resume(reportThenGate, first.id);
+
+    expect(await resumed.result, const Report('x', 0));
+    expect(ran, ['gate', 'result']);
+    final state = replaySession(await eventsOf(await onlySession(dir)));
+    expect(state.status, SessionStatus.finished);
+    expect(
+      [for (final step in state.steps) step.starts],
+      [1, 2, 1],
+      reason: 'report, gate and result',
+    );
   });
 
   test('a step whose saved result no longer comes back as its type runs '

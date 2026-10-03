@@ -30,7 +30,9 @@ import 'project.dart';
 /// not come back is a [CodecException].
 final class Flow {
   /// A flow whose sessions go to `runs/` in [directory]; by default the
-  /// project directory: the directory of the binary in a compiled program,
+  /// project directory: the directory of the binary in a compiled program;
+  /// under `dart run`, which runs a snapshot in
+  /// `.dart_tool/pub/bin/<package>/`, the directory of that package;
   /// otherwise the nearest ancestor of the script with a `pubspec.yaml`, or
   /// the script's directory when none has one.
   Flow({String? directory}) : directory = findProjectDir(directory: directory);
@@ -84,7 +86,7 @@ final class Flow {
     final inputJson = _codecs.encode<I>(input);
     final graph = await graphSnapshotOf(directory);
     final package = await packageOf(directory, graph);
-    final code = await codeHashOf(directory);
+    final code = await runningCodeHashOf(directory);
     _checkNotStopped();
     final handle = await _stored(
       () => _store.createSession(
@@ -116,9 +118,14 @@ final class Flow {
   /// there, the step it followed then (`after`) is the one it follows now,
   /// and its saved result comes back from JSON as the type the code
   /// declares now (see [addCodec]); any other step runs live, in the record
-  /// of its key when the session has one. Writes `session-resumed` with the hash of the code,
-  /// and when that is not the code the session ran last, the graph file as
-  /// it is now.
+  /// of its key when the session has one. A saved result whose type has no
+  /// codec now is not run again: the session ends there as on a failure of
+  /// its store, with a [CodecException], and can be resumed once the codec
+  /// is registered.
+  ///
+  /// Writes `session-resumed` with the hash of the code, and when that is
+  /// not the code the session ran last and there is a graph file, the graph
+  /// file as it is now.
   ///
   /// A session that has ended runs nothing, and nothing is written to it:
   /// the result is its saved result, or a [SessionFailedException] with its
@@ -172,9 +179,11 @@ final class Flow {
       );
       final journal = await _journalOf(handle, state);
       final graph = await graphSnapshotOf(directory);
-      final code = await codeHashOf(directory);
+      final code = await runningCodeHashOf(directory);
       String? graphId;
-      if (code != state.codes.lastOrNull) {
+      // Without a graph file there is no snapshot: the session has none
+      // for this code, as `graph: null` says at its start.
+      if (code != state.codes.lastOrNull && graph != null) {
         _checkNotStopped();
         graphId = await _stored(() => handle.writeDocument(graph));
       }
@@ -290,8 +299,9 @@ final class Flow {
   /// Throws a [StateError] when called outside a session of this flow: from
   /// anywhere but the code of a workflow that [start], [run] or [resume]
   /// runs, or after its session has ended. Throws a [FlowStoppedException]
-  /// once the flow is stopped, and the [StorageException] of the session
-  /// once its store has failed.
+  /// once the flow is stopped, and what ended the session once it has
+  /// ended early: the [StorageException] of a failure of its store, or the
+  /// [CodecException] of a saved result whose type has no codec.
   Future<T> step<T>(String name, FutureOr<T> Function() body) {
     final session = Zone.current[this];
     if (session is! _Session) {
@@ -330,8 +340,9 @@ final class FlowSession<R> {
   /// the exception it threw.
   ///
   /// A session that ended without being written to the end — its flow was
-  /// stopped, or its store failed — ends with the [FlowStoppedException] or
-  /// the [StorageException]; one that [Flow.resume] found failed, with a
+  /// stopped, its store failed, or a step's saved result had a type without
+  /// a codec — ends with the [FlowStoppedException], the [StorageException]
+  /// or the [CodecException]; one that [Flow.resume] found failed, with a
   /// [SessionFailedException].
   final Future<R> result;
 }
@@ -386,9 +397,10 @@ final class _Session {
   /// has ended and its outcome is written.
   final _running = <Future<void>>{};
 
-  /// The failure of the store that ended the session; `null` while there is
-  /// none.
-  StorageException? _failure;
+  /// What ended the session before its end: the [StorageException] of a
+  /// failure of its store, or the [CodecException] of a step whose saved
+  /// result has a type without a codec; `null` while there is none.
+  Exception? _failure;
 
   /// Whether the session has ended: its workflow returned or threw, and
   /// every step it started has ended.
@@ -398,9 +410,9 @@ final class _Session {
   /// started have ended, writes its result or its exception, then lets the
   /// session go.
   ///
-  /// Writes nothing at the end once the flow is stopped or the store has
-  /// failed: the result is then the [FlowStoppedException] or the
-  /// [StorageException].
+  /// Writes nothing at the end once the flow is stopped or the session has
+  /// failed as on a failure of its store: the result is then the
+  /// [FlowStoppedException], or the session's failure.
   Future<R> run<R>(Future<R> Function() workflow) async {
     _flow._sessions.add(this);
     try {
@@ -471,9 +483,17 @@ final class _Session {
         if (saved != null && saved.after == step.after) {
           try {
             return Future.value(_flow._codecs.decode<T>(saved.value));
-          } on CodecException {
-            // Not a result of this step as the code has it now, as one that
-            // followed another step is not: it runs again (spec §4.6).
+          } on CodecException catch (e) {
+            if (!_flow._codecs.canDecode<T>()) {
+              // [T] has no codec: the code that resumes the session has not
+              // registered it, and running the step again would repeat
+              // what it did. The session ends as on a failure of its store,
+              // and can be resumed once the codec is there (spec §4.4).
+              return Future<T>.error(_failed(e));
+            }
+            // The JSON does not decode to a [T]: not a result of this step
+            // as the code has it now, as one that followed another step is
+            // not. It runs again (spec §4.4).
           }
         }
         return _live(step, body, trace);
@@ -570,9 +590,9 @@ final class _Session {
   /// Does [write], a write to the session's store.
   ///
   /// Writes nothing, and throws a [FlowStoppedException], once the flow is
-  /// stopped; writes nothing, and throws the session's [StorageException],
-  /// once the store has failed. A write that fails is that failure: the
-  /// session is not written any more.
+  /// stopped; writes nothing, and throws the session's failure, once it has
+  /// one. A write that fails is that failure: the session is not written any
+  /// more.
   Future<T> _write<T>(Future<T> Function() write) async {
     _checkWritable();
     try {
@@ -582,10 +602,10 @@ final class _Session {
     }
   }
 
-  /// The store of the session has failed with [failure]: the session is not
-  /// written any more, and its programs are stopped. Gives the session's
-  /// failure, the first one.
-  StorageException _failed(StorageException failure) {
+  /// The session has failed with [failure], as when its store fails: the
+  /// session is not written any more, and its programs are stopped. Gives
+  /// the session's failure, the first one.
+  Exception _failed(Exception failure) {
     final first = _failure ??= failure;
     _programs.stop(first);
     return first;

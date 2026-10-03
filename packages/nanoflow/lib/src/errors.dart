@@ -4,7 +4,9 @@
 /// type nor one with a codec (`Flow.addCodec`), or the codec's `fromJson`
 /// fails.
 ///
-/// For a step it is the step's exception: the step fails with it.
+/// For a step that runs it is the step's exception: the step fails with it.
+/// For a step's saved result, whose type has no codec when `Flow.resume`
+/// takes the session on, it ends the session as a [StorageException] does.
 final class CodecException implements Exception {
   const CodecException(this.type, this.reason);
 
