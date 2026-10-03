@@ -708,6 +708,148 @@ void main() {
       expect(shown.tagOf(j.steps[3].id), 'pkg 3');
       expect(shown.tagOf(j.steps.first.id), isNull, reason: 'plan');
     });
+
+    test('copies in a function two calls on the level drawn call are named '
+        'once', () {
+      // `await inPlace(f, staging); await inPlace(f, prod);`, or the two
+      // branches of an if calling it.
+      final caller = GraphFunction(
+        id: 'lib/copies.dart#release',
+        name: 'release',
+        place: 'lib/copies.dart:40',
+        body: const GraphBody(
+          nodes: [
+            CallNode(
+              id: '1',
+              place: 'lib/copies.dart:41',
+              functions: ['lib/copies.dart#inPlace'],
+            ),
+            CallNode(
+              id: '2',
+              place: 'lib/copies.dart:42',
+              functions: ['lib/copies.dart#inPlace'],
+            ),
+          ],
+          edges: [],
+        ),
+      );
+      final functions = {...file.functions, caller.id: caller};
+      final j = inPlaceJournal();
+      final shown = framesOf(
+        bodyLevels(caller, functions, const []),
+        places: StepPlaces.of(caller, functions),
+        session: j.data,
+      );
+      expect(shown.tagOf(j.steps[1].id), 'pkg 1');
+      expect(shown.copyOf(j.steps[3].id), 'pkg 3');
+      expect(shown.levelCopies, hasLength(1));
+    });
+
+    test('copies in a function called both on the level drawn and inside '
+        'copies are named once, within the copy around them (decision '
+        '11)', () {
+      final deploy = GraphFunction(
+        id: 'lib/d.dart#deploy',
+        name: 'deploy',
+        place: 'lib/d.dart:1',
+        body: const GraphBody(
+          nodes: [
+            CopiesNode(
+              id: '1',
+              place: 'lib/d.dart:2',
+              label: 's in servers',
+              body: GraphBody(
+                nodes: [StepNode(id: '1', place: 'lib/d.dart:3', name: 'up')],
+                edges: [],
+              ),
+            ),
+          ],
+          edges: [],
+        ),
+      );
+      // `await deploy(f); await Future.wait([for (r in regions) () async {
+      // await f.step('prepare', …); await deploy(f); }()]);`
+      final release = GraphFunction(
+        id: 'lib/d.dart#release',
+        name: 'release',
+        place: 'lib/d.dart:6',
+        body: const GraphBody(
+          nodes: [
+            CallNode(
+              id: '1',
+              place: 'lib/d.dart:7',
+              functions: ['lib/d.dart#deploy'],
+            ),
+            CopiesNode(
+              id: '2',
+              place: 'lib/d.dart:8',
+              label: 'r in regions',
+              body: GraphBody(
+                nodes: [
+                  StepNode(id: '1', place: 'lib/d.dart:9', name: 'prepare'),
+                  CallNode(
+                    id: '2',
+                    place: 'lib/d.dart:10',
+                    functions: ['lib/d.dart#deploy'],
+                  ),
+                ],
+                edges: [],
+              ),
+            ),
+          ],
+          edges: [],
+        ),
+      );
+      final functions = {deploy.id: deploy, release.id: release};
+      final j = Journal('d1e2-session', workflow: 'release');
+      for (final (i, server) in ['a', 'b'].indexed) {
+        j.step(
+          'up',
+          1 + i,
+          end: 3,
+          place: 'lib/d.dart:3',
+          key: 'u$server',
+          after: null,
+        );
+      }
+      for (final (i, region) in ['eu', 'us'].indexed) {
+        j.step(
+          'prepare',
+          4 + i * 3,
+          end: 5 + i * 3,
+          place: 'lib/d.dart:9',
+          key: 'p$region',
+          after: null,
+        );
+        for (final (k, server) in ['a', 'b'].indexed) {
+          j.step(
+            'up',
+            5 + i * 3 + k / 10,
+            end: 6 + i * 3,
+            place: 'lib/d.dart:3',
+            key: 'u$region$server',
+            after: 'p$region',
+          );
+        }
+      }
+      final shown = framesOf(
+        bodyLevels(release, functions, const []),
+        places: StepPlaces.of(release, functions),
+        session: j.data,
+      );
+      String? tagOf(String key) =>
+          shown.tagOf(j.steps.singleWhere((s) => s.key == key).id);
+
+      // The servers of a region are numbered within it.
+      expect(tagOf('peu'), 'r 3');
+      expect(tagOf('ueua'), 'r 3 › s 1');
+      expect(tagOf('uusb'), 'r 4 › s 2');
+      // By its place a step of the call outside regions is in the regions
+      // frame too: each such step is a copy of it of its own (spec §9).
+      expect(tagOf('ua'), 'r 1 › s 1');
+      expect(tagOf('ub'), 'r 2 › s 1');
+      expect(shown.levelCopies, hasLength(2));
+    });
   });
 
   group('over sessions the real library wrote (recordedCopies)', () {

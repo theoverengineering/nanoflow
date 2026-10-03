@@ -12,9 +12,13 @@
 /// One with no step before its inner copies — `Future.wait([for (p in pkgs)
 /// Future.wait([for (t in targets) f.step('build', …)])])` — cannot be told
 /// apart: each step of its inner copies follows a step outside both frames,
-/// and so starts an outer copy of its own.
+/// and so starts an outer copy of its own. And a frame holds its steps by
+/// place, not by the way they were called: a function with steps called
+/// both inside a frame and outside it is the frame's, and each chain of its
+/// call outside is a copy of the frame too.
 library;
 
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
@@ -352,46 +356,87 @@ ShownSteps framesOf(
       around = (node: node, copies: copies);
     }
   }
-  final levelCopies = <LevelCopies>[];
-  // The copies of the copies nodes in [body] and inside them, each numbered
-  // within the group of steps it is in; a function in [entered] is not
-  // entered again.
-  void collect(
-    GraphBody body,
-    Iterable<List<StepState>> groups,
-    Set<String> entered,
-  ) {
+  final body = levels.lastOrNull?.body;
+  final levelCopies = body == null
+      ? const <LevelCopies>[]
+      : _levelCopies(
+          body,
+          around?.copies.map((copy) => copy.steps) ?? [steps],
+          places: places,
+          session: session,
+        );
+  return ShownSteps._(
+    List.unmodifiable(frames),
+    levelCopies,
+    List.unmodifiable(steps),
+  );
+}
+
+/// The copies of the `copies` nodes in [body], the level drawn, and inside
+/// it — in the bodies of copies and of the functions calls call — the outer
+/// before the inner; [groups] are the steps the level shows, by the copy of
+/// the frame it is the body of.
+///
+/// Each node is there once, however many calls reach it: by place, its
+/// copies gather its steps from every call. A node reached inside copies on
+/// some way to it is numbered within the copy around it there, as copies in
+/// copies are (decision 11: `pkg 1 › target 2`); a node reached only
+/// outside copies, within [groups].
+List<LevelCopies> _levelCopies(
+  GraphBody body,
+  Iterable<List<StepState>> groups, {
+  required StepPlaces places,
+  required SessionData session,
+}) {
+  // Each node reached, with the copies node around it — one around it on
+  // some way to it, if any — in the order first reached.
+  final around = LinkedHashMap<CopiesNode, CopiesNode?>.identity();
+  // The functions walked, each once in each copies node around it (-1 for
+  // none): a function many calls call is walked once.
+  final indexes = Map<CopiesNode, int>.identity();
+  final walked = <(String, int)>{};
+  void walk(GraphBody body, CopiesNode? within, Set<String> entered) {
     for (final node in body.nodes) {
       switch (node) {
         case CopiesNode():
-          final copies = [
-            for (final group in groups)
-              ...copiesOf(node, places: places, session: session, steps: group),
-          ];
-          levelCopies.add((node: node, copies: copies));
-          collect(node.body, [for (final copy in copies) copy.steps], entered);
+          final reached = around.containsKey(node);
+          if (!reached || around[node] == null) around[node] = within;
+          if (reached) continue;
+          indexes[node] = indexes.length;
+          walk(node.body, node, entered);
         case CallNode():
+          final context = within == null ? -1 : indexes[within]!;
           for (final function in places.calledBy(node)) {
+            // A function in [entered] calls itself: it holds nothing new.
             if (entered.contains(function.id)) continue;
-            collect(function.body, groups, {...entered, function.id});
+            if (!walked.add((function.id, context))) continue;
+            walk(function.body, within, {...entered, function.id});
           }
         case StepNode() || ConditionNode():
       }
     }
   }
 
-  if (levels.lastOrNull?.body case final body?) {
-    collect(
-      body,
-      around?.copies.map((copy) => copy.steps) ?? [steps],
-      const {},
-    );
+  walk(body, null, const {});
+  final levelCopies = <LevelCopies>[];
+  final copiesOfNode = Map<CopiesNode, List<Copy>>.identity();
+  List<Copy> copiesAt(CopiesNode node) {
+    if (copiesOfNode[node] case final copies?) return copies;
+    copiesOfNode[node] = const []; // a node around itself holds no copies
+    final outer = around[node];
+    final within = outer == null
+        ? groups
+        : [for (final copy in copiesAt(outer)) copy.steps];
+    final copies = [
+      for (final group in within)
+        ...copiesOf(node, places: places, session: session, steps: group),
+    ];
+    levelCopies.add((node: node, copies: copies));
+    return copiesOfNode[node] = copies;
   }
-  return ShownSteps._(
-    List.unmodifiable(frames),
-    levelCopies,
-    List.unmodifiable(steps),
-  );
+
+  around.keys.forEach(copiesAt);
+  return levelCopies;
 }
 
 /// `done 1 of 3`, `done 1 of 3 · 1 failed`.
