@@ -140,12 +140,14 @@ void main() {
   });
 
   group('inline', () {
-    test('draws copies as a stack labelled with what they go over', () {
+    test('draws copies as a stack labelled with what they go over, the '
+        'steps of a copy counted on it', () {
       final layout = layoutOf('inline', 'inPlace');
       final copies = layout.nodes['1']!;
       expect(copies.kind, NodeKind.copies);
       expect(copies.name, 'pkg in packages');
-      expect(copies.inside, '×');
+      // upload, verify, tag.
+      expect(copies.inside, '{ 3 }');
       expect(arrows(layout), [
         '$startMarker-null->1',
         '1-null->2',
@@ -163,6 +165,68 @@ void main() {
       expect(layout.nodes['1']!.name, 'publish()');
       expect(layout.nodes['1']!.inside, '{ 3 }');
     });
+  });
+
+  group('the steps counted on a call or copies', () {
+    test('are those of the bodies below too: of the functions called and '
+        'of copies', () {
+      // viaCall's copies hold one call of publish: upload, verify, tag.
+      expect(layoutOf('inline', 'viaCall').nodes['1']!.inside, '{ 3 }');
+    });
+
+    test('count a function being counted once: a recursive call adds '
+        'nothing again', () {
+      // crawl calls visit, which has no step of its own and calls crawl:
+      // the fetch of crawl.
+      final crawl = layoutOf('recursion', 'crawl');
+      expect(crawl.nodes['3']!.name, 'visit()');
+      expect(crawl.nodes['3']!.inside, '{ 1 }');
+      // deploy calls itself: its try-deploy.
+      expect(layoutOf('recursion', 'deploy').nodes['3']!.inside, '{ 1 }');
+    });
+
+    test('are left out when there are none below', () {
+      const empty = GraphBody(nodes: [], edges: []);
+      final layout = layoutBody(
+        const GraphBody(
+          nodes: [
+            CallNode(id: 'call', place: null, functions: ['lib/a.dart#none']),
+            CopiesNode(id: 'copies', place: null, label: 'x', body: empty),
+          ],
+          edges: [],
+        ),
+        functions: const {
+          'lib/a.dart#none': GraphFunction(
+            id: 'lib/a.dart#none',
+            name: 'none',
+            place: null,
+            body: empty,
+          ),
+        },
+      );
+      expect(layout.nodes['call']!.inside, '{ }');
+      expect(layout.nodes['copies']!.inside, '{ }');
+    });
+  });
+
+  test('a name longer than 30 characters is cut with …, whole in '
+      'fullName', () {
+    const label = 'change.path.isEmpty && change.id.isNotEmpty';
+    final layout = layoutBody(
+      const GraphBody(
+        nodes: [
+          ConditionNode(id: 'long', place: null, label: label),
+          StepNode(id: 'short', place: null, name: 'collect'),
+        ],
+        edges: [],
+      ),
+    );
+    final long = layout.nodes['long']!;
+    expect(long.name, 'change.path.isEmpty && change…');
+    expect(long.name!.runes, hasLength(30));
+    expect(long.fullName, label);
+    expect(layout.nodes['short']!.name, 'collect');
+    expect(layout.nodes['short']!.fullName, 'collect');
   });
 
   test('a call to a function the file does not have is named from its id', () {

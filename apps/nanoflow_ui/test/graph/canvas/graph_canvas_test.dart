@@ -92,7 +92,7 @@ void main() {
     });
 
     testWidgets('draws a call as a stack with its steps counted, copies as '
-        'one with ×', (tester) async {
+        'one with the steps of a copy and ×n', (tester) async {
       await pumpCanvas(tester, modelOf());
       expect(find.text('publish()'), findsOneWidget);
       expect(find.text('{ 3 }'), findsOneWidget);
@@ -108,7 +108,8 @@ void main() {
         ),
       );
       expect(find.text('pkg in packages'), findsOneWidget);
-      expect(find.text('×'), findsOneWidget);
+      expect(find.text('{ 3 }'), findsOneWidget);
+      expect(find.text('×n'), findsOneWidget);
     });
 
     testWidgets('a double click on a call or copies opens it, on another '

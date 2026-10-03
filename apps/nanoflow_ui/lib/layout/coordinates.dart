@@ -33,10 +33,21 @@ int tilesBehind(NodeKind kind) => switch (kind) {
 /// the place under it.
 const double loopClear = 8;
 
-/// The room the marks over a tile take: badges in its top right corner, and
-/// the tiles stacked behind it.
-double marksAbove(GNode node) =>
-    math.max(12, stackStep * tilesBehind(node.kind) + 4);
+/// The badge across the top of the stack of copies: its height, and how far
+/// past the tile's right side it reaches.
+const double badgeHeight = 14;
+const double badgeOverhang = 6;
+
+/// How far over the tile of [kind] what is drawn over it reaches: the tiles
+/// stacked behind it, and the badge across the top of the stack of copies.
+double overTile(NodeKind kind) {
+  final stack = stackStep * tilesBehind(kind);
+  return kind == NodeKind.copies ? stack + badgeHeight / 2 : stack;
+}
+
+/// The room the marks over a tile take: badges in its top right corner, the
+/// tiles stacked behind it.
+double marksAbove(GNode node) => math.max(12, overTile(node.kind) + 4);
 
 /// The room under a tile: its name and place; a marker's state badge.
 double textsBelow(GNode node) => node.isMarker ? 12 : placeTop + placeHeight;
@@ -440,10 +451,9 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
     tile.bottom + placeTop,
     placeHeight,
   );
-  final behind = stackStep * tilesBehind(node.kind);
   final marks = Rect.fromLTRB(
-    behind > 0 ? tile.left + stackInset : tile.right - 60,
-    tile.top - math.max(10, behind),
+    tilesBehind(node.kind) > 0 ? tile.left + stackInset : tile.right - 60,
+    tile.top - math.max(10, overTile(node.kind)),
     tile.right + 8,
     tile.top + 8,
   );

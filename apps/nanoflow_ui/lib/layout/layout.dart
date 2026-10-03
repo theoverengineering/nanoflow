@@ -19,7 +19,14 @@ import 'ports.dart';
 import 'routing.dart';
 
 export 'checks.dart' show checkLayout, countCrossings;
-export 'coordinates.dart' show stackInset, stackStep, tilesBehind;
+export 'coordinates.dart'
+    show
+        badgeHeight,
+        badgeOverhang,
+        overTile,
+        stackInset,
+        stackStep,
+        tilesBehind;
 export 'geometry.dart';
 export 'graph_layout.dart';
 export 'layout_graph.dart'
@@ -29,12 +36,16 @@ export 'layout_graph.dart'
         LayoutOptions,
         MeasureText,
         NodeKind,
+        copiesBadge,
         counterText,
         endMarker,
         endMarkerAt,
         insideText,
         monospaceMeasure,
+        nameLength,
         nodeName,
+        reachableSteps,
+        shortName,
         startMarker;
 
 /// Lays out one level of the graph, [body], from a start marker to end

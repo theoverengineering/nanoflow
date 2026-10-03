@@ -47,6 +47,11 @@ abstract final class CanvasColors {
   static const stackFill = Color(0xFF2C2D32);
   static const stackBorder = Color(0xFF55565C);
 
+  /// The badge across the top of the stack of copies: `×n`.
+  static const badgeFill = Color(0xFF3A3B41);
+  static const badgeBorder = Color(0xFF4A4B52);
+  static const badgeText = Color(0xFFD5D6DA);
+
   /// The dashed outline of the start and end markers, and their word.
   static const markerBorder = Color(0xFF5A5B62);
   static const markerText = Color(0xFFA7A8AE);
@@ -86,8 +91,14 @@ abstract final class CanvasText {
   /// A node's place in the code under its name.
   static final place = _mono.copyWith(fontSize: 10.5);
 
-  /// `{ 3 }` on a call, `×` on copies.
+  /// The steps of a call or of a copy: `{ 3 }`.
   static final inside = _mono.copyWith(fontSize: 15, color: CanvasColors.icon);
+
+  /// `×n` across the top of the stack of copies.
+  static final badge = _mono.copyWith(
+    fontSize: 10,
+    color: CanvasColors.badgeText,
+  );
 
   /// `start` and `end` in their markers.
   static final marker = _sans.copyWith(

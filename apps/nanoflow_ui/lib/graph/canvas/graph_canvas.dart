@@ -6,7 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nanoflow_model/nanoflow_model.dart'
-    show CallNode, GraphBody, GraphFunction, GraphNode;
+    show CallNode, CopiesNode, GraphBody, GraphFunction, GraphNode;
 
 import '../../layout/layout.dart' as layout;
 import '../../state/body_path.dart';
@@ -171,13 +171,14 @@ class _GraphCanvasState extends State<GraphCanvas> {
     // A body read once is drawn with the functions of its own file.
     if (identical(body, _body)) return;
     _body = body;
-    // A call is drawn with its function's name and steps.
+    // A call is drawn with its function's name and steps, copies with the
+    // steps of the functions a copy calls.
     final json = body == null
         ? null
         : jsonEncode([
             body.toJson(),
             for (final node in body.nodes)
-              if (node is CallNode)
+              if (node is CallNode || node is CopiesNode)
                 [
                   layout.nodeName(node, functions),
                   layout.insideText(node, functions),

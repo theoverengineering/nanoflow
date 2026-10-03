@@ -26,7 +26,18 @@ void main() {
           id: 'copies',
           place: 'lib/a.dart:6',
           label: 'x in xs',
-          body: GraphBody(nodes: [], edges: []),
+          body: GraphBody(
+            nodes: [
+              StepNode(id: '1', place: null, name: 'a'),
+              StepNode(id: '2', place: null, name: 'b'),
+            ],
+            edges: [],
+          ),
+        ),
+        ConditionNode(
+          id: 'long',
+          place: 'lib/a.dart:7',
+          label: 'change.path.isEmpty && change.id.isNotEmpty',
         ),
       ],
       edges: [
@@ -118,15 +129,41 @@ void main() {
     expect(find.text('f()'), findsOneWidget);
   });
 
-  testWidgets('copies: two tiles stacked behind, ×, their label', (
-    tester,
-  ) async {
+  testWidgets('copies: two tiles stacked behind, the steps of a copy on '
+      'them as on a call, ×n across the top right of the stack, their '
+      'label', (tester) async {
     await pumpTile(tester, 'copies');
+    final tile = tileOf(tester, 'copies');
     final stack = stackOf(tester);
     expect(stack, hasLength(2));
     expect(stack.first.top, lessThan(stack.last.top));
-    expect(find.text('×'), findsOneWidget);
+    final steps = find.text('{ 2 }');
+    expect(steps, findsOneWidget);
+    expect(
+      tester.widget<Text>(steps).style!.fontSize,
+      CanvasText.inside.fontSize,
+    );
+    expect(tester.getCenter(steps).dx, moreOrLessEquals(tile.center.dx));
+    final badge = tester.getRect(
+      find.ancestor(of: find.text('×n'), matching: find.byType(Container)),
+    );
+    expect(badge.center.dy, moreOrLessEquals(stack.first.top, epsilon: 1));
+    expect(badge.right, moreOrLessEquals(tile.right + 6, epsilon: 1));
     expect(find.text('x in xs'), findsOneWidget);
+    // All of it inside what the node's widget takes.
+    final area = tester.getRect(find.byKey(NodeTile.keyOf('copies')));
+    expect(area.intersect(badge), badge);
+  });
+
+  testWidgets('a name cut short is whole in its tooltip', (tester) async {
+    await pumpTile(tester, 'long');
+    expect(find.text('change.path.isEmpty && change…'), findsOneWidget);
+    expect(
+      find.byTooltip('change.path.isEmpty && change.id.isNotEmpty'),
+      findsOneWidget,
+    );
+    await pumpTile(tester, 'step');
+    expect(find.byType(Tooltip), findsNothing);
   });
 
   testWidgets('the markers: dashed, saying start and end, nothing under', (

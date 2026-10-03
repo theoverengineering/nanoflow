@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
@@ -18,9 +20,9 @@ import '../widgets/icons.dart';
 /// `Open in editor` for the graph file. When Finder or the editor fails, a
 /// note says so for a while.
 ///
-/// The first crumb is the workflow drawn: with more than one to choose
-/// from, it opens the list of workflows. A crumb above the body drawn goes
-/// back up to its level.
+/// A crumb above the body drawn goes back up to its level; the chevron of
+/// the workflow's crumb, when there are workflows to choose from, opens the
+/// list of them. Crumbs that do not fit fold into `…` (`_Crumbs`).
 class GraphHeader extends StatelessWidget {
   const GraphHeader({
     super.key,
@@ -30,8 +32,11 @@ class GraphHeader extends StatelessWidget {
     required this.onBack,
   });
 
-  /// The key of the workflow crumb that opens the list of workflows.
+  /// The key of the chevron that opens the list of workflows.
   static const workflowKey = ValueKey('workflow picker');
+
+  /// The key of the crumb the middle crumbs of a deep path fold into.
+  static const foldedKey = ValueKey('folded crumbs');
 
   /// The graph file.
   final String path;
@@ -57,6 +62,12 @@ class GraphHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = p.basename(path);
+    final directory = Text(
+      abbreviateHome(p.dirname(path)),
+      style: AppText.headerPath,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -67,7 +78,7 @@ class GraphHeader extends StatelessWidget {
       child: ListenableBuilder(
         listenable: model,
         builder: (context, _) {
-          final crumbs = _crumbs();
+          final crumbs = model.workflow != null;
           return Row(
             // The mockup's flex gap, round the free space too.
             spacing: 10,
@@ -79,19 +90,13 @@ class GraphHeader extends StatelessWidget {
               Text('/', style: AppText.crumbSeparator),
               Text(
                 name,
-                style: crumbs.isEmpty ? AppText.headerTitle : AppText.crumb,
+                style: crumbs ? AppText.headerFile : AppText.headerTitle,
               ),
-              if (crumbs.isNotEmpty) ...[
-                Text('/', style: AppText.crumbSeparator),
-                ...crumbs,
-              ],
+              if (crumbs) Text('/', style: AppText.crumbSeparator),
               Expanded(
-                child: Text(
-                  abbreviateHome(p.dirname(path)),
-                  style: AppText.headerPath,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: crumbs
+                    ? _Crumbs(model: model, directory: directory)
+                    : directory,
               ),
               LiveBadge(source: model.graphFile),
               _Button(
@@ -116,69 +121,202 @@ class GraphHeader extends StatelessWidget {
       ),
     );
   }
-
-  /// The crumbs of the levels drawn, `›` between them: the last bold, the
-  /// others leading back up; the workflow's the picker when there are
-  /// workflows to choose from. Only the workflow's while it has nothing
-  /// drawn; none without a workflow.
-  List<Widget> _crumbs() {
-    final workflow = model.workflow;
-    if (workflow == null) return const [];
-    final levels = model.canvas.levels;
-    final titles = levels.isEmpty
-        ? [workflow.name]
-        : [for (final level in levels) level.title];
-    final picker = model.workflows.length > 1;
-    return [
-      for (var i = 0; i < titles.length; i++) ...[
-        if (i > 0) Text('›', style: AppText.crumbSeparator),
-        _crumb(
-          Text(
-            titles[i],
-            style: i == titles.length - 1 ? AppText.headerTitle : AppText.crumb,
-          ),
-          picker: i == 0 && picker,
-          up: i < titles.length - 1 ? () => model.openLevel(i) : null,
-        ),
-      ],
-    ];
-  }
-
-  /// A crumb of [title]: the workflow picker, or one going [up].
-  Widget _crumb(Widget title, {required bool picker, VoidCallback? up}) {
-    if (picker) return _WorkflowPicker(model: model, child: title);
-    if (up == null) return title;
-    return Clickable(onTap: up, child: title);
-  }
 }
 
-/// The workflow crumb with a chevron down: a click lists the workflows to
+/// The crumbs of the levels drawn, `›` between them, then [directory] in
+/// what room is left: the last crumb bold, the others leading back up; the
+/// workflow's with a chevron that lists the workflows when there are some
+/// to choose from; only the workflow's while it has nothing drawn.
+///
+/// When they do not fit, the workflow's crumb and as many of the last as
+/// fit stay, the ones between fold into `…`, which lists them; when even
+/// those do not fit, the workflow's and the last are cut with `…`.
+class _Crumbs extends StatelessWidget {
+  const _Crumbs({required this.model, required this.directory});
+
+  final GraphModel model;
+  final Widget directory;
+
+  /// The gap round a separator, as in the header.
+  static const _spacing = 10.0;
+
+  /// The chevron's box: the icon and the room round it to click.
+  static const _chevron = 20.0;
+  static const _chevronGap = 2.0;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final levels = model.canvas.levels;
+      final titles = levels.isEmpty
+          ? [model.workflow!.name]
+          : [for (final level in levels) level.title];
+      final last = titles.length - 1;
+      final picker = model.workflows.length > 1;
+      final scaler = MediaQuery.textScalerOf(context);
+      double widthOf(String text, TextStyle style) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: TextDirection.ltr,
+          textScaler: scaler,
+          maxLines: 1,
+        )..layout();
+        // A hair of room, so that what is measured is not cut when drawn.
+        final width = painter.width + 1;
+        painter.dispose();
+        return width;
+      }
+
+      TextStyle styleOf(int i) =>
+          i == last ? AppText.headerTitle : AppText.crumb;
+      final widths = [
+        for (var i = 0; i <= last; i++)
+          widthOf(titles[i], styleOf(i)) +
+              (i == 0 && picker ? _chevronGap + _chevron : 0),
+      ];
+      final separator = widthOf('›', AppText.crumbSeparator) + 2 * _spacing;
+      final fold = widthOf('…', AppText.crumb);
+      // A crumb by its index; null for the fold.
+      double width(List<int?> shown) =>
+          [for (final i in shown) i == null ? fold : widths[i]]
+              .fold(0.0, (sum, w) => sum + w) +
+          (shown.length - 1) * separator;
+
+      final room = constraints.maxWidth;
+      var shown = <int?>[for (var i = 0; i <= last; i++) i];
+      if (width(shown) > room && last >= 2) {
+        // The workflow's, the fold, and as many of the last as fit.
+        var from = last;
+        List<int?> keeping(int from) => [
+          0,
+          null,
+          for (var i = from; i <= last; i++) i,
+        ];
+        while (from > 2 && width(keeping(from - 1)) <= room) {
+          from--;
+        }
+        shown = keeping(from);
+      }
+      final hidden = [
+        for (var i = 0; i <= last; i++)
+          if (!shown.contains(i)) i,
+      ];
+      return Row(
+        spacing: _spacing,
+        children: [
+          SizedBox(
+            width: math.min(width(shown), room),
+            child: Row(
+              spacing: _spacing,
+              children: [
+                for (final (k, i) in shown.indexed) ...[
+                  if (k > 0) Text('›', style: AppText.crumbSeparator),
+                  if (i == null)
+                    _fold(context, titles, hidden)
+                  else if (i == 0 || i == last)
+                    // The ones that give way when nothing else does.
+                    Flexible(
+                      flex: math.max(1, widths[i].round()),
+                      child: _crumb(
+                        titles[i],
+                        i,
+                        last,
+                        picker: i == 0 && picker,
+                      ),
+                    )
+                  else
+                    _crumb(titles[i], i, last, picker: false),
+                ],
+              ],
+            ),
+          ),
+          Expanded(child: directory),
+        ],
+      );
+    },
+  );
+
+  /// The crumb of the level [i] of [last] + 1, [title]: going up unless it
+  /// is the last; with the workflow picker's chevron when [picker].
+  Widget _crumb(String title, int i, int last, {required bool picker}) {
+    Widget text = Text(
+      title,
+      style: i == last ? AppText.headerTitle : AppText.crumb,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
+    );
+    if (i < last) {
+      text = Clickable(onTap: () => model.openLevel(i), child: text);
+    }
+    if (!picker) return text;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      spacing: _chevronGap,
+      children: [
+        Flexible(child: text),
+        _WorkflowPicker(model: model),
+      ],
+    );
+  }
+
+  /// `…` for the crumbs [hidden] of [titles]: a click lists them, and the
+  /// one chosen goes back up to its level.
+  Widget _fold(BuildContext context, List<String> titles, List<int> hidden) =>
+      Builder(
+        builder: (context) => Clickable(
+          key: GraphHeader.foldedKey,
+          onTap: () async {
+            final depth = await showMenu<int>(
+              context: context,
+              color: AppColors.control,
+              position: _below(context),
+              items: [
+                for (final i in hidden)
+                  PopupMenuItem<int>(
+                    value: i,
+                    height: 34,
+                    child: Text(
+                      titles[i],
+                      style: AppText.button.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+            if (depth != null) model.openLevel(depth);
+          },
+          child: Text('…', style: AppText.crumb),
+        ),
+      );
+}
+
+/// Where a menu opens under the widget of [context].
+RelativeRect _below(BuildContext context) {
+  final box = context.findRenderObject()! as RenderBox;
+  final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+  final at = box.localToGlobal(
+    Offset(0, box.size.height + 4),
+    ancestor: overlay,
+  );
+  return RelativeRect.fromLTRB(at.dx, at.dy, overlay.size.width - at.dx, 0);
+}
+
+/// The chevron of the workflow's crumb: a click lists the workflows to
 /// choose from, those of the graph file and then those only sessions ran,
 /// marked; the workflow chosen is drawn from its top level.
 class _WorkflowPicker extends StatelessWidget {
-  const _WorkflowPicker({required this.model, required this.child});
+  const _WorkflowPicker({required this.model});
 
   final GraphModel model;
-  final Widget child;
 
   Future<void> _pick(BuildContext context) async {
-    final box = context.findRenderObject()! as RenderBox;
-    final overlay =
-        Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final at = box.localToGlobal(
-      Offset(0, box.size.height + 4),
-      ancestor: overlay,
-    );
     final chosen = model.workflow?.id;
     final id = await showMenu<String>(
       context: context,
       color: AppColors.control,
-      position: RelativeRect.fromLTRB(
-        at.dx,
-        at.dy,
-        overlay.size.width - at.dx,
-        0,
-      ),
+      position: _below(context),
       items: [
         for (final workflow in model.workflows)
           PopupMenuItem<String>(
@@ -206,16 +344,17 @@ class _WorkflowPicker extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Clickable(
-    key: GraphHeader.workflowKey,
-    onTap: () => _pick(context),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      spacing: 5,
-      children: [
-        child,
-        const ChevronIcon(size: 12, color: AppColors.textDim, down: true),
-      ],
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Choose a workflow',
+    child: Clickable(
+      key: GraphHeader.workflowKey,
+      onTap: () => _pick(context),
+      child: const SizedBox.square(
+        dimension: _Crumbs._chevron,
+        child: Center(
+          child: ChevronIcon(size: 12, color: AppColors.textDim, down: true),
+        ),
+      ),
     ),
   );
 }

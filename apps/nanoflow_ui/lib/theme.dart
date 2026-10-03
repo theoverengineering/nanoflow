@@ -216,6 +216,9 @@ abstract final class AppText {
     color: AppColors.textPrimary,
   );
   static final headerPath = _style(mono, 11.5, color: AppColors.textFaint);
+
+  /// The graph file's name in the header, among links that are not it.
+  static final headerFile = _style(sans, 13, color: AppColors.textSecondary);
   static final liveBadge = _style(sans, 11.5);
 
   // Sessions column.

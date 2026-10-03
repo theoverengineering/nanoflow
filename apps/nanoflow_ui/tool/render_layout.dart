@@ -155,6 +155,9 @@ const _tileFill = '#323338';
 const _tileBorder = '#5A5B62';
 const _stackFill = '#2C2D32';
 const _stackBorder = '#55565C';
+const _badgeFill = '#3A3B41';
+const _badgeBorder = '#4A4B52';
+const _badgeText = '#D5D6DA';
 const _markerBorder = '#5A5B62';
 const _markerText = '#A7A8AE';
 const _icon = '#C9CACF';
@@ -279,9 +282,7 @@ String renderSvg(GraphLayout layout, String caption) {
           'fill="$_tileFill" stroke="$_tileBorder" stroke-width="2"/>',
         );
         if (node.inside case final text?) {
-          // Alone, the × of copies is drawn larger.
-          final size = node.kind == NodeKind.copies ? 22.0 : 15.0;
-          svg.writeln(_inside(c, text, _icon, size: size, mono: true));
+          svg.writeln(_inside(c, text, _icon, size: 15, mono: true));
         } else {
           svg.writeln(
             '<g transform="translate(${_n(c.x - 14)} ${_n(c.y - 14)})" '
@@ -290,6 +291,25 @@ String renderSvg(GraphLayout layout, String caption) {
             '${node.kind == NodeKind.condition ? _conditionIcon : _stepIcon}'
             '</g>',
           );
+        }
+        if (node.kind == NodeKind.copies) {
+          // The badge across the top right of the stack.
+          const width = 24.0;
+          final top =
+              t.top - stackStep * tilesBehind(node.kind) - badgeHeight / 2;
+          final right = t.right + badgeOverhang;
+          svg
+            ..writeln(
+              '<rect x="${_n(right - width)}" y="${_n(top)}" '
+              'width="${_n(width)}" height="${_n(badgeHeight)}" '
+              'rx="${_n(badgeHeight / 2)}" fill="$_badgeFill" '
+              'stroke="$_badgeBorder"/>',
+            )
+            ..writeln(
+              '<text x="${_n(right - width / 2)}" y="${_n(top + 10.5)}" '
+              'text-anchor="middle" font-family="Geist Mono, Menlo, monospace" '
+              'font-size="10" fill="$_badgeText">$copiesBadge</text>',
+            );
         }
     }
     if (node.name case final name?) {

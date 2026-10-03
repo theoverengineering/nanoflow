@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/state/body_path.dart';
@@ -23,6 +24,22 @@ void main() {
     model.open(const Opened('5', functionId: 'lib/publish.dart#publish'));
     await settle(tester);
     await expectGolden(tester, 'graph_publish');
+  });
+
+  testWidgets('a deep path in the narrowest window: the middle crumbs '
+      'folded', (tester) async {
+    final model = await pumpGraphScreen(
+      tester,
+      model: ownedModel(file: releaseFile, graph: graphFileNamed('recursion')),
+      size: const Size(1100, 700),
+    );
+    for (var i = 0; i < 4; i++) {
+      model
+        ..open(const Opened('3', functionId: 'lib/crawl.dart#visit'))
+        ..open(const Opened('2', functionId: 'lib/crawl.dart#crawl'));
+    }
+    await settle(tester);
+    await expectGolden(tester, 'graph_deep');
   });
 
   testWidgets('a session without a snapshot: its notes under the session '

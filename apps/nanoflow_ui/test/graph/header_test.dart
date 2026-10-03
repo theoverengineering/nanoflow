@@ -6,6 +6,7 @@ import 'package:nanoflow_model/nanoflow_model.dart' hide Route;
 import 'package:nanoflow_ui/graph/header.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
+import 'package:nanoflow_ui/theme.dart';
 
 import '../state/support.dart';
 import 'canvas/support.dart';
@@ -80,6 +81,85 @@ void main() {
       expect(inHeader(find.text('›')), findsNothing);
       expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsNothing);
     });
+
+    testWidgets('with several workflows the workflow\'s crumb goes back up; '
+        'its chevron lists the workflows', (tester) async {
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(graph: twoWorkflows()),
+      );
+      model.open(publish);
+      await tester.pump();
+
+      await tester.tap(inHeader(find.text('release')));
+      await tester.pumpAndSettle();
+      expect(model.canvas.levels, hasLength(1));
+      expect(find.byType(PopupMenuItem<String>), findsNothing);
+
+      await tester.tap(inHeader(find.byKey(GraphHeader.workflowKey)));
+      await tester.pumpAndSettle();
+      expect(find.byType(PopupMenuItem<String>), findsNWidgets(2));
+    });
+
+    testWidgets('of a deep path fit the narrowest window: the middle ones '
+        'fold into …, which lists them', (tester) async {
+      // crawl calls visit, which calls crawl: as deep as one goes.
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(graph: graphFileNamed('recursion')),
+        size: const Size(1100, 700),
+      );
+      for (var i = 0; i < 4; i++) {
+        model
+          ..open(const Opened('3', functionId: 'lib/crawl.dart#visit'))
+          ..open(const Opened('2', functionId: 'lib/crawl.dart#crawl'));
+      }
+      model.open(const Opened('3', functionId: 'lib/crawl.dart#visit'));
+      await tester.pump();
+      expect(model.canvas.levels, hasLength(10));
+
+      // Nothing is pushed out of the header.
+      final open = tester.getRect(inHeader(find.text('Open in editor')));
+      expect(open.right, lessThanOrEqualTo(1100 - 16));
+      final folded = inHeader(find.byKey(GraphHeader.foldedKey));
+      expect(folded, findsOneWidget);
+      // The workflow and the body drawn stay.
+      expect(inHeader(find.text('crawl')), findsOneWidget);
+      expect(
+        tester.getRect(folded).left,
+        greaterThan(tester.getRect(inHeader(find.text('crawl'))).right),
+      );
+      expect(inHeader(find.text('visit()')), findsWidgets);
+
+      await tester.tap(folded);
+      await tester.pumpAndSettle();
+      final menu = find.byType(PopupMenuItem<int>);
+      expect(menu, findsWidgets);
+      final first = find.descendant(of: menu, matching: find.text('visit()'));
+      await tester.tap(first.first);
+      await tester.pumpAndSettle();
+      expect(model.canvas.levels, hasLength(2));
+      expect(inHeader(find.byKey(GraphHeader.foldedKey)), findsNothing);
+    });
+
+    testWidgets('a wide window shows them all', (tester) async {
+      final model = await pumpGraphScreen(tester);
+      model.open(publish);
+      await tester.pump();
+      expect(inHeader(find.byKey(GraphHeader.foldedKey)), findsNothing);
+    });
+  });
+
+  testWidgets('the graph file\'s name is not drawn as a link', (tester) async {
+    final model = await pumpGraphScreen(tester);
+    final style = tester.widget<Text>(inHeader(find.text(graphFileName))).style;
+    expect(style, AppText.headerFile);
+    model.open(publish);
+    await tester.pump();
+    expect(
+      tester.widget<Text>(inHeader(find.text(graphFileName))).style,
+      AppText.headerFile,
+    );
   });
 
   group('the workflow picker', () {

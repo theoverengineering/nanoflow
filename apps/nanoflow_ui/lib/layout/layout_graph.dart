@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 /// What a piece of text on the canvas is, for measuring its width.
@@ -192,28 +194,70 @@ String _functionName(List<String> ids, Map<String, GraphFunction> functions) {
   return name.substring(name.lastIndexOf('.') + 1);
 }
 
-/// What is written inside the tile of [node], when not an icon: `{ 3 }` on
-/// a call, the steps of the function's body (`{ 1–2 }` for implementations
-/// with different counts, `{ ? }` when the file has none of them); `×` on
-/// copies.
+/// What is written inside the tile of [node], when not an icon: how many
+/// steps can run in it ([reachableSteps]). `{ 3 }` on a call, the steps of
+/// its function; `{ 1–2 }` for implementations of a method with different
+/// counts; `{ ? }` when the file has none of its functions. `{ 3 }` on
+/// copies, the steps of one copy. `{ }` when there are none.
 String? insideText(GraphNode node, Map<String, GraphFunction> functions) {
+  final List<int> counts;
   switch (node) {
     case StepNode() || ConditionNode():
       return null;
-    case CopiesNode():
-      return '×';
+    case CopiesNode(:final body):
+      counts = [reachableSteps(body, functions)];
     case CallNode(functions: final ids):
-      final counts = [
+      counts = [
         for (final id in ids)
           if (functions[id] case final function?)
-            function.body.nodes.whereType<StepNode>().length,
+            reachableSteps(function.body, functions, {id}),
       ]..sort();
       if (counts.isEmpty) return '{ ? }';
-      return counts.first == counts.last
-          ? '{ ${counts.first} }'
-          : '{ ${counts.first}–${counts.last} }';
   }
+  if (counts.last == 0) return '{ }';
+  return counts.first == counts.last
+      ? '{ ${counts.first} }'
+      : '{ ${counts.first}–${counts.last} }';
 }
+
+/// How many steps can run in [body]: its own, those of the bodies of its
+/// copies, and those of the functions it calls that [functions] has — of
+/// the one with the most, for a call of several. A function in [counting],
+/// being counted already, counts nothing again: a recursive call adds no
+/// steps.
+int reachableSteps(
+  GraphBody body,
+  Map<String, GraphFunction> functions, [
+  Set<String> counting = const {},
+]) {
+  var count = 0;
+  for (final node in body.nodes) {
+    count += switch (node) {
+      StepNode() => 1,
+      ConditionNode() => 0,
+      CopiesNode(body: final copy) => reachableSteps(copy, functions, counting),
+      CallNode(functions: final ids) => [
+        for (final id in ids)
+          if (functions[id] case final function? when !counting.contains(id))
+            reachableSteps(function.body, functions, {...counting, id}),
+      ].fold(0, math.max),
+    };
+  }
+  return count;
+}
+
+/// The most characters of a name under a tile: a longer one is cut, `…`
+/// at its end.
+const int nameLength = 30;
+
+/// [name] as written under a tile: cut to [nameLength] characters with `…`.
+String shortName(String name) => name.runes.length <= nameLength
+    ? name
+    : '${String.fromCharCodes(name.runes.take(nameLength - 1))}…';
+
+/// What the badge over the stack of copies says until a session tells how
+/// many copies there are.
+const String copiesBadge = '×n';
 
 /// [place] as written under a tile: the file's name and the line,
 /// `review.dart:49`.
@@ -228,6 +272,7 @@ final class GNode {
     this.kind, {
     this.node,
     this.name,
+    this.fullName,
     this.place,
     this.inside,
   });
@@ -244,8 +289,12 @@ final class GNode {
   /// The body's node; `null` for a marker.
   final GraphNode? node;
 
-  /// The name under the tile; `null` for a marker.
+  /// The name under the tile, cut to [nameLength] characters ([shortName]);
+  /// `null` for a marker.
   final String? name;
+
+  /// The whole name; `null` for a marker.
+  final String? fullName;
 
   /// The place under the name; `null` for a marker, or when unknown.
   final String? place;
@@ -344,12 +393,14 @@ final class LayoutGraph {
     final nodes = <GNode>[];
     final byId = <String?, GNode>{};
     GNode add(String id, NodeKind kind, [GraphNode? node]) {
+      final name = node == null ? null : nodeName(node, functions);
       final gnode = GNode._(
         nodes.length,
         id,
         kind,
         node: node,
-        name: node == null ? null : nodeName(node, functions),
+        name: name == null ? null : shortName(name),
+        fullName: name,
         place: shortPlace(node?.place),
         inside: switch (kind) {
           NodeKind.start => 'start',

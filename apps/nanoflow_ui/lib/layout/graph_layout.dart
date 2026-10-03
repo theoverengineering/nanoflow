@@ -39,6 +39,7 @@ final class NodeBox {
     required this.kind,
     required this.node,
     required this.name,
+    required this.fullName,
     required this.place,
     required this.inside,
     required this.layer,
@@ -58,15 +59,19 @@ final class NodeBox {
   /// The body's node; `null` for a marker.
   final GraphNode? node;
 
-  /// The name under the tile; `null` for a marker.
+  /// The name under the tile, cut to [nameLength] characters with `…`;
+  /// `null` for a marker.
   final String? name;
+
+  /// The whole name, for a tooltip; `null` for a marker.
+  final String? fullName;
 
   /// The place in the code under the name: `review.dart:49`; `null` for a
   /// marker, or when unknown.
   final String? place;
 
   /// What is written inside the tile instead of an icon: `start`, `end`,
-  /// `{ 3 }` on a call, `×` on copies.
+  /// the steps of a call or of a copy, `{ 3 }`.
   final String? inside;
 
   /// The node's layer, 0 for the leftmost.

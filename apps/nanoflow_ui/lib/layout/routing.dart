@@ -107,6 +107,7 @@ GraphLayout route(
       kind: node.kind,
       node: node.node,
       name: node.name,
+      fullName: node.fullName,
       place: node.place,
       inside: node.inside,
       layer: node.layer,
