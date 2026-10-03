@@ -20,14 +20,33 @@ final class Feed {
   /// Every error given so far.
   final List<Object> errors = [];
 
+  /// The changes of the session [sessionId] given so far, in order.
+  List<Change> of(String sessionId) => [
+    for (final change in changes)
+      if (sessionIdOf(change) == sessionId) change,
+  ];
+
   /// Waits until the feed has given [change]; fails the test, with what the
-  /// feed gave, when it has not after 20 s.
-  Future<void> given(Change change) async {
+  /// feed gave of its session, when it has not after 20 s.
+  Future<void> given(Change change) =>
+      givenWhere(sessionIdOf(change), '$change', (other) => other == change);
+
+  /// Waits until the feed has given a change of the session [sessionId] that
+  /// [matches]; fails the test, saying it waited for [what], with what the
+  /// feed gave of that session, when it has not after 20 s.
+  Future<void> givenWhere(
+    String sessionId,
+    String what,
+    bool Function(Change change) matches,
+  ) async {
     const tick = Duration(milliseconds: 50);
     final waited = Stopwatch()..start();
-    while (!changes.contains(change)) {
+    while (!of(sessionId).any(matches)) {
       if (waited.elapsed > const Duration(seconds: 20)) {
-        fail('the feed has not given $change; it gave $changes');
+        fail(
+          'the feed has not given $what; of the session $sessionId it gave '
+          '${of(sessionId)}',
+        );
       }
       await Future<void>.delayed(tick);
     }
@@ -52,3 +71,13 @@ final class Feed {
     }
   }
 }
+
+/// The id of the session [change] is of.
+String sessionIdOf(Change change) => switch (change) {
+  SessionAdded(:final session) => session.id,
+  StepAdded(:final step) || StepChanged(:final step) => step.sessionId,
+  EventAdded(:final sessionId) ||
+  DocumentAdded(:final sessionId) ||
+  LogCorrupted(:final sessionId) ||
+  OwnerChanged(:final sessionId) => sessionId,
+};

@@ -12,9 +12,10 @@ import 'tail.dart';
 /// The sessions of a `runs` directory as far as the feed has given them.
 ///
 /// Each [scan] goes through the tree once and gives what has appeared since
-/// the scan before. Names that start with `.` are never looked at: the store
-/// builds files and directories under such names and renames them into place
-/// once they are complete.
+/// the scan before. Names that start with `.` are skipped in the listings of
+/// directories: the store builds files and directories under such names and
+/// renames them into place once they are complete. The one such file a scan
+/// reads, a session's `.owner.lock`, it opens by its path.
 ///
 /// What has ended is not looked at again: nothing is written to a session
 /// after its last event (`session-finished`, `session-failed`). A session is

@@ -393,16 +393,18 @@ void main() {
       File(check.go).createSync();
       expect(await resumed.exitCode, 0, reason: '${resumed.err}');
       expect(resumed.lines, [id]);
+      await feed.givenWhere(
+        id,
+        'session-finished',
+        (change) => change is EventAdded && change.event is SessionFinished,
+      );
+      // Settled, so that an owner-changed after it, had one come, is below.
       await feed.settle();
 
       expect(feed.errors, isEmpty);
       final ofSession = [
-        for (final change in feed.changes)
-          if (change
-              case OwnerChanged(:final sessionId) ||
-                  EventAdded(:final sessionId)
-              when sessionId == id)
-            change,
+        for (final change in feed.of(id))
+          if (change is OwnerChanged || change is EventAdded) change,
       ];
       expect(ofSession.whereType<OwnerChanged>(), [
         OwnerChanged(sessionId: id, owner: firstOwner, alive: true),
