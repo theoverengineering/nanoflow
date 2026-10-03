@@ -17,10 +17,7 @@ void main() {
     final processes = UnsupportedProcesses();
     addTearDown(processes.close);
     // The Dart executable: the one program at hand on every OS.
-    final gone = await Process.start(Platform.resolvedExecutable, [
-      '--version',
-    ]);
-    await gone.exitCode;
+    final gone = await Process.run(Platform.resolvedExecutable, ['--version']);
 
     await expectLater(
       processes.exitOf(gone.pid).timeout(const Duration(milliseconds: 200)),

@@ -28,8 +28,15 @@ final class MacProcesses implements Processes {
   /// The port the watcher isolate sends the pids that exited to.
   RawReceivePort? _exits;
 
-  /// Completes when the watcher isolate has ended.
+  /// The watcher isolate, once spawned.
+  Isolate? _watcher;
+
+  /// Completes when the watcher isolate has ended, or failed to start.
   Future<void>? _watcherEnded;
+
+  /// Why the watcher stopped, or did not start, before [close]: the waits,
+  /// and later [exitOf], fail with it.
+  Object? _failure;
 
   /// The waits for the pids registered with the kqueue that have not exited
   /// yet: every [exitOf] of a pid shares one registration.
@@ -62,10 +69,12 @@ final class MacProcesses implements Processes {
   /// already.
   ///
   /// Completes with an [OSError] when the OS refuses to watch the process
-  /// for another reason than its absence.
+  /// for another reason than its absence, or when the watcher isolate
+  /// stopped.
   @override
   Future<void> exitOf(int pid) async {
     if (_closed != null) return Completer<void>().future;
+    if (_failure case final failure?) throw failure;
     if (_waits[pid] case final wait?) return wait.future;
     final error = _change(
       _kq ??= _watch(),
@@ -91,16 +100,17 @@ final class MacProcesses implements Processes {
     _waits.clear();
     final kq = _kq;
     if (kq == null) return;
-    _change(
-      kq,
-      ident: _wakeIdent,
-      filter: _evfiltUser,
-      flags: 0,
-      fflags: _noteTrigger,
-    );
+    final woken = _wake(kq);
+    if (!woken) {
+      // The watcher waits on in `kevent`, where a kill does not reach it.
+      // Closing the kqueue ends that wait, and the kill, or the kqueue that
+      // now fails, ends the watcher before it waits again.
+      _watcher?.kill(priority: Isolate.immediate);
+      _closeFd(kq);
+    }
     await _watcherEnded;
     _exits!.close();
-    _closeFd(kq);
+    if (woken) _closeFd(kq);
   }
 
   /// Makes the kqueue, with the event that wakes the watcher, and starts the
@@ -108,25 +118,68 @@ final class MacProcesses implements Processes {
   int _watch() {
     final kq = _kqueue();
     if (kq == -1) throw const OSError('Cannot make a kqueue');
-    final error = _change(
-      kq,
-      ident: _wakeIdent,
-      filter: _evfiltUser,
-      flags: _evAdd | _evClear,
-    );
-    if (error != 0) {
+    try {
+      final error = _change(
+        kq,
+        ident: _wakeIdent,
+        filter: _evfiltUser,
+        flags: _evAdd | _evClear,
+      );
+      if (error != 0) {
+        throw OSError('Cannot add the wake event to a kqueue', error);
+      }
+    } catch (_) {
       _closeFd(kq);
-      throw OSError('Cannot add the wake event to a kqueue', error);
+      rethrow;
     }
     final exits = _exits = RawReceivePort(_exited, 'nanoflow_process exits');
-    final ended = ReceivePort('nanoflow_process watcher ended');
-    _watcherEnded = Isolate.spawn(
-      _watchExits,
-      (kq, exits.sendPort),
-      onExit: ended.sendPort,
-      debugName: 'nanoflow_process watcher',
-    ).then((_) => ended.first);
+    _watcherEnded = _runWatcher(kq, exits.sendPort);
     return kq;
+  }
+
+  /// Runs the watcher isolate on [kq] until it ends. When it ends before
+  /// [close], or does not start, the waits fail.
+  Future<void> _runWatcher(int kq, SendPort exits) async {
+    final ended = ReceivePort('nanoflow_process watcher ended');
+    try {
+      _watcher = await Isolate.spawn(
+        _watchExits,
+        (kq, exits),
+        onExit: ended.sendPort,
+        debugName: 'nanoflow_process watcher',
+      );
+    } catch (e) {
+      ended.close();
+      _fail(e);
+      return;
+    }
+    await ended.first;
+    if (_closed == null) _fail(const OSError('Stopped watching for exits'));
+  }
+
+  /// Wakes the watcher to end; `false` when the kqueue refused.
+  bool _wake(int kq) {
+    try {
+      final error = _change(
+        kq,
+        ident: _wakeIdent,
+        filter: _evfiltUser,
+        flags: 0,
+        fflags: _noteTrigger,
+      );
+      return error == 0;
+    } on OSError {
+      return false;
+    }
+  }
+
+  void _fail(Object failure) {
+    _failure = failure;
+    final waits = [..._waits.values];
+    _waits.clear();
+    for (final wait in waits) {
+      wait.completeError(failure);
+    }
   }
 
   void _exited(Object? pid) => _waits.remove(pid)?.complete();
@@ -142,18 +195,25 @@ DateTime timeOfTimeval(int seconds, int microseconds) =>
     );
 
 /// The watcher isolate: waits on the kqueue and sends the pid of every
-/// process that exits to the port, until the wake event comes.
+/// process that exits to the port, until the wake event comes or the kqueue
+/// fails.
 void _watchExits((int, SendPort) args) {
   final (kq, exits) = args;
   final events = calloc<_KEvent>(_eventsAtOnce);
+  final noWait = calloc<_Timespec>();
   try {
     while (true) {
-      // Blocks until events come. A signal that reaches this thread, as the
-      // SIGCHLD of a child process does, ends the call with EINTR and no
-      // events: then it waits again. Nothing else fails a wait without
-      // changes: the buffer is valid, and the kqueue is closed only after
-      // this isolate ends.
-      final count = _kevent(kq, nullptr, 0, events, _eventsAtOnce, nullptr);
+      // Blocks until events come.
+      var count = _kevent(kq, nullptr, 0, events, _eventsAtOnce, nullptr);
+      if (count == -1) {
+        // A signal that reaches this thread, as the SIGCHLD of a child
+        // process does, fails the wait with EINTR, and then it waits again.
+        // A call that does not wait cannot be interrupted: when it fails
+        // too, the kqueue is unusable, as when it was closed, and the
+        // watcher ends.
+        count = _kevent(kq, nullptr, 0, events, _eventsAtOnce, noWait);
+        if (count == -1) return;
+      }
       for (var i = 0; i < count; i++) {
         final event = events[i];
         switch (event.filter) {
@@ -165,7 +225,9 @@ void _watchExits((int, SendPort) args) {
       }
     }
   } finally {
-    calloc.free(events);
+    calloc
+      ..free(events)
+      ..free(noWait);
   }
 }
 

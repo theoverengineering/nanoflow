@@ -25,7 +25,9 @@ abstract interface class Processes {
   /// Completes when the process [pid] is gone: at once when it is gone
   /// already.
   ///
-  /// Never completes with an adapter that is not [supported].
+  /// Completes with an error when the adapter cannot watch the process, as
+  /// when the OS refuses to. Never completes with an adapter that is not
+  /// [supported].
   Future<void> exitOf(int pid);
 
   /// Stops watching: the pending [exitOf] futures, and later ones, never

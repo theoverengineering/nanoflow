@@ -28,11 +28,7 @@ Future<Process> sleeping([String seconds = '30']) async {
 }
 
 /// The pid of a process that has exited and was reaped.
-Future<int> gonePid() async {
-  final process = await Process.start('true', []);
-  await process.exitCode;
-  return process.pid;
-}
+Future<int> gonePid() async => (await Process.run('true', [])).pid;
 
 void main() {
   late MacProcesses processes;
@@ -129,6 +125,8 @@ void main() {
         'process dies', () async {
       final child = await sleeping();
       final exited = processes.exitOf(child.pid);
+      // The watcher is waiting in the OS by now.
+      await expectPending(exited);
 
       await processes.close().timeout(exitWait);
       child.kill(ProcessSignal.sigkill);
