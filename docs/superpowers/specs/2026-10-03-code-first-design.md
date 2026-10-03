@@ -436,7 +436,9 @@ dart run nanoflow_describe stamp build/review   # §6.3; копия файла �
   `enum`, `bool`, `sealed` или с `case _` — без `default`) и
   `switch`-выражение, `while`, `do`, `for(;;)`, `for … in`,
   `break`/`continue`, `return`, `throw` (путь кончается; брошенное внутри
-  `try` и пойманное его `catch` идёт дальше после `try`, через `finally`;
+  `try` и пойманное его `catch` идёт дальше после `try`, через `finally`, —
+  если есть `catch` без типа или с типом, к которому подходит брошенное, и
+  его блок может закончиться обычно, а не `throw`, `rethrow` или `return`;
   ветка `?:` или `switch`-выражения, которая бросает, тоже кончает путь),
   `?:`, `&&`/`||` с
   шагами справа; выход из `try` (`return`, `break`, `continue`) идёт через
