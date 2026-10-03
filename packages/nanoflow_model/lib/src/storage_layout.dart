@@ -29,6 +29,11 @@ const logFileName = 'step.log';
 /// holds. Its name starts with `.`: readers skip it.
 const ownerLockFileName = '.owner.lock';
 
+/// The place in the owner lock file whose single byte is locked: the owner
+/// holds an exclusive lock of that byte, not of the whole file, so the
+/// content stays readable where locks are mandatory.
+const ownerLockOffset = 1 << 30;
+
 const _idLength = 36;
 
 final RegExp _sessionDirName = RegExp(

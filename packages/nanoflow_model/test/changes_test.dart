@@ -11,6 +11,10 @@ const String _outputId = '5f2d8b6a-1c93-4e07-a4b8-9e3c7a1d5b20';
 final DateTime _time = DateTime.utc(2026, 10, 3, 10, 0, 0, 482);
 const String _timeText = '2026-10-03T10:00:00.482Z';
 
+final DateTime _ownerStarted = DateTime.utc(2026, 10, 3, 7, 43, 34, 651);
+const String _ownerStartedText = '2026-10-03T07:43:34.651Z';
+const String _ownerJson = '{"pid":4242,"started":"$_ownerStartedText"}';
+
 const String _key = 'collect#1@e3b0c44298fc1c14';
 
 const String _sessionJson =
@@ -46,6 +50,7 @@ String _kind(Change change) => switch (change) {
   EventAdded() => 'event',
   DocumentAdded() => 'document',
   LogCorrupted() => 'log',
+  OwnerChanged() => 'owner',
 };
 
 void main() {
@@ -103,6 +108,16 @@ void main() {
       '{"change":"log-corrupted","sessionId":"$_sessionId","line":3,'
           r'"text":"{\"time\":\"half"}',
     ),
+    (
+      OwnerChanged(
+        sessionId: _sessionId,
+        owner: Owner(pid: 4242, started: _ownerStarted),
+        alive: true,
+      ),
+      'owner-changed',
+      '{"change":"owner-changed","sessionId":"$_sessionId",'
+          '"owner":$_ownerJson,"alive":true}',
+    ),
   ];
 
   group('changes', () {
@@ -138,12 +153,24 @@ void main() {
       expect(corrupted.sessionId, _sessionId);
       expect(corrupted.line, 3);
       expect(corrupted.text, '{"time":"half');
+      final owned = Change.fromJson(_decode(cases[6].$3)) as OwnerChanged;
+      expect(owned.sessionId, _sessionId);
+      expect(owned.owner, Owner(pid: 4242, started: _ownerStarted));
+      expect(owned.alive, isTrue);
     });
 
     test('are exhaustively switchable', () {
       expect(
         [for (final (change, _, _) in cases) _kind(change)],
-        ['session', 'step', 'step-changed', 'event', 'document', 'log'],
+        [
+          'session',
+          'step',
+          'step-changed',
+          'event',
+          'document',
+          'log',
+          'owner',
+        ],
       );
     });
 
@@ -196,6 +223,215 @@ void main() {
             ),
           ),
         ),
+      );
+    });
+  });
+
+  group('owner-changed', () {
+    // The owner and the liveness the session can be in, with their text.
+    final variants = <(String, OwnerChanged, String)>[
+      (
+        'a live owner',
+        OwnerChanged(
+          sessionId: _sessionId,
+          owner: Owner(pid: 4242, started: _ownerStarted),
+          alive: true,
+        ),
+        '{"change":"owner-changed","sessionId":"$_sessionId",'
+            '"owner":$_ownerJson,"alive":true}',
+      ),
+      (
+        'an owner that is gone',
+        OwnerChanged(
+          sessionId: _sessionId,
+          owner: Owner(pid: 4242, started: _ownerStarted),
+          alive: false,
+        ),
+        '{"change":"owner-changed","sessionId":"$_sessionId",'
+            '"owner":$_ownerJson,"alive":false}',
+      ),
+      (
+        'no owner',
+        const OwnerChanged(sessionId: _sessionId, owner: null, alive: false),
+        '{"change":"owner-changed","sessionId":"$_sessionId",'
+            '"owner":null,"alive":false}',
+      ),
+      (
+        'no owner and nothing known',
+        const OwnerChanged(sessionId: _sessionId, owner: null, alive: null),
+        '{"change":"owner-changed","sessionId":"$_sessionId",'
+            '"owner":null,"alive":null}',
+      ),
+      (
+        'an owner whose start is not known',
+        const OwnerChanged(
+          sessionId: _sessionId,
+          owner: Owner(pid: 4242, started: null),
+          alive: null,
+        ),
+        '{"change":"owner-changed","sessionId":"$_sessionId",'
+            '"owner":{"pid":4242,"started":null},"alive":null}',
+      ),
+    ];
+
+    for (final (what, change, text) in variants) {
+      test('is written with all its fields in order for $what', () {
+        expect(change.name, 'owner-changed');
+        expect(jsonEncode(change.toJson()), text);
+        expect(change.toJson().keys, ['change', 'sessionId', 'owner', 'alive']);
+      });
+
+      test('round trips for $what', () {
+        final read = Change.fromJson(_decode(text));
+
+        expect(read, isA<OwnerChanged>());
+        expect(read, change);
+        expect(read.hashCode, change.hashCode);
+        expect(jsonEncode(read.toJson()), text);
+      });
+    }
+
+    test('has a readable toString', () {
+      expect(
+        variants[0].$2.toString(),
+        'OwnerChanged(sessionId: $_sessionId, '
+        'owner: Owner(pid: 4242, started: $_ownerStartedText), alive: true)',
+      );
+      expect(
+        variants[2].$2.toString(),
+        'OwnerChanged(sessionId: $_sessionId, owner: null, alive: false)',
+      );
+    });
+
+    test('compares by session, owner and liveness', () {
+      final owner = Owner(pid: 4242, started: _ownerStarted);
+      final change = OwnerChanged(
+        sessionId: _sessionId,
+        owner: owner,
+        alive: true,
+      );
+
+      expect(
+        change,
+        OwnerChanged(sessionId: _sessionId, owner: owner, alive: true),
+      );
+      expect(
+        change,
+        isNot(OwnerChanged(sessionId: _otherId, owner: owner, alive: true)),
+      );
+      expect(
+        change,
+        isNot(
+          OwnerChanged(
+            sessionId: _sessionId,
+            owner: Owner(pid: 4243, started: _ownerStarted),
+            alive: true,
+          ),
+        ),
+      );
+      expect(
+        change,
+        isNot(OwnerChanged(sessionId: _sessionId, owner: null, alive: true)),
+      );
+      expect(
+        change,
+        isNot(OwnerChanged(sessionId: _sessionId, owner: owner, alive: false)),
+      );
+      expect(
+        change,
+        isNot(OwnerChanged(sessionId: _sessionId, owner: owner, alive: null)),
+      );
+    });
+
+    test('is not another change with the same fields', () {
+      final owner = Owner(pid: 4242, started: _ownerStarted);
+
+      expect(
+        OwnerChanged(sessionId: _sessionId, owner: owner, alive: true),
+        isNot(DocumentAdded(sessionId: _sessionId, documentId: _outputId)),
+      );
+    });
+
+    test('throws on a missing or mistyped field, naming the field', () {
+      Map<String, Object?> change(Map<String, Object?> fields) => {
+        'change': 'owner-changed',
+        ...fields,
+      };
+
+      expect(
+        _problem(() => Change.fromJson(change({'owner': null, 'alive': true}))),
+        'sessionId: missing',
+      );
+      expect(
+        _problem(
+          () =>
+              Change.fromJson(change({'sessionId': _sessionId, 'alive': true})),
+        ),
+        'owner: missing',
+      );
+      expect(
+        _problem(
+          () =>
+              Change.fromJson(change({'sessionId': _sessionId, 'owner': null})),
+        ),
+        'alive: missing',
+      );
+      expect(
+        _problem(
+          () => Change.fromJson(
+            change({'sessionId': 1, 'owner': null, 'alive': true}),
+          ),
+        ),
+        'sessionId: expected a string',
+      );
+      expect(
+        _problem(
+          () => Change.fromJson(
+            change({'sessionId': _sessionId, 'owner': 'me', 'alive': true}),
+          ),
+        ),
+        'owner: expected an object or null',
+      );
+      for (final alive in ['yes', 1, 0, <Object?>[]]) {
+        expect(
+          _problem(
+            () => Change.fromJson(
+              change({'sessionId': _sessionId, 'owner': null, 'alive': alive}),
+            ),
+          ),
+          'alive: expected a boolean or null',
+          reason: '$alive',
+        );
+      }
+    });
+
+    test('puts the place of a problem inside the owner under owner', () {
+      Map<String, Object?> change(Map<String, Object?> owner) => {
+        'change': 'owner-changed',
+        'sessionId': _sessionId,
+        'owner': owner,
+        'alive': true,
+      };
+
+      expect(
+        _problem(() => Change.fromJson(change({'started': null}))),
+        'owner.pid: missing',
+      );
+      expect(
+        _problem(() => Change.fromJson(change({'pid': 4242}))),
+        'owner.started: missing',
+      );
+      expect(
+        _problem(() => Change.fromJson(change({'pid': 'x', 'started': null}))),
+        'owner.pid: expected an integer',
+      );
+      expect(
+        _problem(
+          () => Change.fromJson(
+            change({'pid': 4242, 'started': '2026-10-03T07:43:34.651123Z'}),
+          ),
+        ),
+        'owner.started: expected a UTC time like 2026-09-20T14:03:11.470Z',
       );
     });
   });

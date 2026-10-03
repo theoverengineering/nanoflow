@@ -1,6 +1,7 @@
 import 'entities.dart';
 import 'events.dart';
 import 'json_fields.dart';
+import 'owner.dart';
 
 /// One thing that happened to the sessions in a `runs` directory: an entry of
 /// the feed a reader gives.
@@ -36,6 +37,11 @@ sealed class Change {
         sessionId: readString(json, 'sessionId'),
         line: readInt(json, 'line'),
         text: readString(json, 'text'),
+      ),
+      'owner-changed' => OwnerChanged(
+        sessionId: readString(json, 'sessionId'),
+        owner: _readOwner(json),
+        alive: readBoolOrNull(json, 'alive'),
       ),
       _ => throw FormatException('change: unknown "$name"'),
     };
@@ -228,6 +234,63 @@ final class LogCorrupted extends Change {
   @override
   String toString() =>
       'LogCorrupted(sessionId: $sessionId, line: $line, text: $text)';
+}
+
+/// Who owns a session, or that nobody does, changed, or whether the owner is
+/// alive became known. Given for a session whose journal has not ended: once
+/// it ends, the owner no longer matters.
+final class OwnerChanged extends Change {
+  const OwnerChanged({
+    required this.sessionId,
+    required this.owner,
+    required this.alive,
+  });
+
+  /// The session the owner is of.
+  final String sessionId;
+
+  /// The owner as the session's `.owner.lock` records it; `null` when it
+  /// records none: the session is released, or a version without owners wrote
+  /// it.
+  final Owner? owner;
+
+  /// Whether the process of [owner] is running: `false` when there is no
+  /// owner, the process is gone or its pid belongs to another process now;
+  /// `null` when that cannot be known here.
+  final bool? alive;
+
+  @override
+  String get name => 'owner-changed';
+
+  @override
+  Map<String, Object?> toJson() => {
+    'change': name,
+    'sessionId': sessionId,
+    'owner': owner?.toJson(),
+    'alive': alive,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is OwnerChanged &&
+      other.sessionId == sessionId &&
+      other.owner == owner &&
+      other.alive == alive;
+
+  @override
+  int get hashCode => Object.hash(name, sessionId, owner, alive);
+
+  @override
+  String toString() =>
+      'OwnerChanged(sessionId: $sessionId, owner: $owner, alive: $alive)';
+}
+
+/// The owner at `owner`, or `null`. A problem inside it is put under
+/// `owner`: `owner.pid: missing`.
+Owner? _readOwner(Map<String, Object?> json) {
+  final fields = readObjectOrNull(json, 'owner');
+  if (fields == null) return null;
+  return inside('owner', () => Owner.fromJson(fields));
 }
 
 /// The model at [key], read by [fromJson]. A problem inside the model is put

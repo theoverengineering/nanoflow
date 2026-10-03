@@ -150,6 +150,22 @@ DateTime readTime(Map<String, Object?> json, String key) {
   }
 }
 
+/// The time at [key], written as `2026-09-20T14:03:11.470Z`, or `null`.
+DateTime? readTimeOrNull(Map<String, Object?> json, String key) {
+  final value = readValue(json, key);
+  if (value == null) return null;
+  if (value is String) return readTime(json, key);
+  throw FormatException('$key: expected a string or null');
+}
+
+/// The boolean at [key], or `null`.
+bool? readBoolOrNull(Map<String, Object?> json, String key) {
+  final value = readValue(json, key);
+  if (value == null) return null;
+  if (value is bool) return value;
+  throw FormatException('$key: expected a boolean or null');
+}
+
 /// Runs [read] and puts [place] in front of the place of a problem it finds:
 /// `session` and `id: missing` become `session.id: missing`.
 T inside<T>(String place, T Function() read) {

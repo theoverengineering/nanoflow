@@ -21,6 +21,13 @@ void main() {
     });
   });
 
+  group('ownerLockOffset', () {
+    test('is the byte 2^30 of the owner lock file', () {
+      expect(ownerLockOffset, 1 << 30);
+      expect(ownerLockOffset, 1073741824);
+    });
+  });
+
   group('sessionDirName', () {
     test('is <workflow>-<time to the second>-<id>', () {
       expect(

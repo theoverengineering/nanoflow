@@ -203,6 +203,8 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
         } else {
           (_waitingProblems[sessionId] ??= []).add(problem);
         }
+      case OwnerChanged():
+      // The feed does not keep owners yet.
     }
     _changed();
   }

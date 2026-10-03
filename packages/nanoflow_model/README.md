@@ -18,14 +18,21 @@
   (`runs/<воркфлоу>-<время>-<id>/`, `session.json`, `log.jsonl`,
   `.owner.lock`, `documents/<id>.json`, `steps/<время>-<имя>-<id>/` со
   `step.json` и `step.log`); знаки имени вне `[A-Za-z0-9._-]` — `_`.
+  `ownerLockOffset` (`1 << 30`) — место в `.owner.lock`, байт которого
+  блокирует владелец сессии: содержимое файла остаётся читаемым.
   `idOfDirName` достаёт идентификатор из имени каталога, `isSessionDirName`
   узнаёт каталог сессии, `runsDirOf` — каталог `runs` в каталоге проекта.
 - **Модели и их JSON.** `Session` (один вызов функции воркфлоу: `workflow`,
   снимок файла графа `graph`, `inputId`), `Step` (`name`, `key`, `after`,
-  `place`, `outputId`, `log`) и `Document`; `Event` — событие журнала
+  `place`, `outputId`, `log`), `Document` и `Owner` (процесс-владелец
+  сессии: `pid` и `started` — время старта процесса, UTC до миллисекунд, в
+  формате времени событий, `null`, когда ОС его не дала; это содержимое
+  `.owner.lock`); `Event` — событие журнала
   сессии (`session-started`, `session-resumed`, `step-started`,
   `step-finished`, `step-failed`, `session-finished`, `session-failed`),
-  `Change` — изменение ленты читателя. У каждой `fromJson` и `toJson`: ключи
+  `Change` — изменение ленты читателя (среди них `OwnerChanged`: `owner` —
+  запись из `.owner.lock` или `null`, `alive` — идёт ли процесс владельца,
+  `null`, когда это неизвестно). У каждой `fromJson` и `toJson`: ключи
   пишутся в порядке спецификации, и все всегда есть, `null` — когда значения
   нет. Равенство по значению (для `Session.graph`, `Document.value` и
   `UnknownEvent.json` — глубокое). `fromJson` бросает `FormatException` с
