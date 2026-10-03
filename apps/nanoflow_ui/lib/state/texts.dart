@@ -67,6 +67,10 @@ String dayAndTime(DateTime t, DateTime now) {
 String thousands(int n) =>
     n.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+$)'), (_) => ',');
 
+/// How many times, [n]: `2×`; from a thousand on `1k+×`, so that a badge
+/// that says it stays small.
+String timesText(int n) => n < 1000 ? '$n×' : '1k+×';
+
 /// [n] [noun]s: `1 run`, `3 runs`.
 String count(int n, String noun) => n == 1 ? '1 $noun' : '$n ${noun}s';
 

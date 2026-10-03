@@ -10,9 +10,9 @@ import 'layout_graph.dart';
 /// - Arrows run only horizontally, vertically or at 45°.
 /// - Parallel pieces of different arrows are at least a lane gap apart.
 /// - No arrow passes through a tile or a node's name or place.
-/// - An arrow leaves its exit going right, straight for at least its label
-///   with the counter's room, and enters its input going right, straight for
-///   at least the least input straight.
+/// - An arrow leaves its exit going right, straight for at least its label,
+///   and enters its input going right, straight for at least the least input
+///   straight.
 /// - The arrowhead's tip points at the bar, an arrow gap before it.
 /// - A bar is in the middle of its tile's side, off the rounded corners;
 ///   inputs on it are at least a port gap apart.
@@ -54,7 +54,7 @@ List<String> checkLayout(GraphLayout layout) {
         first.length - firstTurn < exit.reach - 1e-6) {
       problems.add(
         '${name(edge)}: straight piece at the exit '
-        '${_n(first.length - firstTurn)} is shorter than its label and counter '
+        '${_n(first.length - firstTurn)} is shorter than its label '
         '${_n(exit.reach)}',
       );
     }

@@ -99,9 +99,6 @@ final class CanvasMarks {
         : Tone.plain;
   }
 
-  /// `2×` on an exit the flow went through; `null` otherwise.
-  String? counter(String node, int index) => null;
-
   /// What the steps put on the node [id]; `null` for `Current graph`, a
   /// condition, a marker.
   NodeMarks? node(String id) => _marks?.of(id);

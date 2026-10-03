@@ -131,7 +131,7 @@ String describe(GraphLayout layout, [String indent = '']) {
     out.writeln(
       '$indent${exit.node}#${exit.index} ${exit.label} ${exit.shape} '
       '${exit.anchor} '
-      '${exit.handle} ${exit.labelRect} ${exit.counterAt}',
+      '${exit.handle} ${exit.labelRect} ${exit.reach}',
     );
   }
   for (final edge in layout.edges) {

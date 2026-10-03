@@ -7,10 +7,10 @@ library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-import '../layout/layout_graph.dart' show counterText;
 import 'copies.dart';
 import 'session_feed.dart';
 import 'step_places.dart';
+import 'texts.dart' show timesText;
 
 /// A node's state over the steps on it; a later value wins over an earlier
 /// one (ui-spec «Граф»).
@@ -52,7 +52,7 @@ final class NodeMarks {
   final int? copies;
 
   /// `2×` over a node entered more than once; `null` otherwise.
-  String? get visitsText => steps > 1 ? counterText(steps) : null;
+  String? get visitsText => steps > 1 ? timesText(steps) : null;
 }
 
 /// What steps of a session put on the nodes of one body.

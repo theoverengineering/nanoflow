@@ -90,7 +90,6 @@ void main() {
     }
     expect(marks.exit('1', 0), Tone.plain);
     expect(marks.bar('2', layout.edges.where((e) => e.to == '2')), Tone.plain);
-    expect(marks.counter('1', 0), isNull);
   });
 
   test('one copy shown: what leads to or from a node it has not reached is '

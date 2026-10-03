@@ -294,7 +294,7 @@ void main() {
     final call = layout.nodes['5']!;
     final frame = call.frame!;
     final body = frame.inner.bounds;
-    expect(call.tile.width, 1200);
+    expect(call.tile.width, closeTo(1200, 1e-9));
     expect(body.top - call.tile.top, 70);
     expect(call.tile.bottom - body.bottom, 30);
     // A body narrower than the frame starts at its left side; a link goes

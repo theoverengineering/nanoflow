@@ -248,12 +248,13 @@ void main() {
       await tester.pump();
       expect(controller.scale, greaterThan(fitted));
       await tester.tap(find.byTooltip('Zoom in'));
+      await tester.tap(find.byTooltip('Zoom in'));
       await tester.pump();
       expect(inside(viewport(tester), tester.getRect(tile('8'))), isFalse);
 
-      await tester.tap(find.byTooltip('Zoom out'));
-      await tester.tap(find.byTooltip('Zoom out'));
-      await tester.tap(find.byTooltip('Zoom out'));
+      for (var i = 0; i < 4; i++) {
+        await tester.tap(find.byTooltip('Zoom out'));
+      }
       await tester.pump();
       expect(controller.scale, lessThan(fitted));
 
@@ -467,7 +468,7 @@ void main() {
 Opened _publish(GraphNode call) =>
     Opened(call.id, functionId: (call as CallNode).functions.single);
 
-/// The texts of the chips on the canvas: exit labels and counters.
+/// The texts of the chips on the canvas: exit labels.
 List<String> _chips(WidgetTester tester) => [
   for (final paint in tester.widgetList<CustomPaint>(find.byType(CustomPaint)))
     if (paint.painter case final ExitsPainter exits)

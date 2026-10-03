@@ -38,7 +38,6 @@ export 'layout_graph.dart'
         MeasureText,
         NodeKind,
         copiesBadge,
-        counterText,
         endMarker,
         endMarkerAt,
         insideText,

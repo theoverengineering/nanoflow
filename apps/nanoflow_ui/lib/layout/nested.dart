@@ -246,7 +246,6 @@ GraphLayout shiftLayout(GraphLayout layout, Point by) {
           anchor: x.anchor + by,
           handle: rect(x.handle),
           labelRect: x.labelRect?.shift(by),
-          counterAt: x.counterAt + by,
           reach: x.reach,
         ),
     ],

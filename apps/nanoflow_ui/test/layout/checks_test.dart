@@ -90,7 +90,7 @@ void main() {
     );
   });
 
-  test('a turn before the label and counter, or too close to the input', () {
+  test('a turn before the end of the label, or too close to the input', () {
     final edge = edgeOf(good, '2', 0);
     final first = edge.points.first;
     final last = edge.points.last;
@@ -102,7 +102,7 @@ void main() {
     ];
     expect(
       checkLayout(withPoints('2', 0, early)),
-      contains(contains('shorter than its label and counter')),
+      contains(contains('shorter than its label')),
     );
     final late = [
       first,
@@ -167,14 +167,19 @@ void main() {
     expect(countCrossings(good), 0);
     final edge = edgeOf(good, '2', 0);
     final other = edgeOf(good, '2', 1);
-    // Swap the true arrow's end below the false arrow: it crosses it.
+    // Swap the true arrow's end below the false arrow: it crosses it on
+    // the way down and on the way up, a third into the gap and a third
+    // before its end.
     final below = other.points.first.y + 20;
+    final third = (edge.points.last.x - edge.points.first.x) / 3;
+    final down = edge.points.first.x + third;
+    final up = edge.points.last.x - third;
     final points = [
       edge.points.first,
-      Point(edge.points.first.x + 70, edge.points.first.y),
-      Point(edge.points.first.x + 70, below),
-      Point(edge.points.last.x - 40, below),
-      Point(edge.points.last.x - 40, edge.points.last.y),
+      Point(down, edge.points.first.y),
+      Point(down, below),
+      Point(up, below),
+      Point(up, edge.points.last.y),
       edge.points.last,
     ];
     expect(countCrossings(withPoints('2', 0, points)), 2);

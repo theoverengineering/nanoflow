@@ -100,8 +100,8 @@ const double clearance = 8;
 /// A turn in a gap takes a lane: its own x, a lane gap right of the turn
 /// before it. Lanes are ordered for the fewest crossings — a ladder down
 /// turns further right the higher it starts, a ladder up the lower it starts,
-/// back arrows and loops nest — and start right of every label and counter
-/// room they pass. A small change of height becomes a 45° diagonal where
+/// back arrows and loops nest — and start right of every label they
+/// pass. A small change of height becomes a 45° diagonal where
 /// that fits in the gap. A gap is as wide as its labels, lanes, the straight
 /// piece before an input and the arrowhead need.
 ///

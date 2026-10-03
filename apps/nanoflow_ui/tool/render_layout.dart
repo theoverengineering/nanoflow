@@ -167,7 +167,6 @@ const _caption = '#7E7F86';
 const _edge = '#8E8F96';
 const _back = '#9C8CFF';
 const _label = '#BDB3FF';
-const _counter = '#7E7F86';
 const _bar = '#8E8F96';
 
 const _pad = 40.0;
@@ -225,7 +224,7 @@ String renderSvg(GraphLayout layout, String caption) {
     );
   }
 
-  // Labels and counters on opaque chips.
+  // Labels on opaque chips.
   final options = layout.options;
   for (final exit in layout.exits) {
     final label = exit.label;
@@ -233,18 +232,6 @@ String renderSvg(GraphLayout layout, String caption) {
     if (label != null && chip != null) {
       svg.writeln(_chip(chip, label, _label, options.chipPadding));
     }
-    final counter = exit.counterAt;
-    const text = '1×';
-    final w =
-        options.measure(text, LabelKind.counter) + 2 * options.chipPadding;
-    svg.writeln(
-      _chip(
-        Rect.fromLTWH(counter.x, counter.y, w, options.chipHeight),
-        text,
-        _counter,
-        options.chipPadding,
-      ),
-    );
   }
 
   // Nodes.

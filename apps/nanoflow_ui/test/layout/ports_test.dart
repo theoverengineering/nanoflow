@@ -65,12 +65,6 @@ void main() {
     ]);
   });
 
-  test('a counter reads its count up to 999, then 1k+', () {
-    expect(counterText(1), '1×');
-    expect(counterText(999), '999×');
-    expect(counterText(1000), '1k+×');
-  });
-
   test('edges with one label are one capsule: arrows a capsule gap apart in '
       'the body\'s order, one label', () {
     final layout = layoutOf('capsules');

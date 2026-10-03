@@ -122,6 +122,12 @@ void main() {
     });
   });
 
+  test('how many times reads the count up to 999, then 1k+: 2×, 1k+×', () {
+    expect(timesText(1), '1×');
+    expect(timesText(999), '999×');
+    expect(timesText(1000), '1k+×');
+  });
+
   test('a count names one thing in the singular: 1 run, 3 runs', () {
     expect(count(1, 'run'), '1 run');
     expect(count(3, 'run'), '3 runs');

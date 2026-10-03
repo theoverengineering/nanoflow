@@ -165,7 +165,6 @@ final class ExitBox {
     required this.anchor,
     required this.handle,
     required this.labelRect,
-    required this.counterAt,
     required this.reach,
   });
 
@@ -189,11 +188,8 @@ final class ExitBox {
   /// The opaque chip of the label; `null` when there is no label.
   final Rect? labelRect;
 
-  /// The top left corner of the counter's chip: right after the label, or in
-  /// its place.
-  final Point counterAt;
-
-  /// How far right of the anchor the label with the counter's room ends.
+  /// How far right of the anchor the exit's marks end — the label, when
+  /// there is one: the arrows leave straight at least that far.
   final double reach;
 }
 

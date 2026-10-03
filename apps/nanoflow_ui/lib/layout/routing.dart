@@ -154,7 +154,6 @@ GraphLayout route(
             e.arrows.last + shift.y + _dot,
           ),
           labelRect: e.label?.shift(shift),
-          counterAt: e.counter + shift,
           reach: e.reach,
         ),
       );

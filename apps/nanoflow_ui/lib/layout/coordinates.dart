@@ -359,7 +359,6 @@ final class ExitFrame {
     required this.y,
     required this.arrows,
     required this.label,
-    required this.counter,
     required this.reach,
     required this.area,
   });
@@ -378,11 +377,8 @@ final class ExitFrame {
   /// The chip of the exit's label; `null` for unlabelled edges.
   final Rect? label;
 
-  /// The top left corner of the counter's chip, right after the label.
-  final Point counter;
-
-  /// How far right of [x] the label and the room for a counter end: an
-  /// arrow may turn only past it.
+  /// How far right of [x] the exit's marks end — its label, or where a
+  /// label would start: an arrow may turn only past it.
   final double reach;
 
   /// What the exit's marks cover: the dot or capsule, the chips.
@@ -505,12 +501,6 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
           node.port ? tile.left : tile.left + o.barWidth / 2,
           barMiddle + port.barHalf,
         );
-  final counterWidth =
-      math.max(
-        o.measure(counterText(999), LabelKind.counter),
-        o.measure(counterText(1000), LabelKind.counter),
-      ) +
-      2 * o.chipPadding;
   final exits = <GExit, ExitFrame>{};
   for (final exit in port.slots) {
     final middle = y + port.slotAt[exit]!;
@@ -528,13 +518,8 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
             o.measure(text, LabelKind.exitLabel) + 2 * o.chipPadding,
             o.chipHeight,
           );
-    final counter = Point(
-      label == null ? x + _chipOffset : label.right + _chipSpacing,
-      chipTop,
-    );
-    final reach = node.port
-        ? 0.0
-        : counter.x + counterWidth + _chipSpacing * 2 - x;
+    final marksEnd = label?.right ?? x + _chipOffset;
+    final reach = node.port ? 0.0 : marksEnd + _chipSpacing * 2 - x;
     final area = node.port
         ? Rect.fromLTRB(x, top, x, bottom)
         : Rect.fromLTRB(
@@ -549,7 +534,6 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       y: middle,
       arrows: arrows,
       label: label,
-      counter: counter,
       reach: reach,
       area: area,
     );
@@ -557,8 +541,8 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   return NodeFrame._(tile, name, place, marks, status, bar, exits);
 }
 
-/// Where chips start right of the exit, how far apart they are, and how high
-/// over the arrow their bottom is.
+/// Where a label's chip starts right of the exit, how much room an arrow
+/// keeps past it before turning, and how high over the arrow its bottom is.
 const double _chipOffset = 6;
 const double _chipSpacing = 2;
 const double _chipLift = 2.5;

@@ -33,7 +33,7 @@ abstract final class CanvasColors {
     Tone.untaken => untaken,
   };
 
-  /// Labels and counters off the selected run's path.
+  /// Exit labels off the selected way.
   static const chipText = Color(0xFF9A9BA2);
 
   /// A tile: its fill and border, its icon, its name and place under it.
@@ -110,7 +110,7 @@ abstract final class CanvasText {
     color: CanvasColors.markerText,
   );
 
-  /// Exit labels and arrow counters on their chips.
+  /// Exit labels on their chips.
   static final chip = _mono.copyWith(fontSize: 10);
 
   static final legend = _sans.copyWith(
@@ -155,7 +155,7 @@ abstract final class CanvasText {
   /// How [kind] is drawn. A name is measured bold: the selected step's node
   /// has it so, and it must fit where the layout keeps room for it.
   static TextStyle of(LabelKind kind) => switch (kind) {
-    LabelKind.exitLabel || LabelKind.counter => chip,
+    LabelKind.exitLabel => chip,
     LabelKind.nodeName => name.copyWith(fontWeight: FontWeight.w700),
     LabelKind.place => place,
   };

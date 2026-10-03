@@ -9,9 +9,6 @@ enum LabelKind {
   /// The label of an exit: `true`, `each`, `Channel.stable`.
   exitLabel,
 
-  /// How many times the flow went along an arrow: `2×`.
-  counter,
-
   /// A node's name under its tile.
   nodeName,
 
@@ -24,23 +21,17 @@ typedef MeasureText = double Function(String text, LabelKind kind);
 
 /// Text widths of the mockup fonts, one width per character.
 ///
-/// Exit labels and counters are Geist Mono 10 px (6 px a character, as the
+/// Exit labels are Geist Mono 10 px (6 px a character, as the
 /// mockup's label chips are), places Geist Mono 10.5 px. Names are a
 /// proportional 12.5 px semibold face; 7.2 px is a generous average so that
 /// names are not narrower than drawn. The canvas passes a real measurer.
 double monospaceMeasure(String text, LabelKind kind) =>
     text.runes.length *
     switch (kind) {
-      LabelKind.exitLabel || LabelKind.counter => 6.0,
+      LabelKind.exitLabel => 6.0,
       LabelKind.place => 6.3,
       LabelKind.nodeName => 7.2,
     };
-
-/// The text of an arrow's counter for [count] passes: `2×`.
-///
-/// The layout keeps room for three digits whether or not there is a
-/// counter; from a thousand passes on the counter reads `1k+×`.
-String counterText(int count) => count < 1000 ? '$count×' : '1k+×';
 
 /// Sizes and gaps of the layout. The defaults are taken from the mockups
 /// (`docs/design/graph.html`, `task-graph.html`) and `docs/ui-spec.md`.
@@ -109,7 +100,7 @@ final class LayoutOptions {
   /// The least length of an input bar.
   final double minBar;
 
-  /// The height of the opaque chip behind an exit label or counter.
+  /// The height of the opaque chip behind an exit label.
   final double chipHeight;
 
   /// The space between a chip's edge and its text.

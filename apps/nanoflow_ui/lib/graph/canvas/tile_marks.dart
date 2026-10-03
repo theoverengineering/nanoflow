@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../layout/layout.dart' show LabelKind, badgeHeight;
+import '../../layout/layout.dart' show badgeHeight;
 import '../../state/graph_marks.dart';
 import '../../widgets/spinner.dart';
 import 'canvas_style.dart';
@@ -207,7 +207,7 @@ class CountBadge extends StatelessWidget {
 
   /// How wide the badge of [text] is.
   static double widthOf(String text) =>
-      measureLabel(text, LabelKind.counter) + 14;
+      measureText(text, CanvasText.badge) + 14;
 
   @override
   Widget build(BuildContext context) => Container(
