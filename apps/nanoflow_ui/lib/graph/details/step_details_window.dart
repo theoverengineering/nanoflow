@@ -437,7 +437,7 @@ class _VisitSwitcher extends StatelessWidget {
   );
 }
 
-/// `exit 0 · 4m 02s` in green; failed in red, running in amber.
+/// `finished · 4m 02s` in green; failed in red, running in amber.
 class _ResultChip extends StatelessWidget {
   const _ResultChip(this.result);
 

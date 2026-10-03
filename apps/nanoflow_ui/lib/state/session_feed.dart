@@ -63,8 +63,8 @@ final class SessionData {
 
   /// Why the session's journal was read incompletely: lines that are not
   /// events, events this version does not read, files of the session that
-  /// could not be read. The app marks such a session `Log read
-  /// incompletely`.
+  /// could not be read. No widget shows it now: the `Log read incompletely`
+  /// mark went with the run switcher.
   List<String> get problems => UnmodifiableListView(_problems);
 
   bool get incomplete => _problems.isNotEmpty;

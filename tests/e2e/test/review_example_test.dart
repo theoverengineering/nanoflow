@@ -37,6 +37,13 @@ String placeOf(String code) {
 /// Copies what the library and describe read of the example — its sources,
 /// its graph file and the name of its package — into [dir].
 ///
+/// The copy gives a project directory only: where `runs/` goes, the graph
+/// file, the package's name and the sources the code hash is taken of. The
+/// code that runs is the repository's: `package:review_example` resolves to
+/// `examples/review/lib/` through the workspace's package config, not to the
+/// copy's `lib/`, and only the copy's `bin/main.dart`, as the script, is
+/// run from the copy.
+///
 /// The copy's pubspec has the name and the SDK alone: outside the
 /// workspace, the example's `resolution: workspace` would make `dart run`
 /// complain.

@@ -6,10 +6,6 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-ui=apps/nanoflow_ui
-
-has_ui() { [[ -f $ui/pubspec.yaml ]]; }
-
 # The members listed under `workspace:` in the root pubspec.
 dart_members=()
 while IFS= read -r member; do
@@ -39,9 +35,7 @@ for member in "${dart_members[@]}"; do
 done
 
 # The Flutter app is outside the workspace (README «Репозиторий»): it has its
-# own dependencies, and flutter checks it. NANOFLOW_SKIP_UI=1 skips it while
-# the app does not build against the model the workspace is moving to.
-if has_ui && [[ "${NANOFLOW_SKIP_UI:-}" != 1 ]]; then
-  echo "== flutter: $ui"
-  (cd "$ui" && flutter pub get && flutter analyze && flutter test)
-fi
+# own dependencies, and flutter checks it.
+ui=apps/nanoflow_ui
+echo "== flutter: $ui"
+(cd "$ui" && flutter pub get && flutter analyze && flutter test)

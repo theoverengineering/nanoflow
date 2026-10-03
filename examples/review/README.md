@@ -45,5 +45,10 @@ mkdir -p build && dart compile exe bin/main.dart -o build/review
 dart run nanoflow_describe stamp build/review   # хэш бинарника в builds и копия файла рядом
 ```
 
+`stamp` переписывает и `nanoflow.graph.json` из репозитория — в его
+`builds` появляется хэш бинарника, и git покажет файл изменённым. `--check`
+`builds` не сравнивает, так что CI это не ломает; вернуть файл —
+`git checkout nanoflow.graph.json`.
+
 Запуск, граф, хэш кода, Ctrl+C и продолжение проверяет
 `tests/e2e/test/review_example_test.dart`.

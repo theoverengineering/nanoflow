@@ -10,9 +10,10 @@ import 'layout_geometry.dart';
 /// back arrows, in the tones the marks give them, the lighter over the
 /// darker — an arrow into a frame drawn in place, or to the end of the body
 /// in one, runs on to the frame's side without a head, the arrows on the
-/// other side go on from there (docs/design/code-first/function-frames.html); and in each frame drawn in place, the links from its sides to
-/// the start and the end of its body where they are off its sides, in the
-/// tones of its bar and exit.
+/// other side go on from there
+/// (docs/design/code-first/function-frames.html); and in each frame drawn in
+/// place, the links from its sides to the start and the end of its body
+/// where they are off its sides, in the tones of its bar and exit.
 /// Under the exits and the tiles: a tile covers the half of its bar on its
 /// side, as in the mockups. Clicks go through it.
 class EdgesPainter extends CustomPainter {

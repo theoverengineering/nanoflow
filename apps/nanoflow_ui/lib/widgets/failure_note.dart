@@ -6,7 +6,7 @@ import '../theme.dart';
 const _noteTime = Duration(seconds: 3);
 
 /// Says for a while, at the bottom of the screen, that something the user
-/// asked for failed: `Could not reveal review.yaml in Finder`.
+/// asked for failed: `Could not reveal nanoflow.graph.json in Finder`.
 void showFailureNote(BuildContext context, String text) =>
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       SnackBar(

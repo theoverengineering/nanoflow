@@ -23,8 +23,10 @@ final class FrameRoom {
   /// From the frame's top to the body: the title row.
   final double top;
 
-  /// Between the frame's sides and the body, at least: a body narrower
-  /// than the frame is in its middle.
+  /// Between a side of the frame and the body, where the body has no port
+  /// on it: no start on the left, no end on the right. A body narrower than
+  /// the frame sits at its left side, or at its right when it has an end
+  /// but no start.
   final double side;
 
   /// Between the body and the frame's bottom.
