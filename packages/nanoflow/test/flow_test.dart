@@ -89,6 +89,32 @@ Future<String> fetchLater(Flow f, String version) async {
   return f.step('announce', () => work(results.join(' | ')));
 }
 
+/// Items of a stream that a producer adds after pauses, each handled in
+/// `await for` by copies whose first await is not a step.
+Future<String> streamed(Flow f, String version) async {
+  final controller = StreamController<String>();
+  unawaited(() async {
+    for (final item in ['a', 'b', 'c', 'd']) {
+      await pause();
+      await pause();
+      controller.add('$item-$version');
+    }
+    await controller.close();
+  }());
+  final handled = <String>[];
+  await for (final item in controller.stream) {
+    final results = await Future.wait([
+      for (final pkg in ['core', 'tool'])
+        () async {
+          await pause(); // like http.get outside any step
+          return f.step('upload', () => work('$pkg:$item'));
+        }(),
+    ]);
+    handled.add(results.join('+'));
+  }
+  return f.step('announce', () => work(handled.join(' | ')));
+}
+
 /// The step records of the session [sessionId] of [dir].
 Future<List<Step>> stepsOf(String dir, String sessionId) async =>
     (await openSession(dir, sessionId)).steps();
@@ -311,8 +337,9 @@ void main() {
   for (final (title, workflow, count) in [
     ('a step awaited later through Future.wait', release, 6),
     ('a plain future awaited later', fetchLater, 5),
+    ('items of a stream handled by copies', streamed, 9),
   ]) {
-    group('the keys of steps after $title', () {
+    group('the keys of steps with $title', () {
       test('are the same whatever the timing', () async {
         final dir = await tempDir();
         final flow = Flow(directory: dir);

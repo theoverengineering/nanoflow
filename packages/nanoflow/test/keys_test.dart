@@ -255,6 +255,53 @@ Future<void> plainAwaitedLater(Keyed f) async {
   note = await f.step('announce', () => work(results.join(' | ')));
 }
 
+/// Items of a stream that a producer adds after pauses, each handled in
+/// `await for` by copies whose first await is not a step: the stream
+/// schedules its own microtasks only for items that wait.
+Future<void> streamCopies(Keyed f) async {
+  final controller = StreamController<String>();
+  unawaited(() async {
+    for (final item in ['a', 'b', 'c', 'd']) {
+      await pause();
+      await pause();
+      controller.add(item);
+    }
+    await controller.close();
+  }());
+  final handled = <String>[];
+  await for (final item in controller.stream) {
+    final results = await Future.wait([
+      for (final pkg in ['core', 'tool'])
+        () async {
+          await pause(); // like http.get outside any step
+          return f.step('upload', () => work('$pkg:$item'));
+        }(),
+    ]);
+    handled.add(results.join('+'));
+  }
+  note = await f.step('announce', () => work(handled.join(' | ')));
+}
+
+Future<String> publishLater(Keyed f, String pkg) async {
+  final up = await f.step('upload', () => work('$pkg:uploaded'));
+  return f.step('verify', () => work('$up:verified'));
+}
+
+/// Copies that call a function with steps from a timer.
+Future<void> fromTimers(Keyed f) async {
+  final results = await Future.wait([
+    for (final pkg in ['core', 'tool'])
+      () async {
+        await pause();
+        return Future.delayed(
+          Duration(milliseconds: random.nextInt(10)),
+          () => publishLater(f, pkg),
+        );
+      }(),
+  ]);
+  note = await f.step('announce', () => work(results.join(' | ')));
+}
+
 void main() {
   checkWorkflow('copies as a closure called in place', inPlace);
   checkWorkflow('copies as a closure given to map', viaMap);
@@ -282,6 +329,14 @@ void main() {
     'a plain future awaited later, then copies that begin with an await '
     'that is not a step',
     plainAwaitedLater,
+  );
+  checkWorkflow(
+    'items of a stream fed after pauses, each handled by copies',
+    streamCopies,
+  );
+  checkWorkflow(
+    'copies that call a function with steps from a timer',
+    fromTimers,
   );
 
   test('keys a step after the join in the parent, not in a copy', () async {
