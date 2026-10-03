@@ -220,6 +220,22 @@ void main() {
       expect(await handle.events(), [isA<SessionStarted>(), ...appended]);
     });
 
+    test('appends events it is given at once, as steps side by side give '
+        'them, each on a line of its own in the order given', () async {
+      final handle = await newSession();
+      final steps = [for (var i = 0; i < 20; i++) await newStep(handle)];
+      final appended = [
+        for (final step in steps)
+          StepStarted(time: DateTime.utc(2026, 10, 3, 10, 1), stepId: step.id),
+      ];
+
+      await Future.wait([
+        for (final event in appended) handle.appendEvent(event),
+      ]);
+
+      expect(await handle.events(), [isA<SessionStarted>(), ...appended]);
+    });
+
     test('events gives a line it does not know as an UnknownEvent', () async {
       final handle = await newSession();
       final paused = {

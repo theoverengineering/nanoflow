@@ -48,6 +48,10 @@ final class SessionHandle {
   /// name once it is built.
   final Map<String, String> _stepDirs = {};
 
+  /// Completes once the events given to [appendEvent] so far are appended,
+  /// or have failed to be.
+  Future<void> _appended = Future.value();
+
   String get _stepsDir => p.join(dir, stepsDirName);
 
   /// The events of the session, in the order they were written.
@@ -120,18 +124,27 @@ final class SessionHandle {
 
   /// Appends [event] to the session's journal: one line, flushed.
   ///
+  /// Events given before this one is appended — by steps that run side by
+  /// side — are appended after it, in the order given: a file opened to
+  /// append to is written where its end was when it was opened, so two
+  /// appends at once would write over each other.
+  ///
   /// Throws a [PathNotFoundException] when the session has no journal, which
   /// is not made again; and, once the line is written, when the session has
   /// no `session.json`. Either way the session is gone or being removed, as
   /// by `rm -rf`, which removes it depth first while the process still
   /// writes to what it has not reached yet: the process learns of it within
   /// one event.
-  Future<void> appendEvent(KnownEvent event) async {
-    await _appendToJournal(p.join(dir, eventsFileName), event);
-    final sessionFile = p.join(dir, sessionFileName);
-    if (!await File(sessionFile).exists()) {
-      throw _missing('Cannot find file', sessionFile);
-    }
+  Future<void> appendEvent(KnownEvent event) {
+    final appended = _appended.then((_) async {
+      await _appendToJournal(p.join(dir, eventsFileName), event);
+      final sessionFile = p.join(dir, sessionFileName);
+      if (!await File(sessionFile).exists()) {
+        throw _missing('Cannot find file', sessionFile);
+      }
+    });
+    _appended = appended.then((_) {}, onError: (Object _) {});
+    return appended;
   }
 
   /// Writes a new document holding [value]; returns its id.
