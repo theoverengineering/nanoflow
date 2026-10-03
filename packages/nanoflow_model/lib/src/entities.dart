@@ -104,8 +104,8 @@ final class Step {
   /// crash: `collect#1@e3b0c44298fc1c14`.
   final String key;
 
-  /// The key of the step adopted last before this one in its context;
-  /// `null` for a step with none before it.
+  /// The key of the step adopted last before this one in its context, in
+  /// the call it was last started in; `null` for a step with none before it.
   final String? after;
 
   /// Where `f.step` was called: `path:line`; `null` when not known.
@@ -118,8 +118,21 @@ final class Step {
   /// The name of the step's log file, relative to the step's directory.
   final String log;
 
-  /// This step with [outputId] set: the only change a step ever goes through.
+  /// This step with [outputId] set: it has finished.
   Step withOutput(String outputId) => Step(
+    id: id,
+    sessionId: sessionId,
+    name: name,
+    key: key,
+    after: after,
+    place: place,
+    outputId: outputId,
+    log: log,
+  );
+
+  /// This step with [after] set: it runs again, after a resume, in a call
+  /// that follows another step than the call it ran in before.
+  Step withAfter(String? after) => Step(
     id: id,
     sessionId: sessionId,
     name: name,

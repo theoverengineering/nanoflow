@@ -141,6 +141,17 @@ final class SessionHandle {
     return changed;
   }
 
+  /// Rewrites `step.json` of [step] with [after]; returns the step as it is
+  /// now.
+  Future<Step> setStepAfter(Step step, String? after) async {
+    final changed = step.withAfter(after);
+    await writeJsonAtomically(
+      p.join(_stepDir(step.id), stepFileName),
+      changed.toJson(),
+    );
+    return changed;
+  }
+
   /// Opens the log of the step [stepId] for appending: a step that runs
   /// again adds to the log it has.
   ///

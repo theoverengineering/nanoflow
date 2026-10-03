@@ -283,6 +283,24 @@ void main() {
       expect(fresh.outputId, isNull);
     });
 
+    test('withAfter changes only the after', () {
+      final done = fresh.withOutput(_outputId);
+      expect(
+        done.withAfter(null),
+        Step(
+          id: _stepId,
+          sessionId: _sessionId,
+          name: 'collect',
+          key: _key,
+          after: null,
+          place: 'lib/review.dart:12',
+          outputId: _outputId,
+          log: 'step.log',
+        ),
+      );
+      expect(done.after, _afterKey);
+    });
+
     test('compares by value, every field', () {
       Step variant({
         String id = _stepId,

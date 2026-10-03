@@ -368,6 +368,27 @@ void main() {
     );
   });
 
+  group('setStepAfter', () {
+    test('rewrites step.json with the after and returns the step', () async {
+      final handle = await newSession();
+      final step = await newStep(handle, after: 'inspect#1@9f2c1a7b3d5e8f04');
+      final finished = await handle.setStepOutput(step, newId());
+
+      final again = await handle.setStepAfter(finished, null);
+
+      expect(again, finished.withAfter(null));
+      expect(
+        Step.fromJson(
+          jsonDecode(read(p.join(stepDir(handle, step.id), 'step.json')))
+              as Map<String, Object?>,
+        ),
+        again,
+      );
+      expect(await handle.steps(), [again]);
+      expect(dotEntries(handle.dir), isEmpty);
+    });
+  });
+
   group('a step finishing in the order of D3', () {
     test('has its output and step-finished before step.json gets the '
         'outputId', () async {
