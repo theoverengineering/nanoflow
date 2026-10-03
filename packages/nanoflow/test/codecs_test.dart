@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_store/nanoflow_store.dart' show FsStore, SessionHandle;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -190,6 +191,36 @@ Future<String> describeChange(Flow f, Change change) async => change.branch;
 
 Future<Report> reportResult(Flow f, String x) async => const Report('x', 0);
 
+/// Calls the step `report`, which gives a [Report]; gives the text of the
+/// [CodecException] it throws.
+Future<String> takesReport(Flow f, String x) async {
+  try {
+    await f.step('report', () => body('report', const Report('x', 1)));
+  } on CodecException catch (e) {
+    return '$e';
+  }
+  return 'no CodecException';
+}
+
+/// Writes a session of [workflow] with the input [input] in [dir], as a
+/// process that ended would have left it; [build] adds to it. Gives its id.
+Future<String> writeSession(
+  String dir,
+  String workflow,
+  Object? input, {
+  Future<void> Function(SessionHandle handle)? build,
+}) async {
+  final handle = await FsStore(runsDirOf(dir)).createSession(
+    workflow: workflow,
+    graph: null,
+    input: (value: input),
+    code: null,
+  );
+  await build?.call(handle);
+  await handle.release();
+  return handle.session.id;
+}
+
 void main() {
   setUp(() {
     ran.clear();
@@ -350,5 +381,86 @@ void main() {
         startsWith('CodecException: Report: '),
       ),
     );
+  });
+
+  group('a saved value that does not come back as its type is a '
+      'CodecException', () {
+    test('for the input: resume throws it, and writes nothing', () async {
+      final dir = await tempDir();
+      final id = await writeSession(dir, 'describeChange', {'branch': 1});
+      final files = filesUnder(sessionDirOf(dir, id));
+
+      await expectLater(
+        withCodecs(dir).resume(describeChange, id),
+        throwsA(isA<CodecException>().having((e) => e.type, 'type', Change)),
+      );
+      expect(filesUnder(sessionDirOf(dir, id)), files);
+    });
+
+    test('for a step taken from the journal: the step throws it, without '
+        'running or writing anything', () async {
+      final dir = await tempDir();
+      final id = await writeSession(
+        dir,
+        'takesReport',
+        'x',
+        build: (handle) async {
+          final step = await handle.createStep(
+            name: 'report',
+            key: 'report#1@${h('')}',
+            after: null,
+            place: null,
+          );
+          await handle.appendEvent(
+            StepStarted(time: systemClock(), stepId: step.id),
+          );
+          final outputId = await handle.writeDocument('not a report');
+          await handle.appendEvent(
+            StepFinished(
+              time: systemClock(),
+              stepId: step.id,
+              outputId: outputId,
+            ),
+          );
+        },
+      );
+
+      final session = await withCodecs(dir).resume(takesReport, id);
+
+      expect(
+        await session.result,
+        startsWith('CodecException: Report: the JSON does not decode: '),
+      );
+      expect(ran, isEmpty);
+      expect(eventNamesOf(dir, id), [
+        'session-started',
+        'step-started',
+        'step-finished',
+        'session-resumed',
+        'session-finished',
+      ]);
+    });
+
+    test('for the result of a finished session: its result', () async {
+      final dir = await tempDir();
+      final id = await writeSession(
+        dir,
+        'reportResult',
+        'x',
+        build: (handle) async {
+          final outputId = await handle.writeDocument(['not', 'a report']);
+          await handle.appendEvent(
+            SessionFinished(time: systemClock(), outputId: outputId),
+          );
+        },
+      );
+
+      final session = await withCodecs(dir).resume(reportResult, id);
+
+      await expectLater(
+        session.result,
+        throwsA(isA<CodecException>().having((e) => e.type, 'type', Report)),
+      );
+    });
   });
 }

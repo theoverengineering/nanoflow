@@ -405,6 +405,9 @@ void main() {
       shell.stdout.drain<void>().ignore();
       shell.stderr.drain<void>().ignore();
       final [sleep] = await pidsIn(pids, 1);
+      // The watcher leaves the program alone while the pipe is open.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(isRunning(sleep), isTrue);
 
       await shell.stdin.close();
 
@@ -422,6 +425,8 @@ void main() {
       process.stdout.drain<void>().ignore();
       process.stderr.drain<void>().ignore();
       final sleeps = await pidsIn(pids, 2);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(sleeps.every(isRunning), isTrue);
 
       process.kill(ProcessSignal.sigkill);
       await process.exitCode;
