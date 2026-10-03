@@ -106,7 +106,8 @@ final class Flow {
   /// not a top-level function or a static method; a
   /// [FlowStoppedException] once the flow is stopped; a
   /// [SessionNotFoundException] when `runs/` has no session [sessionId]; a
-  /// [SessionBusyException] when another process owns it; a
+  /// [SessionBusyException] when another process owns it, or this one runs
+  /// it already; a
   /// [WorkflowMismatchException] when it is a session of another workflow;
   /// a [StorageException] when it cannot be read.
   Future<FlowSession<R>> resume<I, R>(

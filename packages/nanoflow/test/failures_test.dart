@@ -139,6 +139,7 @@ void main() {
     ]);
     expect(ranIn('documents'), ['first', 'wait']);
     expect(filesUnder(sessionDir), files);
+    expect(await ownerCheck(dir, session.id), 'opened');
   });
 
   test('a session that cannot be created is a StorageException', () async {
@@ -182,6 +183,7 @@ void main() {
       ),
     );
     expect(filesUnder(handle.dir), files);
+    expect(await ownerCheck(dir, handle.session.id), 'opened');
   });
 
   group('stop', () {

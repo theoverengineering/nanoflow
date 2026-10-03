@@ -36,36 +36,43 @@ final class FsStore {
     final id = newId();
     final createdAt = _clock();
     late final SessionHandle built;
-    final dir = await buildDirAtomically(
-      runsDir,
-      id: id,
-      name: sessionDirName(workflow, createdAt, id),
-      createParent: true,
-      build: (dir) async {
-        // A lock on an open file outlives the rename of its directory.
-        final lock = await lockSession(dir, id);
-        await Directory(p.join(dir, documentsDirName)).create();
-        await Directory(p.join(dir, stepsDirName)).create();
-        final inputId = input == null
-            ? null
-            : await writeDocumentAt(dir, id, input.value);
-        final session = Session(
-          id: id,
-          workflow: workflow,
-          graph: graph,
-          inputId: inputId,
-        );
-        await writeJsonAtomically(
-          p.join(dir, sessionFileName),
-          session.toJson(),
-        );
-        await startJournal(
-          p.join(dir, eventsFileName),
-          SessionStarted(time: createdAt, code: code),
-        );
-        built = sessionHandleAt(dir, session, _clock, lock);
-      },
-    );
+    RandomAccessFile? lock;
+    final String dir;
+    try {
+      dir = await buildDirAtomically(
+        runsDir,
+        id: id,
+        name: sessionDirName(workflow, createdAt, id),
+        createParent: true,
+        build: (dir) async {
+          // A lock on an open file outlives the rename of its directory.
+          final taken = lock = await lockSession(dir, id);
+          await Directory(p.join(dir, documentsDirName)).create();
+          await Directory(p.join(dir, stepsDirName)).create();
+          final inputId = input == null
+              ? null
+              : await writeDocumentAt(dir, id, input.value);
+          final session = Session(
+            id: id,
+            workflow: workflow,
+            graph: graph,
+            inputId: inputId,
+          );
+          await writeJsonAtomically(
+            p.join(dir, sessionFileName),
+            session.toJson(),
+          );
+          await startJournal(
+            p.join(dir, eventsFileName),
+            SessionStarted(time: createdAt, code: code),
+          );
+          built = sessionHandleAt(dir, session, _clock, taken);
+        },
+      );
+    } catch (_) {
+      if (lock case final taken?) await unlockSession(id, taken);
+      rethrow;
+    }
     return movedSessionHandle(built, dir);
   }
 
@@ -78,8 +85,9 @@ final class FsStore {
   ///
   /// Throws a [SessionBusyException], having changed nothing, when another
   /// process holds the lock: one that created or opened the session and
-  /// still runs. The system drops the lock of a process that dies. A session
-  /// it cannot read is a [FileSystemException].
+  /// still runs. The system drops the lock of a process that dies. Throws it
+  /// too when this isolate holds the session already, through a handle not
+  /// yet let go. A session it cannot read is a [FileSystemException].
   Future<SessionHandle?> openSession(String sessionId) async {
     final dirs = await _sessionDirs();
     final dir = dirs.where((dir) => dir.id == sessionId).firstOrNull;

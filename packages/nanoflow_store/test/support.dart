@@ -121,3 +121,15 @@ String stepDir(SessionHandle handle, String stepId) =>
 
 /// The journal of the session of [handle].
 String journal(SessionHandle handle) => p.join(handle.dir, 'log.jsonl');
+
+/// What another process that tries to own the session [sessionId] of
+/// [runsDir] finds: `busy` while this one owns it, `opened` when not.
+Future<String> ownerCheck(String runsDir, String sessionId) async {
+  final result = await Process.run(Platform.resolvedExecutable, [
+    p.join('test', 'fixtures', 'open_session.dart'),
+    runsDir,
+    sessionId,
+  ]);
+  expect(result.exitCode, 0, reason: '${result.stderr}');
+  return (result.stdout as String).trim();
+}

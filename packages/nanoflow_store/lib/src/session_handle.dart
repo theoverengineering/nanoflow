@@ -165,7 +165,7 @@ final class SessionHandle {
   Future<void> release() async {
     final lock = _lock;
     _lock = null;
-    await lock?.close();
+    if (lock != null) await unlockSession(session.id, lock);
   }
 
   String _stepDir(String stepId) => _stepDirs[stepId] ??=
@@ -323,7 +323,7 @@ Future<SessionHandle> loadSessionHandle(
     await _cutIncompleteLine(p.join(dir, eventsFileName));
     return SessionHandle._(session, dir, clock, lock);
   } catch (_) {
-    await lock.close();
+    await unlockSession(sessionId, lock);
     rethrow;
   }
 }

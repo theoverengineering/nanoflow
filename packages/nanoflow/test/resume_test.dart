@@ -258,6 +258,42 @@ void main() {
       expect(await ownerCheck(dir, first.id), 'opened');
     });
 
+    test('of a session this process runs is a SessionBusyException, and the '
+        'session stays owned', () async {
+      final (:dir, :work) = await project();
+      final flow = Flow(directory: dir);
+      final running = await flow.start(review, work);
+      await until(() => runsOf(work, 'inspect') == 1, 'the step inspect');
+
+      for (final resume in [
+        () => Flow(directory: dir).resume(failing, running.id),
+        () => flow.resume(review, running.id),
+      ]) {
+        await expectLater(
+          resume(),
+          throwsA(
+            isA<SessionBusyException>().having(
+              (e) => e.sessionId,
+              'sessionId',
+              running.id,
+            ),
+          ),
+        );
+        expect(await ownerCheck(dir, running.id), 'busy');
+      }
+
+      File(p.join(work, 'go')).createSync();
+      expect(await running.result, 'published change: clean');
+      expect(
+        [
+          for (final name in ['collect', 'inspect', 'publish'])
+            runsOf(work, name),
+        ],
+        [1, 1, 1],
+      );
+      expect(await ownerCheck(dir, running.id), 'opened');
+    });
+
     test('of a failed session gives its error', () async {
       final (:dir, :work) = await project();
       final first = await Flow(directory: dir).start(failing, work);
@@ -281,6 +317,7 @@ void main() {
             .having((e) => e.error, 'error', 'Bad state: no way'),
       );
       expect(filesUnder(sessionDirOf(dir, first.id)), files);
+      expect(await ownerCheck(dir, first.id), 'opened');
       final failed = (await eventsOf(await openSession(dir, first.id))).last;
       expect('$stack', (failed as SessionFailed).stack);
     });

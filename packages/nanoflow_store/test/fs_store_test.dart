@@ -187,6 +187,8 @@ void main() {
         input: null,
         code: code,
       );
+      await created.release();
+      await other.release();
 
       final opened = (await FsStore(runsDir).openSession(created.session.id))!;
 
@@ -284,6 +286,42 @@ void main() {
       expect(read(log), endsWith('"event":"session-started","code":null}\n'));
     });
 
+    test('refuses a session this process owns already, and keeps owning it, '
+        'until it lets it go', () async {
+      final runsDir = p.join(await tempDir(), 'runs');
+      final store = FsStore(runsDir);
+      final created = await store.createSession(
+        workflow: 'review',
+        graph: null,
+        input: null,
+        code: null,
+      );
+      final id = created.session.id;
+
+      await expectLater(
+        store.openSession(id),
+        throwsA(
+          isA<SessionBusyException>().having(
+            (e) => e.sessionId,
+            'sessionId',
+            id,
+          ),
+        ),
+      );
+      expect(await ownerCheck(runsDir, id), 'busy');
+
+      await created.release();
+      final opened = (await FsStore(runsDir).openSession(id))!;
+      await expectLater(
+        FsStore(runsDir).openSession(id),
+        throwsA(isA<SessionBusyException>()),
+      );
+      expect(await ownerCheck(runsDir, id), 'busy');
+
+      await opened.release();
+      expect(await ownerCheck(runsDir, id), 'opened');
+    });
+
     test('cuts an incomplete last line off the journal, so new events append '
         'cleanly', () async {
       final created = await newSession();
@@ -298,6 +336,7 @@ void main() {
         '{"time":"2026-10-03T10:02:00.000Z","event":"step-fini',
         mode: FileMode.append,
       );
+      await created.release();
 
       final opened = (await FsStore(p.dirname(created.dir))
           .openSession(created.session.id))!;
