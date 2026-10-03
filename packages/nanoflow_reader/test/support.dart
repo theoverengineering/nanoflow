@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_process/nanoflow_process.dart';
 import 'package:nanoflow_reader/nanoflow_reader.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -146,6 +147,12 @@ void truncate(String path, int length) {
   }
 }
 
+/// The `owner-changed` of the session [sessionId] when its `.owner.lock`
+/// names no owner: the feed gives it after the first changes of a session
+/// whose journal has not ended.
+OwnerChanged noOwner(String sessionId) =>
+    OwnerChanged(sessionId: sessionId, owner: null, alive: false);
+
 /// A step record of the session [sessionId] that has not finished.
 Step newStep(String sessionId, {String name = 'collect', String? after}) =>
     Step(
@@ -161,21 +168,33 @@ Step newStep(String sessionId, {String name = 'collect', String? after}) =>
 
 /// The changes and errors a reader's feed gives, collected as they come.
 final class Feed {
-  /// Listens to the feed of a new reader of [runsDir] until the test ends.
+  /// Listens to the feed of a new reader of [runsDir], which watches owners
+  /// with [processes], until the test ends.
   Feed(
     String runsDir, {
     Duration pollInterval = const Duration(milliseconds: 20),
-  }) : this.of(FsReader(runsDir: runsDir, pollInterval: pollInterval));
+    Processes? processes,
+  }) : this.of(
+         FsReader(
+           runsDir: runsDir,
+           pollInterval: pollInterval,
+           processes: processes,
+         ),
+       );
 
   /// Listens to the feed of [reader] until the test ends.
   Feed.of(this.reader) {
-    final subscription = reader.changes().listen(
+    _subscription = reader.changes().listen(
       (change) {
-        if (change case SessionAdded(:final session)
-            when _markers.containsKey(session.id)) {
-          _markers[session.id] = true;
-        } else {
-          changes.add(change);
+        switch (change) {
+          case SessionAdded(:final session)
+              when _markers.containsKey(session.id):
+            _markers[session.id] = true;
+          case OwnerChanged(:final sessionId)
+              when _markers.containsKey(sessionId):
+            break;
+          default:
+            changes.add(change);
         }
         _check();
       },
@@ -184,12 +203,15 @@ final class Feed {
         _check();
       },
     );
-    addTearDown(subscription.cancel);
+    addTearDown(cancel);
   }
 
   final FsReader reader;
 
-  /// Every change given so far, in order, without the markers of [settle].
+  late final StreamSubscription<Change> _subscription;
+
+  /// Every change given so far, in order, without those of the markers of
+  /// [settle].
   final List<Change> changes = [];
 
   /// Every error given so far.
@@ -251,6 +273,9 @@ final class Feed {
 
   /// The changes given since [mark], a length of [changes] taken earlier.
   List<Change> since(int mark) => changes.sublist(mark);
+
+  /// Stops listening to the feed before the test ends.
+  Future<void> cancel() => _subscription.cancel();
 
   void _check() {
     for (final waiting in [..._waiting]) {

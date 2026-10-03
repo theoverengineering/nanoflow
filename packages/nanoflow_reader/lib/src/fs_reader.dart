@@ -4,8 +4,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_process/nanoflow_process.dart';
 import 'package:path/path.dart' as p;
 
+import 'owners.dart';
 import 'scanner.dart';
 import 'tail.dart';
 
@@ -13,12 +15,34 @@ import 'tail.dart';
 /// changes, and data on request.
 ///
 /// The reader only reads. It follows the directory by file system events and
-/// polls it as well, since events come late and get merged.
+/// polls it as well, since events come late and get merged. Whether the
+/// process that owns a session is alive it learns from the OS, which tells
+/// when the process exits.
+///
+/// Never run a reader in a process that owns sessions of the same `runs`:
+/// reading a session's `.owner.lock` there drops the lock that process holds.
 final class FsReader {
+  /// A reader of [runsDir] that asks [processes] whether the owners of
+  /// sessions are alive. Without [processes] it makes the adapter of this OS,
+  /// [Processes.forPlatform], and closes it when the feed is cancelled; an
+  /// adapter it is given is the caller's to close.
   FsReader({
-    required this.runsDir,
-    this.pollInterval = const Duration(milliseconds: 500),
-  }) : _scanner = Scanner(runsDir: runsDir);
+    required String runsDir,
+    Duration pollInterval = const Duration(milliseconds: 500),
+    Processes? processes,
+  }) : this._(
+         runsDir,
+         pollInterval,
+         processes ?? Processes.forPlatform(),
+         ownsProcesses: processes == null,
+       );
+
+  FsReader._(
+    this.runsDir,
+    this.pollInterval,
+    this._processes, {
+    required this._ownsProcesses,
+  });
 
   /// The `runs` directory in the project directory.
   final String runsDir;
@@ -27,13 +51,17 @@ final class FsReader {
   /// it to.
   final Duration pollInterval;
 
-  final Scanner _scanner;
+  /// Tells whether the processes that own sessions run.
+  final Processes _processes;
 
-  late final Stream<Change> _changes = followRuns(
-    runsDir,
-    pollInterval,
-    _scanner.scan,
-  );
+  /// Whether the reader made [_processes], and so closes it.
+  final bool _ownsProcesses;
+
+  late final Owners _owners = Owners(_processes);
+
+  late final Scanner _scanner = Scanner(runsDir: runsDir, owners: _owners);
+
+  late final Stream<Change> _changes = _follow();
 
   /// Everything already on disk, then new changes as they appear, for every
   /// session in [runsDir]. Single subscription; cancelling stops all
@@ -46,6 +74,13 @@ final class FsReader {
   /// A file that is not its model, such as a `step.json` that is not a step,
   /// comes as an error on the stream, once, and the entity is not given
   /// until the file is fixed; the feed goes on.
+  ///
+  /// While a session's journal goes on, `owner-changed` tells its owner from
+  /// `.owner.lock` and whether the owner's process is alive: first after the
+  /// session's other changes of the first read, then each time either
+  /// changes. When the process exits, the session is read to the end of its
+  /// journal first: a session that ended comes with its last event and no
+  /// more `owner-changed`.
   Stream<Change> changes() => _changes;
 
   /// The value of the document [documentId] of the session [sessionId].
@@ -82,6 +117,21 @@ final class FsReader {
         },
       ),
     );
+  }
+
+  /// The feed, which stops watching owners when it is cancelled.
+  Stream<Change> _follow() async* {
+    try {
+      yield* followRuns(
+        runsDir,
+        pollInterval,
+        _scanner.scan,
+        wake: _owners.news,
+      );
+    } finally {
+      _owners.close();
+      if (_ownsProcesses) await _processes.close();
+    }
   }
 
   // Filesystem paths, known once the feed has reported the entity; null
@@ -132,21 +182,32 @@ final class FsReader {
       ));
 }
 
+/// A reader of [runsDir] that closes [processes] when its feed is
+/// cancelled, as an [FsReader] given none closes the adapter it makes: lets
+/// tests see that it does.
+FsReader readerOwning(
+  Processes processes, {
+  required String runsDir,
+  Duration pollInterval = const Duration(milliseconds: 500),
+}) => FsReader._(runsDir, pollInterval, processes, ownsProcesses: true);
+
 /// What [scan] gives, run as the feed of [runsDir] runs it: when listened
 /// to, on every file system event under [runsDir] but those of a step's
-/// `step.log`, and every [interval].
+/// `step.log`, on every event of [wake], and every [interval].
 ///
 /// A running step writes its log all the time, and a scan does not read
 /// logs: [FsReader.stepLog] follows a log by itself.
 Stream<T> followRuns<T>(
   String runsDir,
   Duration interval,
-  Future<void> Function(EventSink<T> out) scan,
-) => follow(
+  Future<void> Function(EventSink<T> out) scan, {
+  Stream<void>? wake,
+}) => follow(
   runsDir,
   recursive: true,
   interval: interval,
   ignore: (event) => p.basename(event.path) == logFileName,
+  wake: wake,
   pass: scan,
 );
 

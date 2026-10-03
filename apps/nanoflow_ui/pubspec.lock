@@ -350,6 +350,13 @@ packages:
       relative: true
     source: path
     version: "0.0.0"
+  nanoflow_process:
+    dependency: transitive
+    description:
+      path: "../../packages/nanoflow_process"
+      relative: true
+    source: path
+    version: "0.0.0"
   nanoflow_reader:
     dependency: "direct main"
     description:

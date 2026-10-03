@@ -141,6 +141,7 @@ void main() {
       expect(feed.changes, [
         SessionAdded(session),
         EventAdded(sessionId: session.id, event: started),
+        noOwner(session.id),
       ]);
       final mark = feed.changes.length;
 
@@ -273,6 +274,7 @@ void main() {
       expect(feed.since(0), [
         SessionAdded(session),
         EventAdded(sessionId: session.id, event: started),
+        noOwner(session.id),
       ]);
 
       final step = newStep(session.id);
@@ -282,7 +284,7 @@ void main() {
       await feed.settle();
       // A step may come before or after the event that starts it.
       expect(
-        feed.since(2),
+        feed.since(3),
         unorderedEquals([
           StepAdded(step),
           EventAdded(sessionId: session.id, event: stepStarted),
@@ -292,7 +294,7 @@ void main() {
       final document = Document(id: newId(), sessionId: session.id, value: 1);
       writeDocument(sessionDir, document);
       await feed.settle();
-      expect(feed.since(4), [
+      expect(feed.since(5), [
         DocumentAdded(sessionId: session.id, documentId: document.id),
       ]);
       expect(feed.errors, isEmpty);
@@ -328,7 +330,12 @@ void main() {
       await feed.settle();
       await feed.settle();
 
-      expect(feed.changes, [SessionAdded(apply), SessionAdded(review)]);
+      expect(feed.changes, [
+        SessionAdded(apply),
+        noOwner(apply.id),
+        SessionAdded(review),
+        noOwner(review.id),
+      ]);
       expect(feed.errors, isEmpty);
     });
 
@@ -375,7 +382,11 @@ void main() {
       await feed.settle();
       await feed.settle();
 
-      expect(feed.changes, [SessionAdded(session), StepAdded(good)]);
+      expect(feed.changes, [
+        SessionAdded(session),
+        StepAdded(good),
+        noOwner(session.id),
+      ]);
       expect(feed.errors, [
         isA<FormatException>().having(
           (e) => e.message,
@@ -409,7 +420,11 @@ void main() {
         await feed.settle();
         await feed.settle();
 
-        expect(feed.changes, [SessionAdded(session), StepAdded(good)]);
+        expect(feed.changes, [
+          SessionAdded(session),
+          StepAdded(good),
+          noOwner(session.id),
+        ]);
         expect(feed.errors, [
           isA<FileSystemException>().having((e) => e.path, 'path', lockedFile),
         ]);
@@ -466,8 +481,11 @@ void main() {
 
       expect(feed.changes, [
         SessionAdded(newest),
+        noOwner(newest.id),
         SessionAdded(newer),
+        noOwner(newer.id),
         SessionAdded(older),
+        noOwner(older.id),
       ]);
     });
 
@@ -737,13 +755,15 @@ final class SpecSession {
   EventAdded added(Event event) =>
       EventAdded(sessionId: session.id, event: event);
 
-  /// Everything the feed gives for the session.
+  /// Everything the feed gives for the session: its journal goes on, and
+  /// its `.owner.lock` names no owner.
   List<Change> get changes => [
     SessionAdded(session),
     for (final step in [collect, inspect, publish]) StepAdded(step),
     for (final event in events) added(event),
     for (final document in [input, collected, snapshot])
       DocumentAdded(sessionId: session.id, documentId: document.id),
+    noOwner(session.id),
   ];
 
   Document _document(Object? value) =>

@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
+import 'owners.dart';
 import 'tail.dart';
 
 /// The sessions of a `runs` directory as far as the feed has given them.
@@ -19,10 +20,15 @@ import 'tail.dart';
 /// after its last event (`session-finished`, `session-failed`). A session is
 /// read once more after the scan that read its last event: that scan may
 /// have listed the session's steps before the last of them was put in place.
+///
+/// The owner of a session whose journal goes on is read in every scan, after
+/// the journal, and told by [owners].
 final class Scanner {
-  Scanner({required this.runsDir});
+  Scanner({required this.runsDir, required this.owners});
 
   final String runsDir;
+
+  final Owners owners;
 
   /// The sessions given, by directory.
   final Map<String, _Session> _sessions = {};
@@ -38,7 +44,9 @@ final class Scanner {
   /// session, newest first, `session-added` (once), then its new steps and a
   /// `step-changed` for a step whose `step.json` was rewritten — with the
   /// `outputId` of its `step-finished`, or with another `after` when it runs
-  /// again — its journal's new complete lines, then its new documents.
+  /// again — its journal's new complete lines, then its new documents, then,
+  /// while its journal goes on, `owner-changed` when its owner or whether it
+  /// is alive has changed (see [Owners.update]).
   ///
   /// Newest first: a feed of a long history gives first the sessions that
   /// are likely to be looked at.
@@ -101,6 +109,9 @@ final class Scanner {
     for (final stepDir in steps ?? const <String>[]) {
       await _scanStep(session, stepDir, out);
     }
+    // Taken before the journal is read: an owner's process that has exited
+    // by now wrote all it did, and the journal read next has it.
+    final fate = owners.fateOf(sessionId);
     final journal = session.journal;
     final lines = await _attempt(journal.path, out, journal.readLines);
     for (final (:number, :bytes) in lines ?? const <Line>[]) {
@@ -129,6 +140,16 @@ final class Scanner {
       if (session.documents.add(documentId)) {
         out.add(DocumentAdded(sessionId: sessionId, documentId: documentId));
       }
+    }
+    if (session.lastRead) {
+      owners.drop(sessionId);
+    } else {
+      final lockFile = p.join(dir, ownerLockFileName);
+      await _attempt(
+        lockFile,
+        out,
+        () => owners.update(sessionId, lockFile, fate, out),
+      );
     }
     session.ended =
         lastRead &&

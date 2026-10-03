@@ -102,11 +102,35 @@ void main() {
   });
 
   group('follow', () {
-    // A directory that is never there: only the timer triggers passes.
+    // A directory that is never there: only the timer, and wake, trigger
+    // passes.
     late String missing;
 
     setUp(() async {
       missing = p.join(await tempDir(), 'missing');
+    });
+
+    test('passes on every event of wake, and stops listening to it once '
+        'cancelled', () async {
+      final wake = StreamController<void>();
+      var passes = 0;
+      final followed = follow<int>(
+        missing,
+        recursive: false,
+        interval: const Duration(hours: 1),
+        wake: wake.stream,
+        pass: (out) async => out.add(++passes),
+      );
+      final given = <int>[];
+      final subscription = followed.listen(given.add);
+      await eventually(() => given.isNotEmpty);
+
+      wake.add(null);
+      await eventually(() => given.length == 2);
+      await subscription.cancel();
+
+      expect(given, [1, 2]);
+      expect(wake.hasListener, isFalse);
     });
 
     test('never runs two passes at once', () async {

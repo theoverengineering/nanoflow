@@ -88,19 +88,29 @@ final class Tail {
 
 /// A stream of what [pass] gives. [pass] runs when the stream is listened to,
 /// then again on every file system event under [dir] (watched once it exists)
-/// that [ignore] does not take, and every [interval].
+/// that [ignore] does not take, on every event of [wake], and every
+/// [interval].
 ///
 /// Passes never overlap: a trigger during a pass makes one more pass after
 /// it. An error a pass throws goes to the stream, and the passes go on.
-/// Cancelling stops the timer and the watching, so that no pass begins after
-/// it, and completes once a pass under way has ended.
+/// Cancelling stops the timer and the watching, and stops listening to
+/// [wake], so that no pass begins after it, and completes once a pass under
+/// way has ended.
 Stream<T> follow<T>(
   String dir, {
   required bool recursive,
   required Duration interval,
   bool Function(FileSystemEvent event)? ignore,
+  Stream<void>? wake,
   required Future<void> Function(EventSink<T> out) pass,
-}) => _Follower<T>(dir, recursive, interval, ignore, pass)._controller.stream;
+}) => _Follower<T>(
+  dir,
+  recursive,
+  interval,
+  ignore,
+  wake,
+  pass,
+)._controller.stream;
 
 final class _Follower<T> {
   _Follower(
@@ -108,6 +118,7 @@ final class _Follower<T> {
     this._recursive,
     this._interval,
     this._ignore,
+    this._wake,
     this._pass,
   ) {
     _controller = StreamController<T>(onListen: _start, onCancel: _stop);
@@ -117,11 +128,13 @@ final class _Follower<T> {
   final bool _recursive;
   final Duration _interval;
   final bool Function(FileSystemEvent event)? _ignore;
+  final Stream<void>? _wake;
   final Future<void> Function(EventSink<T> out) _pass;
 
   late final StreamController<T> _controller;
   Timer? _poll;
   StreamSubscription<FileSystemEvent>? _watch;
+  StreamSubscription<void>? _woken;
 
   /// The passes under way, `null` when there are none.
   Future<void>? _passes;
@@ -133,12 +146,14 @@ final class _Follower<T> {
 
   void _start() {
     _poll = Timer.periodic(_interval, (_) => _trigger());
+    _woken = _wake?.listen((_) => _trigger());
     _trigger();
   }
 
   Future<void> _stop() async {
     _stopped = true;
     _poll?.cancel();
+    await _woken?.cancel();
     await _watch?.cancel();
     await _passes;
   }
