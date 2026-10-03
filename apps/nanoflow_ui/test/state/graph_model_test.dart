@@ -716,6 +716,28 @@ void main() {
       ]);
     });
 
+    test('lists five steps not on the graph, and says how many more', () {
+      final session = Journal('a1b2-session');
+      for (var i = 0; i < 7; i++) {
+        session.step('gather', i, end: i + 1, place: 'lib/old.dart:$i');
+      }
+      final note = sessionCanvas(session.data, graphOf(session)).notes.single;
+      expect(note.title, '7 steps not on the graph');
+      expect(note.lines, [
+        for (var i = 0; i < 5; i++) 'gather  lib/old.dart:$i',
+        'and 2 more',
+      ]);
+    });
+
+    test('says nothing of steps not on the graph while the graph has no '
+        'workflow to put them on', () {
+      final session = Journal('a1b2-session', workflow: 'deploy')
+        ..step('loose', 1, end: 2, place: 'lib/deploy.dart:3');
+      final canvas = sessionCanvas(session.data, graphOf(session));
+      expect(canvas.placeholder, noWorkflowNamed('deploy'));
+      expect(canvas.notes, isEmpty);
+    });
+
     test('has the places of the steps of its workflow', () {
       final session = Journal('a1b2-session');
       final canvas = sessionCanvas(session.data, graphOf(session));
@@ -757,7 +779,7 @@ void main() {
         model.selectCopy(1, tool.id);
         final view = model.sessionView(at(746))!;
         expect(view.frames.single.selected!.number, 2);
-        expect(view.logs.header.text, 'copy 2 · 2 steps');
+        expect(view.logs.header.text, 'pkg 2 · 2 steps');
         expect(model.selection.stepId, 'a1b2-verify-4');
         model.selectCopy(1, null);
         expect(model.sessionView(at(746))!.frames.single.selected, isNull);
@@ -836,7 +858,7 @@ void main() {
         expect(model.visitToOpen(verify)!.stepId, 'a1b2-verify-4');
         final details = model.detailsOf(verify, 'a1b2-verify-3', at(746));
         expect(details.visitText, 'Visit 1 of 2');
-        expect(details.copy, 'copy 1');
+        expect(details.copy, 'pkg 1');
       });
     });
   });

@@ -144,7 +144,8 @@ void main() {
     });
 
     testWidgets('never overflow, at any width the header has room for: '
-        'folded, squeezed or not', (tester) async {
+        'folded, squeezed or not; the narrowest keep the last crumb and the '
+        'workflows\' chevron', (tester) async {
       final model = modelOf(graph: graphFileNamed('recursion'));
       final width = ValueNotifier(1300.0);
       addTearDown(width.dispose);
@@ -158,6 +159,9 @@ void main() {
               builder: (context, width, _) => SizedBox(
                 width: width,
                 child: GraphHeader(
+                  // New render objects at each width: an overflow is told
+                  // once for each.
+                  key: ValueKey(width),
                   path: releaseFile,
                   model: model,
                   shell: Shell(),
@@ -169,10 +173,11 @@ void main() {
         ),
       );
       await settle(tester);
-      // Narrower than 720, the header's own words and buttons do not fit.
-      const narrowest = 720.0;
-      // Two levels squeeze; nine fold, then squeeze.
-      for (final depth in [1, 9]) {
+      // Narrower than this, the header's own words and buttons do not fit.
+      const narrowest = 674.0;
+      // Two levels squeeze, three fold, nine fold further; at the
+      // narrowest the workflow's crumb folds too.
+      for (final depth in [1, 2, 9]) {
         model.openLevel(0);
         for (var i = 0; i < depth; i++) {
           model.open(
@@ -188,17 +193,24 @@ void main() {
         }
         width.value = narrowest;
         await tester.pump();
-        // The last crumb is cut: squeezed.
-        final last = inHeader(find.text(depth.isEven ? 'crawl()' : 'visit()'));
+        final lastTitle = depth.isEven ? 'crawl()' : 'visit()';
+        expect(inHeader(find.text(lastTitle)), findsOneWidget);
+        expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsOneWidget);
+        expect(
+          inHeader(find.text('crawl')),
+          findsNothing,
+          reason: "the workflow's crumb has folded, $depth deep",
+        );
+        // Squeezed.
         final painter = TextPainter(
-          text: TextSpan(
-            text: depth.isEven ? 'crawl()' : 'visit()',
-            style: AppText.headerTitle,
-          ),
+          text: TextSpan(text: lastTitle, style: AppText.headerTitle),
           textDirection: TextDirection.ltr,
         )..layout();
         addTearDown(painter.dispose);
-        expect(tester.getSize(last.last).width, lessThan(painter.width));
+        expect(
+          tester.getSize(inHeader(find.text(lastTitle))).width,
+          lessThan(painter.width),
+        );
       }
     });
 

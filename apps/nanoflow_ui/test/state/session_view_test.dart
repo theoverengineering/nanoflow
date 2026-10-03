@@ -174,16 +174,17 @@ void main() {
       copies: copies,
     );
 
-    test('the workflow body: every step in Logs, the marks of its nodes', () {
+    test('the workflow body: every step in Logs, those in copies named by '
+        'their copy; the marks of its nodes', () {
       final view = viewOf(journal());
       expect(view.shown.frames, isEmpty);
       expect(view.logs.header.text, '4 steps');
       expect(view.marks!.of('2')!.copies, 2);
       expect(view.logs.rows.whereType<StepRow>().map((row) => row.copy), [
         null,
-        null,
-        null,
-        null,
+        'pkg 1',
+        'pkg 2',
+        'pkg 2',
       ]);
     });
 
@@ -193,9 +194,9 @@ void main() {
       expect(view.shown.frames.single.footer, 'done 1 of 2');
       expect(view.logs.rows.whereType<StepRow>().map((row) => row.copy), [
         null,
-        'copy 1',
-        'copy 2',
-        'copy 2',
+        'pkg 1',
+        'pkg 2',
+        'pkg 2',
       ]);
       expect(view.marks!.of('2')!.running, 1);
     });
@@ -208,11 +209,11 @@ void main() {
         copies: {1: j.steps[2].id},
         stepId: j.steps[3].id,
       );
-      expect(view.logs.header.text, 'copy 2 · 2 steps');
+      expect(view.logs.header.text, 'pkg 2 · 2 steps');
       expect(view.logs.rows.whereType<EndRow>(), isEmpty);
       expect(view.marks!.of('1')!.steps, 1);
       expect(view.marks!.selected, {'2'});
-      expect(view.copyOf(j.steps[3].id), 'copy 2');
+      expect(view.copyOf(j.steps[3].id), 'pkg 2');
     });
   });
 }

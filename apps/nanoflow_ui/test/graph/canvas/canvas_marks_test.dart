@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' show CopiesNode;
 import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
 import 'package:nanoflow_ui/layout/layout.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
@@ -90,6 +91,28 @@ void main() {
     expect(marks.exit('1', 0), Tone.plain);
     expect(marks.bar('2', layout.edges.where((e) => e.to == '2')), Tone.plain);
     expect(marks.counter('1', 0), isNull);
+  });
+
+  test('one copy shown: what leads to or from a node it has not reached is '
+      'darker (docs/design/code-first/copy-switcher.html)', () {
+    // Tool's upload runs: verify and tag are not reached.
+    final marks = marksOf(const [Opened('2')], copies: {1: 'a1b2-upload-2'});
+    final frame = inPlace.body.node('2')! as CopiesNode;
+    final layout = layoutBody(frame.body, functions: file.functions);
+    EdgePath edge(String from, String to) =>
+        layout.edges.firstWhere((e) => e.from == from && e.to == to);
+    expect(marks.edge(edge('(start)', '1')), Tone.plain);
+    expect(marks.edge(edge('1', '2')), Tone.untaken);
+    expect(marks.edge(edge('2', '3')), Tone.untaken);
+    expect(marks.edge(edge('3', '(end)')), Tone.untaken);
+    expect(marks.exit('1', 0), Tone.plain);
+    expect(marks.exit('2', 0), Tone.untaken);
+    expect(marks.bar('1', const []), Tone.plain);
+    expect(marks.bar('2', const []), Tone.untaken);
+    // All copies shown: plain.
+    final all = marksOf(const [Opened('2')]);
+    expect(all.edge(edge('2', '3')), Tone.plain);
+    expect(all.bar('3', const []), Tone.plain);
   });
 
   test('back arrows are in the plain tone; none without them', () {

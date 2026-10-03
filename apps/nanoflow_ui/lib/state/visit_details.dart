@@ -91,7 +91,7 @@ final class VisitDetails {
 
   final StepFacts? facts;
 
-  /// The copy the step is in: `copy 2`; `null` outside copies.
+  /// The copies the step is in: `pkg 2 › target 1`; `null` outside copies.
   final String? copy;
 }
 

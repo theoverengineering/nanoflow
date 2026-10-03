@@ -162,7 +162,7 @@ final class SessionView {
           steps: shown.steps,
           places: places,
           now: now,
-          copies: shown.copyNumbers,
+          copyOf: shown.tagOf,
           end: copy == null,
         ),
         scale: timeScale(session, now),
@@ -209,7 +209,7 @@ final class SessionView {
   /// The steps shown, in the order of their first `step-started`.
   List<StepState> get steps => shown.steps;
 
-  /// The copies the step [stepId] is in: `copy 2 › copy 1`; `null` for a
+  /// The copies the step [stepId] is in: `pkg 2 › target 1`; `null` for a
   /// step in no copies frame drawn.
   String? copyOf(String stepId) => shown.copyOf(stepId);
 }

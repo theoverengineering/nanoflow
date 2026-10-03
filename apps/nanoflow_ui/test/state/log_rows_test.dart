@@ -30,12 +30,15 @@ void main() {
             ..step('notify', 612, place: copiesAt(8)))
           .data;
 
-  List<StepRow> stepRows(SessionData session, {Map<String, int>? copies}) => [
+  List<StepRow> stepRows(
+    SessionData session, {
+    String? Function(String stepId)? copyOf,
+  }) => [
     for (final row in logRows(
       session,
       steps: session.state.steps,
       places: places,
-      copies: copies ?? const {},
+      copyOf: copyOf,
       now: now,
     ))
       if (row is StepRow) row,
@@ -99,10 +102,14 @@ void main() {
     expect(rows.map((row) => row.failure), [false, false]);
   });
 
-  test('a step of a copy names it', () {
+  test('a step in copies names them', () {
     final session = mockup();
-    final rows = stepRows(session, copies: {session.state.steps[1].stepId: 2});
-    expect(rows.map((row) => row.copy), [null, 'copy 2', null, null]);
+    final second = session.state.steps[1].stepId;
+    final rows = stepRows(
+      session,
+      copyOf: (stepId) => stepId == second ? 'pkg 2' : null,
+    );
+    expect(rows.map((row) => row.copy), [null, 'pkg 2', null, null]);
   });
 
   test('only the steps given, in their order', () {

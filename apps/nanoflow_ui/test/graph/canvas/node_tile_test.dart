@@ -219,6 +219,17 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('3×'), findsNothing);
+
+      // A step all the copies there passed: nothing over it
+      // (docs/design/code-first/copies-frame.html).
+      await pumpTile(
+        tester,
+        'step',
+        allCopies: true,
+        marks: const NodeMarks(state: NodeState.visited, steps: 3, running: 0),
+      );
+      expect(find.byKey(NodeTile.runningKeyOf('step')), findsNothing);
+      expect(find.text('3×'), findsNothing);
     });
 
     testWidgets('the selected step\'s node is ringed', (tester) async {

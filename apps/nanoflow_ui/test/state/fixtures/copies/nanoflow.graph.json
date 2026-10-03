@@ -1,0 +1,415 @@
+{
+  "format": 1,
+  "package": "copies",
+  "fingerprint": "sha256:36219ae40a84288da33dc5ad8c5fa159d152dc1ef00ff23fa4a7fc1a704de649",
+  "sources": {
+    "lib/copies.dart": "sha256:8af61f75c3b53e62b6d9b9969a435285ed26b9b20a3f5f6e490b0e9b01e38d13",
+    "lib/run_all.dart": "sha256:ea2fd5f85d9203390cf12c1726581591f6af41e951431e1dba4bd9003ebf4fc4"
+  },
+  "builds": {},
+  "workflows": [
+    "lib/copies.dart#inPlace",
+    "lib/copies.dart#nested",
+    "lib/copies.dart#viaCall",
+    "lib/copies.dart#viaMap"
+  ],
+  "functions": {
+    "lib/copies.dart#inPlace": {
+      "name": "inPlace",
+      "place": "lib/copies.dart:22",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "plan",
+            "place": "lib/copies.dart:23"
+          },
+          {
+            "id": "2",
+            "kind": "copies",
+            "label": "pkg in plan.split(',')",
+            "place": "lib/copies.dart:25",
+            "body": {
+              "nodes": [
+                {
+                  "id": "1",
+                  "kind": "step",
+                  "name": "upload",
+                  "place": "lib/copies.dart:27"
+                },
+                {
+                  "id": "2",
+                  "kind": "step",
+                  "name": "verify",
+                  "place": "lib/copies.dart:28"
+                },
+                {
+                  "id": "3",
+                  "kind": "step",
+                  "name": "tag",
+                  "place": "lib/copies.dart:29"
+                }
+              ],
+              "edges": [
+                {
+                  "from": null,
+                  "to": "1",
+                  "label": null
+                },
+                {
+                  "from": "1",
+                  "to": "2",
+                  "label": null
+                },
+                {
+                  "from": "2",
+                  "to": "3",
+                  "label": null
+                },
+                {
+                  "from": "3",
+                  "to": null,
+                  "label": null
+                }
+              ]
+            }
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "announce",
+            "place": "lib/copies.dart:32"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/copies.dart#nested": {
+      "name": "nested",
+      "place": "lib/copies.dart:57",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "copies",
+            "label": "pkg in items",
+            "place": "lib/copies.dart:59",
+            "body": {
+              "nodes": [
+                {
+                  "id": "1",
+                  "kind": "step",
+                  "name": "fetch",
+                  "place": "lib/copies.dart:61"
+                },
+                {
+                  "id": "2",
+                  "kind": "copies",
+                  "label": "target in targets",
+                  "place": "lib/copies.dart:63",
+                  "body": {
+                    "nodes": [
+                      {
+                        "id": "1",
+                        "kind": "step",
+                        "name": "build",
+                        "place": "lib/copies.dart:65"
+                      },
+                      {
+                        "id": "2",
+                        "kind": "step",
+                        "name": "test",
+                        "place": "lib/copies.dart:73"
+                      }
+                    ],
+                    "edges": [
+                      {
+                        "from": null,
+                        "to": "1",
+                        "label": null
+                      },
+                      {
+                        "from": "1",
+                        "to": "2",
+                        "label": null
+                      },
+                      {
+                        "from": "2",
+                        "to": null,
+                        "label": null
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "3",
+                  "kind": "step",
+                  "name": "upload",
+                  "place": "lib/copies.dart:76"
+                }
+              ],
+              "edges": [
+                {
+                  "from": null,
+                  "to": "1",
+                  "label": null
+                },
+                {
+                  "from": "1",
+                  "to": "2",
+                  "label": null
+                },
+                {
+                  "from": "2",
+                  "to": "3",
+                  "label": null
+                },
+                {
+                  "from": "3",
+                  "to": null,
+                  "label": null
+                }
+              ]
+            }
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "announce",
+            "place": "lib/copies.dart:79"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/copies.dart#publish": {
+      "name": "publish",
+      "place": "lib/copies.dart:46",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "step",
+            "name": "upload",
+            "place": "lib/copies.dart:47"
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "verify",
+            "place": "lib/copies.dart:48"
+          },
+          {
+            "id": "3",
+            "kind": "step",
+            "name": "tag",
+            "place": "lib/copies.dart:49"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/copies.dart#viaCall": {
+      "name": "viaCall",
+      "place": "lib/copies.dart:52",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "copies",
+            "label": "pkg in items",
+            "place": "lib/copies.dart:53",
+            "body": {
+              "nodes": [
+                {
+                  "id": "1",
+                  "kind": "call",
+                  "functions": [
+                    "lib/copies.dart#publish"
+                  ],
+                  "place": "lib/copies.dart:53"
+                }
+              ],
+              "edges": [
+                {
+                  "from": null,
+                  "to": "1",
+                  "label": null
+                },
+                {
+                  "from": "1",
+                  "to": null,
+                  "label": null
+                }
+              ]
+            }
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "announce",
+            "place": "lib/copies.dart:54"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/copies.dart#viaMap": {
+      "name": "viaMap",
+      "place": "lib/copies.dart:35",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "copies",
+            "label": "pkg in items",
+            "place": "lib/copies.dart:37",
+            "body": {
+              "nodes": [
+                {
+                  "id": "1",
+                  "kind": "step",
+                  "name": "upload",
+                  "place": "lib/copies.dart:38"
+                },
+                {
+                  "id": "2",
+                  "kind": "step",
+                  "name": "verify",
+                  "place": "lib/copies.dart:39"
+                },
+                {
+                  "id": "3",
+                  "kind": "step",
+                  "name": "tag",
+                  "place": "lib/copies.dart:40"
+                }
+              ],
+              "edges": [
+                {
+                  "from": null,
+                  "to": "1",
+                  "label": null
+                },
+                {
+                  "from": "1",
+                  "to": "2",
+                  "label": null
+                },
+                {
+                  "from": "2",
+                  "to": "3",
+                  "label": null
+                },
+                {
+                  "from": "3",
+                  "to": null,
+                  "label": null
+                }
+              ]
+            }
+          },
+          {
+            "id": "2",
+            "kind": "step",
+            "name": "announce",
+            "place": "lib/copies.dart:43"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

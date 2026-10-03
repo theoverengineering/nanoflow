@@ -194,9 +194,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
             graph.bounds.toRect(),
             title: 'each ${copies.label}',
             count: frame?.countText ?? _plainCount,
-            switcher: frame == null
-                ? null
-                : CopySwitcher.widthOf(frame.copies, frame.selected),
+            switcher: frame == null ? null : CopySwitcher.widthOf(frame),
           );
     _drawing = graph == null ? null : _draw(graph, copies, frame);
   }
@@ -452,8 +450,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
                   switcher: frame == null
                       ? null
                       : CopySwitcher(
-                          copies: frame.copies,
-                          selected: frame.selected,
+                          frame: frame,
                           hintOf: widget.model.hintOf,
                           onSelect: (id) =>
                               widget.model.selectCopy(frame.depth, id),

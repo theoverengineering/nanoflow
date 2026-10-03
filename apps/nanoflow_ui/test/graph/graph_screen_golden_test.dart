@@ -79,7 +79,8 @@ void main() {
     await expectGolden(tester, 'graph_copies');
   });
 
-  testWidgets('one copy: its path, copy 2 · now verify '
+  testWidgets('one copy: its path, pkg 2 · now verify, the ways it has '
+      'not gone darker '
       '(docs/design/code-first/copy-switcher.html)', (tester) async {
     final model = await pumpGraphScreen(
       tester,

@@ -7,6 +7,8 @@ environment:
 dev_dependencies:
   nanoflow:
     path: ../../packages/nanoflow
+  nanoflow_describe:
+    path: ../../packages/nanoflow_describe
   nanoflow_model:
     path: ../../packages/nanoflow_model
   nanoflow_reader:

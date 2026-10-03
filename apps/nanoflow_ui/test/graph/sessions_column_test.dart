@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
@@ -6,6 +7,8 @@ import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/state/sessions.dart';
 import 'package:nanoflow_ui/theme.dart';
 
+import '../state/support.dart';
+import 'canvas/support.dart';
 import 'support.dart';
 
 void main() {
@@ -106,6 +109,43 @@ void main() {
     expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
     // A failed session's failed step is in its status already.
     expect(find.text('1 failed'), findsOneWidget);
+  });
+
+  testWidgets('a session that ran on other code says so, and its status '
+      'stays whole beside 1 failed at the default width', (tester) async {
+    await pumpGraphScreen(
+      tester,
+      model: ownedModel(
+        file: releaseFile,
+        changes: changesOf([
+          Journal(
+              'f0a5-session',
+              workflow: 'release',
+              startedAt: -2131,
+              code: 'sha256:other',
+            )
+            ..step('plan', -2130, end: -2120)
+            ..step('build', -2120, end: -2100, failed: true)
+            ..step('build', -2000),
+          Journal('c3d4-session', workflow: 'release', code: null)
+            ..step('plan', 1),
+        ]),
+      ),
+      now: () => columnNow,
+    );
+
+    for (final (id, status, note) in [
+      ('f0a5-session', 'Running for 47m 57s', 'other code'),
+      ('c3d4-session', 'Running for 12m 26s', 'not checked'),
+    ]) {
+      expect(inCard(id, find.text(note)), findsOneWidget);
+      final shown = tester.renderObject<RenderParagraph>(
+        inCard(id, find.text(status)),
+      );
+      expect(shown.didExceedMaxLines, isFalse, reason: status);
+    }
+    expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
+    expect(inCard('f0a5-session', find.text('3 steps')), findsOneWidget);
   });
 
   testWidgets('counts the steps of each session', (tester) async {

@@ -22,20 +22,28 @@ enum Tone {
 /// of the level drawn, the nodes of the selected step, how many copies a
 /// `copies` node ran. [CanvasMarks.plain] for `Current graph`.
 ///
-/// A step records no way it took, only where it was called: every arrow,
-/// exit and bar is [Tone.plain].
+/// A step records no way it took, only where it was called: arrows, exits
+/// and bars are [Tone.plain] — but in the body of one copy, what leads to
+/// or from a node the copy has not reached is [Tone.untaken]
+/// (docs/design/code-first/copy-switcher.html).
 final class CanvasMarks {
-  const CanvasMarks._(this._marks, {this.allCopies = false});
+  const CanvasMarks._(
+    this._marks, {
+    this.allCopies = false,
+    this.oneCopy = false,
+  });
 
-  /// The marks of [view] on the level drawn; plain without a session.
+  /// The marks of [view] on the level drawn, [depth]; plain without a
+  /// session.
   factory CanvasMarks.of(SessionView? view, {required int depth}) {
     final marks = view?.marks;
     if (marks == null) return plain;
     final frame = view!.frames.lastOrNull;
+    final drawn = frame != null && frame.depth == depth;
     return CanvasMarks._(
       marks,
-      allCopies:
-          frame != null && frame.depth == depth && frame.selected == null,
+      allCopies: drawn && frame.selected == null,
+      oneCopy: drawn && frame.selected != null,
     );
   }
 
@@ -47,21 +55,37 @@ final class CanvasMarks {
   /// step node says how many copies are on it now.
   final bool allCopies;
 
+  /// Whether the level drawn is the body of copies, one copy shown: what
+  /// leads to or from a node it has not reached is darker.
+  final bool oneCopy;
+
   /// Whether there is no session: nothing is marked.
   bool get isPlain => _marks == null;
 
+  /// Whether one copy is shown and has not reached the node [id].
+  bool _unreached(String id) =>
+      oneCopy && _marks?.of(id)?.state == NodeState.notVisited;
+
   /// The tone of the exit [index] of [node].
-  Tone exit(String node, int index) => Tone.plain;
+  Tone exit(String node, int index) =>
+      _unreached(node) ? Tone.untaken : Tone.plain;
 
   /// The tone of [edge].
-  Tone edge(EdgePath edge) => Tone.plain;
+  Tone edge(EdgePath edge) =>
+      _unreached(edge.from) || _unreached(edge.to) ? Tone.untaken : Tone.plain;
 
   /// The tone of the input bar of [node], which [into] arrive at.
-  Tone bar(String node, Iterable<EdgePath> into) => Tone.plain;
+  Tone bar(String node, Iterable<EdgePath> into) =>
+      _unreached(node) ? Tone.untaken : Tone.plain;
 
   /// The tone the legend shows back arrows in, the lightest they are drawn
   /// in; `null` when there are none of [back].
-  Tone? backEdges(Iterable<EdgePath> back) => back.isEmpty ? null : Tone.plain;
+  Tone? backEdges(Iterable<EdgePath> back) {
+    if (back.isEmpty) return null;
+    return back.every((edge) => this.edge(edge) == Tone.untaken)
+        ? Tone.untaken
+        : Tone.plain;
+  }
 
   /// `2×` on an exit the flow went through; `null` otherwise.
   String? counter(String node, int index) => null;

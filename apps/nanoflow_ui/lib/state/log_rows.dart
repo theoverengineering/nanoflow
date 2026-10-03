@@ -13,14 +13,14 @@ import 'texts.dart';
 /// What a row says of a step that is on no node of the graph.
 const notOnGraph = 'not on the graph';
 
-/// The title of the `Logs` panel: `8 steps`, `copy 2 · 3 steps`.
+/// The title of the `Logs` panel: `8 steps`, `pkg 2 · 3 steps`.
 final class LogsHeader {
   const LogsHeader(this.steps, {this.copy});
 
   /// How many steps the list shows.
   final int steps;
 
-  /// The copy shown, `copy 2` or `copy 2 › copy 1`; `null` when the list
+  /// The copy shown, `pkg 2` or `pkg 2 › target 1`; `null` when the list
   /// shows every copy's steps.
   final String? copy;
 
@@ -63,8 +63,8 @@ final class StepRow extends LogRow {
   /// Whether [detail] is an error.
   final bool failure;
 
-  /// The copy the step is in, `copy 2`, when the list shows every copy's
-  /// steps.
+  /// The copies the step is in, but those chosen: `pkg 2`, `pkg 2 ›
+  /// target 1`.
   final String? copy;
 
   /// The time of the first `step-started`: `14:03:11`.
@@ -152,16 +152,16 @@ TimeScale timeScale(SessionData session, DateTime now) {
   return TimeScale(state.startedAt ?? now, state.finishedAt ?? now);
 }
 
-/// The rows of [steps] of [session], in their order; a step of a copy
-/// named by its number in [copies], by step id. An [EndRow] follows once
-/// the session has ended, unless [end] is false. [places] tells which
-/// steps are not on the graph.
+/// The rows of [steps] of [session], in their order; a step in copies
+/// named by [copyOf] (`pkg 2`). An [EndRow] follows once the session has
+/// ended, unless [end] is false. [places] tells which steps are not on the
+/// graph.
 List<LogRow> logRows(
   SessionData session, {
   required Iterable<StepState> steps,
   required StepPlaces places,
   required DateTime now,
-  Map<String, int> copies = const {},
+  String? Function(String stepId)? copyOf,
   bool end = true,
 }) {
   final scale = timeScale(session, now);
@@ -169,7 +169,7 @@ List<LogRow> logRows(
   final ended = state.finishedAt;
   return [
     for (final step in steps)
-      _stepRow(step, session, places, copies[step.stepId], now, scale),
+      _stepRow(step, session, places, copyOf?.call(step.stepId), now, scale),
     if (end && ended != null) EndRow._(state.status, state.error, ended),
   ];
 }
@@ -178,7 +178,7 @@ StepRow _stepRow(
   StepState step,
   SessionData session,
   StepPlaces places,
-  int? copy,
+  String? copy,
   DateTime now,
   TimeScale scale,
 ) {
@@ -193,7 +193,7 @@ StepRow _stepRow(
         error ??
         (record == null || places.onGraph(record.place) ? null : notOnGraph),
     failure: error != null,
-    copy: copy == null ? null : 'copy $copy',
+    copy: copy,
     started: clockTime(step.startedAt),
     duration: end.difference(step.startedAt),
     starts: step.starts,

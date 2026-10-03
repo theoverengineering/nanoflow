@@ -3,6 +3,7 @@
 // derives from them.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
@@ -251,6 +252,53 @@ Map<String, Object?> copiesGraphJson() => {
 
 /// [copiesGraphJson] read.
 GraphFile copiesGraphFile() => GraphFile.fromJson(copiesGraphJson());
+
+/// Sessions the real library wrote for the workflows of
+/// tests/e2e/test/fixtures/copies — in place, given to map, through a
+/// call, copies in copies — with the graph file describe wrote for them
+/// and the values of their documents: test/state/fixtures/copies.
+///
+/// Recorded again with
+///
+/// ```sh
+/// cd tests/e2e
+/// dart run tool/record_copies.dart ../../apps/nanoflow_ui/test/state/fixtures/copies
+/// ```
+///
+/// whenever the library changes how it keys steps (decision D1).
+({
+  GraphFile graph,
+  Map<String, SessionData> sessions,
+  Map<String, Object?> documents,
+})
+recordedCopies() {
+  const dir = 'test/state/fixtures/copies';
+  Object? read(String name) =>
+      jsonDecode(File('$dir/$name').readAsStringSync());
+  final sessions = <String, SessionData>{};
+  final documents = <String, Object?>{};
+  for (final raw in read('sessions.json')! as List<Object?>) {
+    final json = raw! as Map<String, Object?>;
+    final session = Session.fromJson(json['session']! as Map<String, Object?>);
+    sessions[session.workflow] = SessionData(
+      session,
+      steps: [
+        for (final step in json['steps']! as List<Object?>)
+          Step.fromJson(step! as Map<String, Object?>),
+      ],
+      events: [
+        for (final event in json['events']! as List<Object?>)
+          Event.fromJson(event! as Map<String, Object?>),
+      ],
+    );
+    documents.addAll(json['documents']! as Map<String, Object?>);
+  }
+  return (
+    graph: GraphFile.fromJson(read(graphFileName)! as Map<String, Object?>),
+    sessions: sessions,
+    documents: documents,
+  );
+}
 
 /// The place of line [line] of `lib/copies.dart`.
 String copiesAt(int line) => 'lib/copies.dart:$line';

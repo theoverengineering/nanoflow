@@ -93,7 +93,7 @@ final class CopiesFrameBox {
 /// over the body, what the copies are of, `each pkg in packages`, and how
 /// many run side by side, `×3 · in parallel`; with a session, the copy
 /// [switcher] under them, and in the bottom right corner how the copies
-/// stand: `done 1 of 3`, `copy 2 · now verify`.
+/// stand: `done 1 of 3`, `pkg 2 · now verify`.
 ///
 /// It fills [box]'s extent; the body is drawn over it.
 class CopiesFrameView extends StatelessWidget {

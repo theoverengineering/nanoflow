@@ -73,20 +73,32 @@ List<Copy> copiesOf(
   bool inside(Step? record) =>
       record != null && places.of(record.place).any(held.contains);
 
-  // The first step of the copy of each step, by id.
+  // The first step of the copy of each step, by id: every step walked
+  // gets it, so that each chain is walked once.
   final firsts = <String, String>{};
   String firstOf(Step record) {
-    final seen = <String>{};
+    final walked = <String>{};
     var step = record;
+    String first;
     while (true) {
       final known = firsts[step.id];
-      if (known != null) return known;
+      if (known != null) {
+        first = known;
+        break;
+      }
+      walked.add(step.id);
       final after = step.after;
       final before = after == null ? null : session.stepWithKey(after);
-      if (before == null || !inside(before) || !seen.add(step.id)) break;
+      if (before == null || !inside(before) || walked.contains(before.id)) {
+        first = step.id;
+        break;
+      }
       step = before;
     }
-    return firsts[record.id] = step.id;
+    for (final id in walked) {
+      firsts[id] = first;
+    }
+    return first;
   }
 
   final states = {for (final step in session.state.steps) step.stepId: step};
@@ -124,14 +136,30 @@ List<Copy> copiesOf(
   ];
 }
 
+/// The loop variable of the label of [frame], `pkg` of `pkg in packages`;
+/// `null` when it names none.
+String? _variableOf(CopiesNode frame) =>
+    RegExp(r'^([A-Za-z_$][A-Za-z0-9_$]*) in ').firstMatch(frame.label)?[1];
+
+/// What the copy [number] of [frame] is called in a path: its loop variable
+/// and number, `pkg 2`; `copy 2` when the frame's label names no variable.
+String copyName(CopiesNode frame, int number) =>
+    '${_variableOf(frame) ?? 'copy'} $number';
+
 /// A `copies` frame the canvas goes down through: a level opened from a
 /// `copies` node, with the copies of it the session ran and the one
 /// selected (decision 11).
+///
+/// Copies in copies are numbered within the copy of the frame around them:
+/// `pkg 2 › target 1`. While that frame shows all its copies, the copies of
+/// this one cannot be told apart by number alone, and none can be chosen
+/// ([choosable]): a copy of the frame around is chosen first.
 final class CopiesFrame {
   CopiesFrame._({
     required this.node,
     required this.depth,
     required List<Copy> copies,
+    required this.around,
     required this.selected,
     required this.footer,
   }) : copies = List.unmodifiable(copies);
@@ -141,60 +169,126 @@ final class CopiesFrame {
   /// The level the frame's body is: its index among the canvas's levels.
   final int depth;
 
-  /// The copies, numbered; within the copy selected in the frame around
-  /// this one, if any.
+  /// The copies among the steps shown, each numbered within the copy of
+  /// the frame around it.
   final List<Copy> copies;
 
-  /// The copy shown; `null` for all of them.
+  /// The frame around this one that shows all its copies, so that none of
+  /// this one's can be chosen; `null` when one can.
+  final CopiesNode? around;
+
+  /// The copy shown; `null` for all.
   final Copy? selected;
 
-  /// Under the frame: `done 1 of 3` for all; `copy 2 · now verify` for one.
+  /// Under the frame: `done 1 of 3` for all; `pkg 2 · now verify` for one.
   final String footer;
+
+  /// Whether one of [copies] can be chosen: no frame around shows all.
+  bool get choosable => around == null;
 
   /// Over the frame: `each pkg in packages`.
   String get title => 'each ${node.label}';
 
   /// Across from the [title]: `×3 · in parallel`.
   String get countText => '×${copies.length} · in parallel';
+
+  /// What [copy] is called: `pkg 2`.
+  String nameOf(Copy copy) => copyName(node, copy.number);
+
+  /// What the switcher says while no copy can be chosen: `choose a pkg one
+  /// level up`.
+  String? get chooseFirst => switch (around) {
+    final around? => 'choose a ${_variableOf(around) ?? 'copy'} one level up',
+    null => null,
+  };
 }
+
+/// The copies of a `copies` node of the level drawn, which is not opened:
+/// they name the steps in them.
+typedef LevelCopies = ({CopiesNode node, List<Copy> copies});
 
 /// What the levels of the canvas show of a session: the copies frames they
 /// go down through, and the steps shown — those of the copy selected in
 /// each frame, all steps when none is.
 final class ShownSteps {
-  ShownSteps._(this.frames, this.steps, this.copyNumbers);
+  ShownSteps._(this.frames, this.levelCopies, this.steps)
+    : _paths = _pathsOf(frames, levelCopies);
 
   final List<CopiesFrame> frames;
+
+  /// The copies of the `copies` nodes of the level drawn.
+  final List<LevelCopies> levelCopies;
 
   /// The steps shown, in the order of their first `step-started`.
   final List<StepState> steps;
 
-  /// The number of the copy each step is in, by step id, in the innermost
-  /// frame while it shows all its copies; empty otherwise.
-  final Map<String, int> copyNumbers;
+  /// The names of the copies each step is in, frame by frame, with whether
+  /// the frame shows one copy.
+  final Map<String, List<({String name, bool chosen})>> _paths;
 
-  /// The copies selected, `copy 2 › copy 1`; `null` when none is.
-  String? get copy => _path([
-    for (final frame in frames)
-      if (frame.selected case final copy?) copy.number,
-  ]);
+  static Map<String, List<({String name, bool chosen})>> _pathsOf(
+    List<CopiesFrame> frames,
+    List<LevelCopies> levelCopies,
+  ) {
+    final paths = <String, List<({String name, bool chosen})>>{};
+    void add(CopiesNode node, Copy copy, bool chosen) {
+      final name = (name: copyName(node, copy.number), chosen: chosen);
+      for (final step in copy.steps) {
+        (paths[step.stepId] ??= []).add(name);
+      }
+    }
 
-  /// The copies of the frames the step [stepId] is in: `copy 2 › copy 1`;
-  /// `null` for a step in none.
-  String? copyOf(String stepId) => _path([
-    for (final frame in frames)
-      for (final copy in frame.copies)
-        if (copy.contains(stepId)) copy.number,
-  ]);
+    for (final frame in frames) {
+      for (final copy in frame.copies) {
+        add(frame.node, copy, copy.id == frame.selected?.id);
+      }
+    }
+    for (final (:node, :copies) in levelCopies) {
+      for (final copy in copies) {
+        add(node, copy, false);
+      }
+    }
+    return paths;
+  }
+
+  /// The copies chosen, `pkg 2 › target 1`; `null` when none is.
+  String? get copy {
+    final names = [
+      for (final frame in frames)
+        if (frame.selected case final copy?) frame.nameOf(copy),
+    ];
+    return names.isEmpty ? null : names.join(' › ');
+  }
+
+  /// The copies the step [stepId] is in, those chosen too: `pkg 2 ›
+  /// target 1`; `null` for a step in none.
+  String? copyOf(String stepId) => switch (_paths[stepId]) {
+    final path? => [for (final part in path) part.name].join(' › '),
+    null => null,
+  };
+
+  /// What a row of `Logs` says of the copies the step [stepId] is in, but
+  /// those chosen, which the title says: `pkg 2 › target 1`; `null` for a
+  /// step in none.
+  String? tagOf(String stepId) {
+    final names = [
+      for (final part
+          in _paths[stepId] ?? const <({String name, bool chosen})>[])
+        if (!part.chosen) part.name,
+    ];
+    return names.isEmpty ? null : names.join(' › ');
+  }
 }
-
-String? _path(List<int> numbers) =>
-    numbers.isEmpty ? null : numbers.map((n) => 'copy $n').join(' › ');
 
 /// What [levels] show of [session]: each level opened from a `copies` node
 /// is a frame with its copies, the copy [selected] at its depth (by the id
 /// of its first step) shown; the steps of the levels below are that copy's.
-/// A selected copy the frame does not have shows all.
+/// A selected copy the frame does not have shows all. The `copies` nodes of
+/// the last level, which is drawn, have their copies too.
+///
+/// Copies in copies are numbered within the copy of the frame around them;
+/// while that frame shows all its copies, none of the inner ones can be
+/// chosen.
 ShownSteps framesOf(
   List<BodyLevel> levels, {
   required StepPlaces places,
@@ -202,45 +296,48 @@ ShownSteps framesOf(
   Map<int, String> selected = const {},
 }) {
   var steps = session.state.steps;
+  // The copies the next frame's copies are numbered within, with the frame
+  // they are of; none when one copy or no frame holds the steps.
+  ({CopiesNode node, List<Copy> copies})? around;
+  List<Copy> copiesOf0(CopiesNode node) => [
+    for (final group in around?.copies.map((copy) => copy.steps) ?? [steps])
+      ...copiesOf(node, places: places, session: session, steps: group),
+  ];
+
   final frames = <CopiesFrame>[];
-  final chosen = <int>[];
+  final chosen = <String>[];
   for (final (depth, level) in levels.indexed.skip(1)) {
     final node = levels[depth - 1].body.node(level.opened!.nodeId);
     if (node is! CopiesNode) continue;
-    final copies = copiesOf(
-      node,
-      places: places,
-      session: session,
-      steps: steps,
-    );
-    final copy = copies.where((copy) => copy.id == selected[depth]).firstOrNull;
-    if (copy != null) {
-      chosen.add(copy.number);
-      steps = copy.steps;
-    }
+    final copies = copiesOf0(node);
+    final copy = around != null
+        ? null
+        : copies.where((copy) => copy.id == selected[depth]).firstOrNull;
+    if (copy != null) chosen.add(copyName(node, copy.number));
     frames.add(
       CopiesFrame._(
         node: node,
         depth: depth,
         copies: copies,
+        around: around?.node,
         selected: copy,
         footer: copy == null
             ? _progress(copies)
-            : '${_path(chosen)} · ${_now(copy, session)}',
+            : '${chosen.join(' › ')} · ${_now(copy, session)}',
       ),
     );
+    if (copy != null) {
+      steps = copy.steps;
+      around = null;
+    } else {
+      around = (node: node, copies: copies);
+    }
   }
-  final last = frames.lastOrNull;
-  return ShownSteps._(
-    List.unmodifiable(frames),
-    List.unmodifiable(steps),
-    last == null || last.selected != null
-        ? const {}
-        : {
-            for (final copy in last.copies)
-              for (final step in copy.steps) step.stepId: copy.number,
-          },
-  );
+  return ShownSteps._(List.unmodifiable(frames), [
+    if (levels.lastOrNull?.body case final body?)
+      for (final node in body.nodes.whereType<CopiesNode>())
+        (node: node, copies: copiesOf0(node)),
+  ], List.unmodifiable(steps));
 }
 
 /// `done 1 of 3`, `done 1 of 3 · 1 failed`.

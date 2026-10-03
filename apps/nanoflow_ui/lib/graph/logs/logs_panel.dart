@@ -13,7 +13,7 @@ import 'step_list.dart';
 
 /// The `Logs` panel under the canvas (docs/ui-spec.md «Logs»; spec §9
 /// «Логи»): its title counts the steps shown and names the copy shown —
-/// `12 steps`, `copy 2 · 3 steps` — over the [StepList] on the left and the
+/// `12 steps`, `pkg 2 · 3 steps` — over the [StepList] on the left and the
 /// selected step's [StepDetailsPane] on the right. The chevron folds it to
 /// its title. With `Current graph` selected it is empty.
 ///

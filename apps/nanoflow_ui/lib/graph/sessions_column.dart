@@ -154,10 +154,10 @@ class _CurrentGraphItem extends StatelessWidget {
 }
 
 /// A card of the column, a status [bar] on its left edge, the accent when
-/// [selected]: the [title] and the [id] on its first line; the [status],
-/// a red [badge], an amber [note] — muted when [noteMuted] — and the [end]
-/// on its second. In a narrow column the title and the status give way
-/// first.
+/// [selected]: the [title] and the [id] on its first line; the [status], a
+/// red [badge] and the [end] on its second; an amber [note] — muted when
+/// [noteMuted] — on a line of its own, so that the status keeps its room.
+/// In a narrow column the title and the status give way first.
 class _Item extends StatelessWidget {
   const _Item({
     required this.boxKey,
@@ -246,12 +246,15 @@ class _Item extends StatelessWidget {
                     children: [
                       Flexible(child: _text(status, statusStyle)),
                       if (badge case final text?) _DangerBadge(text),
-                      if (note case final text?)
-                        _NoteBadge(text, muted: noteMuted),
                     ],
                   ),
                   end,
                 ),
+                if (note case final text?)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _NoteBadge(text, muted: noteMuted),
+                  ),
               ],
             ),
           ),

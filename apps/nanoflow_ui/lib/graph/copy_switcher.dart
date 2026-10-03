@@ -14,20 +14,18 @@ import '../widgets/icons.dart';
 ///
 /// More than [chipLimit] copies do not fit as chips: one chip names the copy
 /// shown, and opens a list of them with a search and a filter by how they
-/// stand.
+/// stand. While a frame around shows all its copies, none of [frame]'s can
+/// be chosen: the switcher says to choose one of the frame around first.
 class CopySwitcher extends StatelessWidget {
   const CopySwitcher({
     super.key,
-    required this.copies,
-    required this.selected,
+    required this.frame,
     required this.hintOf,
     required this.onSelect,
   });
 
-  final List<Copy> copies;
-
-  /// The copy shown; `null` for all.
-  final Copy? selected;
+  /// The frame, its copies and the one shown.
+  final CopiesFrame frame;
 
   /// What the first step of [copy] gave; `null` while it is not known.
   final String? Function(Copy copy) hintOf;
@@ -51,16 +49,23 @@ class CopySwitcher extends StatelessWidget {
   /// The key of the copy [number]'s row in the list; `all` for `null`.
   static Key rowKey(int? number) => ValueKey(('copy row', number));
 
+  /// The key of what it says while no copy can be chosen.
+  static const chooseFirstKey = ValueKey('choose first');
+
   /// How tall the switcher is.
   static const height = _Chip.height;
 
   static const _gap = 6.0;
 
-  /// How wide the switcher of [copies], [selected] shown, is drawn: the
-  /// frame keeps room for it.
-  static double widthOf(List<Copy> copies, Copy? selected) {
+  /// How wide the switcher of [frame] is drawn: the frame keeps room for
+  /// it.
+  static double widthOf(CopiesFrame frame) {
+    final copies = frame.copies;
+    if (frame.chooseFirst case final text?) {
+      return _textWidth(text, _Chip.textStyle) + 1;
+    }
     if (copies.length > chipLimit) {
-      return _Chip.widthOf(_listText(selected), icon: true) +
+      return _Chip.widthOf(_listText(frame), icon: true) +
           _gap +
           _textWidth(_countText(copies.length), _Chip.textStyle);
     }
@@ -72,13 +77,31 @@ class CopySwitcher extends StatelessWidget {
         _gap * copies.length;
   }
 
-  static String _listText(Copy? selected) =>
-      selected == null ? 'all' : 'copy ${selected.number}';
+  static String _listText(CopiesFrame frame) => switch (frame.selected) {
+    final copy? => frame.nameOf(copy),
+    null => 'all',
+  };
 
   static String _countText(int copies) => '$copies copies';
 
   @override
   Widget build(BuildContext context) {
+    final copies = frame.copies;
+    final selected = frame.selected;
+    if (frame.chooseFirst case final text?) {
+      return SizedBox(
+        height: height,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            text,
+            key: chooseFirstKey,
+            style: _Chip.textStyle.copyWith(color: AppColors.textFaint),
+            textScaler: TextScaler.noScaling,
+          ),
+        ),
+      );
+    }
     if (copies.length > chipLimit) return _list(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -119,14 +142,14 @@ class CopySwitcher extends StatelessWidget {
       Builder(
         builder: (context) => _Chip(
           key: listKey,
-          text: _listText(selected),
-          selected: selected != null,
+          text: _listText(frame),
+          selected: frame.selected != null,
           menu: true,
           onTap: () => _openList(context),
         ),
       ),
       Text(
-        _countText(copies.length),
+        _countText(frame.copies.length),
         style: _Chip.textStyle,
         textScaler: TextScaler.noScaling,
       ),
@@ -155,7 +178,7 @@ class CopySwitcher extends StatelessWidget {
         PopupMenuItem(
           enabled: false,
           padding: EdgeInsets.zero,
-          child: _CopyList(copies: copies, selected: selected, hintOf: hintOf),
+          child: _CopyList(frame: frame, hintOf: hintOf),
         ),
       ],
     );
@@ -282,14 +305,9 @@ class _StatusSign extends StatelessWidget {
 /// The copies as a list: a search through their numbers and hints, a
 /// filter by how they stand, and `all` first; a click on a row shows it.
 class _CopyList extends StatefulWidget {
-  const _CopyList({
-    required this.copies,
-    required this.selected,
-    required this.hintOf,
-  });
+  const _CopyList({required this.frame, required this.hintOf});
 
-  final List<Copy> copies;
-  final Copy? selected;
+  final CopiesFrame frame;
   final String? Function(Copy copy) hintOf;
 
   static const width = 300.0;
@@ -315,7 +333,7 @@ class _CopyListState extends State<_CopyList> {
 
   @override
   Widget build(BuildContext context) {
-    final shown = widget.copies.where(_shown).toList();
+    final shown = widget.frame.copies.where(_shown).toList();
     return SizedBox(
       width: _CopyList.width,
       child: Column(
@@ -373,7 +391,7 @@ class _CopyListState extends State<_CopyList> {
                 for (final copy in shown)
                   _row(
                     copy,
-                    'copy ${copy.number}',
+                    widget.frame.nameOf(copy),
                     copy.status,
                     widget.hintOf(copy),
                   ),
@@ -386,7 +404,7 @@ class _CopyListState extends State<_CopyList> {
   }
 
   Widget _row(Copy? copy, String text, CopyStatus? status, String? hint) {
-    final selected = copy?.id == widget.selected?.id;
+    final selected = copy?.id == widget.frame.selected?.id;
     return Clickable(
       key: CopySwitcher.rowKey(copy?.number),
       onTap: () => _choose(copy?.id),

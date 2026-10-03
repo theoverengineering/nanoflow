@@ -397,7 +397,7 @@ class _StartsNote extends StatelessWidget {
   );
 }
 
-/// `copy 2`: the copy of a step, while every copy is shown.
+/// `pkg 2`, `pkg 2 › target 1`: the copies a step is in.
 class _CopyNote extends StatelessWidget {
   const _CopyNote(this.text);
 

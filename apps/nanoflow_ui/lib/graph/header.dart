@@ -130,7 +130,9 @@ class GraphHeader extends StatelessWidget {
 ///
 /// When they do not fit, the workflow's crumb and as many of the last as
 /// fit stay, the ones between fold into `…`, which lists them; when even
-/// those do not fit, the workflow's and the last are cut with `…`.
+/// those do not fit, the workflow's and the last are cut with `…`. Narrower
+/// still, the workflow's crumb folds too — `… › last`, then the last alone
+/// — and the chevron that lists the workflows stays in front.
 class _Crumbs extends StatelessWidget {
   const _Crumbs({required this.model, required this.directory});
 
@@ -175,13 +177,13 @@ class _Crumbs extends StatelessWidget {
       final chevron = picker ? _chevronGap + _chevron : 0.0;
       final separator = widthOf('›', AppText.crumbSeparator) + 2 * _spacing;
       final fold = widthOf('…', AppText.crumb);
-      // A crumb by its index; null for the fold.
+      // A crumb by its index; null for the fold. The workflows' chevron
+      // goes with the workflow's crumb, or in front without it.
       double width(List<int?> shown) =>
-          [
-            for (final i in shown)
-              i == null ? fold : texts[i] + (i == 0 ? chevron : 0),
-          ].fold(0.0, (sum, w) => sum + w) +
-          (shown.length - 1) * separator;
+          [for (final i in shown) i == null ? fold : texts[i]]
+              .fold(0.0, (sum, w) => sum + w) +
+          (shown.length - 1) * separator +
+          chevron;
       // What of [shown] does not give way: all but the texts of the
       // workflow's crumb and the last.
       double fixed(List<int?> shown) =>
@@ -222,6 +224,10 @@ class _Crumbs extends StatelessWidget {
             width: math.min(width(shown), room),
             child: Row(
               children: [
+                if (picker && !shown.contains(0)) ...[
+                  _WorkflowPicker(model: model),
+                  const SizedBox(width: _chevronGap),
+                ],
                 for (final (k, i) in shown.indexed) ...[
                   if (k > 0) ...[
                     const SizedBox(width: _spacing),

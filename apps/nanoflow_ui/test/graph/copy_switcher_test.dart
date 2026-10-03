@@ -42,7 +42,8 @@ void main() {
     await settle(tester);
   }
 
-  testWidgets('the copies tile says how many copies ran: ×3', (tester) async {
+  testWidgets('the copies tile says how many copies ran: ×3; Logs name '
+      'the copy of each step in them', (tester) async {
     await pumpGraphScreen(
       tester,
       path: inlineFile,
@@ -55,6 +56,10 @@ void main() {
         matching: find.text('×3'),
       ),
       findsOneWidget,
+    );
+    expect(
+      textIn(tester, find.byKey(StepList.rowKey('c0c0-verify-4'))),
+      startsWith('verify pkg 2'),
     );
   });
 
@@ -74,7 +79,7 @@ void main() {
     expect(logsTitle(tester), 'Logs 8 steps');
     expect(
       textIn(tester, find.byKey(StepList.rowKey('c0c0-verify-4'))),
-      startsWith('verify copy 2'),
+      startsWith('verify pkg 2'),
     );
   });
 
@@ -85,6 +90,7 @@ void main() {
 
     CopyStatus? statusOf(int number) => tester
         .widget<CopySwitcher>(find.byType(CopySwitcher))
+        .frame
         .copies
         .where((copy) => copy.number == number)
         .single
@@ -107,8 +113,8 @@ void main() {
 
     await tap(tester, chip(2));
 
-    expect(textIn(tester, footer()), 'copy 2 · now verify');
-    expect(logsTitle(tester), 'Logs copy 2 · 2 steps');
+    expect(textIn(tester, footer()), 'pkg 2 · now verify');
+    expect(logsTitle(tester), 'Logs pkg 2 · 2 steps');
     expect(model.selection.stepId, 'c0c0-verify-4');
     final marks = tester.widget<NodeTile>(find.byKey(NodeTile.keyOf('3')));
     expect(marks.marks!.steps, 0, reason: 'tool has not reached tag');
@@ -182,8 +188,8 @@ void main() {
     expect(find.byKey(CopySwitcher.rowKey(1)), findsNothing);
 
     await tap(tester, find.byKey(CopySwitcher.rowKey(5)));
-    expect(textIn(tester, find.byType(CopySwitcher)), 'copy 5 20 copies');
-    expect(textIn(tester, footer()), 'copy 5 · failed at upload');
+    expect(textIn(tester, find.byType(CopySwitcher)), 'pkg 5 20 copies');
+    expect(textIn(tester, footer()), 'pkg 5 · failed at upload');
     expect(model.selection.stepId, 'm4ny-upload-4');
   });
 
@@ -229,8 +235,21 @@ void main() {
     await settle(tester);
     await tap(tester, chip(1));
 
-    expect(textIn(tester, footer()), 'copy 2 › copy 1 · now build');
-    expect(logsTitle(tester), 'Logs copy 2 › copy 1 · 1 step');
+    expect(textIn(tester, footer()), 'pkg 2 › target 1 · now build');
+    expect(logsTitle(tester), 'Logs pkg 2 › target 1 · 1 step');
+
+    // All the copies of the frame around: none of these can be chosen.
+    model.openLevel(1);
+    await settle(tester);
+    await tap(tester, chip(null));
+    model.open(const Opened('2'));
+    await settle(tester);
+    expect(chip(1), findsNothing);
+    expect(
+      textIn(tester, find.byKey(CopySwitcher.chooseFirstKey)),
+      'choose a pkg one level up',
+    );
+    expect(textIn(tester, footer()), 'done 0 of 4');
   });
 
   testWidgets('without a session the frame says what the copies are over, '

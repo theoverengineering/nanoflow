@@ -424,8 +424,10 @@ void main() {
     final inPlace = file.functions['lib/copies.dart#inPlace']!;
     final nested = file.functions['lib/copies.dart#nested']!;
 
-    test('none above the workflow body: every step is shown', () {
-      final session = inPlaceJournal().data;
+    test('none above the workflow body: every step is shown; the steps of '
+        'the copies drawn there are named by their copy', () {
+      final j = inPlaceJournal();
+      final session = j.data;
       final shown = framesOf(
         bodyLevels(inPlace, file.functions, const []),
         places: placesOf('inPlace'),
@@ -434,9 +436,26 @@ void main() {
       expect(shown.frames, isEmpty);
       expect(shown.steps, session.state.steps);
       expect(shown.copy, isNull);
+      // core, tool and cli started in that order.
+      expect(shown.tagOf(j.steps[1].id), 'pkg 1');
+      expect(shown.tagOf(j.steps[4].id), 'pkg 3', reason: "cli's verify");
+      expect(shown.tagOf(j.steps.first.id), isNull, reason: 'plan');
+      expect(shown.copyOf(j.steps[4].id), 'pkg 3');
     });
 
-    test('all copies of a frame: its header, done 2 of 3, every step', () {
+    test('a copy is named by the loop variable of its frame, or copy', () {
+      expect(copyName(copiesNode('inPlace', '2'), 2), 'pkg 2');
+      const unnamed = CopiesNode(
+        id: '1',
+        place: null,
+        label: 'jobs.map(run)',
+        body: GraphBody(nodes: [], edges: []),
+      );
+      expect(copyName(unnamed, 2), 'copy 2');
+    });
+
+    test('all copies of a frame: its header, done 2 of 3, every step, each '
+        'named by its copy', () {
       final j = inPlaceJournal();
       // cli's tag runs on.
       final tagCli = j.steps[5].id;
@@ -452,14 +471,15 @@ void main() {
       expect(frame.title, 'each pkg in plan');
       expect(frame.countText, '×3 · in parallel');
       expect(frame.selected, isNull);
+      expect(frame.choosable, isTrue);
       expect(frame.footer, 'done 2 of 3');
       expect(shown.steps, session.state.steps);
       expect(shown.copy, isNull);
-      expect(shown.copyNumbers[tagCli], 3);
-      expect(shown.copyNumbers[j.steps.first.id], isNull);
+      expect(shown.tagOf(tagCli), 'pkg 3');
+      expect(shown.tagOf(j.steps.first.id), isNull);
     });
 
-    test('one copy: its steps alone; copy 2 · now verify', () {
+    test('one copy: its steps alone; pkg 2 · now verify', () {
       final j = Journal('a1b2-session', workflow: 'inPlace');
       for (final (i, pkg) in ['core', 'tool'].indexed) {
         j.step(
@@ -480,15 +500,19 @@ void main() {
         selected: {1: j.steps[1].id},
       );
       expect(shown.frames.single.selected!.number, 2);
-      expect(shown.frames.single.footer, 'copy 2 · now verify');
+      expect(shown.frames.single.footer, 'pkg 2 · now verify');
       expect(shown.steps.map((step) => step.stepId), [
         j.steps[1].id,
         j.steps[2].id,
       ]);
-      expect(shown.copy, 'copy 2');
-      expect(shown.copyNumbers, isEmpty);
-      expect(shown.copyOf(j.steps[2].id), 'copy 2');
-      expect(shown.copyOf(j.steps[0].id), 'copy 1');
+      expect(shown.copy, 'pkg 2');
+      expect(
+        shown.tagOf(j.steps[2].id),
+        isNull,
+        reason: 'the title names the copy chosen',
+      );
+      expect(shown.copyOf(j.steps[2].id), 'pkg 2');
+      expect(shown.copyOf(j.steps[0].id), 'pkg 1');
     });
 
     test('a copy done says so; one that failed, where', () {
@@ -511,8 +535,8 @@ void main() {
         session: session,
         selected: {1: j.steps[copy].id},
       ).frames.single.footer;
-      expect(footer(0), 'copy 1 · done');
-      expect(footer(1), 'copy 2 · failed at verify');
+      expect(footer(0), 'pkg 1 · done');
+      expect(footer(1), 'pkg 2 · failed at verify');
       expect(
         framesOf(
           bodyLevels(inPlace, file.functions, const [Opened('2')]),
@@ -534,71 +558,209 @@ void main() {
       expect(shown.frames.single.selected, isNull);
     });
 
-    test('copies in copies: the inner frame has the copies of the outer '
-        'one selected; the path names both', () {
-      final j = Journal('7c3e-session', workflow: 'nested');
-      for (final (i, pkg) in ['core', 'tool'].indexed) {
-        j.step(
-          'fetch',
-          1 + i,
-          end: 3,
-          place: copiesAt(27),
-          key: 'f$pkg',
-          after: null,
-        );
-        for (final target in ['arm', 'x64']) {
+    group('copies in copies', () {
+      /// nested over core and tool, each built for arm and x64; the tests
+      /// run.
+      Journal nestedJournal() {
+        final j = Journal('7c3e-session', workflow: 'nested');
+        for (final (i, pkg) in ['core', 'tool'].indexed) {
           j.step(
-            'build',
-            4 + i,
-            end: 6,
-            place: copiesAt(30),
-            key: 'b$pkg$target',
-            after: 'f$pkg',
+            'fetch',
+            1 + i,
+            end: 3,
+            place: copiesAt(27),
+            key: 'f$pkg',
+            after: null,
           );
-          j.step(
-            'test',
-            7 + i,
-            place: copiesAt(31),
-            key: 't$pkg$target',
-            after: 'b$pkg$target',
+          for (final target in ['arm', 'x64']) {
+            j.step(
+              'build',
+              4 + i,
+              end: 6,
+              place: copiesAt(30),
+              key: 'b$pkg$target',
+              after: 'f$pkg',
+            );
+            j.step(
+              'test',
+              7 + i,
+              place: copiesAt(31),
+              key: 't$pkg$target',
+              after: 'b$pkg$target',
+            );
+          }
+        }
+        return j;
+      }
+
+      const path = [Opened('1'), Opened('2')];
+      final levels = bodyLevels(nested, file.functions, path);
+      ShownSteps shownOf(Journal j, [Map<int, String> selected = const {}]) =>
+          framesOf(
+            levels,
+            places: placesOf('nested'),
+            session: j.data,
+            selected: selected,
+          );
+
+      test('inner copies are numbered within their outer copy, whether the '
+          'outer frame shows one copy or all', () {
+        final j = nestedJournal();
+        final buildCoreX64 = j.steps[3].id;
+        final buildToolX64 = j.steps[8].id;
+        final all = shownOf(j);
+        expect(all.frames.map((frame) => frame.copies.length), [2, 4]);
+        expect(all.frames.last.copies.map((copy) => copy.number), [1, 2, 1, 2]);
+        expect(all.copyOf(buildCoreX64), 'pkg 1 › target 2');
+        expect(all.copyOf(buildToolX64), 'pkg 2 › target 2');
+        expect(all.tagOf(buildToolX64), 'pkg 2 › target 2');
+        final tool = shownOf(j, {1: j.steps[5].id});
+        expect(tool.frames.map((frame) => frame.copies.length), [2, 2]);
+        expect(tool.copyOf(buildToolX64), 'pkg 2 › target 2');
+        expect(tool.tagOf(buildToolX64), 'target 2');
+        expect(tool.copy, 'pkg 2');
+        expect(tool.frames.last.footer, 'done 0 of 2');
+      });
+
+      test('while the outer frame shows all, no inner copy can be chosen: '
+          'one of the outer is chosen first', () {
+        final j = nestedJournal();
+        final all = shownOf(j, {2: j.steps[8].id});
+        final inner = all.frames.last;
+        expect(inner.choosable, isFalse);
+        expect(inner.chooseFirst, 'choose a pkg one level up');
+        expect(inner.selected, isNull);
+        expect(inner.footer, 'done 0 of 4');
+        expect(all.frames.first.choosable, isTrue);
+        expect(all.frames.first.chooseFirst, isNull);
+      });
+
+      test('both chosen: the path names both, the steps are the inner '
+          "copy's", () {
+        final j = nestedJournal();
+        final session = j.data;
+        final one = shownOf(j, {1: j.steps[5].id, 2: j.steps[8].id});
+        expect(one.frames.last.selected!.number, 2);
+        expect(one.copy, 'pkg 2 › target 2');
+        expect(one.frames.last.footer, 'pkg 2 › target 2 · now test');
+        expect(one.steps.map((step) => session.steps[step.stepId]!.name), [
+          'build',
+          'test',
+        ]);
+        expect(one.tagOf(j.steps[8].id), isNull);
+      });
+
+      test('the outer body drawn names the steps of the inner copies in it '
+          'by both copies', () {
+        final j = nestedJournal();
+        final outer = framesOf(
+          bodyLevels(nested, file.functions, const [Opened('1')]),
+          places: placesOf('nested'),
+          session: j.data,
+        );
+        expect(outer.tagOf(j.steps[0].id), 'pkg 1', reason: 'fetch');
+        expect(outer.tagOf(j.steps[3].id), 'pkg 1 › target 2');
+        expect(outer.levelCopies.single.copies, hasLength(4));
+      });
+    });
+  });
+
+  group('over sessions the real library wrote (recordedCopies)', () {
+    final recorded = recordedCopies();
+    final functions = recorded.graph.functions;
+    GraphFunction function(String name) => functions['lib/copies.dart#$name']!;
+    StepPlaces placesOfRecorded(String name) =>
+        StepPlaces.of(function(name), functions);
+    CopiesNode frameOf(GraphBody body) =>
+        body.nodes.whereType<CopiesNode>().single;
+
+    /// What each step of [copy] of [session] gave.
+    List<String> outputsOf(Copy copy) => [
+      for (final step in copy.steps) '${recorded.documents[step.outputId]}',
+    ];
+
+    for (final workflow in ['inPlace', 'viaMap', 'viaCall']) {
+      test('$workflow: a copy for each package, its steps all its own, '
+          'whatever order they ran in', () {
+        final session = recorded.sessions[workflow]!;
+        final copies = copiesOf(
+          frameOf(function(workflow).body),
+          places: placesOfRecorded(workflow),
+          session: session,
+        );
+        expect(copies, hasLength(3));
+        final packages = <String>{};
+        for (final copy in copies) {
+          final package = outputsOf(copy).first.split(':').first;
+          packages.add(package);
+          expect(
+            [for (final step in copy.steps) session.steps[step.stepId]!.name],
+            ['upload', 'verify', 'tag'],
+          );
+          expect(outputsOf(copy), everyElement(startsWith('$package:')));
+        }
+        expect(packages, {'core', 'tool', 'cli'});
+        // plan and announce are in none.
+        final inCopies = {
+          for (final copy in copies)
+            for (final step in copy.steps) step.stepId,
+        };
+        expect(
+          [
+            for (final step in session.state.steps)
+              if (!inCopies.contains(step.stepId))
+                session.steps[step.stepId]!.name,
+          ],
+          [if (workflow == 'inPlace') 'plan', 'announce'],
+        );
+      });
+    }
+
+    test('nested: a copy for each package, an inner copy for each target '
+        'within it, numbered within its package', () {
+      final session = recorded.sessions['nested']!;
+      final places = placesOfRecorded('nested');
+      final outer = frameOf(function('nested').body);
+      final inner = frameOf(outer.body);
+      final copies = copiesOf(outer, places: places, session: session);
+      expect(copies, hasLength(2));
+      for (final copy in copies) {
+        final package = outputsOf(copy).first.split(':').first;
+        expect(outputsOf(copy), everyElement(startsWith('$package:')));
+        final targets = copiesOf(
+          inner,
+          places: places,
+          session: session,
+          steps: copy.steps,
+        );
+        expect(targets.map((target) => target.number), [1, 2]);
+        for (final target in targets) {
+          final first = outputsOf(target).first;
+          final name = first.substring(first.indexOf('/') + 1).split(':')[0];
+          expect(outputsOf(target), everyElement(contains('/$name:')));
+        }
+      }
+      // The same names whether the outer frame shows one copy or all.
+      final levels = bodyLevels(function('nested'), functions, [
+        Opened(outer.id),
+        Opened(inner.id),
+      ]);
+      final all = framesOf(levels, places: places, session: session);
+      for (final copy in copies) {
+        final one = framesOf(
+          levels,
+          places: places,
+          session: session,
+          selected: {1: copy.id},
+        );
+        for (final step in copy.steps) {
+          expect(
+            one.copyOf(step.stepId),
+            all.copyOf(step.stepId),
+            reason: session.steps[step.stepId]!.name,
           );
         }
       }
-      final session = j.data;
-      const path = [Opened('1'), Opened('2')];
-      final levels = bodyLevels(nested, file.functions, path);
-      final all = framesOf(
-        levels,
-        places: placesOf('nested'),
-        session: session,
-      );
-      expect(all.frames.map((frame) => frame.copies.length), [2, 4]);
-      final fetchTool = j.steps[5].id;
-      final buildToolX64 = j.steps[8].id;
-      final one = framesOf(
-        levels,
-        places: placesOf('nested'),
-        session: session,
-        selected: {1: fetchTool, 2: buildToolX64},
-      );
-      expect(one.frames.map((frame) => frame.copies.length), [2, 2]);
-      expect(one.frames.last.selected!.number, 2);
-      expect(one.copy, 'copy 2 › copy 2');
-      expect(one.frames.last.footer, 'copy 2 › copy 2 · now test');
-      expect(one.steps.map((step) => session.steps[step.stepId]!.name), [
-        'build',
-        'test',
-      ]);
-      final outer = framesOf(
-        levels,
-        places: placesOf('nested'),
-        session: session,
-        selected: {1: fetchTool},
-      );
-      expect(outer.copy, 'copy 2');
-      expect(outer.frames.last.footer, 'done 0 of 2');
-      expect(outer.copyNumbers[buildToolX64], 2);
-      expect(outer.copyOf(buildToolX64), 'copy 2 › copy 2');
     });
   });
 }
