@@ -7,12 +7,15 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
+import 'package:nanoflow_ui/graph/canvas/edges_painter.dart';
 import 'package:nanoflow_ui/graph/canvas/exit_labels.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/legend.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
+import 'package:nanoflow_ui/graph/canvas/tile_marks.dart';
 import 'package:nanoflow_ui/layout/layout.dart' show endMarker, startMarker;
 import 'package:nanoflow_ui/state/body_path.dart';
+import 'package:nanoflow_ui/state/graph_marks.dart' show NodeState;
 import 'package:nanoflow_ui/state/graph_model.dart';
 
 import '../../state/support.dart';
@@ -443,6 +446,63 @@ void main() {
     expect(find.byType(Legend), findsOneWidget);
     expect(find.text('back edge'), findsOneWidget);
     expect(tester.widget<Legend>(find.byType(Legend)).backEdges, Tone.plain);
+  });
+
+  group('the selected step\'s node', () {
+    /// A session of the release fixture whose `plan` runs: its node, `1`,
+    /// is the selected step's.
+    GraphModel planRunning() {
+      final release = graphFileNamed('release');
+      final j = Journal(
+        'r1r1-session',
+        workflow: 'release',
+        graph: release.toJson(),
+      )..step('plan', 1, place: 'lib/release.dart:16');
+      return modelOf(graph: release, changes: j.changes);
+    }
+
+    testWidgets('has its ring under the arrows and exits: the bar of its '
+        'input and the half of its exit dot stay over the ring', (
+      tester,
+    ) async {
+      await pumpCanvas(tester, planRunning());
+      final ring = find.byKey(NodeTile.ringKeyOf('1'));
+      expect(ring, findsOneWidget);
+      final layers = tester.widget<Stack>(
+        find.ancestor(of: ring, matching: find.byType(Stack)).first,
+      );
+      int indexOf(bool Function(Widget child) test) =>
+          layers.children.indexWhere(test);
+      bool paints<T>(Widget child) =>
+          child is Positioned &&
+          child.child is CustomPaint &&
+          (child.child as CustomPaint).painter is T;
+      final rings = indexOf((child) => child.key == NodeTile.ringKeyOf('1'));
+      expect(rings, lessThan(indexOf(paints<EdgesPainter>)));
+      expect(rings, lessThan(indexOf(paints<ExitsPainter>)));
+      // Round the tile, as far out on every side.
+      final round = tester.getRect(ring);
+      final inner = tester.getRect(tile('1'));
+      expect(round.center.dx, closeTo(inner.center.dx, 0.01));
+      expect(round.center.dy, closeTo(inner.center.dy, 0.01));
+      expect(round.width - inner.width, greaterThan(0));
+      expect(
+        round.width - inner.width,
+        closeTo(round.height - inner.height, 0.01),
+      );
+    });
+
+    testWidgets('keeps its tile and its name as they are: no ring on the '
+        'tile itself, no bolder name', (tester) async {
+      await pumpCanvas(tester, planRunning());
+      final box =
+          tester.widget<DecoratedBox>(tile('1')).decoration as BoxDecoration;
+      expect(box.boxShadow ?? const [], isEmpty);
+      expect(
+        tester.widget<Text>(find.text('plan')).style!.fontWeight,
+        TileLook.of(NodeState.running).nameWeight,
+      );
+    });
   });
 
   testWidgets('says when the selected session\'s graph cannot be read', (

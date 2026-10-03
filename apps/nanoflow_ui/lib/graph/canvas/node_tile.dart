@@ -34,9 +34,9 @@ import 'tile_marks.dart';
 /// With a session, the tile is framed in the state of the steps on it, its
 /// state's badge on its bottom right corner; a step node entered more than
 /// once says so over its top right corner (`2×`) — in the body of copies,
-/// all shown, how many copies are on it now instead. The selected step's
-/// node has the accent ring. The looks and the badges are in
-/// tile_marks.dart.
+/// all shown, how many copies are on it now instead. The looks and the
+/// badges are in tile_marks.dart. The ring round the selected step's node
+/// is not the tile's: the canvas draws it under the arrows ([ringOf]).
 ///
 /// A call or copies that can be expanded in place has `+` in its tile's
 /// top right corner: [onExpand], told where on the screen (decision 6).
@@ -53,7 +53,6 @@ class NodeTile extends StatelessWidget {
     required this.node,
     String? id,
     this.marks,
-    this.selected = false,
     this.allCopies = false,
     this.copies = copiesBadge,
     this.onTap,
@@ -71,6 +70,9 @@ class NodeTile extends StatelessWidget {
   /// The key of the badge that counts the copies on a step.
   static Key runningKeyOf(String id) => ValueKey(('running', id));
 
+  /// The key of the ring round the node [id], the selected step's.
+  static Key ringKeyOf(String id) => ValueKey(('ring', id));
+
   final layout.NodeBox node;
 
   /// The node's id on the canvas.
@@ -79,9 +81,6 @@ class NodeTile extends StatelessWidget {
   /// What the session's steps put on the node; `null` for `Current graph`,
   /// a condition or a marker: the tile is drawn plain.
   final NodeMarks? marks;
-
-  /// Whether the selected step is on the node, or in it: the ring.
-  final bool selected;
 
   /// Whether a step node says how many copies are on it now: in the body of
   /// copies, all of them shown.
@@ -101,7 +100,10 @@ class NodeTile extends StatelessWidget {
   static const _margin = 16.0;
 
   static const _radius = 12.0;
-  static const _ring = 4.0;
+
+  /// How far the ring round the selected step's node reaches out of its
+  /// tile.
+  static const ring = 4.0;
 
   /// How far past the tile's right side the badge over it reaches.
   static const _overhang = 6.0;
@@ -115,6 +117,20 @@ class NodeTile extends StatelessWidget {
     final box = context.findRenderObject()! as RenderBox;
     return box.localToGlobal(Offset(FrameToggle.size, FrameToggle.size));
   }
+
+  /// The ring round the tile of [node], the selected step's node, [id] on
+  /// the canvas: for the layer under the arrows and exits, so the bar of
+  /// the node's input and the half of its exit dot stay over it.
+  static Widget ringOf(layout.NodeBox node, String id) => Positioned.fromRect(
+    key: ringKeyOf(id),
+    rect: node.tile.toRect().inflate(ring),
+    child: const DecoratedBox(
+      decoration: BoxDecoration(
+        color: CanvasColors.ring,
+        borderRadius: BorderRadius.all(Radius.circular(_radius + ring)),
+      ),
+    ),
+  );
 
   /// The canvas area a node's widget takes: its tile with what is drawn
   /// round it and over it, its texts.
@@ -189,7 +205,7 @@ class NodeTile extends StatelessWidget {
             name,
             CanvasText.name.copyWith(
               color: look.name,
-              fontWeight: selected ? FontWeight.w700 : look.nameWeight,
+              fontWeight: look.nameWeight,
             ),
             tooltip: node.fullName == name ? null : node.fullName,
           ),
@@ -294,10 +310,6 @@ class NodeTile extends StatelessWidget {
               BorderSide(color: look.border, width: look.borderWidth),
             ),
             borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-            boxShadow: [
-              if (selected)
-                const BoxShadow(color: CanvasColors.ring, spreadRadius: _ring),
-            ],
           ),
           child: Center(
             child: inside != null

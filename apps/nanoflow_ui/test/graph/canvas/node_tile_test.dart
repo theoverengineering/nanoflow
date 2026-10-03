@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
+import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/layout/layout.dart'
     show LayoutOptions, NodeBox, endMarker, layoutBody, startMarker;
@@ -69,7 +70,6 @@ void main() {
     String id, {
     ValueChanged<Offset>? onDoubleTap,
     NodeMarks? marks,
-    bool selected = false,
     bool allCopies = false,
     String copies = '×n',
   }) {
@@ -84,7 +84,6 @@ void main() {
               node: node,
               onDoubleTap: onDoubleTap,
               marks: marks,
-              selected: selected,
               allCopies: allCopies,
               copies: copies,
             ),
@@ -232,17 +231,23 @@ void main() {
       expect(find.text('3×'), findsNothing);
     });
 
-    testWidgets('the selected step\'s node is ringed', (tester) async {
-      await pumpTile(
+    testWidgets('the ring of the selected step\'s node is round its tile', (
+      tester,
+    ) async {
+      final node = layout.nodes['step']!;
+      await pumpScreen(
         tester,
-        'step',
-        selected: true,
-        marks: const NodeMarks(state: NodeState.visited, steps: 1, running: 0),
+        Stack(children: [NodeTile.ringOf(node, 'step')]),
       );
+      final ring = find.byKey(NodeTile.ringKeyOf('step'));
       expect(
-        tileLook(tester, 'step').boxShadow!.single.color,
-        CanvasColors.ring,
+        tester.getSize(ring),
+        node.tile.toRect().inflate(NodeTile.ring).size,
       );
+      final box = tester.widget<DecoratedBox>(
+        find.descendant(of: ring, matching: find.byType(DecoratedBox)),
+      );
+      expect((box.decoration as BoxDecoration).color, CanvasColors.ring);
     });
 
     testWidgets('copies say how many ran, muted while none has; their stack '

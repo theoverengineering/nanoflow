@@ -140,10 +140,15 @@ final class BodyDrawer {
   final OpenStep? onOpenStep;
   final ExpandNode? onExpandNode;
 
-  /// What is drawn, bottom to top: the frames drawn in place, the arrows
-  /// and exits, the tiles. The painters let clicks through to the frames'
-  /// buttons.
-  final layers = (frames: <Widget>[], lines: <Widget>[], tiles: <Widget>[]);
+  /// What is drawn, bottom to top: the frames drawn in place, the ring of
+  /// the selected step's node, the arrows and exits, the tiles. The
+  /// painters let clicks through to the frames' buttons.
+  final layers = (
+    frames: <Widget>[],
+    rings: <Widget>[],
+    lines: <Widget>[],
+    tiles: <Widget>[],
+  );
 
   /// Draws [graph], the layout of the body drawn — or, at [path], of the
   /// body of a frame drawn in place —, with [marks]: its arrows and exits
@@ -197,6 +202,7 @@ final class BodyDrawer {
         );
         continue;
       }
+      if (marks.selected(node.id)) layers.rings.add(NodeTile.ringOf(node, id));
       layers.tiles.add(
         Positioned.fromRect(
           rect: NodeTile.areaOf(node),
@@ -204,7 +210,6 @@ final class BodyDrawer {
             node: node,
             id: id,
             marks: marks.node(node.id),
-            selected: marks.selected(node.id),
             allCopies: marks.allCopies,
             copies: marks.copies(node.id),
             onTap: marks.isPlain || node.node == null

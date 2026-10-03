@@ -81,7 +81,7 @@ abstract final class CanvasText {
     leadingDistribution: TextLeadingDistribution.even,
   );
 
-  /// A node's name under its tile; the selected step's node has it bold.
+  /// A node's name under its tile, in the weight of its tile's look.
   static final name = _sans.copyWith(
     fontSize: 12.5,
     fontWeight: FontWeight.w600,
@@ -147,11 +147,11 @@ abstract final class CanvasText {
     color: Color(0xFF8E8E96),
   );
 
-  /// How [kind] is drawn. A name is measured bold: the selected step's node
-  /// has it so, and it must fit where the layout keeps room for it.
+  /// How [kind] is drawn. A name is measured in the heaviest weight a
+  /// tile's look gives it ([name]'s), so it fits in every look.
   static TextStyle of(LabelKind kind) => switch (kind) {
     LabelKind.exitLabel => chip,
-    LabelKind.nodeName => name.copyWith(fontWeight: FontWeight.w700),
+    LabelKind.nodeName => name,
     LabelKind.place => place,
   };
 }

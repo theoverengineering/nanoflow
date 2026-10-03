@@ -540,7 +540,12 @@ class _GraphCanvasState extends State<GraphCanvas> {
               height: graph.bounds.height,
               child: Stack(
                 clipBehavior: Clip.none,
-                children: [...layers.frames, ...layers.lines, ...layers.tiles],
+                children: [
+                  ...layers.frames,
+                  ...layers.rings,
+                  ...layers.lines,
+                  ...layers.tiles,
+                ],
               ),
             ),
           ],

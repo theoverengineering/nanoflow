@@ -187,7 +187,8 @@ void main() {
     NodeTile tileOf(String id) => tester.widget<NodeTile>(node(id));
     expect(tileOf('5/1').marks!.state, NodeState.visited);
     expect(tileOf('5/2').marks!.state, NodeState.running);
-    expect(tileOf('5/2').selected, isTrue);
+    expect(find.byKey(NodeTile.ringKeyOf('5/2')), findsOneWidget);
+    expect(find.byKey(NodeTile.ringKeyOf('5')), findsNothing);
     expect(tileOf('5/4').marks!.state, NodeState.notVisited);
     expect(tileOf('1').marks!.state, NodeState.visited);
   });
