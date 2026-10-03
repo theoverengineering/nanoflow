@@ -3,6 +3,15 @@
 /// a key that finds it again; [exec] runs an external program.
 library;
 
-export 'src/errors.dart' show CodecException;
+export 'package:nanoflow_store/nanoflow_store.dart' show SessionBusyException;
+
+export 'src/errors.dart'
+    show
+        CodecException,
+        FlowStoppedException,
+        SessionFailedException,
+        SessionNotFoundException,
+        StorageException,
+        WorkflowMismatchException;
 export 'src/exec.dart' show ExecException, exec;
 export 'src/flow.dart' show Flow, FlowSession;

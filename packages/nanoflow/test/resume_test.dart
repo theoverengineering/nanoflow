@@ -1,0 +1,415 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_store/nanoflow_store.dart' show FsStore, SessionHandle;
+import 'package:path/path.dart' as p;
+import 'package:test/test.dart';
+
+import 'fixtures/review.dart';
+import 'support.dart';
+
+/// test/fixtures/run_review.dart, compiled once for the tests of this file.
+late String runReview;
+
+/// A workflow other than [review], whose session fails.
+Future<String> failing(Flow f, String work) async {
+  await f.step('collect', () => 'change');
+  throw StateError('no\nway');
+}
+
+/// The keys of the steps of [review].
+final collectKey = 'collect#1@${h('')}';
+final inspectKey = 'inspect#1@${h(collectKey)}';
+final publishKey = 'publish#1@${h(inspectKey)}';
+
+/// A project directory to run [review] in, and a directory for its work.
+Future<({String dir, String work})> project() async =>
+    (dir: await tempDir(), work: await tempDir());
+
+/// How many times the body of the step [name] of [review] ran with [work].
+int runsOf(String work, String name) {
+  final file = File(p.join(work, name));
+  return file.existsSync() ? file.lengthSync() : 0;
+}
+
+/// Starts run_review.dart, which runs a session of [review] in [dir] with
+/// [work], and waits until its step `inspect` runs; it is killed after the
+/// test.
+Future<({Process process, String sessionId})> startUntilInspect(
+  String dir,
+  String work,
+) async {
+  final process = await Process.start(Platform.resolvedExecutable, [
+    runReview,
+    dir,
+    work,
+  ]);
+  addTearDown(() => process.kill(ProcessSignal.sigkill));
+  final errors = StringBuffer();
+  process.stderr.transform(utf8.decoder).listen(errors.write);
+  int? exitCode;
+  process.exitCode.then((code) => exitCode = code).ignore();
+  final lines = process.stdout
+      .transform(utf8.decoder)
+      .transform(const LineSplitter());
+  final sessionId = await lines.first.catchError(
+    (Object _) => fail('run_review printed no id: $errors'),
+  );
+  await until(
+    () => runsOf(work, 'inspect') == 1 || exitCode != null,
+    'the step inspect of run_review',
+  );
+  expect(exitCode, isNull, reason: '$errors');
+  return (process: process, sessionId: sessionId);
+}
+
+/// Kills [process] as a crash would and waits until it is gone.
+Future<void> kill(Process process) async {
+  process.kill(ProcessSignal.sigkill);
+  await process.exitCode;
+}
+
+/// Writes a session of [review] with [work] in [dir], as a process that
+/// died would have left it, with the hash of its code [code]; [build] adds
+/// to it. Gives its id.
+Future<String> writeSession(
+  String dir,
+  String work, {
+  String? code,
+  Future<void> Function(SessionHandle handle)? build,
+}) async {
+  final handle = await FsStore(runsDirOf(dir)).createSession(
+    workflow: 'review',
+    graph: null,
+    input: (value: work),
+    code: code,
+  );
+  await build?.call(handle);
+  await handle.release();
+  return handle.session.id;
+}
+
+/// Writes the step `collect` of [review] to the session of [handle],
+/// finished with [value], as following [after]; leaves its `outputId` out of
+/// `step.json` unless [outputInStepJson].
+Future<Step> writeCollect(
+  SessionHandle handle, {
+  required String? after,
+  required Object? value,
+  bool outputInStepJson = true,
+}) async {
+  final step = await handle.createStep(
+    name: 'collect',
+    key: collectKey,
+    after: after,
+    place: null,
+  );
+  await handle.appendEvent(StepStarted(time: systemClock(), stepId: step.id));
+  final outputId = await handle.writeDocument(value);
+  await handle.appendEvent(
+    StepFinished(time: systemClock(), stepId: step.id, outputId: outputId),
+  );
+  if (outputInStepJson) await handle.setStepOutput(step, outputId);
+  return step;
+}
+
+void main() {
+  setUpAll(() async {
+    final dir = await Directory.systemTemp.createTemp('nanoflow_fixture');
+    addTearDown(() => dir.delete(recursive: true));
+    runReview = p.join(dir.path, 'run_review.dill');
+    // A snapshot of the VM, as `dart run` makes: what `dart compile kernel`
+    // makes is a product build, which the library takes for a compiled
+    // program, with the hash of its executable for the code.
+    final compiled = await Process.run(Platform.resolvedExecutable, [
+      '--snapshot-kind=kernel',
+      '--snapshot=$runReview',
+      p.join('test', 'fixtures', 'run_review.dart'),
+    ]);
+    expect(
+      compiled.exitCode,
+      0,
+      reason: '${compiled.stdout}${compiled.stderr}',
+    );
+  });
+
+  group('a session whose process was killed in its second step', () {
+    test('cannot be resumed while that process owns it', () async {
+      final (:dir, :work) = await project();
+      final running = await startUntilInspect(dir, work);
+
+      await expectLater(
+        Flow(directory: dir).resume(review, running.sessionId),
+        throwsA(
+          isA<SessionBusyException>().having(
+            (e) => e.sessionId,
+            'sessionId',
+            running.sessionId,
+          ),
+        ),
+      );
+    });
+
+    test('goes on where it was: the step that finished is taken from the '
+        'journal, the one that ran runs again in its record', () async {
+      final (:dir, :work) = await project();
+      final running = await startUntilInspect(dir, work);
+      await kill(running.process);
+      File(p.join(work, 'go')).createSync();
+
+      final session = await Flow(directory: dir)
+          .resume(review, running.sessionId);
+      expect(session.id, running.sessionId);
+      expect(await session.result, 'published change: clean');
+      expect(
+        [
+          for (final name in ['collect', 'inspect', 'publish'])
+            runsOf(work, name),
+        ],
+        [1, 2, 1],
+      );
+
+      final handle = await openSession(dir, running.sessionId);
+      final steps = await handle.steps();
+      expect(
+        [for (final s in steps) s.key],
+        [collectKey, inspectKey, publishKey],
+      );
+      final events = await eventsOf(handle);
+      expect(events.map((e) => e.name), [
+        'session-started',
+        'step-started',
+        'step-finished',
+        'step-started',
+        'session-resumed',
+        'step-started',
+        'step-finished',
+        'step-started',
+        'step-finished',
+        'session-finished',
+      ]);
+      final state = replaySession(events);
+      expect(state.status, SessionStatus.finished);
+      expect(
+        [for (final s in state.steps) (s.stepId, s.starts)],
+        [
+          for (final (s, starts) in [
+            (steps[0], 1),
+            (steps[1], 2),
+            (steps[2], 1),
+          ])
+            (s.id, starts),
+        ],
+      );
+      final started = events.whereType<SessionStarted>().single;
+      final resumed = events.whereType<SessionResumed>().single;
+      expect(resumed.code, started.code);
+      expect(resumed.graphId, isNull);
+      expect(
+        await handle.documentValue(state.outputId!),
+        'published change: clean',
+      );
+    });
+
+    test('is the only unfinished session of its workflow', () async {
+      final (:dir, :work) = await project();
+      final finished = await tempDir();
+      File(p.join(finished, 'go')).createSync();
+      await Flow(directory: dir).run(review, finished);
+      final other = await FsStore(runsDirOf(dir)).createSession(
+        workflow: 'failing',
+        graph: null,
+        input: (value: work),
+        code: null,
+      );
+      await other.release();
+      final running = await startUntilInspect(dir, work);
+      await kill(running.process);
+
+      expect(await Flow(directory: dir).unfinished(review), [
+        running.sessionId,
+      ]);
+    });
+  });
+
+  group('resume', () {
+    test('of a finished session gives its result, and neither runs nor '
+        'writes anything', () async {
+      final (:dir, :work) = await project();
+      File(p.join(work, 'go')).createSync();
+      final first = await Flow(directory: dir).start(review, work);
+      await first.result;
+      final files = filesUnder(sessionDirOf(dir, first.id));
+
+      final session = await Flow(directory: dir).resume(review, first.id);
+
+      expect(session.id, first.id);
+      expect(await session.result, 'published change: clean');
+      expect(
+        [
+          for (final name in ['collect', 'inspect', 'publish'])
+            runsOf(work, name),
+        ],
+        [1, 1, 1],
+      );
+      expect(filesUnder(sessionDirOf(dir, first.id)), files);
+      expect(await ownerCheck(dir, first.id), 'opened');
+    });
+
+    test('of a failed session gives its error', () async {
+      final (:dir, :work) = await project();
+      final first = await Flow(directory: dir).start(failing, work);
+      await expectLater(first.result, throwsStateError);
+      final files = filesUnder(sessionDirOf(dir, first.id));
+
+      final session = await Flow(directory: dir).resume(failing, first.id);
+
+      Object? error;
+      StackTrace? stack;
+      try {
+        await session.result;
+      } catch (e, s) {
+        error = e;
+        stack = s;
+      }
+      expect(
+        error,
+        isA<SessionFailedException>()
+            .having((e) => e.sessionId, 'sessionId', first.id)
+            .having((e) => e.error, 'error', 'Bad state: no way'),
+      );
+      expect(filesUnder(sessionDirOf(dir, first.id)), files);
+      final failed = (await eventsOf(await openSession(dir, first.id))).last;
+      expect('$stack', (failed as SessionFailed).stack);
+    });
+
+    test('of a session that is not there is a '
+        'SessionNotFoundException', () async {
+      final id = newId();
+      await expectLater(
+        Flow(directory: await tempDir()).resume(review, id),
+        throwsA(
+          isA<SessionNotFoundException>().having(
+            (e) => e.sessionId,
+            'sessionId',
+            id,
+          ),
+        ),
+      );
+    });
+
+    test('with another workflow is a WorkflowMismatchException, and changes '
+        'nothing', () async {
+      final (:dir, :work) = await project();
+      final id = await writeSession(dir, work);
+      final files = filesUnder(sessionDirOf(dir, id));
+
+      await expectLater(
+        Flow(directory: dir).resume(failing, id),
+        throwsA(
+          isA<WorkflowMismatchException>()
+              .having((e) => e.sessionId, 'sessionId', id)
+              .having((e) => e.expected, 'expected', 'review')
+              .having((e) => e.actual, 'actual', 'failing'),
+        ),
+      );
+      expect(filesUnder(sessionDirOf(dir, id)), files);
+      expect(await ownerCheck(dir, id), 'opened');
+    });
+
+    test('on other code writes the graph file as it is now, and '
+        'session-resumed names it', () async {
+      final (:dir, :work) = await project();
+      File(p.join(work, 'go')).createSync();
+      final id = await writeSession(dir, work, code: 'sha256:old');
+      const graph = {'format': 1, 'package': 'review_fixture'};
+      File(p.join(dir, 'nanoflow.graph.json'))
+          .writeAsStringSync(jsonEncode(graph));
+      File(p.join(dir, 'lib', 'review.dart'))
+        ..parent.createSync()
+        ..writeAsStringSync('// review\n');
+
+      await (await Flow(directory: dir).resume(review, id)).result;
+
+      final handle = await openSession(dir, id);
+      final resumed = (await eventsOf(handle))
+          .whereType<SessionResumed>()
+          .single;
+      expect(
+        resumed.code,
+        fingerprintOf({
+          'lib/review.dart': sourceHash(utf8.encode('// review\n')),
+        }),
+      );
+      expect(await handle.documentValue(resumed.graphId!), graph);
+      expect(handle.session.graph, isNull);
+    });
+
+    test('takes a finished step from the journal only when it follows the '
+        'step it followed then; otherwise the step runs again in its '
+        'record', () async {
+      final (:dir, :work) = await project();
+      File(p.join(work, 'go')).createSync();
+      late Step collect;
+      final id = await writeSession(
+        dir,
+        work,
+        build: (handle) async => collect = await writeCollect(
+          handle,
+          after: 'elsewhere#1@${h('')}',
+          value: 'stale',
+        ),
+      );
+
+      final session = await Flow(directory: dir).resume(review, id);
+
+      expect(await session.result, 'published change: clean');
+      expect(runsOf(work, 'collect'), 1);
+      final handle = await openSession(dir, id);
+      final steps = await handle.steps();
+      expect(
+        [for (final s in steps) s.key],
+        [collectKey, inspectKey, publishKey],
+      );
+      expect(steps.first.id, collect.id);
+      // A result it is given from now on is for a call that follows what
+      // this one followed.
+      expect(steps.first.after, isNull);
+      expect(await handle.documentValue(steps.first.outputId!), 'change');
+      final state = replaySession(await eventsOf(handle));
+      expect(state.steps.first.stepId, collect.id);
+      expect(state.steps.first.starts, 2);
+    });
+
+    test('writes to step.json the outputId of a step whose step-finished was '
+        'written when step.json was not', () async {
+      final (:dir, :work) = await project();
+      File(p.join(work, 'go')).createSync();
+      late Step collect;
+      final id = await writeSession(
+        dir,
+        work,
+        build: (handle) async => collect = await writeCollect(
+          handle,
+          after: null,
+          value: 'saved change',
+          outputInStepJson: false,
+        ),
+      );
+
+      final session = await Flow(directory: dir).resume(review, id);
+
+      expect(await session.result, 'published saved change: clean');
+      expect(runsOf(work, 'collect'), 0);
+      final handle = await openSession(dir, id);
+      final finished = (await eventsOf(handle)).whereType<StepFinished>();
+      expect(finished.first.stepId, collect.id);
+      expect(
+        (await handle.steps()).first,
+        collect.withOutput(finished.first.outputId!),
+      );
+    });
+  });
+}

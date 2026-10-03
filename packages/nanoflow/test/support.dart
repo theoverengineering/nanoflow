@@ -31,6 +31,39 @@ List<String> sessionIds(String projectDir) {
   ]..sort();
 }
 
+/// The directory of the session [sessionId] of [projectDir].
+String sessionDirOf(String projectDir, String sessionId) => [
+  for (final entity in Directory(runsDirOf(projectDir)).listSync())
+    if (idOfDirName(p.basename(entity.path)) == sessionId) entity.path,
+].single;
+
+/// Every file under [dir], by its path relative to [dir], with what it
+/// holds.
+Map<String, String> filesUnder(String dir) => {
+  for (final entity in Directory(dir).listSync(recursive: true))
+    if (entity is File)
+      p.relative(entity.path, from: dir): entity.readAsStringSync(),
+};
+
+/// The names of the events in the journal of the session [sessionId] of
+/// [projectDir], read without owning the session: it may still run.
+List<String> eventNamesOf(String projectDir, String sessionId) => [
+  for (final line in File(
+    p.join(sessionDirOf(projectDir, sessionId), eventsFileName),
+  ).readAsLinesSync())
+    (jsonDecode(line) as Map<String, Object?>)['event']! as String,
+];
+
+/// Waits until [condition] holds, looking every 10 ms; fails, naming [what]
+/// it waited for, after 10 s.
+Future<void> until(bool Function() condition, String what) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 10));
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) fail('waited in vain for $what');
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
 /// The session [sessionId] of [projectDir] opened for reading; let go after
 /// the test.
 Future<SessionHandle> openSession(String projectDir, String sessionId) async {

@@ -38,6 +38,25 @@ Future<String> gated(Flow f, String who) async {
   return f.step('echo', () => '$who after $opened');
 }
 
+/// Starts a step it does not await, which waits for the gate of [who].
+Future<String> leavesStep(Flow f, String who) async {
+  unawaited(f.step('background', () => gates[who]!.future));
+  return 'returned';
+}
+
+/// What the step that each [callsLate] session calls after its workflow
+/// returned gave, or threw, by input.
+final lateSteps = <String, Future<Object?>>{};
+
+/// Calls a step 10 ms after it returned.
+Future<String> callsLate(Flow f, String who) async {
+  lateSteps[who] = Future<Object?>.delayed(
+    const Duration(milliseconds: 10),
+    () => f.step('late', () => 'late'),
+  ).then((value) => value, onError: (Object e) => e);
+  return 'returned';
+}
+
 Future<String> describeDate(Flow f, DateTime date) async => '$date';
 
 Future<String> datedStep(Flow f, String x) async {
@@ -301,6 +320,50 @@ void main() {
     expect(await ownerCheck(dir, session.id), 'opened');
   });
 
+  group('the end of a session', () {
+    test('waits for the steps the workflow did not await: their outcome is '
+        'written before the session\'s', () async {
+      final dir = await tempDir();
+      gates['left'] = Completer();
+      final session = await Flow(directory: dir).start(leavesStep, 'left');
+      var ended = false;
+      unawaited(session.result.then((_) => ended = true));
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(ended, isFalse);
+      expect(eventNamesOf(dir, session.id), [
+        'session-started',
+        'step-started',
+      ]);
+
+      gates['left']!.complete('open');
+      expect(await session.result, 'returned');
+      final handle = await onlySession(dir);
+      expect((await eventsOf(handle)).map((e) => e.name), [
+        'session-started',
+        'step-started',
+        'step-finished',
+        'session-finished',
+      ]);
+      final [background] = await handle.steps();
+      expect(await handle.documentValue(background.outputId!), 'open');
+    });
+
+    test('lets no step start after it', () async {
+      final dir = await tempDir();
+
+      expect(await Flow(directory: dir).run(callsLate, 'late'), 'returned');
+
+      expect(await lateSteps['late'], isStateError);
+      final handle = await onlySession(dir);
+      expect(await handle.steps(), isEmpty);
+      expect((await eventsOf(handle)).map((e) => e.name), [
+        'session-started',
+        'session-finished',
+      ]);
+    });
+  });
+
   test('two sessions of one flow at once keep their steps apart', () async {
     final dir = await tempDir();
     final flow = Flow(directory: dir);
@@ -366,7 +429,10 @@ void main() {
         // In the order the steps were created.
         final results = {
           for (final s in await handle.steps())
-            s.key: await handle.documentValue(s.outputId!),
+            s.key: (
+              after: s.after,
+              value: await handle.documentValue(s.outputId!),
+            ),
         };
         final keys = results.keys.toList();
         for (var seed = 2; seed < 13; seed++) {
@@ -379,7 +445,7 @@ void main() {
                     .take(1 + random.nextInt(keys.length - 1))
                     .toSet();
           final again = await startWithSaved(flow, workflow, '1.0', {
-            for (final key in saved) key: results[key],
+            for (final key in saved) key: results[key]!,
           });
           expect(await again.result, expected, reason: 'seed $seed');
           expect(

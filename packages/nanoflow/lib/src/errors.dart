@@ -14,3 +14,75 @@ final class CodecException implements Exception {
   @override
   String toString() => 'CodecException: $type: $reason';
 }
+
+/// `Flow.resume` was asked for a session that `runs/` does not have.
+final class SessionNotFoundException implements Exception {
+  const SessionNotFoundException(this.sessionId);
+
+  final String sessionId;
+
+  @override
+  String toString() =>
+      'SessionNotFoundException: there is no session $sessionId';
+}
+
+/// `Flow.resume` was given another workflow than the one whose call the
+/// session is.
+final class WorkflowMismatchException implements Exception {
+  const WorkflowMismatchException(this.sessionId, this.expected, this.actual);
+
+  final String sessionId;
+
+  /// The name of the session's workflow.
+  final String expected;
+
+  /// The name of the workflow given.
+  final String actual;
+
+  @override
+  String toString() =>
+      'WorkflowMismatchException: the session $sessionId is a call of '
+      '$expected, not of $actual';
+}
+
+/// A session could not be written or read.
+///
+/// A session whose store fails as it runs ends there: no step starts in it
+/// any more, nothing more is written to it, and its result is this
+/// exception.
+final class StorageException implements Exception {
+  const StorageException(this.cause);
+
+  /// What the store threw: a `FileSystemException`, a
+  /// `StoreCorruptedException`, or a `FormatException` for a file that is not
+  /// the JSON it should be.
+  final Object cause;
+
+  @override
+  String toString() => 'StorageException: $cause';
+}
+
+/// The flow was stopped: no step starts and no session starts or resumes
+/// any more.
+final class FlowStoppedException implements Exception {
+  const FlowStoppedException();
+
+  @override
+  String toString() => 'FlowStoppedException: the flow was stopped';
+}
+
+/// The session that `Flow.resume` was asked for had failed: its workflow
+/// threw. The result of the session is this exception, with the stack trace
+/// the session keeps.
+final class SessionFailedException implements Exception {
+  const SessionFailedException(this.sessionId, this.error);
+
+  final String sessionId;
+
+  /// What the workflow threw, as the session keeps it: its text on one line.
+  final String error;
+
+  @override
+  String toString() =>
+      'SessionFailedException: the session $sessionId failed: $error';
+}
