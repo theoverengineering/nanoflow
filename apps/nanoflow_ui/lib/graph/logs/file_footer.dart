@@ -7,7 +7,7 @@ import '../../widgets/failure_note.dart';
 import '../../widgets/path_bar.dart';
 
 /// The file of the open tab, under the effect's details (docs/ui-spec.md
-/// «Logs»: «С файловым хранилищем»): its path from the graph's directory,
+/// «Logs»: «Детали эффекта», «Внизу»): its path from the graph's directory,
 /// cut from the left when too long and whole in a tooltip; `Finder` shows
 /// it, `Editor` opens it, and a button copies its path and says `Copied` for
 /// a moment. When Finder, the editor or the clipboard fails, a note says so.

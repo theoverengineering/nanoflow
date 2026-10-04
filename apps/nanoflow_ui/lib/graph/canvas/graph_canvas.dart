@@ -32,9 +32,9 @@ class GraphCanvasController {
   Offset get offset => _state?._offset ?? Offset.zero;
 
   /// Pans the view so that the node [id] is in it, unless it already is
-  /// (docs/ui-spec.md «Выбор»: «Эффект в ленте прокручивает холст к своему
-  /// узлу, если тот не виден»). A node in a frame drawn in place is named
-  /// by the ids of the frames it is in and its own, joined by `/`: `5/2`.
+  /// (docs/ui-spec.md «Выбор»: «Эффект в ленте сдвигает холст к своему узлу,
+  /// если тот не виден»). A node in a frame drawn in place is named by the
+  /// ids of the frames it is in and its own, joined by `/`: `5/2`.
   void revealNode(String id) => _state?._reveal(id);
 }
 
