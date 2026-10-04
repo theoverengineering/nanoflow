@@ -1,12 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/graph/canvas/canvas_bodies.dart' show expandedOf;
 import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
 import 'package:nanoflow_ui/layout/layout.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/effect_places.dart';
+import 'package:nanoflow_ui/state/in_place.dart';
 import 'package:nanoflow_ui/state/session_view.dart';
 
-import '../../layout/support.dart' show layoutOf;
+import '../../layout/support.dart' show layoutOf, loadGraphFile;
 import '../../state/support.dart';
 
 void main() {
@@ -279,6 +281,180 @@ void main() {
       expect(toneOf(marks, copies, '3', null), Tone.untaken);
       expect(toneOf(marks, copies, '2', null), Tone.plain);
       expect(toneOf(marks, copies, '1', '2'), Tone.plain);
+    });
+  });
+
+  test('a call expanded in place: its frame\'s own fork, !ok, went by false '
+      'to the end of publish(): its arrow to rollback is darker', () {
+    final release = loadGraphFile('release');
+    const publish = Opened('5', functionId: 'lib/publish.dart#publish');
+    final j =
+        Journal('r1r1-session', workflow: 'release', graph: release.toJson())
+          ..effect('plan', 1, end: 2, place: 'lib/release.dart:16')
+          ..effect('build', 3, end: 4, place: 'lib/release.dart:18')
+          ..effect('upload', 5, end: 6, place: 'lib/publish.dart:12')
+          ..effect('verify', 7, end: 8, place: 'lib/publish.dart:13')
+          ..effect('announce', 9, place: 'lib/release.dart:23');
+    final levels = bodyLevels(
+      release.workflowNamed('release')!,
+      release.functions,
+      const [],
+    );
+    final frames = inPlaceFrames(
+      levels,
+      release.functions,
+      Expansions()..expand(const [], publish),
+    );
+    final view = SessionView.of(
+      j.data,
+      now: at(100),
+      documents: outcomesOf(const {}),
+      graphFile: null,
+      levels: levels,
+      frames: frames,
+    );
+    // The arrows of the frame as the canvas lays them out and draws them.
+    final inner = layoutBody(
+      levels.last.body,
+      functions: release.functions,
+      expanded: expandedOf(frames, view),
+    ).nodes['5']!.frame!.inner;
+    final marks = CanvasMarks.ofFrame(view.scopeOf(const [publish]));
+    Tone tone(String from, String to) => marks.edge(
+      inner.edges.singleWhere((e) => e.from == from && e.to == to),
+    );
+
+    // publish: upload → verify → (!ok ? rollback : end).
+    expect(marks.node('3')!.state, NodeState.visited);
+    expect(tone('3', '4'), Tone.untaken);
+    expect(tone('3', endMarker), Tone.plain);
+    expect(tone('2', '3'), Tone.plain);
+  });
+
+  group('a function called in the body of copies, all of them shown, is in '
+      'the view of all copies', () {
+    // fanOut: copies { publish() }; publish: upload → verify → (!ok ?
+    // rollback : end). Core verified; tool verified and rolled back.
+    final publish = loadGraphFile('release')
+        .functions['lib/publish.dart#publish']!;
+    final fanOut = GraphFunction(
+      id: 'lib/fan.dart#fanOut',
+      name: 'fanOut',
+      place: 'lib/fan.dart:3',
+      body: GraphBody(
+        nodes: [
+          CopiesNode(
+            id: '1',
+            place: 'lib/fan.dart:4',
+            label: 'pkg in pkgs',
+            body: GraphBody(
+              nodes: [
+                CallNode(
+                  id: '1',
+                  place: 'lib/fan.dart:5',
+                  functions: [publish.id],
+                ),
+              ],
+              edges: const [
+                GraphEdge(from: null, to: '1', label: null),
+                GraphEdge(from: '1', to: null, label: null),
+              ],
+            ),
+          ),
+        ],
+        edges: const [
+          GraphEdge(from: null, to: '1', label: null),
+          GraphEdge(from: '1', to: null, label: null),
+        ],
+      ),
+    );
+    final functions = {fanOut.id: fanOut, publish.id: publish};
+    String line(int n) => 'lib/publish.dart:$n';
+    final session =
+        (Journal('a1b2-session', workflow: 'fanOut', snapshot: false)
+              ..effect('upload', 1, end: 2, place: line(12), key: 'uc')
+              ..effect('verify', 3, end: 4, place: line(13), key: 'vc')
+              ..effect(
+                'upload',
+                1,
+                end: 2,
+                place: line(12),
+                key: 'ut',
+                after: null,
+              )
+              ..effect('verify', 3, end: 4, place: line(13), key: 'vt')
+              ..effect('rollback', 5, place: line(14), key: 'rt'))
+            .data;
+    const copies = Opened('1');
+    final call = Opened('1', functionId: publish.id);
+    const tool = 'a1b2-upload-2';
+    final rollback = publish.body.edges.indexWhere(
+      (e) => e.from == '3' && e.to == '4',
+    );
+    final ok = publish.body.edges.indexWhere(
+      (e) => e.from == '3' && e.to == null,
+    );
+    Tone toneOfEdge(CanvasMarks marks, int index) => marks.edge(
+      layoutBody(
+        publish.body,
+        functions: functions,
+      ).edges.singleWhere((e) => e.edgeIndex == index),
+    );
+    SessionView viewOf(
+      List<Opened> path, {
+      String? copy,
+      List<InPlaceFrame> frames = const [],
+    }) => SessionView.of(
+      session,
+      now: at(100),
+      documents: outcomesOf(const {}),
+      graphFile: null,
+      levels: bodyLevels(fanOut, functions, path),
+      places: EffectPlaces.of(fanOut, functions),
+      copies: {1: ?copy},
+      frames: frames,
+      copiesIn: (_) => {1: ?copy},
+    );
+
+    test('publish() opened: !ok has no 2×, no arrow is darker for it; one '
+        'copy chosen, its own fork\'s untaken exit is', () {
+      final all = CanvasMarks.of(viewOf([copies, call]), depth: 2);
+      expect(all.allCopies, isTrue);
+      expect(all.oneCopy, isFalse);
+      expect(all.node('3')!.state, NodeState.visited);
+      expect(toneOfEdge(all, ok), Tone.plain);
+      expect(toneOfEdge(all, rollback), Tone.plain);
+
+      final one = CanvasMarks.of(viewOf([copies, call], copy: tool), depth: 2);
+      expect(one.allCopies, isFalse);
+      expect(toneOfEdge(one, ok), Tone.untaken);
+      expect(toneOfEdge(one, rollback), Tone.plain);
+    });
+
+    test('publish() expanded in place: the same', () {
+      SessionView inPlace({String? copy}) {
+        final levels = bodyLevels(fanOut, functions, const [copies]);
+        return viewOf(
+          const [copies],
+          copy: copy,
+          frames: inPlaceFrames(
+            levels,
+            functions,
+            Expansions()..expand(const [copies], call),
+          ),
+        );
+      }
+
+      final all = CanvasMarks.ofFrame(inPlace().scopeOf([copies, call]));
+      expect(all.allCopies, isTrue);
+      expect(all.node('3')!.state, NodeState.visited);
+      expect(toneOfEdge(all, ok), Tone.plain);
+
+      final one = CanvasMarks.ofFrame(
+        inPlace(copy: tool).scopeOf([copies, call]),
+      );
+      expect(one.allCopies, isFalse);
+      expect(toneOfEdge(one, ok), Tone.untaken);
     });
   });
 

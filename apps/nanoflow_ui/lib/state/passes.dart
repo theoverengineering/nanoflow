@@ -14,6 +14,11 @@
 ///   the level, or there is none — no `after`, or one no record has;
 /// - from the predecessor to the effect when both are on the level, unless
 ///   they are in one call or one copies node: then it is inside it;
+/// - but when no way leads from the predecessor to the effect in the body,
+///   from the predecessor to the body's end and from the body's start to the
+///   effect, a run of its own: the code left the body and came into it
+///   again, as two calls of the level's function one after the other with
+///   no effect between them do — only when both ways are there;
 /// - from the predecessor to the body's end when the effect is outside;
 /// - and, once the session has finished, from each effect on the level that
 ///   no effect follows to the body's end — not from a copies node: copies
@@ -68,7 +73,8 @@ final class Passes {
   /// How many times the code went through the fork [nodeId]: once for each
   /// transition that passed it, but once for all those from one effect —
   /// publish and notify side by side after the same inspect went through
-  /// the fork before them once; 0 when none.
+  /// the fork before them once —, and once more for all those from it back
+  /// into the body after the code left it; 0 when none.
   int of(String nodeId) => _forks[nodeId] ?? 0;
 
   /// Whether the edge at [index] of `body.edges` was taken.
@@ -114,10 +120,11 @@ final class _Asked {
 final Expando<_Asked> _asked = Expando('passes asked');
 
 /// One run of the code a transition is part of: the way to the effect [id]
-/// from the body's start, or the way on [after] the effect [id]. The
-/// transitions from one effect are one run: the code after an effect runs
-/// once, and splits only where effects are called side by side.
-typedef _Run = ({String id, bool after});
+/// from the body's start, or the way on [after] the effect [id] — through
+/// the body, or, [again], back into it from its start once the code left it.
+/// The transitions from one effect are one run each way: the code after an
+/// effect runs once, and splits only where effects are called side by side.
+typedef _Run = ({String id, bool after, bool again});
 
 Passes _passesOf(
   _Level level,
@@ -149,11 +156,21 @@ Passes _passesOf(
     final at = nodesOf(effect);
     final previous = before == null ? const <String>[] : nodesOf(before);
     if (previous.isEmpty) {
-      if (at.isNotEmpty) add((id: effect.id, after: false), const [null], at);
+      if (at.isNotEmpty) {
+        add((id: effect.id, after: false, again: false), const [null], at);
+      }
     } else if (at.isEmpty) {
-      add((id: before!.id, after: true), previous, const [null]);
+      add((id: before!.id, after: true, again: false), previous, const [null]);
     } else if (!level.inOne(previous, at)) {
-      add((id: before!.id, after: true), previous, at);
+      final on = (id: before!.id, after: true, again: false);
+      if (level.leads(previous, at)) {
+        add(on, previous, at);
+      } else if (level.leads(previous, const [null]) &&
+          level.leads(const [null], at)) {
+        // Out of the body and into it again: the next call.
+        add(on, previous, const [null]);
+        add((id: before.id, after: true, again: true), const [null], at);
+      }
     }
   }
   if (session.state.status == SessionStatus.finished) {
@@ -165,7 +182,7 @@ Passes _passesOf(
       if (effect == null || followed.contains(effect.key)) continue;
       final at = nodesOf(effect);
       if (at.isEmpty || at.any(level.isCopies)) continue;
-      add((id: effect.id, after: true), at, const [null]);
+      add((id: effect.id, after: true, again: false), at, const [null]);
     }
   }
 
@@ -251,6 +268,11 @@ final class _Level {
     ConditionNode() || CallNode() || CopiesNode() => true,
     EffectNode() || null => false,
   };
+
+  /// Whether some way leads from a node of [from] to a node of [to] through
+  /// forks, calls and copies: the corridor of the transition is not empty.
+  bool leads(List<String?> from, List<String?> to) =>
+      between(from, to).corridor.isNotEmpty;
 
   /// The transition from a node of [from] to a node of [to] — `null`
   /// standing for the body's start among [from] and its end among [to]:

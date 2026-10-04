@@ -22,8 +22,8 @@ enum Tone {
 /// The way the code took is not highlighted: arrows, exits and bars are
 /// [Tone.plain] — but an arrow out of a passed fork that no way of the code
 /// could have taken is [Tone.untaken], except in the body of copies, all of
-/// them shown (decision 11); and in the body of one copy, what leads to or
-/// from a node the copy has not reached is too
+/// them shown, and in the bodies in it (decision 11); and in the body of one
+/// copy, what leads to or from a node the copy has not reached is too
 /// (docs/design/code-first/copy-switcher.html).
 final class CanvasMarks {
   const CanvasMarks._(
@@ -41,7 +41,7 @@ final class CanvasMarks {
     final drawn = frame != null && frame.depth == depth;
     return CanvasMarks._(
       marks,
-      allCopies: drawn && frame.selected == null,
+      allCopies: _inAll(view.frames),
       oneCopy: drawn && frame.selected != null,
     );
   }
@@ -50,21 +50,26 @@ final class CanvasMarks {
   /// that body opened; plain without a session.
   factory CanvasMarks.ofFrame(FrameScope? scope) {
     if (scope == null) return plain;
-    final copies = scope.copies;
     return CanvasMarks._(
       scope.marks,
-      allCopies: copies != null && copies.selected == null,
-      oneCopy: copies?.selected != null,
+      allCopies: _inAll(scope.shown.frames),
+      oneCopy: scope.copies?.selected != null,
     );
   }
+
+  /// Whether a body under the copies [frames] is in the view of all copies:
+  /// one of them shows all — copies in it cannot be chosen then.
+  static bool _inAll(List<CopiesFrame> frames) =>
+      frames.any((frame) => frame.selected == null);
 
   static const plain = CanvasMarks._(null);
 
   final GraphMarks? _marks;
 
-  /// Whether the level drawn is the body of copies, all of them shown: an
-  /// effect node says how many copies are on it now, and no arrow is darker
-  /// for the forks the copies went through.
+  /// Whether the level drawn is the body of copies, all of them shown, or a
+  /// body in it — a function opened from it, a call drawn in place: an
+  /// effect node says how many copies are on it now, a fork no `2×`, and no
+  /// arrow is darker for the forks the copies went through.
   final bool allCopies;
 
   /// Whether the level drawn is the body of copies, one copy shown: what
@@ -82,7 +87,7 @@ final class CanvasMarks {
   Tone exit(String node) => _unreached(node) ? Tone.untaken : Tone.plain;
 
   /// Whether [edge] leaves a passed fork where no way of the code could have
-  /// gone, outside the body of copies, all of them shown.
+  /// gone, outside the view of all copies.
   bool _notTaken(EdgePath edge) =>
       !allCopies && (_marks?.passes.untaken(edge.edgeIndex) ?? false);
 

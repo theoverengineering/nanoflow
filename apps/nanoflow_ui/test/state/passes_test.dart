@@ -423,6 +423,90 @@ void main() {
     });
   });
 
+  group('calls one after the other with no effect between them', () {
+    /// The places of [helper]'s effects, called from a loop of `flow`:
+    /// `for (t in ts) helper(t)`.
+    EffectPlaces calledInALoop(GraphFunction helper) {
+      final flow = graphFunction(
+        'flow',
+        [forkAt('for'), callAt('h', helper)],
+        ['>for', 'for>h', 'h>for', 'for>'],
+      );
+      return EffectPlaces.of(flow, {flow.id: flow, helper.id: helper});
+    }
+
+    // helper: e1 → (c ? e2 : end).
+    final helper = graphFunction(
+      'helper',
+      [effectAt('e1'), forkAt('c'), effectAt('e2')],
+      ['>e1', 'e1>c', 'c>e2', 'c>', 'e2>'],
+    );
+    final s = Shape.of(helper.body, places: calledInALoop(helper));
+
+    test('the code left the body after the first call and came into it '
+        'again: c passed by both calls, by false then by true, and neither '
+        'exit is darker', () {
+      final p = s.passes(ran(['e1', 'e1', 'e2'], finished: true).data);
+
+      expect(s.forksOf(p), {'c': 2});
+      expect(s.takenBy(p), {'>e1', 'e1>c', 'c>', 'c>e2', 'e2>'});
+      expect(s.untakenBy(p), isEmpty);
+    });
+
+    test('only when there is a way out of the body and a way back in: e2 '
+        'again after e2 marks nothing, not even the way out', () {
+      final p = s.passes(ran(['e1', 'e2', 'e2']).data);
+
+      expect(s.forksOf(p), {'c': 1});
+      expect(s.takenBy(p), {'>e1', 'e1>c', 'c>e2'});
+      expect(s.untakenBy(p), {'c>'});
+    });
+
+    test('the effects side by side at the start of the next call are one '
+        'run back into the body', () {
+      // helper: (f ? x ‖ y : ) → p, the next call's x and y after p.
+      final helper = graphFunction(
+        'helper',
+        [forkAt('f'), effectAt('x'), effectAt('y'), effectAt('p')],
+        ['>f', 'f>x', 'f>y', 'f>p', 'x>p', 'y>p', 'p>'],
+      );
+      final s = Shape.of(helper.body, places: calledInALoop(helper));
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('p', 1, end: 2, place: flowAt('p'), key: 'p1', after: null)
+        ..effect('x', 3, end: 4, place: flowAt('x'), key: 'x', after: 'p1')
+        ..effect('y', 3, end: 4, place: flowAt('y'), key: 'y', after: 'p1')
+        ..effect('p', 5, end: 6, place: flowAt('p'), key: 'p2', after: 'p1');
+      final p = s.passes(j.data);
+
+      expect(s.forksOf(p), {'f': 2});
+      expect(s.untakenBy(p), isEmpty);
+    });
+
+    test('for (pkg in pkgs) await publish(f, pkg): core goes on, tool rolls '
+        'back — !ok passed by both, neither exit darker', () {
+      final publish = loadGraphFile('release')
+          .functions['lib/publish.dart#publish']!;
+      final s = Shape.of(publish.body, places: calledInALoop(publish));
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false);
+      for (final (i, (name, line)) in [
+        ('upload', 12),
+        ('verify', 13),
+        ('upload', 12),
+        ('verify', 13),
+        ('rollback', 14),
+      ].indexed) {
+        j.effect(name, i + 1, end: i + 1.5, place: 'lib/publish.dart:$line');
+      }
+      j.finish(7);
+      final p = s.passes(j.data);
+
+      // upload → verify → (!ok ? rollback : end): 3 is !ok, 4 rollback.
+      expect(s.forksOf(p), {'3': 2});
+      expect(s.takenBy(p), {'>1', '1>2', '2>3', '3>', '3>4', '4>'});
+      expect(s.untakenBy(p), isEmpty);
+    });
+  });
+
   group('the end of the session', () {
     // a → (f ? b : end)
     final s = Shape(

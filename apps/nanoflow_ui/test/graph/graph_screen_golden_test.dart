@@ -61,7 +61,8 @@ void main() {
   });
 
   testWidgets('a running session on its graph: its effects on the nodes, Logs '
-      '(docs/design/graph.png)', (tester) async {
+      '(docs/design/graph.png); the forks it went through as effects design '
+      '§5.3 draws them, not grey as the mockup', (tester) async {
     await pumpReview(tester);
     await expectGolden(tester, 'graph_review');
   });

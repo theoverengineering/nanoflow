@@ -86,7 +86,8 @@ class NodeTile extends StatelessWidget {
   final NodeMarks? marks;
 
   /// Whether an effect node says how many copies are on it now, and a fork
-  /// nothing: in the body of copies, all of them shown.
+  /// nothing: in the body of copies, all of them shown, and in the bodies in
+  /// it.
   final bool allCopies;
 
   /// The badge over the stack of copies: `×3`, `×0` muted, `×n`.
