@@ -1,6 +1,7 @@
 // The graph file of a package: its sources resolved by the analyzer, refused
-// while they do not compile, then read by extract.dart and hashed as the
-// model hashes them (spec §6, §7.1).
+// while they do not compile, then read by extract.dart, checked for side
+// effects outside effects by side_effects.dart and hashed as the model hashes
+// them (spec §6, §7.1).
 
 import 'dart:io';
 
@@ -11,6 +12,7 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
 import 'extract.dart';
+import 'side_effects.dart';
 
 /// What [describePackage] read: the graph file, or why there is none.
 final class DescribeResult {
@@ -72,7 +74,8 @@ Future<DescribeResult> describePackage(
       }
     }
     if (errors.isNotEmpty) return DescribeResult(errors: errors);
-    final extracted = await extract(units.values.toList(), paths, session);
+    final resolved = units.values.toList();
+    final extracted = await extract(resolved, paths, session);
     final sources = await hashSources(root, sourcePaths);
     return DescribeResult(
       graph: GraphFile(
@@ -83,12 +86,31 @@ Future<DescribeResult> describePackage(
         builds: const {},
         workflows: extracted.workflows,
         functions: extracted.functions,
-        warnings: extracted.warnings,
+        // Each once, by place.
+        warnings: {
+          ...extracted.warnings,
+          ...sideEffectWarnings(resolved, paths, extracted.bodies),
+        }.toList()..sort(_byPlace),
       ),
     );
   } finally {
     await collection.dispose();
   }
+}
+
+/// By path, then by line, then by message.
+int _byPlace(GraphWarning a, GraphWarning b) {
+  final (pathA, lineA) = _split(a.place!);
+  final (pathB, lineB) = _split(b.place!);
+  final byPath = pathA.compareTo(pathB);
+  if (byPath != 0) return byPath;
+  final byLine = lineA.compareTo(lineB);
+  return byLine != 0 ? byLine : a.message.compareTo(b.message);
+}
+
+(String, int) _split(String place) {
+  final colon = place.lastIndexOf(':');
+  return (place.substring(0, colon), int.parse(place.substring(colon + 1)));
 }
 
 /// The `name:` of `<root>/pubspec.yaml`, or `null`.

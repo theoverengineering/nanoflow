@@ -1943,7 +1943,19 @@ void main() {
           },
         },
         warnings: [
-          for (final line in [16, 28, 41, 52, 67, 79])
+          for (final line in [16, 28])
+            {
+              'place': 'lib/catches.dart:$line',
+              'message': 'catch clauses are not drawn',
+            },
+          // Any constructor of dart:io is a side effect to the rule (spec
+          // §7.1), an exception's too.
+          {
+            'place': 'lib/catches.dart:39',
+            'message':
+                "side effect outside an effect: HttpException('try later')",
+          },
+          for (final line in [41, 52, 67, 79])
             {
               'place': 'lib/catches.dart:$line',
               'message': 'catch clauses are not drawn',

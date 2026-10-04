@@ -26,7 +26,10 @@ typedef Extracted = ({
   /// The functions with effects and the workflows by id, sorted by id.
   Map<String, GraphFunction> functions,
 
-  /// What could not be drawn, sorted by place.
+  /// The bodies of [functions], in the same order.
+  List<FunctionBody> bodies,
+
+  /// What could not be drawn, each once.
   List<GraphWarning> warnings,
 });
 
@@ -147,7 +150,8 @@ final class _Package {
     return (
       workflows: [for (final d in workflows) d.id]..sort(),
       functions: functions,
-      warnings: _warnings.toList()..sort(_byPlace),
+      bodies: [for (final d in drawn) d.body],
+      warnings: _warnings.toList(),
     );
   }
 
@@ -212,7 +216,7 @@ final class _Package {
       var effects = false;
       final calls = callees[declaration] = {};
       _walkRunning(declaration.body, (node) {
-        if (node is MethodInvocation && _isEffect(node)) effects = true;
+        if (node is MethodInvocation && isEffect(node)) effects = true;
         calls.addAll(_candidates(node));
       });
       if (effects) _withEffects.add(declaration);
@@ -274,7 +278,7 @@ final class _Package {
 
   bool _findsEffects(AstNode node) {
     if (node is FunctionExpression && !_runsHere(node)) return false;
-    if (node is MethodInvocation && _isEffect(node)) return true;
+    if (node is MethodInvocation && isEffect(node)) return true;
     if (_callTargets(node).isNotEmpty) return true;
     return node.childEntities.whereType<AstNode>().any(_hasEffects);
   }
@@ -336,27 +340,10 @@ final class _Package {
   bool _callsEffectItself(FunctionBody body) {
     var effects = false;
     _walkRunning(body, (node) {
-      if (node is MethodInvocation && _isEffect(node)) effects = true;
+      if (node is MethodInvocation && isEffect(node)) effects = true;
     });
     return effects;
   }
-
-  bool _isEffect(MethodInvocation node) => _isFlow(node, const {'effect'});
-
-  /// Whether [node] calls a method of `Flow` named one of [names].
-  bool _isFlow(MethodInvocation node, Set<String> names) {
-    final method = node.methodName.element;
-    return method is MethodElement &&
-        names.contains(method.name) &&
-        _isFlowClass(method.enclosingElement);
-  }
-
-  bool _isFlowType(DartType type) => _isFlowClass(type.element);
-
-  bool _isFlowClass(Element? element) =>
-      element is ClassElement &&
-      element.name == 'Flow' &&
-      element.library.uri.toString().startsWith('package:nanoflow/');
 
   bool _isFutureWait(AstNode node) {
     if (node is! MethodInvocation) return false;
@@ -461,15 +448,9 @@ final class _Package {
 
   // ---- sources, places and warnings -------------------------------------------
 
-  /// The code of [node] as it is written, on one line: a line break and the
-  /// indents around it are one space, none after an opening bracket or
-  /// before a closing one, where a trailing comma goes too (`a &&⏎    b` is
-  /// `a && b`, `f(⏎  x,⏎)` is `f(x)`).
-  String _source(AstNode node) => _contents[node.root]!
-      .substring(node.offset, node.end)
-      .replaceAllMapped(RegExp(r'([(\[{])\s*\n\s*'), (m) => m[1]!)
-      .replaceAllMapped(RegExp(r',?\s*\n\s*([)\]}])'), (m) => m[1]!)
-      .replaceAll(RegExp(r'\s*\n\s*'), ' ');
+  /// The code of [node] as it is written, on one line (see [oneLine]).
+  String _source(AstNode node) =>
+      oneLine(_contents[node.root]!.substring(node.offset, node.end));
 
   /// `path:line` of [node], or of [offset] in its file.
   String _place(AstNode node, {int? offset}) {
@@ -484,22 +465,33 @@ final class _Package {
       message: message,
     ),
   );
-
-  /// By path, then by line, then by message.
-  static int _byPlace(GraphWarning a, GraphWarning b) {
-    final (pathA, lineA) = _split(a.place!);
-    final (pathB, lineB) = _split(b.place!);
-    final byPath = pathA.compareTo(pathB);
-    if (byPath != 0) return byPath;
-    final byLine = lineA.compareTo(lineB);
-    return byLine != 0 ? byLine : a.message.compareTo(b.message);
-  }
-
-  static (String, int) _split(String place) {
-    final colon = place.lastIndexOf(':');
-    return (place.substring(0, colon), int.parse(place.substring(colon + 1)));
-  }
 }
+
+/// Whether [node] calls `Flow.effect` (of `package:nanoflow`).
+bool isEffect(MethodInvocation node) => _isFlow(node, const {'effect'});
+
+/// Whether [node] calls a method of `Flow` named one of [names].
+bool _isFlow(MethodInvocation node, Set<String> names) {
+  final method = node.methodName.element;
+  return method is MethodElement &&
+      names.contains(method.name) &&
+      _isFlowClass(method.enclosingElement);
+}
+
+bool _isFlowType(DartType type) => _isFlowClass(type.element);
+
+bool _isFlowClass(Element? element) =>
+    element is ClassElement &&
+    element.name == 'Flow' &&
+    element.library.uri.toString().startsWith('package:nanoflow/');
+
+/// [code] on one line: a line break and the indents around it are one space,
+/// none after an opening bracket or before a closing one, where a trailing
+/// comma goes too (`a &&⏎    b` is `a && b`, `f(⏎  x,⏎)` is `f(x)`).
+String oneLine(String code) => code
+    .replaceAllMapped(RegExp(r'([(\[{])\s*\n\s*'), (m) => m[1]!)
+    .replaceAllMapped(RegExp(r',?\s*\n\s*([)\]}])'), (m) => m[1]!)
+    .replaceAll(RegExp(r'\s*\n\s*'), ' ');
 
 /// Calls [visit] on [node] and every node below it.
 void _walk(AstNode node, void Function(AstNode node) visit) {
@@ -1084,7 +1076,7 @@ final class _Body {
     // is called right there; that call draws it.
     if (into.isEmpty || !_package._hasEffects(e)) return into;
     switch (e) {
-      case MethodInvocation() when _package._isEffect(e):
+      case MethodInvocation() when isEffect(e):
         final effect = _effect(e);
         _connect(into, effect);
         return [(effect, null)];
