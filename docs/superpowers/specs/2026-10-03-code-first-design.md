@@ -534,7 +534,10 @@ dart run nanoflow_describe stamp build/review   # §6.3; копия файла �
   `Random` из `dart:math` (`Random()`, `Random(seed)`, `Random.secure()`);
   любой элемент библиотеки `dart:io` (класс, конструктор, функция, геттер
   верхнего уровня, статический член), кроме `stdout`, `stderr` и членов
-  `Stdout`/`IOSink`, вызванных на них.
+  `Stdout`/`IOSink`, вызванных на них, констант (геттеры и поля `const`,
+  значения перечислений: `HttpStatus.ok`, `FileMode.append`) и конструкторов
+  исключений (классов, среди супертипов которых `Exception` или `Error` из
+  `dart:core`: `HttpException(…)`) — они мира не касаются.
 - **Не нарушение:** `print`, `stdout`/`stderr`, таймеры и `Future.delayed`
   (ожидание данных снаружи не приносит), всё из чужих пакетов.
 - **Текст и место.** В теле функции графа — на месте выражения:

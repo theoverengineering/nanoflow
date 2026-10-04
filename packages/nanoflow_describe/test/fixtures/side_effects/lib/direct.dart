@@ -20,7 +20,6 @@ Future<void> direct(Flow f, String input) async {
   print((await Process.run('ls', [])).stdout);
   print(HttpClient()..autoUncompress = false);
   print(Directory('x').listSync()[0].path);
-  print(HttpStatus.ok);
   exitCode = 1;
   await f.effect('after', () => input);
   exit(0);

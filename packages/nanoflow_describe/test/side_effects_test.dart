@@ -44,11 +44,23 @@ void main() {
       "20: side effect outside an effect: Process.run('ls', [])",
       '21: side effect outside an effect: HttpClient()',
       "22: side effect outside an effect: Directory('x')",
-      // Declared in dart:_internal, exported by dart:io.
-      '23: side effect outside an effect: HttpStatus.ok',
-      '24: side effect outside an effect: exitCode = 1',
-      '26: side effect outside an effect: exit(0)',
-      '33: side effect outside an effect: file.readAsStringSync()',
+      '23: side effect outside an effect: exitCode = 1',
+      '25: side effect outside an effect: exit(0)',
+      '32: side effect outside an effect: file.readAsStringSync()',
+    ]);
+  });
+
+  test('lets constants, enum values and exceptions of dart:io be anywhere, '
+      'but not a static final value', () {
+    expect(sideEffectsIn('values.dart'), [
+      '13: side effect outside an effect: ContentType.json',
+    ]);
+  });
+
+  test('warns where a constructor the rule names is torn off', () {
+    expect(sideEffectsIn('tear_offs.dart'), [
+      '8: side effect outside an effect: File.new',
+      '9: side effect outside an effect: DateTime.now',
     ]);
   });
 
@@ -88,7 +100,16 @@ void main() {
     expect(sideEffectsIn('logs.dart'), isEmpty);
   });
 
-  test('walks a function that calls itself once', () {
-    expect(sideEffectsIn('recursion.dart'), isEmpty);
-  });
+  test(
+    'walks functions that call themselves or each other, and finds the '
+    'side effect one reaches through the other whichever is called first',
+    () {
+      expect(sideEffectsIn('recursion.dart'), [
+        '15: side effect outside an effect: ping(n) reaches DateTime.now() at '
+            'lib/recursion.dart:27',
+        '20: side effect outside an effect: pong(n) reaches DateTime.now() at '
+            'lib/recursion.dart:27',
+      ]);
+    },
+  );
 }

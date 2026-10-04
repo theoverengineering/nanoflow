@@ -8,6 +8,8 @@ import '../lib/direct.dart';
 import '../lib/inside.dart';
 import '../lib/logs.dart';
 import '../lib/recursion.dart';
+import '../lib/tear_offs.dart';
+import '../lib/values.dart';
 
 Future<void> main(List<String> args) async {
   final flow = Flow();
@@ -21,4 +23,8 @@ Future<void> main(List<String> args) async {
   await flow.run(inside, args.first);
   await flow.run(logs, args.first);
   await flow.run(count, args.first.length);
+  await flow.run(serve, args.first.length);
+  await flow.run(volley, args.first.length);
+  await flow.run(tearOffs, args);
+  await flow.run(values, args.first);
 }

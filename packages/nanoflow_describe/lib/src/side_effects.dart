@@ -31,6 +31,10 @@ enum _Kind { none, log, sideEffect }
 /// A side effect a call reaches: its code and `path:line`.
 typedef _Reached = ({String source, String place});
 
+/// What the walk of a function meets: a side effect, or a call of a function
+/// of the sources that is not a graph function.
+typedef _Meet = ({_Reached? sideEffect, Element? call});
+
 final class _Check {
   _Check(
     List<ResolvedUnitResult> units,
@@ -58,12 +62,9 @@ final class _Check {
   /// The graph functions, whose side effects warn in their own bodies.
   final _graphFunctions = <Element>{};
 
-  /// What a call of a function of the sources reaches: the first side effect,
-  /// or `null` for none.
-  final _reached = <Element, _Reached?>{};
-
-  /// The functions being walked: a call back into one reaches nothing more.
-  final _walking = <Element>{};
+  /// What a call of a function of the sources reaches, by the function; none
+  /// for a function that reaches no side effect (see [_reachAll]).
+  late final _reached = _reachAll();
 
   List<GraphWarning> _warnings() {
     final warnings = <GraphWarning>{};
@@ -76,7 +77,7 @@ final class _Check {
               message: 'side effect outside an effect: ${_source(node)}',
             ),
           );
-        } else if (_reach(node) case final reached?) {
+        } else if (_reached[_resolved(node)] case final reached?) {
           warnings.add(
             GraphWarning(
               place: _place(node),
@@ -86,7 +87,6 @@ final class _Check {
             ),
           );
         }
-        return false;
       });
     }
     return warnings.toList();
@@ -127,46 +127,69 @@ final class _Check {
     visit(unit);
   }
 
-  /// The first side effect that [node] reaches when it calls a function of
-  /// the sources that is not a graph function, by a depth-first walk of what
-  /// that function runs in the order of its code; `null` for none.
-  _Reached? _reach(AstNode node) {
-    final element = _resolved(node);
-    final runs = _runs[element];
-    if (element == null || runs == null || _graphFunctions.contains(element)) {
-      return null;
+  /// The first side effect that each function of the sources that is not a
+  /// graph function reaches: the first that the walk of what it runs meets,
+  /// in the order of its code, itself or through a call of another such
+  /// function. Every function is walked once; what the calls reach is then
+  /// passed on until nothing changes, so of functions that call each other
+  /// each reaches a side effect when any of them meets one. It ends: what a
+  /// function reaches only ever comes from an earlier meet of its walk.
+  Map<Element, _Reached> _reachAll() {
+    final meets = {
+      for (final MapEntry(key: function, value: runs) in _runs.entries)
+        if (!_graphFunctions.contains(function)) function: _meets(runs),
+    };
+    final reached = <Element, _Reached>{};
+    for (var changed = true; changed;) {
+      changed = false;
+      for (final MapEntry(key: function, value: met) in meets.entries) {
+        _Reached? first;
+        for (final (:sideEffect, :call) in met) {
+          first = sideEffect ?? reached[call];
+          if (first != null) break;
+        }
+        if (first != null && first != reached[function]) {
+          reached[function] = first;
+          changed = true;
+        }
+      }
     }
-    if (_reached.containsKey(element)) return _reached[element];
-    if (!_walking.add(element)) return null;
-    _Reached? reached;
-    for (final part in runs) {
-      final found = _walk(part, (node) {
-        reached = _isSideEffect(node)
-            ? (source: _source(node), place: _place(node))
-            : _reach(node);
-        return reached != null;
-      });
-      if (found) break;
-    }
-    _walking.remove(element);
-    return _reached[element] = reached;
+    return reached;
   }
 
-  /// Calls [visit] on [node] and every node below it in the order of the
-  /// code, until [visit] returns true, which this returns then. It leaves
-  /// out the body given to `Flow.effect`, which is the effect, and a local
-  /// function, which runs where it is called.
-  bool _walk(AstNode node, bool Function(AstNode node) visit) {
+  /// What a walk of [runs] meets, in the order of the code.
+  List<_Meet> _meets(List<AstNode> runs) {
+    final meets = <_Meet>[];
+    for (final part in runs) {
+      _walk(part, (node) {
+        if (_isSideEffect(node)) {
+          meets.add((
+            sideEffect: (source: _source(node), place: _place(node)),
+            call: null,
+          ));
+        } else if (_resolved(node) case final function?
+            when _runs.containsKey(function) &&
+                !_graphFunctions.contains(function)) {
+          meets.add((sideEffect: null, call: function));
+        }
+      });
+    }
+    return meets;
+  }
+
+  /// Calls [visit] on [node] and every node below it, in the order of the
+  /// code. It leaves out the body given to `Flow.effect`, which is the
+  /// effect, and a local function, which runs where it is called.
+  void _walk(AstNode node, void Function(AstNode node) visit) {
     if (node is FunctionDeclarationStatement ||
         node is Comment ||
         _isEffectBody(node)) {
-      return false;
+      return;
     }
-    if (visit(node)) return true;
+    visit(node);
     for (final child in node.childEntities.whereType<AstNode>()) {
-      if (_walk(child, visit)) return true;
+      _walk(child, visit);
     }
-    return false;
   }
 
   /// Whether [node] is the body given to `Flow.effect`.
@@ -192,8 +215,8 @@ final class _Check {
   /// member of a target, a named constructor, what is assigned — is resolved
   /// with that node.
   Element? _resolved(AstNode node) => switch (node) {
-    InstanceCreationExpression(:final constructorName) =>
-      constructorName.element,
+    InstanceCreationExpression(:final constructorName) ||
+    ConstructorReference(:final constructorName) => constructorName.element,
     MethodInvocation(:final methodName) => methodName.element,
     PropertyAccess(:final propertyName) when !_isAssigned(node) =>
       propertyName.element,
@@ -247,11 +270,11 @@ final class _Check {
 /// (`DateTime.now`, `DateTime.timestamp`, `Stopwatch`), random numbers (the
 /// constructors of `Random` of `dart:math`) and every function, method,
 /// constructor, getter and setter of `dart:io` are side effects, but for
-/// `stdout` and `stderr`, which are logs.
+/// `stdout` and `stderr`, which are logs, and for values that touch nothing:
+/// constants (enum values too) and exceptions.
 ///
-/// `dart:io` declares some of what it exports elsewhere: everything HTTP in
-/// `dart:_http`, which only `dart:io` exports, and `HttpStatus` in
-/// `dart:_internal`.
+/// `dart:io` declares what it exports about HTTP in `dart:_http`, which only
+/// `dart:io` exports.
 _Kind _kindOf(Element? element) {
   if (element is! ExecutableElement) return _Kind.none;
   final type = element.enclosingElement?.name;
@@ -261,8 +284,8 @@ _Kind _kindOf(Element? element) {
             element.enclosingElement is LibraryElement &&
             (element.name == 'stdout' || element.name == 'stderr') =>
       _Kind.log,
+    'dart:io' || 'dart:_http' when _isValue(element) => _Kind.none,
     'dart:io' || 'dart:_http' => _Kind.sideEffect,
-    'dart:_internal' when type == 'HttpStatus' => _Kind.sideEffect,
     'dart:core'
         when element is ConstructorElement &&
             (type == 'Stopwatch' ||
@@ -274,3 +297,18 @@ _Kind _kindOf(Element? element) {
     _ => _Kind.none,
   };
 }
+
+/// Whether [element] gives a value that touches nothing: it reads a constant
+/// (an enum value is one), or makes an exception or an error — a class with
+/// `Exception` or `Error` of `dart:core` among its supertypes.
+bool _isValue(ExecutableElement element) => switch (element) {
+  PropertyAccessorElement(:final variable) => variable.isConst,
+  ConstructorElement(:final enclosingElement) =>
+    enclosingElement.allSupertypes.any(
+      (supertype) =>
+          (supertype.element.name == 'Exception' ||
+              supertype.element.name == 'Error') &&
+          supertype.element.library.uri.toString() == 'dart:core',
+    ),
+  _ => false,
+};
