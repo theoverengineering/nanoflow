@@ -188,9 +188,11 @@ void main() {
       'status and the count stay whole at the default width', (tester) async {
     // The longest a running session's status and count get in its first
     // hour, `Running for 59m 59s` and `99 effects`, with `1 failed` between
-    // them take 225 px with no gaps at all; a card has 224 px inside the
-    // default 272 px column. No gap makes them fit on one line: `1 failed`
-    // goes on the line of the notes, before `other code`.
+    // them take 217.1 px with no gaps and 233 px with the mockup's two 8 px
+    // gaps; a card has 224 px inside the default 272 px column. Only gaps
+    // under 3.5 px would keep them on one line, so `1 failed` goes on the
+    // line of the notes, before `other code`, and the status line keeps the
+    // mockup's gap.
     final journal = Journal(
       'f0a5-session',
       workflow: 'release',

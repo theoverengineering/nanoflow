@@ -95,8 +95,9 @@ class SessionsColumn extends StatelessWidget {
 
 /// A session in the column: the day and time it started and its short id;
 /// its status with the time — `Interrupted`, why in a tooltip, when its
-/// process is gone — and how many effects it has; `1 failed`, `other code`
-/// or `not checked` when its code is not its graph's, and `Log read
+/// process is gone — and how many effects it has; under them, `1 failed`
+/// while it runs with failed effects, `other code` or `not checked` when its
+/// code is not its graph's, `resumed on changed code`, and `Log read
 /// incompletely` when its journal was, why in a tooltip.
 class _SessionCard extends StatelessWidget {
   const _SessionCard({
