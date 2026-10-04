@@ -184,7 +184,7 @@ void main() {
 
     test('two forks that merge before the next effect: the fork on every '
         'path is passed, the one on some is not, and an exit on some paths '
-        'is not taken', () {
+        'is neither taken nor untaken', () {
       // a → f1 → (g | f2 → (h | g))
       final t = Shape(
         [
@@ -200,7 +200,8 @@ void main() {
 
       expect(t.forksOf(p), {'f1': 1});
       expect(t.takenBy(p), {'>a', 'a>f1'});
-      expect(t.untakenBy(p), {'f1>g', 'f1>f2'});
+      // One of f1's exits was taken, which one the journal does not tell.
+      expect(t.untakenBy(p), isEmpty);
     });
 
     test('a call that ran no effects on the way does not stop the path', () {
@@ -232,6 +233,56 @@ void main() {
       expect(t.forksOf(p), {'w': 3});
       expect(t.takenBy(p), {'>w', 'w>a', 'a>w'});
       expect(t.untakenBy(p), {'w>'});
+    });
+
+    test('a loop whose rounds run no effect: no exit the code may have taken '
+        'round it is untaken', () {
+      // describe's sendParts: for (…) { if (part.isEmpty) continue; send;
+      // if (!sent) break; } close. 1 is the loop, 2 `isEmpty`, 3 send, 4
+      // `!sent`, 5 close.
+      final file = loadGraphFile('control');
+      final sendParts = file.functions['lib/backup.dart#sendParts']!;
+      final t = Shape.of(
+        sendParts.body,
+        places: EffectPlaces.of(sendParts, file.functions),
+      );
+      String placeOf(String name) => sendParts.body.nodes
+          .whereType<EffectNode>()
+          .singleWhere((node) => node.name == name)
+          .place!;
+      Passes sent(List<String> parts) {
+        final j = Journal(
+          'a1b2-session',
+          workflow: 'sendParts',
+          snapshot: false,
+        );
+        for (final (i, part) in parts.indexed) {
+          if (part.isEmpty) continue;
+          j.effect('send', i + 1, end: i + 1.5, place: placeOf('send'));
+        }
+        j
+          ..effect(
+            'close',
+            parts.length + 1,
+            end: parts.length + 2,
+            place: placeOf('close'),
+          )
+          ..finish(parts.length + 3);
+        return t.passes(j.data);
+      }
+
+      // An empty part first: the `continue` (2>1) and the next round (1>2),
+      // then send, the next round (4>1) and the loop's end (1>5).
+      final skipped = sent(['', 'x']);
+      expect(t.forksOf(skipped), {'1': 1, '2': 1, '4': 1});
+      expect(t.takenBy(skipped), {'>1', '1>2', '2>3', '3>4', '5>'});
+      expect(t.untakenBy(skipped), isEmpty);
+
+      // Two parts sent: round and round, then the loop's end (1>5).
+      final both = sent(['x', 'y']);
+      expect(t.forksOf(both), {'1': 2, '2': 2, '4': 2});
+      expect(t.takenBy(both), {'>1', '1>2', '2>3', '3>4', '4>1', '5>'});
+      expect(t.untakenBy(both), isEmpty);
     });
 
     test('effects side by side after one effect passed the forks before them '
@@ -643,7 +694,7 @@ void main() {
 
       expect(s.forksOf(p), {'f': 1});
       expect(s.takenBy(p), {'>a', 'a>f'});
-      expect(s.untakenBy(p), {'f>fin1', 'f>fin2'});
+      expect(s.untakenBy(p), isEmpty);
     });
 
     test('the paths from both nodes: what is on every one is marked', () {
@@ -651,7 +702,7 @@ void main() {
 
       expect(s.forksOf(p), {'f': 1, 'g': 1});
       expect(s.takenBy(p), {'>a', 'a>f', 'g>z'});
-      expect(s.untakenBy(p), {'f>fin1', 'f>fin2', 'g>'});
+      expect(s.untakenBy(p), {'g>'});
     });
   });
 
@@ -717,7 +768,39 @@ void main() {
 
       expect(s.forksOf(p), {'g': 1});
       expect(s.takenBy(p), {'>a', 'a>g', 'g>b'});
-      expect(s.untakenBy(p), {'g>w1'});
+      // The code may have gone round the loop, which runs no effect.
+      expect(s.untakenBy(p), isEmpty);
+    });
+
+    test('a transition past the limit marks nothing, but the exits it may '
+        'have taken are not untaken', () {
+      // a → (f ? c : m1 ⇉ m2 ⇉ m3 ⇉ m4 → b), c → a: a, c, a, b — f is passed
+      // on the way to c; the way to b has 1100 paths.
+      final s = Shape(
+        [
+          effectAt('a'),
+          forkAt('f'),
+          effectAt('c'),
+          for (var i = 1; i <= 4; i++) forkAt('m$i'),
+          effectAt('b'),
+        ],
+        [
+          '>a',
+          'a>f',
+          'f>c',
+          'c>a',
+          'f>m1',
+          for (final (i, n) in [11, 10, 10].indexed)
+            for (var k = 0; k < n; k++) 'm${i + 1}>m${i + 2}',
+          'm4>b',
+          'b>',
+        ],
+      );
+      final p = s.passes(ran(['a', 'c', 'a', 'b']).data);
+
+      expect(s.forksOf(p), {'f': 1});
+      expect(s.takenBy(p), {'>a', 'a>f', 'f>c', 'c>a'});
+      expect(s.untakenBy(p), isEmpty);
     });
   });
 

@@ -8,7 +8,6 @@
 //
 // Run it again whenever the library changes how it keys effects or what it
 // writes for them (decision D1).
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow_describe/nanoflow_describe.dart';
@@ -19,6 +18,7 @@ import 'package:path/path.dart' as p;
 // has no package: name to import it by.
 // ignore: avoid_relative_lib_imports
 import '../test/fixtures/copies/lib/run_all.dart';
+import 'recording.dart';
 
 Future<void> main(List<String> args) async {
   if (args.length != 1) {
@@ -46,45 +46,14 @@ Future<void> main(List<String> args) async {
     exitCode = 1;
     return;
   }
-  _write(p.join(out.path, graphFileName), graph.toJson());
+  writeJson(p.join(out.path, graphFileName), graph.toJson());
 
   await runAll(fixture);
-  _write(p.join(out.path, 'sessions.json'), [
-    for (final dir in _sorted(runs.listSync()))
+  writeJson(p.join(out.path, 'sessions.json'), [
+    for (final dir in byPath(runs.listSync()))
       if (dir is Directory && isSessionDirName(p.basename(dir.path)))
-        _session(dir),
+        sessionJson(dir),
   ]);
   runs.deleteSync(recursive: true);
   stdout.writeln('wrote ${out.path}');
 }
-
-/// A session directory as JSON: the session, its effects' records, its
-/// journal's events and its documents' values.
-Map<String, Object?> _session(Directory dir) => {
-  'session': _read(p.join(dir.path, sessionFileName)),
-  'effects': [
-    for (final effect in _sorted(
-      Directory(p.join(dir.path, effectsDirName)).listSync(),
-    ))
-      _read(p.join(effect.path, effectFileName)),
-  ],
-  'events': [
-    for (final line in File(p.join(dir.path, eventsFileName)).readAsLinesSync())
-      if (line.isNotEmpty) jsonDecode(line),
-  ],
-  'documents': {
-    for (final document in _sorted(
-      Directory(p.join(dir.path, documentsDirName)).listSync(),
-    ))
-      p.basenameWithoutExtension(document.path):
-          (_read(document.path)! as Map<String, Object?>)['value'],
-  },
-};
-
-List<FileSystemEntity> _sorted(List<FileSystemEntity> entities) =>
-    entities..sort((a, b) => a.path.compareTo(b.path));
-
-Object? _read(String path) => jsonDecode(File(path).readAsStringSync());
-
-void _write(String path, Object? json) => File(path)
-    .writeAsStringSync('${const JsonEncoder.withIndent('  ').convert(json)}\n');

@@ -10,11 +10,12 @@
 //
 // Run it again whenever the library changes how it keys effects or what it
 // writes for them, or the example changes.
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
+
+import 'recording.dart';
 
 Future<void> main(List<String> args) async {
   if (args.length != 1) {
@@ -52,7 +53,7 @@ Future<void> main(List<String> args) async {
 
     File(p.join(example, graphFileName))
         .copySync(p.join(out.path, graphFileName));
-    _write(p.join(out.path, 'sessions.json'), [_session(dir)]);
+    writeJson(p.join(out.path, 'sessions.json'), [sessionJson(dir)]);
   } finally {
     project.deleteSync(recursive: true);
   }
@@ -81,34 +82,3 @@ void _copyExample(String example, String dir) {
     }
   }
 }
-
-/// A session directory as JSON: the session, its effects' records, its
-/// journal's events and its documents' values.
-Map<String, Object?> _session(Directory dir) => {
-  'session': _read(p.join(dir.path, sessionFileName)),
-  'effects': [
-    for (final effect in _sorted(
-      Directory(p.join(dir.path, effectsDirName)).listSync(),
-    ))
-      _read(p.join(effect.path, effectFileName)),
-  ],
-  'events': [
-    for (final line in File(p.join(dir.path, eventsFileName)).readAsLinesSync())
-      if (line.isNotEmpty) jsonDecode(line),
-  ],
-  'documents': {
-    for (final document in _sorted(
-      Directory(p.join(dir.path, documentsDirName)).listSync(),
-    ))
-      p.basenameWithoutExtension(document.path):
-          (_read(document.path)! as Map<String, Object?>)['value'],
-  },
-};
-
-List<FileSystemEntity> _sorted(List<FileSystemEntity> entities) =>
-    entities..sort((a, b) => a.path.compareTo(b.path));
-
-Object? _read(String path) => jsonDecode(File(path).readAsStringSync());
-
-void _write(String path, Object? json) => File(path)
-    .writeAsStringSync('${const JsonEncoder.withIndent('  ').convert(json)}\n');

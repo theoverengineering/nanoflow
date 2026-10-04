@@ -42,7 +42,8 @@ final class Passes {
   ///
   /// Asked again of the same body, places and session while the session has
   /// not changed, with the same effects, it gives the same answer at once:
-  /// the canvas asks every tick.
+  /// the canvas asks every tick. Only the last answer for each body is kept;
+  /// the paths found on the body are kept whatever is asked.
   factory Passes.of(
     GraphBody body, {
     required EffectPlaces places,
@@ -74,7 +75,10 @@ final class Passes {
   bool taken(int index) => _taken.contains(index);
 
   /// Whether the edge at [index] leaves a passed fork and no transition
-  /// took it.
+  /// could have taken it: it is on no walk of any transition from where the
+  /// transition starts to where it ends through forks, calls and copies —
+  /// a walk, not a simple path, since the code may go round a loop that runs
+  /// no effect.
   bool untaken(int index) => _untaken.contains(index);
 }
 
@@ -167,8 +171,12 @@ Passes _passesOf(
 
   final runs = <String, Set<_Run>>{};
   final taken = <int>{};
+  // The edges some transition may have taken, those of transitions that
+  // mark nothing too.
+  final possible = <int>{};
   for (final (:run, :from, :to) in transitions) {
-    final way = level.wayOf(from, to);
+    final (:way, :corridor) = level.between(from, to);
+    possible.addAll(corridor);
     if (way == null) continue;
     taken.addAll(way.edges);
     for (final fork in way.forks) {
@@ -181,7 +189,7 @@ Passes _passesOf(
   };
   return Passes._(forks, taken, {
     for (final (i, edge) in level.body.edges.indexed)
-      if (forks.containsKey(edge.from) && !taken.contains(i)) i,
+      if (forks.containsKey(edge.from) && !possible.contains(i)) i,
   });
 }
 
@@ -189,19 +197,26 @@ Passes _passesOf(
 /// their index in `body.edges`.
 typedef _Way = ({Set<String> forks, Set<int> edges});
 
+/// A transition as the level has it: what every simple path of it goes
+/// through, `null` when there is none or there are too many; and its
+/// corridor, the edges on some walk of it.
+typedef _Between = ({_Way? way, Set<int> corridor});
+
 /// A transition with more simple paths than this gives no marks: a body
 /// whose forks multiply the ways between two effects past it is not searched
 /// to the end.
 const _maxPaths = 1000;
 
-/// A body's nodes and edges as the search for paths reads them, and the paths
-/// found, kept for as long as the body is.
+/// A body's nodes and edges as the search for paths reads them, and the
+/// transitions found, kept for as long as the body is.
 final class _Level {
   _Level._(this.body)
     : _nodes = {for (final node in body.nodes) node.id: node},
-      _out = {} {
+      _out = {},
+      _in = {} {
     for (final (i, edge) in body.edges.indexed) {
       (_out[edge.from] ??= []).add(i);
+      (_in[edge.to] ??= []).add(i);
     }
   }
 
@@ -215,7 +230,10 @@ final class _Level {
   /// The edges leaving each node, by index; `null` for the body's start.
   final Map<String?, List<int>> _out;
 
-  final Map<String, _Way?> _ways = {};
+  /// The edges entering each node, by index; `null` for the body's end.
+  final Map<String?, List<int>> _in;
+
+  final Map<String, _Between> _between = {};
 
   bool isCopies(String id) => _nodes[id] is CopiesNode;
 
@@ -234,13 +252,50 @@ final class _Level {
     EffectNode() || null => false,
   };
 
-  /// What every simple path from a node of [from] to a node of [to] goes
-  /// through — `null` standing for the body's start among [from] and its end
-  /// among [to]; `null` when there is no path, or more than [_maxPaths].
-  _Way? wayOf(List<String?> from, List<String?> to) {
-    final key = jsonEncode([from, to]);
-    if (_ways.containsKey(key)) return _ways[key];
-    return _ways[key] = _search(from, to.toSet());
+  /// The transition from a node of [from] to a node of [to] — `null`
+  /// standing for the body's start among [from] and its end among [to]:
+  /// what every simple path of it goes through, `null` when there is no
+  /// path or more than [_maxPaths]; and its corridor.
+  _Between between(List<String?> from, List<String?> to) {
+    final targets = to.toSet();
+    return _between[jsonEncode([from, to])] ??= (
+      way: _search(from, targets),
+      corridor: _corridor(from, targets),
+    );
+  }
+
+  /// The edges on some walk from a node of [from] to a node of [to] through
+  /// forks, calls and copies: nodes may come again on a walk, so the rounds
+  /// of a loop that run no effect are on one. Each edge leaves a node a
+  /// source reaches and enters a target, or a node that reaches one.
+  Set<int> _corridor(List<String?> from, Set<String?> to) {
+    final edges = body.edges;
+    final reached = <String?>{...from};
+    final ahead = [...from];
+    while (ahead.isNotEmpty) {
+      for (final i in _out[ahead.removeLast()] ?? const <int>[]) {
+        final next = edges[i].to;
+        if (next != null && _passable(next) && reached.add(next)) {
+          ahead.add(next);
+        }
+      }
+    }
+    final leading = <String>{};
+    final behind = [...to];
+    while (behind.isNotEmpty) {
+      for (final i in _in[behind.removeLast()] ?? const <int>[]) {
+        final prior = edges[i].from;
+        if (prior != null && _passable(prior) && leading.add(prior)) {
+          behind.add(prior);
+        }
+      }
+    }
+    return {
+      for (final (i, edge) in edges.indexed)
+        if (reached.contains(edge.from) &&
+            (to.contains(edge.to) || leading.contains(edge.to)))
+          i,
+    };
   }
 
   _Way? _search(List<String?> from, Set<String?> to) {
