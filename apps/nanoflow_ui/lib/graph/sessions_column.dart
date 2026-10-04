@@ -98,7 +98,7 @@ class SessionsColumn extends StatelessWidget {
 /// process is gone — and how many effects it has; under them, `1 failed`
 /// while it runs with failed effects, `other code` or `not checked` when its
 /// code is not its graph's, `resumed on changed code`, and `Log read
-/// incompletely` when its journal was, why in a tooltip.
+/// incompletely` when its journal was read incompletely, why in a tooltip.
 class _SessionCard extends StatelessWidget {
   const _SessionCard({
     super.key,
