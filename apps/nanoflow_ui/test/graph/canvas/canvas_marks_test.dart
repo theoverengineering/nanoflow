@@ -324,7 +324,9 @@ void main() {
       inner.edges.singleWhere((e) => e.from == from && e.to == to),
     );
 
-    // publish: upload → verify → (!ok ? rollback : end).
+    // publish: upload → verify → (!ok ? rollback : end). It ran once, each
+    // of its effect nodes holding one effect at most, so an exit of its body
+    // can be darker.
     expect(marks.node('3')!.state, NodeState.visited);
     expect(tone('3', '4'), Tone.untaken);
     expect(tone('3', endMarker), Tone.plain);

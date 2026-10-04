@@ -459,7 +459,9 @@ void main() {
 
       expect(s.forksOf(p), {'c': 1});
       expect(s.takenBy(p), {'>e1', 'e1>c', 'c>e2'});
-      expect(s.untakenBy(p), {'c>'});
+      // e2 holds two effects: the function may have run more than once, so
+      // no exit of its body is darker.
+      expect(s.untakenBy(p), isEmpty);
     });
 
     test('the effects side by side at the start of the next call are one '
@@ -845,8 +847,9 @@ void main() {
       final p = s.passes(j.data);
 
       expect(s.forksOf(p), {'k': 2});
-      // Both calls went on to z.
-      expect(s.untakenBy(p), {'k>'});
+      // Both calls went on to z, but x, y and z hold two effects each: the
+      // function may have run more than once, so k> is not darker.
+      expect(s.untakenBy(p), isEmpty);
     });
 
     test('for (pkg in pkgs) await publish(f, pkg): core goes on, tool rolls '
@@ -871,6 +874,161 @@ void main() {
       expect(s.forksOf(p), {'3': 2});
       expect(s.takenBy(p), {'>1', '1>2', '2>3', '3>', '3>4', '4>'});
       expect(s.untakenBy(p), isEmpty);
+    });
+  });
+
+  group('a called body: an exit is darker only when no effect node of it '
+      'holds more than one effect, the function having run once at most', () {
+    // How many times the code came into a called body the journal does not
+    // tell for sure: a wait does not move `after`, and a call that takes no
+    // effect's result leaves all its effects after the caller's last one. So
+    // the effects of one call can read as joined before an effect of the
+    // next, and the way an earlier call took out of the body is lost.
+
+    /// The places of [helper]'s effects, called from `flow`: `[await pre();]
+    /// for (t in ts) await helper(t);`.
+    EffectPlaces calledInALoop(GraphFunction helper) {
+      final flow = graphFunction(
+        'flow',
+        [effectAt('pre'), forkAt('for'), callAt('h', helper)],
+        ['>pre', 'pre>for', 'for>h', 'h>for', 'for>'],
+      );
+      return EffectPlaces.of(flow, {flow.id: flow, helper.id: helper});
+    }
+
+    // helper { await Future.wait([x(), y()]); if (k) await z(); }
+    final helper = graphFunction(
+      'helper',
+      [effectAt('x'), effectAt('y'), forkAt('k'), effectAt('z')],
+      ['>x', '>y', 'x>k', 'y>k', 'k>z', 'k>', 'z>'],
+    );
+    final s = Shape.of(helper.body, places: calledInALoop(helper));
+
+    /// The calls of helper, each going on to z when [ks] says so. Their
+    /// effects come after [before], the effect before the loop, or none when
+    /// the loop begins the session; when [takesZ], the loop takes z's result,
+    /// and the calls after one that ran z come after that z.
+    Journal calls(
+      List<bool> ks, {
+      required String? before,
+      required bool takesZ,
+      required bool finished,
+    }) {
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false);
+      if (before != null) {
+        j.effect(
+          'pre',
+          0,
+          end: 0.5,
+          place: flowAt('pre'),
+          key: before,
+          after: null,
+        );
+      }
+      var last = before;
+      var t = 1;
+      for (final (call, k) in ks.indexed) {
+        for (final name in ['x', 'y']) {
+          j.effect(
+            name,
+            t,
+            end: t + 1,
+            place: flowAt(name),
+            key: '$name$call',
+            after: last,
+          );
+        }
+        t += 2;
+        if (k) {
+          j.effect(
+            'z',
+            t,
+            end: t + 1,
+            place: flowAt('z'),
+            key: 'z$call',
+            after: last,
+          );
+          if (takesZ) last = 'z$call';
+          t += 2;
+        }
+      }
+      if (finished) j.finish(t);
+      return j;
+    }
+
+    /// The passes of helper's body over [calls] of [ks], each way the
+    /// library may key them, finished and running, with a reason naming it.
+    Iterable<(Passes, String)> everyWay(List<bool> ks) sync* {
+      for (final before in [null, 'pre']) {
+        for (final takesZ in [false, true]) {
+          for (final finished in [true, false]) {
+            final journal = calls(
+              ks,
+              before: before,
+              takesZ: takesZ,
+              finished: finished,
+            );
+            yield (
+              s.passes(journal.data),
+              'after $before, z taken: $takesZ, finished: $finished',
+            );
+          }
+        }
+      }
+    }
+
+    test('helper called one call after another, the calls going out of k by '
+        'both exits: neither exit is darker, and k is passed', () {
+      for (final ks in [
+        [false, true],
+        [false, false, true],
+        [true, false],
+      ]) {
+        for (final (p, reason) in everyWay(ks)) {
+          expect(s.untakenBy(p), isEmpty, reason: 'k: $ks, $reason');
+          // How many times, the journal does not tell for sure.
+          expect(s.forksOf(p)['k'], isNotNull, reason: 'k: $ks, $reason');
+        }
+      }
+    });
+
+    test('helper called twice, both calls going out of k by one exit: the '
+        'other is not darker either, though no call took it — x and y hold '
+        'two effects each', () {
+      for (final ks in [
+        [true, true],
+        [false, false],
+      ]) {
+        for (final (p, reason) in everyWay(ks)) {
+          expect(s.untakenBy(p), isEmpty, reason: 'k: $ks, $reason');
+        }
+      }
+    });
+
+    test('a function called once whose loop runs an effect again: helper { '
+        'while (w) { await e(); if (k) await z(); } }, e three times, z '
+        'never — k>z is not darker on its body, as the rounds of a loop read '
+        'as calls one after the other would; on a workflow, run once, it '
+        'is', () {
+      final nodes = [forkAt('w'), effectAt('e'), forkAt('k'), effectAt('z')];
+      final edges = ['>w', 'w>e', 'e>k', 'k>z', 'k>w', 'z>w', 'w>'];
+      final helper = graphFunction('helper', nodes, edges);
+      final flow = graphFunction('flow', [callAt('h', helper)], ['>h', 'h>']);
+      final called = Shape.of(
+        helper.body,
+        places: EffectPlaces.of(flow, {flow.id: flow, helper.id: helper}),
+      );
+      final workflow = Shape(nodes, edges);
+      final j = ran(['e', 'e', 'e'], finished: true);
+
+      final p = called.passes(j.data);
+      expect(called.forksOf(p), {'w': 4, 'k': 3});
+      expect(called.takenBy(p), {'>w', 'w>e', 'e>k', 'k>w', 'w>'});
+      expect(called.untakenBy(p), isEmpty);
+
+      final once = workflow.passes(j.data);
+      expect(workflow.forksOf(once), {'w': 4, 'k': 3});
+      expect(workflow.untakenBy(once), {'k>z'});
     });
   });
 

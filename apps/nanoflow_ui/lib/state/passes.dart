@@ -41,7 +41,9 @@
 /// and those to the body's end from the effects one run came to. Each
 /// transition from the body's start to an effect whose predecessor is not on
 /// the level is a run of its own: each copy, and each call, comes into the
-/// body so.
+/// body so. The count is of the runs the journal tells apart: with waits in
+/// loops or calls, it can differ from how many times the condition was
+/// evaluated.
 ///
 /// An effect not on the graph at all — without a place, or at no node —
 /// makes no transition, to it or from it: where the code went there is not
@@ -53,7 +55,13 @@
 /// and its predecessor, the edges of the ways out of the body from the one
 /// and back into it to the other, when both are there, are ones the code
 /// may have taken too — no exit on them is darker, though they mark
-/// nothing.
+/// nothing. And no exit of such a body is darker at all unless no effect
+/// node of it holds more than one of the effects shown — the function ran
+/// once at most, and ran no effect in it again: a wait does not move
+/// `after`, and a call that takes no effect's result leaves all its effects
+/// after the caller's last one, so the effects of one call can read as
+/// joined before an effect of the next, and the way out of the body the
+/// earlier call took is lost.
 library;
 
 import 'dart:convert';
@@ -99,7 +107,8 @@ final class Passes {
   /// How many times the code went through the fork [nodeId]: once for each
   /// run of the code whose transitions passed it — publish and notify side
   /// by side after the same inspect went through the fork before them once,
-  /// as did the effects after one wait —; 0 when none.
+  /// as did the effects after one wait —, as far as the journal tells the
+  /// runs apart; 0 when none.
   int of(String nodeId) => _forks[nodeId] ?? 0;
 
   /// Whether the edge at [index] of `body.edges` was taken.
@@ -109,7 +118,8 @@ final class Passes {
   /// could have taken it: it is on no walk of any transition from where the
   /// transition starts to where it ends through forks, calls and copies —
   /// a walk, not a simple path, since the code may go round a loop that runs
-  /// no effect.
+  /// no effect. Never on the body of a function the workflow calls when an
+  /// effect node of it holds more than one of the effects shown.
   bool untaken(int index) => _untaken.contains(index);
 }
 
@@ -298,9 +308,30 @@ Passes _passesOf(
     for (final MapEntry(key: fork, value: by) in runs.entries) fork: by.length,
   };
   return Passes._(forks, taken, {
-    for (final (i, edge) in level.body.edges.indexed)
-      if (forks.containsKey(edge.from) && !possible.contains(i)) i,
+    if (!called || _ranOnce(level, session, ids, nodesOf))
+      for (final (i, edge) in level.body.edges.indexed)
+        if (forks.containsKey(edge.from) && !possible.contains(i)) i,
   });
+}
+
+/// Whether no effect node of [level] holds more than one of the effects
+/// [ids] of [session]: the function whose body it is ran once at most, and
+/// ran no effect in it again. Only then is an exit of a called body darker.
+bool _ranOnce(
+  _Level level,
+  SessionData session,
+  List<String> ids,
+  List<String> Function(Effect effect) nodesOf,
+) {
+  final held = <String>{};
+  for (final id in ids) {
+    final effect = session.effects[id];
+    if (effect == null) continue;
+    for (final node in nodesOf(effect)) {
+      if (level.isEffect(node) && !held.add(node)) return false;
+    }
+  }
+  return true;
 }
 
 /// The effects a wait joined before an effect: [key] is the same for two
@@ -487,6 +518,8 @@ final class _Level {
   final Map<String, _Between> _between = {};
 
   bool isCopies(String id) => _nodes[id] is CopiesNode;
+
+  bool isEffect(String id) => _nodes[id] is EffectNode;
 
   /// Whether [from] and [to] share a call or copies node: a transition
   /// between them may be inside it.

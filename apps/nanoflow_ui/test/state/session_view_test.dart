@@ -425,7 +425,9 @@ void main() {
         ),
       );
       final scope = view.scopeOf(const [publish])!;
-      // publish: upload → verify → (!ok ? rollback : end).
+      // publish: upload → verify → (!ok ? rollback : end). It ran once, each
+      // of its effect nodes holding one effect at most, so an exit of its
+      // body can be darker.
       final body = scope.frame.level.body;
       expect(scope.marks.of('3')!.state, NodeState.visited);
       expect(scope.marks.of('3')!.effects, 1);
