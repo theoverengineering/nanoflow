@@ -1,0 +1,313 @@
+[
+  {
+    "session": {
+      "id": "c8c9b72b-ac81-4872-96e6-14a9556e9e5c",
+      "workflow": "review",
+      "graph": {
+        "format": 2,
+        "package": "review_example",
+        "fingerprint": "sha256:0da73d26d19cd0b94deed6f51dda42cb9abd4e5596ff41913f80293c38b89e89",
+        "sources": {
+          "bin/main.dart": "sha256:fc75e28f8b4640e5f5c1441dd0aff0edbee5ba2eb9f67ae9cf835bc3b46d0389",
+          "lib/review.dart": "sha256:73a0d3c344b4c7b01bfbc6b8f1f587f6cc42a193f74a76444ce219ca35eb0072"
+        },
+        "builds": {},
+        "workflows": [
+          "lib/review.dart#review"
+        ],
+        "functions": {
+          "lib/review.dart#review": {
+            "name": "review",
+            "place": "lib/review.dart:48",
+            "body": {
+              "nodes": [
+                {
+                  "id": "1",
+                  "kind": "effect",
+                  "name": "collect",
+                  "place": "lib/review.dart:49"
+                },
+                {
+                  "id": "2",
+                  "kind": "fork",
+                  "label": "change.path.isEmpty",
+                  "place": "lib/review.dart:50"
+                },
+                {
+                  "id": "3",
+                  "kind": "effect",
+                  "name": "discard",
+                  "place": "lib/review.dart:51"
+                },
+                {
+                  "id": "4",
+                  "kind": "effect",
+                  "name": "inspect",
+                  "place": "lib/review.dart:55"
+                },
+                {
+                  "id": "5",
+                  "kind": "fork",
+                  "label": "report.findings.isEmpty",
+                  "place": "lib/review.dart:56"
+                },
+                {
+                  "id": "6",
+                  "kind": "effect",
+                  "name": "publish",
+                  "place": "lib/review.dart:58"
+                },
+                {
+                  "id": "7",
+                  "kind": "effect",
+                  "name": "notify",
+                  "place": "lib/review.dart:59"
+                },
+                {
+                  "id": "8",
+                  "kind": "effect",
+                  "name": "fix",
+                  "place": "lib/review.dart:63"
+                }
+              ],
+              "edges": [
+                {
+                  "from": null,
+                  "to": "1",
+                  "label": null
+                },
+                {
+                  "from": "1",
+                  "to": "2",
+                  "label": null
+                },
+                {
+                  "from": "2",
+                  "to": "3",
+                  "label": "true"
+                },
+                {
+                  "from": "2",
+                  "to": "4",
+                  "label": "false"
+                },
+                {
+                  "from": "3",
+                  "to": null,
+                  "label": null
+                },
+                {
+                  "from": "4",
+                  "to": "5",
+                  "label": null
+                },
+                {
+                  "from": "5",
+                  "to": "6",
+                  "label": "true"
+                },
+                {
+                  "from": "5",
+                  "to": "7",
+                  "label": "true"
+                },
+                {
+                  "from": "5",
+                  "to": "8",
+                  "label": "false"
+                },
+                {
+                  "from": "6",
+                  "to": null,
+                  "label": null
+                },
+                {
+                  "from": "7",
+                  "to": null,
+                  "label": null
+                },
+                {
+                  "from": "8",
+                  "to": "4",
+                  "label": null
+                }
+              ]
+            }
+          }
+        },
+        "warnings": []
+      },
+      "inputId": "8b63c7c8-5c10-4700-a146-99459fd33cc1"
+    },
+    "effects": [
+      {
+        "id": "4e19c4a6-30d7-4b14-9e93-9d9b9cc7b547",
+        "sessionId": "c8c9b72b-ac81-4872-96e6-14a9556e9e5c",
+        "name": "collect",
+        "key": "collect#1@e3b0c44298fc1c14",
+        "after": null,
+        "place": "lib/review.dart:49",
+        "outputId": "6c5d6652-c1b2-4ee6-b1d5-f45f8da7a488",
+        "log": "effect.log"
+      },
+      {
+        "id": "3a1ba42b-f91d-4c07-b2ff-43f341b39371",
+        "sessionId": "c8c9b72b-ac81-4872-96e6-14a9556e9e5c",
+        "name": "inspect",
+        "key": "inspect#1@14dff729e2b80c35",
+        "after": "collect#1@e3b0c44298fc1c14",
+        "place": "lib/review.dart:55",
+        "outputId": "a60d2e74-9055-4ad7-9f35-9f1f11f127d1",
+        "log": "effect.log"
+      },
+      {
+        "id": "c2669d0a-7746-4d00-a925-82daf5a79f1b",
+        "sessionId": "c8c9b72b-ac81-4872-96e6-14a9556e9e5c",
+        "name": "fix",
+        "key": "fix#1@3e9756936faed655",
+        "after": "inspect#1@14dff729e2b80c35",
+        "place": "lib/review.dart:63",
+        "outputId": "bf51427b-4168-4e2d-a481-a9d72562a3bc",
+        "log": "effect.log"
+      },
+      {
+        "id": "6ed27436-96e3-430a-80b9-f42b149d9a3d",
+        "sessionId": "c8c9b72b-ac81-4872-96e6-14a9556e9e5c",
+        "name": "inspect",
+        "key": "inspect#1@aefa3e32662a0e92",
+        "after": "fix#1@3e9756936faed655",
+        "place": "lib/review.dart:55",
+        "outputId": "fd228ad2-01fb-4fe9-87e9-0fd796eebcb9",
+        "log": "effect.log"
+      },
+      {
+        "id": "909b370d-a332-4067-ab89-f9cf367854fd",
+        "sessionId": "c8c9b72b-ac81-4872-96e6-14a9556e9e5c",
+        "name": "publish",
+        "key": "publish#1@4ed08450cae68e63",
+        "after": "inspect#1@aefa3e32662a0e92",
+        "place": "lib/review.dart:58",
+        "outputId": "c873dc8c-1e8e-43cd-8167-c986a6261a89",
+        "log": "effect.log"
+      },
+      {
+        "id": "1390b4c6-a180-4541-b461-6ceda0c23340",
+        "sessionId": "c8c9b72b-ac81-4872-96e6-14a9556e9e5c",
+        "name": "notify",
+        "key": "notify#1@4ed08450cae68e63",
+        "after": "inspect#1@aefa3e32662a0e92",
+        "place": "lib/review.dart:59",
+        "outputId": "96210472-15a9-4a1e-9b99-6eb36b6ed91f",
+        "log": "effect.log"
+      }
+    ],
+    "events": [
+      {
+        "time": "2026-10-04T20:26:13.694Z",
+        "event": "session-started",
+        "code": "sha256:0da73d26d19cd0b94deed6f51dda42cb9abd4e5596ff41913f80293c38b89e89"
+      },
+      {
+        "time": "2026-10-04T20:26:13.707Z",
+        "event": "effect-started",
+        "effectId": "4e19c4a6-30d7-4b14-9e93-9d9b9cc7b547"
+      },
+      {
+        "time": "2026-10-04T20:26:13.708Z",
+        "event": "effect-finished",
+        "effectId": "4e19c4a6-30d7-4b14-9e93-9d9b9cc7b547",
+        "outputId": "6c5d6652-c1b2-4ee6-b1d5-f45f8da7a488"
+      },
+      {
+        "time": "2026-10-04T20:26:13.710Z",
+        "event": "effect-started",
+        "effectId": "3a1ba42b-f91d-4c07-b2ff-43f341b39371"
+      },
+      {
+        "time": "2026-10-04T20:26:13.767Z",
+        "event": "effect-finished",
+        "effectId": "3a1ba42b-f91d-4c07-b2ff-43f341b39371",
+        "outputId": "a60d2e74-9055-4ad7-9f35-9f1f11f127d1"
+      },
+      {
+        "time": "2026-10-04T20:26:13.769Z",
+        "event": "effect-started",
+        "effectId": "c2669d0a-7746-4d00-a925-82daf5a79f1b"
+      },
+      {
+        "time": "2026-10-04T20:26:13.770Z",
+        "event": "effect-finished",
+        "effectId": "c2669d0a-7746-4d00-a925-82daf5a79f1b",
+        "outputId": "bf51427b-4168-4e2d-a481-a9d72562a3bc"
+      },
+      {
+        "time": "2026-10-04T20:26:13.771Z",
+        "event": "effect-started",
+        "effectId": "6ed27436-96e3-430a-80b9-f42b149d9a3d"
+      },
+      {
+        "time": "2026-10-04T20:26:13.792Z",
+        "event": "effect-finished",
+        "effectId": "6ed27436-96e3-430a-80b9-f42b149d9a3d",
+        "outputId": "fd228ad2-01fb-4fe9-87e9-0fd796eebcb9"
+      },
+      {
+        "time": "2026-10-04T20:26:13.793Z",
+        "event": "effect-started",
+        "effectId": "909b370d-a332-4067-ab89-f9cf367854fd"
+      },
+      {
+        "time": "2026-10-04T20:26:13.794Z",
+        "event": "effect-started",
+        "effectId": "1390b4c6-a180-4541-b461-6ceda0c23340"
+      },
+      {
+        "time": "2026-10-04T20:26:13.795Z",
+        "event": "effect-finished",
+        "effectId": "909b370d-a332-4067-ab89-f9cf367854fd",
+        "outputId": "c873dc8c-1e8e-43cd-8167-c986a6261a89"
+      },
+      {
+        "time": "2026-10-04T20:26:13.796Z",
+        "event": "effect-finished",
+        "effectId": "1390b4c6-a180-4541-b461-6ceda0c23340",
+        "outputId": "96210472-15a9-4a1e-9b99-6eb36b6ed91f"
+      },
+      {
+        "time": "2026-10-04T20:26:13.797Z",
+        "event": "session-finished",
+        "outputId": "114e69c5-2cdb-494b-9e48-b4c18a7576a5"
+      }
+    ],
+    "documents": {
+      "114e69c5-2cdb-494b-9e48-b4c18a7576a5": null,
+      "6c5d6652-c1b2-4ee6-b1d5-f45f8da7a488": {
+        "id": "parseConfig",
+        "path": "lib/parseConfig.dart"
+      },
+      "8b63c7c8-5c10-4700-a146-99459fd33cc1": "parseConfig",
+      "96210472-15a9-4a1e-9b99-6eb36b6ed91f": null,
+      "a60d2e74-9055-4ad7-9f35-9f1f11f127d1": {
+        "change": {
+          "id": "parseConfig",
+          "path": "lib/parseConfig.dart"
+        },
+        "findings": [
+          "lib/parseConfig.dart: file names are lower_snake_case"
+        ]
+      },
+      "bf51427b-4168-4e2d-a481-a9d72562a3bc": {
+        "id": "parseConfig",
+        "path": "lib/parse_config.dart"
+      },
+      "c873dc8c-1e8e-43cd-8167-c986a6261a89": null,
+      "fd228ad2-01fb-4fe9-87e9-0fd796eebcb9": {
+        "change": {
+          "id": "parseConfig",
+          "path": "lib/parse_config.dart"
+        },
+        "findings": []
+      }
+    }
+  }
+]

@@ -40,6 +40,7 @@ final class SessionData {
   Owner? _owner;
   bool? _alive;
   SessionState? _state;
+  int _changes = 0;
   Map<String, EffectState>? _statesById;
   List<Effect>? _effectsInOrder;
   Map<String, Effect>? _effectsByKey;
@@ -101,6 +102,11 @@ final class SessionData {
   /// What replaying the journal says.
   SessionState get state => _state ??= replaySession(_events);
 
+  /// How many events and effect records have been given so far: [state] and
+  /// [effects] change only when it grows, so that what is derived from them
+  /// can be kept until then.
+  int get changes => _changes;
+
   /// The state of the effect [effectId] in [state]; `null` for an effect that
   /// has not started. Looked up once per [state]: the copies of a frame look
   /// up the first effect of each.
@@ -109,6 +115,7 @@ final class SessionData {
   })[effectId];
 
   void _addEvent(Event event) {
+    _changes++;
     switch (event) {
       case UnknownEvent(:final json):
         _problems.add(
@@ -124,6 +131,7 @@ final class SessionData {
   }
 
   void _addEffect(Effect effect) {
+    _changes++;
     _effects[effect.id] = effect;
     _effectsInOrder = null;
     _effectsByKey = null;

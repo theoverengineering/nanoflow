@@ -253,6 +253,15 @@ Map<String, Object?> copiesGraphJson() => {
 /// [copiesGraphJson] read.
 GraphFile copiesGraphFile() => GraphFile.fromJson(copiesGraphJson());
 
+/// What a recording tool wrote into a fixture directory: the graph file, and
+/// the sessions as the real library wrote them, by workflow, with the values
+/// of their documents.
+typedef Recorded = ({
+  GraphFile graph,
+  Map<String, SessionData> sessions,
+  Map<String, Object?> documents,
+});
+
 /// Sessions the real library wrote for the workflows of
 /// tests/e2e/test/fixtures/copies — in place, given to map, through a
 /// call, copies in copies — with the graph file describe wrote for them
@@ -266,13 +275,25 @@ GraphFile copiesGraphFile() => GraphFile.fromJson(copiesGraphJson());
 /// ```
 ///
 /// whenever the library changes how it keys effects (decision D1).
-({
-  GraphFile graph,
-  Map<String, SessionData> sessions,
-  Map<String, Object?> documents,
-})
-recordedCopies() {
-  const dir = 'test/state/fixtures/copies';
+Recorded recordedCopies() => _recorded('test/state/fixtures/copies');
+
+/// The session the real library wrote for the `review` workflow of
+/// examples/review run on the branch its README uses, `parseConfig` —
+/// collect, inspect, fix, inspect, then publish and notify side by side —
+/// with the example's graph file: test/state/fixtures/review.
+///
+/// Recorded again with
+///
+/// ```sh
+/// cd tests/e2e
+/// dart run tool/record_review.dart ../../apps/nanoflow_ui/test/state/fixtures/review
+/// ```
+///
+/// whenever the library changes how it keys effects or what it writes for
+/// them, or the example changes.
+Recorded recordedReview() => _recorded('test/state/fixtures/review');
+
+Recorded _recorded(String dir) {
   Object? read(String name) =>
       jsonDecode(File('$dir/$name').readAsStringSync());
   final sessions = <String, SessionData>{};
