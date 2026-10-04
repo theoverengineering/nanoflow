@@ -4,6 +4,8 @@
 // functions of the package they call. Logs and waiting are free; the body
 // given to `Flow.effect` is the effect, so nothing in it counts.
 
+import 'dart:math';
+
 import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/element/element.dart';
@@ -130,29 +132,76 @@ final class _Check {
   /// The first side effect that each function of the sources that is not a
   /// graph function reaches: the first that the walk of what it runs meets,
   /// in the order of its code, itself or through a call of another such
-  /// function. Every function is walked once; what the calls reach is then
-  /// passed on until nothing changes, so of functions that call each other
-  /// each reaches a side effect when any of them meets one. It ends: what a
-  /// function reaches only ever comes from an earlier meet of its walk.
+  /// function. Every function is walked once.
+  ///
+  /// Functions that call each other, around a ring, form a strongly connected
+  /// component (Tarjan's algorithm), and all of them reach one side effect:
+  /// the first that a walk from the member entered first meets, itself or
+  /// through a call out of the ring, going into each member once, where it is
+  /// called. A component is done after every component its calls lead to, so
+  /// what those reach is known by then.
   Map<Element, _Reached> _reachAll() {
     final meets = {
       for (final MapEntry(key: function, value: runs) in _runs.entries)
         if (!_graphFunctions.contains(function)) function: _meets(runs),
     };
     final reached = <Element, _Reached>{};
-    for (var changed = true; changed;) {
-      changed = false;
-      for (final MapEntry(key: function, value: met) in meets.entries) {
-        _Reached? first;
-        for (final (:sideEffect, :call) in met) {
-          first = sideEffect ?? reached[call];
-          if (first != null) break;
-        }
-        if (first != null && first != reached[function]) {
-          reached[function] = first;
-          changed = true;
+    final order = <Element, int>{};
+    final low = <Element, int>{};
+    final stack = <Element>[];
+    final onStack = <Element>{};
+
+    /// The first side effect a walk from [function] through [component]
+    /// meets: one of a member, or what a call out of the component reaches. A
+    /// call of a member not in [met] yet goes into it, where it is.
+    _Reached? walk(Element function, Set<Element> component, Set<Element> met) {
+      met.add(function);
+      for (final (:sideEffect, :call) in meets[function]!) {
+        if (sideEffect != null) return sideEffect;
+        if (!component.contains(call)) {
+          if (reached[call] case final found?) return found;
+        } else if (!met.contains(call)) {
+          if (walk(call!, component, met) case final found?) return found;
         }
       }
+      return null;
+    }
+
+    /// Enters [function] and the functions it calls, by Tarjan's algorithm.
+    /// When [function] is the first member of its component entered, the
+    /// component is done: all of it reaches what a walk from [function] meets.
+    void enter(Element function) {
+      final entered = order.length;
+      order[function] = entered;
+      low[function] = entered;
+      stack.add(function);
+      onStack.add(function);
+      for (final (sideEffect: _, :call) in meets[function]!) {
+        if (call == null) continue;
+        if (!order.containsKey(call)) {
+          enter(call);
+          low[function] = min(low[function]!, low[call]!);
+        } else if (onStack.contains(call)) {
+          low[function] = min(low[function]!, order[call]!);
+        }
+      }
+      if (low[function] != order[function]) return;
+      final component = <Element>{};
+      Element member;
+      do {
+        member = stack.removeLast();
+        onStack.remove(member);
+        component.add(member);
+      } while (member != function);
+      if (walk(function, component, {}) case final first?) {
+        for (final member in component) {
+          reached[member] = first;
+        }
+      }
+    }
+
+    for (final function in meets.keys) {
+      if (!order.containsKey(function)) enter(function);
     }
     return reached;
   }
@@ -271,7 +320,7 @@ final class _Check {
 /// constructors of `Random` of `dart:math`) and every function, method,
 /// constructor, getter and setter of `dart:io` are side effects, but for
 /// `stdout` and `stderr`, which are logs, and for values that touch nothing:
-/// constants (enum values too) and exceptions.
+/// constants (enum values too), exceptions and their members.
 ///
 /// `dart:io` declares what it exports about HTTP in `dart:_http`, which only
 /// `dart:io` exports.
@@ -299,16 +348,24 @@ _Kind _kindOf(Element? element) {
 }
 
 /// Whether [element] gives a value that touches nothing: it reads a constant
-/// (an enum value is one), or makes an exception or an error — a class with
-/// `Exception` or `Error` of `dart:core` among its supertypes.
+/// (an enum value is one), or makes an exception or an error, or is an
+/// instance member of one — of a class with `Exception` or `Error` of
+/// `dart:core` among its supertypes.
 bool _isValue(ExecutableElement element) => switch (element) {
-  PropertyAccessorElement(:final variable) => variable.isConst,
-  ConstructorElement(:final enclosingElement) =>
-    enclosingElement.allSupertypes.any(
-      (supertype) =>
-          (supertype.element.name == 'Exception' ||
-              supertype.element.name == 'Error') &&
-          supertype.element.library.uri.toString() == 'dart:core',
-    ),
+  PropertyAccessorElement(variable: PropertyInducingElement(isConst: true)) =>
+    true,
+  ConstructorElement(:final enclosingElement) => _isException(enclosingElement),
+  ExecutableElement(
+    isStatic: false,
+    enclosingElement: final InterfaceElement type,
+  ) =>
+    _isException(type),
   _ => false,
 };
+
+bool _isException(InterfaceElement type) => type.allSupertypes.any(
+  (supertype) =>
+      (supertype.element.name == 'Exception' ||
+          supertype.element.name == 'Error') &&
+      supertype.element.library.uri.toString() == 'dart:core',
+);

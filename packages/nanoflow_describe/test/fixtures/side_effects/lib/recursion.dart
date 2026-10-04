@@ -1,6 +1,6 @@
 // Functions that call themselves or each other: one that does no side effect
-// warns nothing, and the walk through it ends; ones that call each other reach
-// the side effect either of them meets, whichever a workflow calls first.
+// warns nothing; functions in a ring, of two or of three, all reach the first
+// side effect a walk from the first of them meets.
 import 'package:nanoflow/nanoflow.dart';
 
 Future<void> count(Flow f, int n) async {
@@ -31,3 +31,43 @@ void ping(int n) {
 void pong(int n) {
   if (n > 0) ping(n - 1);
 }
+
+Future<void> play(Flow f, int n) async {
+  rock(n);
+  scissors(n);
+  await f.effect('play', () => n);
+}
+
+/// Calls [paper], then reads the time.
+void rock(int n) {
+  if (n > 0) paper(n - 1);
+  print(DateTime.now());
+}
+
+/// Calls [scissors], then reads the time stamp.
+void paper(int n) {
+  if (n > 0) scissors(n - 1);
+  print(DateTime.timestamp());
+}
+
+/// Calls [rock]: the ring closes.
+void scissors(int n) {
+  if (n > 0) rock(n - 1);
+}
+
+Future<void> nest(Flow f, int n) async {
+  outer(n);
+  await f.effect('nest', () => n);
+}
+
+/// Calls [middle], and nothing else.
+void outer(int n) => middle(n);
+
+/// Calls [inner], which reads the time, then reads the time stamp.
+void middle(int n) {
+  inner(n);
+  print(DateTime.timestamp());
+}
+
+/// Reads the time.
+void inner(int n) => print(DateTime.now());

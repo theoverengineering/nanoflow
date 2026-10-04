@@ -1,5 +1,5 @@
-// Values of dart:io that touch nothing — constants, enum values, exceptions —
-// warn nowhere; a static final value is not a constant.
+// Values of dart:io that touch nothing — constants, enum values, exceptions
+// and their members — warn nowhere; a static final value is not a constant.
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
@@ -11,5 +11,11 @@ Future<void> values(Flow f, String url) async {
   print(FileMode.append);
   print(HttpClientResponseCompressionState.notCompressed);
   print(ContentType.json);
+  try {
+    await f.effect('parse', () => url);
+  } on HttpException catch (e) {
+    print(e.message);
+  }
+  print(SocketException('refused').osError);
   await f.effect('done', () => url);
 }

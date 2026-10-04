@@ -50,8 +50,8 @@ void main() {
     ]);
   });
 
-  test('lets constants, enum values and exceptions of dart:io be anywhere, '
-      'but not a static final value', () {
+  test('lets constants, enum values, exceptions and their members of dart:io '
+      'be anywhere, but not a static final value', () {
     expect(sideEffectsIn('values.dart'), [
       '13: side effect outside an effect: ContentType.json',
     ]);
@@ -100,16 +100,22 @@ void main() {
     expect(sideEffectsIn('logs.dart'), isEmpty);
   });
 
-  test(
-    'walks functions that call themselves or each other, and finds the '
-    'side effect one reaches through the other whichever is called first',
-    () {
-      expect(sideEffectsIn('recursion.dart'), [
-        '15: side effect outside an effect: ping(n) reaches DateTime.now() at '
-            'lib/recursion.dart:27',
-        '20: side effect outside an effect: pong(n) reaches DateTime.now() at '
-            'lib/recursion.dart:27',
-      ]);
-    },
-  );
+  test('walks functions that call themselves or each other, and gives all '
+      'the functions of a ring the first side effect a walk from the first of '
+      'them meets', () {
+    expect(sideEffectsIn('recursion.dart'), [
+      '15: side effect outside an effect: ping(n) reaches DateTime.now() at '
+          'lib/recursion.dart:27',
+      '20: side effect outside an effect: pong(n) reaches DateTime.now() at '
+          'lib/recursion.dart:27',
+      // rock → paper → scissors → rock: paper's time stamp comes first.
+      '36: side effect outside an effect: rock(n) reaches '
+          'DateTime.timestamp() at lib/recursion.dart:50',
+      '37: side effect outside an effect: scissors(n) reaches '
+          'DateTime.timestamp() at lib/recursion.dart:50',
+      // middle reaches inner's time before its own time stamp.
+      '59: side effect outside an effect: outer(n) reaches DateTime.now() at '
+          'lib/recursion.dart:73',
+    ]);
+  });
 }

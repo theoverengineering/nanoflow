@@ -25,6 +25,8 @@ Future<void> main(List<String> args) async {
   await flow.run(count, args.first.length);
   await flow.run(serve, args.first.length);
   await flow.run(volley, args.first.length);
+  await flow.run(play, args.first.length);
+  await flow.run(nest, args.first.length);
   await flow.run(tearOffs, args);
   await flow.run(values, args.first);
 }
