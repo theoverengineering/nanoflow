@@ -1,5 +1,5 @@
 // Codecs (spec §4.4, decision D9): how the values a session keeps — the
-// input of a workflow, its result and the result of each step — become JSON,
+// input of a workflow, its result and the result of each effect — become JSON,
 // and come back from it as values of the types the code declares.
 //
 // A value becomes JSON through `jsonEncode`, which calls the `toJson` of a

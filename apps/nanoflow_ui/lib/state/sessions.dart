@@ -18,8 +18,8 @@ final class SessionSummary {
     required this.status,
     required this.interrupted,
     required this.duration,
-    required this.steps,
-    required this.failedSteps,
+    required this.effects,
+    required this.failedEffects,
     required this.firstLine,
     required this.code,
     required this.changedOnResume,
@@ -46,11 +46,11 @@ final class SessionSummary {
   /// to now — but for an [interrupted] one, to its last event.
   final Duration duration;
 
-  /// How many steps the session has started.
-  final int steps;
+  /// How many effects the session has started.
+  final int effects;
 
   /// How many of them failed the last time they ran.
-  final int failedSteps;
+  final int failedEffects;
 
   /// The day and time the session started: `Today · 14:03:11`.
   final String firstLine;
@@ -60,7 +60,7 @@ final class SessionSummary {
   final CodeCheck? code;
 
   /// Whether a resume of the session ran on code other than the code it
-  /// started on (decision 7): its steps before that ran on other code. Both
+  /// started on (decision 7): its effects before that ran on other code. Both
   /// hashes must be known.
   final bool changedOnResume;
 
@@ -109,14 +109,15 @@ final class SessionSummary {
   /// session; `null` for any other.
   String? get statusWhy => interrupted ? interruptedWhy : null;
 
-  /// `1 failed` next to the status of a running session with failed steps:
+  /// `1 failed` next to the status of a running session with failed effects:
   /// the workflow caught what they threw, or has not yet.
-  String? get failedBadge => status == SessionStatus.running && failedSteps > 0
-      ? '$failedSteps failed'
+  String? get failedBadge =>
+      status == SessionStatus.running && failedEffects > 0
+      ? '$failedEffects failed'
       : null;
 
-  /// `1 step`, `8 steps`.
-  String get stepsText => count(steps, 'step');
+  /// `1 effect`, `8 effects`.
+  String get effectsText => count(effects, 'effect');
 
   /// `started 14:03:11`, on the strip over the canvas.
   String get startedText => 'started ${clockTime(startedAt)}';
@@ -149,9 +150,9 @@ SessionSummary? summarize(
     status: state.status,
     interrupted: session.interrupted,
     duration: (state.finishedAt ?? session.timeAt(now)).difference(start),
-    steps: state.steps.length,
-    failedSteps: state.steps
-        .where((step) => step.status == StepStatus.failed)
+    effects: state.effects.length,
+    failedEffects: state.effects
+        .where((effect) => effect.status == EffectStatus.failed)
         .length,
     firstLine: dayAndTime(start, now),
     code: code,

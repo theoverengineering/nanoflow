@@ -79,18 +79,18 @@ abstract final class AppColors {
   /// the amber of running.
   static const interrupted = textMuted;
 
-  /// The selected step's row: its left bar, its name.
+  /// The selected effect's row: its left bar, its name.
   static const accentLine = Color(0xFF9C8CFF);
   static const selectedText = Color(0xFFF7F3EA);
 
-  /// The open tab of the step details.
+  /// The open tab of the effect details.
   static const selectedTab = Color(0xFF34353A);
 
   /// A log or a document: the area it is shown in, its text.
   static const textArea = Color(0xFF1A1B1E);
   static const textAreaText = Color(0xFFC9CACF);
 
-  // The step details window (docs/design/step-details.html).
+  // The effect details window (docs/design/step-details.html).
 
   /// Round the window, and its `Output` column.
   static const backdrop = Color(0xFF1C1D20);
@@ -99,7 +99,7 @@ abstract final class AppColors {
   /// Under the window's top bar.
   static const topBarBorder = Color(0xFF2E2F34);
 
-  /// A place in the code, the path of a step's directory, a duration after
+  /// A place in the code, the path of an effect's directory, a duration after
   /// a time, a note, the punctuation of JSON.
   static const textSubtle = Color(0xFF9A9BA2);
 
@@ -139,8 +139,8 @@ extension SessionSummaryColors on SessionSummary {
       interrupted ? AppColors.interrupted : status.textColor;
 }
 
-/// The colors a step's state — how its last start stands — is shown in: its
-/// sign and its bar in `Logs`, the frame of its icon in the step details
+/// The colors an effect's state — how its last start stands — is shown in: its
+/// sign and its bar in `Logs`, the frame of its icon in the effect details
 /// window.
 extension StartOutcomeColors on StartOutcome {
   Color get color => switch (this) {
@@ -255,7 +255,7 @@ abstract final class AppText {
   );
   static final sessionId = _style(mono, 11);
   static final sessionStatus = _style(sans, 12);
-  static final sessionSteps = _style(sans, 11.5, color: AppColors.textMuted);
+  static final sessionEffects = _style(sans, 11.5, color: AppColors.textMuted);
 
   /// `1 failed`, `2 errors`.
   static final smallBadge = _style(sans, 10.5);
@@ -285,23 +285,23 @@ abstract final class AppText {
     fontWeight: FontWeight.w600,
     color: AppColors.textPrimary,
   );
-  static final logsSteps = _style(sans, 12, color: AppColors.textMuted);
+  static final logsEffects = _style(sans, 12, color: AppColors.textMuted);
 
-  /// `Step`, `Started`, `Took`; the timeline's axis.
+  /// `Effect`, `Started`, `Took`; the timeline's axis.
   static final columnTitle = _style(sans, 10.5, color: AppColors.textFaint);
   static final axisLabel = _style(mono, 9.5, color: AppColors.textFaint);
-  static final stepName = _style(sans, 12, color: AppColors.textPrimary);
+  static final effectName = _style(sans, 12, color: AppColors.textPrimary);
 
   /// A failure's error, `not on the graph`.
-  static final stepDetail = _style(mono, 10.5, color: AppColors.textMuted);
-  static final stepTime = _style(mono, 10.5, color: AppColors.textMuted);
-  static final stepTook = _style(mono, 10.5, color: AppColors.textSecondary);
+  static final effectDetail = _style(mono, 10.5, color: AppColors.textMuted);
+  static final effectTime = _style(mono, 10.5, color: AppColors.textMuted);
+  static final effectTook = _style(mono, 10.5, color: AppColors.textSecondary);
   static final startsNote = _style(sans, 10, color: AppColors.noteText);
 
-  /// `↑ 8 earlier steps`, the end of a session.
+  /// `↑ 8 earlier effects`, the end of a session.
   static final listNote = _style(sans, 10.5, color: AppColors.textMuted);
 
-  // The selected step's details.
+  // The selected effect's details.
   static final detailsTitle = _style(
     sans,
     12.5,
@@ -324,7 +324,7 @@ abstract final class AppText {
   static final filePath = _style(mono, 10.5, color: AppColors.textFaint);
   static final fileButton = _style(sans, 11, color: AppColors.textSecondary);
 
-  // The step details window.
+  // The effect details window.
   static final windowNode = _style(
     sans,
     15,
@@ -336,7 +336,7 @@ abstract final class AppText {
   static final windowCopy = _style(sans, 12, color: AppColors.textMuted);
   static final resultChip = _style(sans, 11.5);
 
-  /// `PLACE IN CODE`, `THIS STEP`, `OUTPUT`: 0.09 em apart.
+  /// `PLACE IN CODE`, `THIS EFFECT`, `OUTPUT`: 0.09 em apart.
   static final sectionLabel = _style(
     sans,
     11,
@@ -361,7 +361,7 @@ abstract final class AppText {
   static final factLabel = _style(sans, 12, color: AppColors.textMuted);
   static final factValue = _style(mono, 12, color: AppColors.textPrimary);
   static final factNote = _style(sans, 11.5, color: AppColors.textSubtle);
-  static final stepPath = _style(mono, 10.5, color: AppColors.textSubtle);
+  static final effectPath = _style(mono, 10.5, color: AppColors.textSubtle);
   static final outputTab = _style(sans, 12, color: AppColors.textMuted);
 }
 

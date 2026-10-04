@@ -96,8 +96,8 @@ void main() {
       expect(_chips(tester), containsAll(['true', 'false']));
     });
 
-    testWidgets('draws a call as a stack with its steps counted, copies as '
-        'one with the steps of a copy and ×n', (tester) async {
+    testWidgets('draws a call as a stack with its effects counted, copies as '
+        'one with the effects of a copy and ×n', (tester) async {
       await pumpCanvas(tester, modelOf());
       expect(find.text('publish()'), findsOneWidget);
       expect(find.text('{ 3 }'), findsOneWidget);
@@ -396,7 +396,7 @@ void main() {
       final (scale, offset) = (controller.scale, controller.offset);
 
       final session = Journal('a1b2-session', graph: review().toJson())
-        ..step('collect', 1);
+        ..effect('collect', 1);
       session.changes.forEach(more.add);
       await settle(tester);
       expect(model.selection.sessionId, 'a1b2-session');
@@ -450,16 +450,16 @@ void main() {
     expect(tester.widget<Legend>(find.byType(Legend)).backEdges, Tone.plain);
   });
 
-  group('the selected step\'s node', () {
+  group('the selected effect\'s node', () {
     /// A session of the release fixture whose `plan` runs: its node, `1`,
-    /// is the selected step's.
+    /// is the selected effect's.
     GraphModel planRunning() {
       final release = graphFileNamed('release');
       final j = Journal(
         'r1r1-session',
         workflow: 'release',
         graph: release.toJson(),
-      )..step('plan', 1, place: 'lib/release.dart:16');
+      )..effect('plan', 1, place: 'lib/release.dart:16');
       return modelOf(graph: release, changes: j.changes);
     }
 
@@ -542,7 +542,7 @@ void main() {
           Journal(
             'bad1-session',
             workflow: 'release',
-            graph: const {'format': 1},
+            graph: const {'format': 2},
           ),
         ]),
       ),

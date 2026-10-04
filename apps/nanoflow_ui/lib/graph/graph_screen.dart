@@ -2,17 +2,17 @@ import 'dart:math' as math;
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show GraphNode, StepNode;
+import 'package:nanoflow_model/nanoflow_model.dart' show GraphNode, EffectNode;
 
 import '../platform/shell.dart';
 import '../state/body_path.dart';
 import '../state/clock.dart';
+import '../state/effect_details.dart';
 import '../state/graph_model.dart';
-import '../state/step_details.dart';
 import '../state/visits.dart';
 import '../theme.dart';
 import 'canvas/graph_canvas.dart';
-import 'details/step_details_window.dart';
+import 'details/effect_details_window.dart';
 import 'graph_notes.dart';
 import 'header.dart';
 import 'logs/logs_panel.dart';
@@ -35,12 +35,12 @@ typedef OpenModel = GraphModel Function(String file);
 /// in a frame (decision 6), the same way; the model keeps what is expanded
 /// for any session of the workflow.
 ///
-/// `Open` in `Logs` opens the step details window over it all on the
-/// selected step; a double click on a step node, on the node's last step
-/// among those shown, else on the node alone. The step the window shows is
+/// `Open` in `Logs` opens the effect details window over it all on the
+/// selected effect; a double click on an effect node, on the node's last effect
+/// among those shown, else on the node alone. The effect the window shows is
 /// selected, so the canvas and `Logs` are on it once the window closes —
-/// or, when it is the session's last step, on its newest: following goes
-/// on under the window, which stays on its step.
+/// or, when it is the session's last effect, on its newest: following goes
+/// on under the window, which stays on its effect.
 ///
 /// The screen owns the [GraphModel] of its file: it opens it as it opens,
 /// and disposes it, with what follows the files, when it is left or the
@@ -90,9 +90,9 @@ class _GraphScreenState extends State<GraphScreen> {
   /// Whether the `Logs` panel is folded to its title.
   bool _logsFolded = false;
 
-  /// What the step details window shows, while it is open: a step, or a
-  /// step node without one.
-  ({StepNode? node, String? stepId})? _details;
+  /// What the effect details window shows, while it is open: an effect, or an
+  /// effect node without one.
+  ({EffectNode? node, String? effectId})? _details;
 
   /// Where the session bar and the notes float over the canvas: clear of
   /// the zoom buttons at the bottom.
@@ -186,23 +186,23 @@ class _GraphScreenState extends State<GraphScreen> {
     return Opened(node.id, functionId: functionId);
   }
 
-  /// `Open` in `Logs`: the window on the selected [step].
-  void _openStep(StepDetails step) =>
-      setState(() => _details = (node: null, stepId: step.stepId));
+  /// `Open` in `Logs`: the window on the selected [effect].
+  void _openEffect(EffectDetails effect) =>
+      setState(() => _details = (node: null, effectId: effect.effectId));
 
-  /// A double click on the step node [node] — of the frame drawn in place
-  /// at [path], when given: the window on the step it opens on, which is
+  /// A double click on the effect node [node] — of the frame drawn in place
+  /// at [path], when given: the window on the effect it opens on, which is
   /// selected; on the node alone when it has none.
-  void _openStepNode(StepNode node, List<Opened>? path) {
+  void _openEffectNode(EffectNode node, List<Opened>? path) {
     final visit = _model.visitToOpen(node, path: path);
-    if (visit != null) _model.showVisit(visit.stepId);
-    setState(() => _details = (node: node, stepId: visit?.stepId));
+    if (visit != null) _model.showVisit(visit.effectId);
+    setState(() => _details = (node: node, effectId: visit?.effectId));
   }
 
   /// Shows [visit] in the window, and selects it.
   void _showVisit(Visit visit) {
-    _model.showVisit(visit.stepId);
-    setState(() => _details = (node: _details?.node, stepId: visit.stepId));
+    _model.showVisit(visit.effectId);
+    setState(() => _details = (node: _details?.node, effectId: visit.effectId));
   }
 
   void _closeDetails() => setState(() => _details = null);
@@ -224,13 +224,13 @@ class _GraphScreenState extends State<GraphScreen> {
           Positioned.fill(child: _screen()),
           if (details != null)
             Positioned.fill(
-              child: StepDetailsWindow(
+              child: EffectDetailsWindow(
                 model: _model,
                 clock: _clock,
                 shell: widget.shell,
                 graphFile: widget.path,
                 node: details.node,
-                stepId: details.stepId,
+                effectId: details.effectId,
                 onVisit: _showVisit,
                 onClose: _closeDetails,
               ),
@@ -285,7 +285,7 @@ class _GraphScreenState extends State<GraphScreen> {
               collapsed: _logsFolded,
               onToggle: () => setState(() => _logsFolded = !_logsFolded),
               onRevealNode: _canvas.revealNode,
-              onOpenStep: _openStep,
+              onOpenEffect: _openEffect,
             ),
           ),
         ),
@@ -307,7 +307,7 @@ class _GraphScreenState extends State<GraphScreen> {
             now: _clock.now,
             controller: _canvas,
             onOpenNode: _openNode,
-            onOpenStep: _openStepNode,
+            onOpenEffect: _openEffectNode,
             onExpandNode: _expandNode,
             topInset: _notesHeight == 0
                 ? GraphCanvas.sessionBarRoom

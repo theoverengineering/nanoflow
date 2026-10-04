@@ -1,5 +1,5 @@
 name: nanoflow
-description: Runs nanoflow workflows, ordinary Dart functions, in the process of the app, with a journal per call that finds finished steps again.
+description: Runs nanoflow workflows, ordinary Dart functions, in the process of the app, with a journal per call that finds finished effects again.
 publish_to: none
 resolution: workspace
 environment:

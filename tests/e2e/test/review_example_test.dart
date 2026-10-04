@@ -88,21 +88,27 @@ Future<void> expectReviewed(
   expect(state.codes, [code]);
   expect(await session.documentValue(state.outputId!), isNull);
 
-  final steps = await session.steps();
+  final effects = await session.effects();
   expect(
-    [for (final step in steps) step.name],
+    [for (final effect in effects) effect.name],
     ['collect', 'inspect', 'fix', 'inspect', 'publish', 'notify'],
   );
   expect(
-    [for (final step in state.steps) (step.stepId, step.status, step.starts)],
+    [
+      for (final effect in state.effects)
+        (effect.effectId, effect.status, effect.starts),
+    ],
     unorderedEquals([
-      for (final step in steps) (step.id, StepStatus.finished, 1),
+      for (final effect in effects) (effect.id, EffectStatus.finished, 1),
     ]),
   );
   const before = {'id': 'parseConfig', 'path': 'lib/parseConfig.dart'};
   const after = {'id': 'parseConfig', 'path': 'lib/parse_config.dart'};
   expect(
-    [for (final step in steps) await session.documentValue(step.outputId!)],
+    [
+      for (final effect in effects)
+        await session.documentValue(effect.outputId!),
+    ],
     [
       before,
       {
@@ -116,7 +122,7 @@ Future<void> expectReviewed(
     ],
   );
   expect(
-    [for (final step in steps) logOf(session, step)],
+    [for (final effect in effects) logOf(session, effect)],
     [
       null,
       null,
@@ -127,15 +133,15 @@ Future<void> expectReviewed(
     ],
   );
 
-  // Each step is where its node is in the graph.
+  // Each effect is where its node is in the graph.
   final function = (graph['functions']! as Map)[reviewId] as Map;
   final nodes = ((function['body']! as Map)['nodes']! as List)
       .cast<Map<String, Object?>>();
-  for (final step in steps) {
+  for (final effect in effects) {
     expect(
-      step.place,
-      nodes.singleWhere((node) => node['name'] == step.name)['place'],
-      reason: step.name,
+      effect.place,
+      nodes.singleWhere((node) => node['name'] == effect.name)['place'],
+      reason: effect.name,
     );
   }
 }
@@ -175,11 +181,11 @@ void main() {
     expect(graph['package'], 'review_example');
     expect(graph['workflows'], [reviewId]);
     expect(graph['warnings'], isEmpty);
-    Map<String, Object?> step(String id, String name) => {
+    Map<String, Object?> effect(String id, String name) => {
       'id': id,
-      'kind': 'step',
+      'kind': 'effect',
       'name': name,
-      'place': placeOf("f.step('$name'"),
+      'place': placeOf("f.effect('$name'"),
     };
     Map<String, Object?> fork(String id, String label) => {
       'id': id,
@@ -198,14 +204,14 @@ void main() {
         'place': placeOf('Future<void> review('),
         'body': {
           'nodes': [
-            step('1', 'collect'),
+            effect('1', 'collect'),
             fork('2', 'change.path.isEmpty'),
-            step('3', 'discard'),
-            step('4', 'inspect'),
+            effect('3', 'discard'),
+            effect('4', 'inspect'),
             fork('5', 'report.findings.isEmpty'),
-            step('6', 'publish'),
-            step('7', 'notify'),
-            step('8', 'fix'),
+            effect('6', 'publish'),
+            effect('7', 'notify'),
+            effect('8', 'fix'),
           ],
           'edges': [
             edge(null, '1'),
@@ -320,9 +326,9 @@ void main() {
       final stopped = await sessionIn(build, id);
       expect(await eventNames(stopped), [
         'session-started',
-        'step-started',
-        'step-finished',
-        'step-started',
+        'effect-started',
+        'effect-finished',
+        'effect-started',
       ]);
 
       final resumed = await run(binary, ['--resume', id]);
@@ -331,19 +337,19 @@ void main() {
       final state = replaySession(await session.events());
       expect(state.status, SessionStatus.finished);
       expect(state.codes, [binaryHash(), binaryHash()]);
-      final steps = await session.steps();
+      final effects = await session.effects();
       expect(
-        [for (final step in steps) step.name],
+        [for (final effect in effects) effect.name],
         ['collect', 'inspect', 'fix', 'inspect', 'publish', 'notify'],
       );
       // The stopped inspect ran again in its record.
       expect(
-        {for (final step in state.steps) step.stepId: step.starts},
-        {for (final (i, step) in steps.indexed) step.id: i == 1 ? 2 : 1},
+        {for (final effect in state.effects) effect.effectId: effect.starts},
+        {for (final (i, effect) in effects.indexed) effect.id: i == 1 ? 2 : 1},
       );
     });
 
-    test('killed with SIGKILL in a step: the reader tells the owner of its '
+    test('killed with SIGKILL in an effect: the reader tells the owner of its '
         'session gone within 5 s; --resume tells the new owner alive, then '
         'session-finished, and nothing of the owner after it', () async {
       final check = HeldCheck();

@@ -60,9 +60,9 @@ void main() {
 
   /// Sessions of both workflows: review a1b2 and the newer release c3d4.
   List<Change> twoWorkflows() => changesOf([
-    Journal('a1b2-session')..step('collect', 1),
+    Journal('a1b2-session')..effect('collect', 1),
     Journal('c3d4-session', workflow: 'release', startedAt: 10)
-      ..step('plan', 11),
+      ..effect('plan', 11),
   ]);
 
   group('the workflows', () {
@@ -310,7 +310,7 @@ void main() {
           model.canvas.body,
           release.functions['lib/publish.dart#publish']!.body,
         );
-        // Nothing opens from a step: the levels stay.
+        // Nothing opens from an effect: the levels stay.
         model.open(const Opened('1'));
         expect(titles(), ['release', 'publish()']);
 
@@ -395,7 +395,7 @@ void main() {
         ..resume(10, graphId: 'snapshot', code: 'sha256:resumed');
       documents['snapshot'] = graphFileJson(
         fingerprint: 'sha256:resumed',
-        reviewStep: 'gather',
+        reviewEffect: 'gather',
       );
       give(async, changesOf([other, shown]));
       expect(read, isEmpty);
@@ -406,7 +406,7 @@ void main() {
       final graph = model.sessionView(at(746))!.graph;
       expect(
         graph.graph,
-        reviewGraphFile(fingerprint: 'sha256:resumed', reviewStep: 'gather'),
+        reviewGraphFile(fingerprint: 'sha256:resumed', reviewEffect: 'gather'),
       );
       expect(graph.code, CodeCheck.matches);
       expect(model.canvas.file, graph.graph);
@@ -467,8 +467,8 @@ void main() {
   test('computes what it shows once per change and second', () {
     run((async) {
       final session = Journal('a1b2-session')
-        ..step('collect', 1, end: 149)
-        ..step('inspect', 150);
+        ..effect('collect', 1, end: 149)
+        ..effect('inspect', 150);
       give(async, session.changes);
       final now = at(746);
       final view = model.sessionView(now);
@@ -484,23 +484,23 @@ void main() {
       expect(model.sessions(nextSecond), isNot(same(sessions)));
 
       final again = model.sessionView(nextSecond);
-      model.selectStep('a1b2-collect-0');
+      model.selectEffect('a1b2-collect-0');
       expect(model.sessionView(nextSecond), isNot(same(again)));
-      expect(model.sessionView(nextSecond)!.stepId, 'a1b2-collect-0');
+      expect(model.sessionView(nextSecond)!.effectId, 'a1b2-collect-0');
     });
   });
 
-  test('follows a running session as its new steps come', () {
+  test('follows a running session as its new effects come', () {
     run((async) {
-      final session = Journal('a1b2-session')..step('collect', 1);
+      final session = Journal('a1b2-session')..effect('collect', 1);
       give(async, session.changes);
-      expect(model.selection.stepId, 'a1b2-collect-0');
-      final next = session.step('inspect', 700);
+      expect(model.selection.effectId, 'a1b2-collect-0');
+      final next = session.effect('inspect', 700);
       give(async, [
-        StepAdded(session.steps.last),
+        EffectAdded(session.effects.last),
         EventAdded(sessionId: session.id, event: session.events.last),
       ]);
-      expect(model.selection.stepId, next);
+      expect(model.selection.effectId, next);
     });
   });
 
@@ -681,7 +681,7 @@ void main() {
           warnings: [
             {
               'place': 'lib/review.dart:40',
-              'message': 'steps in a closure passed on are not drawn',
+              'message': 'effects in a closure passed on are not drawn',
             },
             {'place': null, 'message': 'a catch is not drawn'},
           ],
@@ -692,7 +692,7 @@ void main() {
         const GraphNote(
           '2 warnings in nanoflow.graph.json',
           lines: [
-            'lib/review.dart:40  steps in a closure passed on are not drawn',
+            'lib/review.dart:40  effects in a closure passed on are not drawn',
             'a catch is not drawn',
           ],
         ),
@@ -757,44 +757,44 @@ void main() {
       expect(canvas.placeholder, noWorkflowNamed('deploy'));
     });
 
-    test('lists the steps that are not on the graph: at no step node, or '
-        'without a place (spec §9 «Шаги на графе»)', () {
+    test('lists the effects that are not on the graph: at no effect node, or '
+        'without a place (spec §9 «Эффекты на графе»)', () {
       final session = Journal('a1b2-session')
-        ..step('collect', 1, end: 2, place: 'lib/review.dart:22')
-        ..step('gather', 2, end: 3, place: 'lib/review.dart:30')
-        ..step('loose', 3);
+        ..effect('collect', 1, end: 2, place: 'lib/review.dart:22')
+        ..effect('gather', 2, end: 3, place: 'lib/review.dart:30')
+        ..effect('loose', 3);
       expect(sessionCanvas(session.data, graphOf(session)).notes, [
         const GraphNote(
-          '2 steps not on the graph',
+          '2 effects not on the graph',
           lines: ['gather  lib/review.dart:30', 'loose  no place'],
           text: notOnGraphDetail,
         ),
       ]);
     });
 
-    test('lists five steps not on the graph, and says how many more', () {
+    test('lists five effects not on the graph, and says how many more', () {
       final session = Journal('a1b2-session');
       for (var i = 0; i < 7; i++) {
-        session.step('gather', i, end: i + 1, place: 'lib/old.dart:$i');
+        session.effect('gather', i, end: i + 1, place: 'lib/old.dart:$i');
       }
       final note = sessionCanvas(session.data, graphOf(session)).notes.single;
-      expect(note.title, '7 steps not on the graph');
+      expect(note.title, '7 effects not on the graph');
       expect(note.lines, [
         for (var i = 0; i < 5; i++) 'gather  lib/old.dart:$i',
         'and 2 more',
       ]);
     });
 
-    test('says nothing of steps not on the graph while the graph has no '
+    test('says nothing of effects not on the graph while the graph has no '
         'workflow to put them on', () {
       final session = Journal('a1b2-session', workflow: 'deploy')
-        ..step('loose', 1, end: 2, place: 'lib/deploy.dart:3');
+        ..effect('loose', 1, end: 2, place: 'lib/deploy.dart:3');
       final canvas = sessionCanvas(session.data, graphOf(session));
       expect(canvas.placeholder, noWorkflowNamed('deploy'));
       expect(canvas.notes, isEmpty);
     });
 
-    test('has the step nodes of its workflow', () {
+    test('has the effect nodes of its workflow', () {
       final session = Journal('a1b2-session');
       final canvas = sessionCanvas(session.data, graphOf(session));
       expect(
@@ -808,11 +808,18 @@ void main() {
     /// inPlace over core and tool: core done, tool on verify.
     List<Change> copies() => changesOf([
       Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
-        ..step('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
-        ..step('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
-        ..step('upload', 3, end: 5, place: copiesAt(7), key: 'ut', after: 'p')
-        ..step('verify', 6, end: 7, place: copiesAt(8), key: 'vc', after: 'uc')
-        ..step('verify', 8, place: copiesAt(8), key: 'vt', after: 'ut'),
+        ..effect('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
+        ..effect('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
+        ..effect('upload', 3, end: 5, place: copiesAt(7), key: 'ut', after: 'p')
+        ..effect(
+          'verify',
+          6,
+          end: 7,
+          place: copiesAt(8),
+          key: 'vc',
+          after: 'uc',
+        )
+        ..effect('verify', 8, place: copiesAt(8), key: 'vt', after: 'ut'),
     ]);
 
     void open(FakeAsync async) {
@@ -827,53 +834,54 @@ void main() {
         final view = model.sessionView(at(746))!;
         expect(view.frames.single.copies, hasLength(2));
         expect(view.frames.single.selected, isNull);
-        expect(view.logs.header.text, '5 steps');
+        expect(view.logs.header.text, '5 effects');
       });
     });
 
-    test('a chosen copy shows its steps, its last selected', () {
+    test('a chosen copy shows its effects, its last selected', () {
       run((async) {
         open(async);
         final tool = model.sessionView(at(746))!.frames.single.copies[1];
         model.selectCopy(1, tool.id);
         final view = model.sessionView(at(746))!;
         expect(view.frames.single.selected!.number, 2);
-        expect(view.logs.header.text, 'pkg 2 · 2 steps');
-        expect(model.selection.stepId, 'a1b2-verify-4');
+        expect(view.logs.header.text, 'pkg 2 · 2 effects');
+        expect(model.selection.effectId, 'a1b2-verify-4');
         model.selectCopy(1, null);
         expect(model.sessionView(at(746))!.frames.single.selected, isNull);
       });
     });
 
-    test('a chosen copy is followed: its new steps are selected, those of '
+    test('a chosen copy is followed: its new effects are selected, those of '
         'other copies are not', () {
       run((async) {
         open(async);
         final tool = model.sessionView(at(746))!.frames.single.copies[1];
         model.selectCopy(1, tool.id);
         expect(model.selection.following, isTrue);
-        StepAdded record(String name, String key, String after) => StepAdded(
-          Step(
-            id: 'a1b2-$name-$key',
-            sessionId: 'a1b2-session',
-            name: name,
-            key: key,
-            after: after,
-            place: copiesAt(name == 'tag' ? 9 : 8),
-            outputId: null,
-            log: logFileName,
-          ),
-        );
-        EventAdded started(String stepId, num time) => EventAdded(
+        EffectAdded record(String name, String key, String after) =>
+            EffectAdded(
+              Effect(
+                id: 'a1b2-$name-$key',
+                sessionId: 'a1b2-session',
+                name: name,
+                key: key,
+                after: after,
+                place: copiesAt(name == 'tag' ? 9 : 8),
+                outputId: null,
+                log: logFileName,
+              ),
+            );
+        EventAdded started(String effectId, num time) => EventAdded(
           sessionId: 'a1b2-session',
-          event: StepStarted(time: at(time), stepId: stepId),
+          event: EffectStarted(time: at(time), effectId: effectId),
         );
         // Core's tag: another copy.
         give(async, [record('tag', 'tc', 'vc'), started('a1b2-tag-tc', 20)]);
-        expect(model.selection.stepId, 'a1b2-verify-4');
+        expect(model.selection.effectId, 'a1b2-verify-4');
         // Tool's tag: the copy chosen.
         give(async, [record('tag', 'tt', 'vt'), started('a1b2-tag-tt', 21)]);
-        expect(model.selection.stepId, 'a1b2-tag-tt');
+        expect(model.selection.effectId, 'a1b2-tag-tt');
       });
     });
 
@@ -899,22 +907,22 @@ void main() {
       });
     });
 
-    test('a click on a node selects its last step among those shown; on '
+    test('a click on a node selects its last effect among those shown; on '
         'a node without one, nothing', () {
       run((async) {
         open(async);
         model.clickNode('1');
-        expect(model.selection.stepId, 'a1b2-upload-2');
+        expect(model.selection.effectId, 'a1b2-upload-2');
         model.clickNode('3');
-        expect(model.selection.stepId, 'a1b2-upload-2');
+        expect(model.selection.effectId, 'a1b2-upload-2');
       });
     });
 
-    test('a double click on a step node opens its last step', () {
+    test('a double click on an effect node opens its last effect', () {
       run((async) {
         open(async);
-        final verify = model.canvas.body!.node('2')! as StepNode;
-        expect(model.visitToOpen(verify)!.stepId, 'a1b2-verify-4');
+        final verify = model.canvas.body!.node('2')! as EffectNode;
+        expect(model.visitToOpen(verify)!.effectId, 'a1b2-verify-4');
         final details = model.detailsOf(verify, 'a1b2-verify-3', at(746));
         expect(details.visitText, 'Visit 1 of 2');
         expect(details.copy, 'pkg 1');
@@ -997,7 +1005,7 @@ void main() {
                 workflow: 'inPlace',
                 graph: copiesGraphJson(),
               )
-              ..step(
+              ..effect(
                 'plan',
                 1,
                 end: 2,
@@ -1005,7 +1013,7 @@ void main() {
                 key: 'p',
                 after: null,
               )
-              ..step(
+              ..effect(
                 'upload',
                 3,
                 end: 4,
@@ -1013,7 +1021,7 @@ void main() {
                 key: 'uc',
                 after: 'p',
               )
-              ..step(
+              ..effect(
                 'upload',
                 3,
                 end: 5,
@@ -1021,7 +1029,7 @@ void main() {
                 key: 'ut',
                 after: 'p',
               )
-              ..step(
+              ..effect(
                 'verify',
                 6,
                 end: 7,
@@ -1029,7 +1037,7 @@ void main() {
                 key: 'vc',
                 after: 'uc',
               )
-              ..step('verify', 8, place: copiesAt(8), key: 'vt', after: 'ut'),
+              ..effect('verify', 8, place: copiesAt(8), key: 'vt', after: 'ut'),
           ]),
         );
         model.expandNode(const [], copies);
@@ -1044,41 +1052,44 @@ void main() {
           model.selectCopyAt(const [copies], tool.id);
           view = model.sessionView(at(746))!;
           expect(view.scopeOf(const [copies])!.copies!.selected!.number, 2);
-          expect(view.logs.header.text, 'pkg 2 · 2 steps');
-          expect(model.selection.stepId, 'a1b2-verify-4');
+          expect(view.logs.header.text, 'pkg 2 · 2 effects');
+          expect(model.selection.effectId, 'a1b2-verify-4');
 
           model.open(copies);
           view = model.sessionView(at(746))!;
           expect(view.frames.single.selected!.number, 2);
           model.openLevel(0);
           model.selectCopyAt(const [copies], null);
-          expect(model.sessionView(at(746))!.logs.header.text, '5 steps');
+          expect(model.sessionView(at(746))!.logs.header.text, '5 effects');
         });
       });
 
-      test('a click on a node in the frame selects its last step among '
-          'those the frame shows; a double click on a step there opens it', () {
-        run((async) {
-          open(async);
-          final core = model
-              .sessionView(at(746))!
-              .scopeOf(const [copies])!
-              .copies!
-              .copies
-              .first;
-          model.clickNode('2', path: const [copies]);
-          expect(model.selection.stepId, 'a1b2-verify-4');
-          model.selectCopyAt(const [copies], core.id);
-          model.clickNode('2', path: const [copies]);
-          expect(model.selection.stepId, 'a1b2-verify-3');
-          final verify =
-              model.canvas.frames.single.level.body.node('2')! as StepNode;
-          expect(
-            model.visitToOpen(verify, path: const [copies])!.stepId,
-            'a1b2-verify-3',
-          );
-        });
-      });
+      test(
+        'a click on a node in the frame selects its last effect among '
+        'those the frame shows; a double click on an effect there opens it',
+        () {
+          run((async) {
+            open(async);
+            final core = model
+                .sessionView(at(746))!
+                .scopeOf(const [copies])!
+                .copies!
+                .copies
+                .first;
+            model.clickNode('2', path: const [copies]);
+            expect(model.selection.effectId, 'a1b2-verify-4');
+            model.selectCopyAt(const [copies], core.id);
+            model.clickNode('2', path: const [copies]);
+            expect(model.selection.effectId, 'a1b2-verify-3');
+            final verify =
+                model.canvas.frames.single.level.body.node('2')! as EffectNode;
+            expect(
+              model.visitToOpen(verify, path: const [copies])!.effectId,
+              'a1b2-verify-3',
+            );
+          });
+        },
+      );
 
       test('a node in a frame opens one level down from the frame', () {
         run((async) {

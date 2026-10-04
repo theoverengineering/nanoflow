@@ -21,17 +21,17 @@ final class ExecException implements Exception {
 /// The program runs in [workingDirectory], the current directory by
 /// default, with [environment] added to the environment of this process,
 /// and with an empty stdin. Its stderr goes, as it arrives, to the log of
-/// the step `exec` is called in — from the body of `f.step` or from code the
-/// body calls — and anywhere else to the stderr of this process. A program
-/// that writes to a step's log faster than the log is written waits on its
-/// pipe.
+/// the effect `exec` is called in — from the body of `f.effect` or from code
+/// the body calls — and anywhere else to the stderr of this process. A
+/// program that writes to an effect's log faster than the log is written
+/// waits on its pipe.
 ///
 /// The program runs in a process group of its own, so that it is stopped
 /// together with every process it started: SIGTERM to the group, then
 /// SIGKILL if any of it still runs 5 s later. That happens
 ///
 /// - when the session of a `Flow` that `exec` is called in — from its
-///   workflow or from one of its steps — is stopped: by `flow.stop()`, or
+///   workflow or from one of its effects — is stopped: by `flow.stop()`, or
 ///   by a failure of the session's store. `exec` then throws the
 ///   `FlowStoppedException` or the `StorageException`, and throws it at once
 ///   when called in that session again;
@@ -147,7 +147,7 @@ final class ExecScope {
 }
 
 /// Where [exec] writes the stderr of the programs it runs in a zone with
-/// [logZoneValues] of it — the zone of a step's body.
+/// [logZoneValues] of it — the zone of an effect's body.
 abstract interface class ProgramLog {
   /// Adds [bytes] to the log; gives `false` when the log takes nothing any
   /// more, and [exec] writes them to the stderr of this process instead.
@@ -167,7 +167,7 @@ Map<Object?, Object?> logZoneValues(ProgramLog log) => {_logKey: log};
 final _scopeKey = Object();
 final _logKey = Object();
 
-/// How much of a step's log may wait to be written before [exec] stops
+/// How much of an effect's log may wait to be written before [exec] stops
 /// reading the program's stderr until it is: a program that writes faster
 /// than the log is written then waits on its pipe, rather than this process
 /// holding the log in memory.
@@ -368,7 +368,7 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 /// job becomes perl first, which gives SIGPIPE back its default and then
 /// becomes the program, found on `PATH` as well: a writer whose reader has
 /// exited is killed then, as from a shell. Without perl the program starts
-/// with SIGPIPE ignored. perl would warn on stderr — into the step's log —
+/// with SIGPIPE ignored. perl would warn on stderr — into the effect's log —
 /// about a `LANG` whose locale is not installed, as Debian images often have
 /// it; `PERL_BADLANG=0` keeps it quiet, and perl removes the variable again
 /// before it starts the program, which so gets its environment unchanged. The

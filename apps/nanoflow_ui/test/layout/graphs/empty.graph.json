@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "empty",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -15,7 +15,7 @@
         "nodes": [
           {
             "id": "receive",
-            "kind": "step",
+            "kind": "effect",
             "name": "receive",
             "place": "lib/empty.dart:10"
           },
@@ -33,7 +33,7 @@
           },
           {
             "id": "store",
-            "kind": "step",
+            "kind": "effect",
             "name": "store",
             "place": "lib/empty.dart:13"
           }

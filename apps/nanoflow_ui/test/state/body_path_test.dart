@@ -54,7 +54,7 @@ void main() {
     List<String> deepest(List<Opened> path) =>
         titles(bodyLevels(releaseFunction, release.functions, path));
 
-    // No such node; a step; a function the call does not go to; a function
+    // No such node; an effect; a function the call does not go to; a function
     // the file does not have; copies opened as a call.
     expect(deepest(const [Opened('9')]), ['release']);
     expect(deepest(const [Opened('3')]), ['release']);
@@ -79,7 +79,7 @@ void main() {
       ),
       ['inPlace'],
     );
-    // What follows a step that does not open is left out too.
+    // What follows an effect that does not open is left out too.
     expect(
       deepest(const [
         Opened('3'),
@@ -100,7 +100,7 @@ void main() {
       expect(openings(call, const {}), isEmpty);
     });
 
-    test('copies: their body; a step or a condition: nothing', () {
+    test('copies: their body; an effect or a condition: nothing', () {
       final inPlace = functionOf(inline, 'inPlace');
       expect(openings(inPlace.body.node('1')!, inline.functions), [
         const Opened('1'),

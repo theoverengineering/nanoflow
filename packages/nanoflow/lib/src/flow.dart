@@ -13,17 +13,17 @@ import 'owner.dart';
 import 'project.dart';
 
 /// Runs workflows: ordinary async functions of a [Flow] and an input, whose
-/// steps are calls of [step].
+/// effects are calls of [effect].
 ///
 /// Every call of a workflow is a session: the library writes it to `runs/`
-/// in the project [directory] as it goes — the input, every step that runs
+/// in the project [directory] as it goes — the input, every effect that runs
 /// with its result, the workflow's result — so that [resume] can take a
-/// session on after its process ended, taking the steps that finished from
+/// session on after its process ended, taking the effects that finished from
 /// its journal. Each session runs in a zone of its own, which gives each
-/// step a key that is the same on every run of the same code (spec §4.3);
+/// effect a key that is the same on every run of the same code (spec §4.3);
 /// several sessions of one flow may run at once.
 ///
-/// The input, the result and every step's result are kept as JSON (spec
+/// The input, the result and every effect's result are kept as JSON (spec
 /// §4.4): a value of a JSON type — `null`, a `bool`, a number, a `String`,
 /// and lists and maps with `String` keys of them — as it is, a value of
 /// another type through its `toJson`, which comes back through the
@@ -56,7 +56,7 @@ final class Flow {
   bool _stopped = false;
 
   /// Registers [fromJson] as the codec of [T]: a [T] that a session keeps —
-  /// the input of a workflow, its result or the result of a step — becomes
+  /// the input of a workflow, its result or the result of an effect — becomes
   /// JSON through its `toJson`, and [fromJson] makes a [T] of that JSON
   /// again, as [resume] needs.
   ///
@@ -80,7 +80,7 @@ final class Flow {
     I input,
   ) => _start(workflow, input, const _Journal());
 
-  /// [start], for a session whose steps in [journal] have run before.
+  /// [start], for a session whose effects in [journal] have run before.
   Future<FlowSession<R>> _start<I, R>(
     Future<R> Function(Flow f, I input) workflow,
     I input,
@@ -116,12 +116,12 @@ final class Flow {
 
   /// Takes on the session [sessionId] of [workflow] in this process (spec
   /// §4.6): it runs [workflow] again with the session's input, and every
-  /// step that finished before gives its saved result instead of running.
+  /// effect that finished before gives its saved result instead of running.
   ///
-  /// A step is taken from the journal when its key has a `step-finished`
-  /// there, the step it followed then (`after`) is the one it follows now,
+  /// An effect is taken from the journal when its key has an `effect-finished`
+  /// there, the effect it followed then (`after`) is the one it follows now,
   /// and its saved result comes back from JSON as the type the code
-  /// declares now (see [addCodec]); any other step runs live, in the record
+  /// declares now (see [addCodec]); any other effect runs live, in the record
   /// of its key when the session has one. A saved result whose type has no
   /// codec now is not run again: the session ends there as on a failure of
   /// its store, with a [CodecException], and can be resumed once the codec
@@ -233,21 +233,25 @@ final class Flow {
   }
 
   /// What the journal of the session of [handle], [state] after replaying
-  /// it, has of the steps.
+  /// it, has of the effects.
   ///
-  /// First writes to the `step.json` of each step that finished the
-  /// `outputId` of its last `step-finished` when it has another: the process
+  /// First writes to the `effect.json` of each effect that finished the
+  /// `outputId` of its last `effect-finished` when it has another: the process
   /// died between the two (D3).
   Future<_Journal> _journalOf(SessionHandle handle, SessionState state) async {
-    final outcomes = {for (final step in state.steps) step.stepId: step};
-    final records = <String, Step>{};
+    final outcomes = {
+      for (final effect in state.effects) effect.effectId: effect,
+    };
+    final records = <String, Effect>{};
     final saved = <String, _Saved>{};
-    for (var record in await _stored(handle.steps)) {
-      // Only a step that finished has one.
+    for (var record in await _stored(handle.effects)) {
+      // Only an effect that finished has one.
       if (outcomes[record.id]?.outputId case final outputId?) {
         if (record.outputId != outputId) {
           _checkNotStopped();
-          record = await _stored(() => handle.setStepOutput(record, outputId));
+          record = await _stored(
+            () => handle.setEffectOutput(record, outputId),
+          );
         }
         saved[record.key] = (
           after: record.after,
@@ -269,16 +273,16 @@ final class Flow {
     return _stored(() => _store.unfinishedSessions(name));
   }
 
-  /// Stops the flow: no step starts in its sessions any more — [step] throws
-  /// a [FlowStoppedException] — and nothing more is written to them, so
+  /// Stops the flow: no effect starts in its sessions any more — [effect]
+  /// throws a [FlowStoppedException] — and nothing more is written to them, so
   /// each can be resumed; no session starts or resumes either.
   ///
   /// Every program that `exec` runs in the sessions is stopped, with every
   /// process it started, and none starts any more: `exec` throws a
-  /// [FlowStoppedException]. A step that runs goes on, and its outcome is
+  /// [FlowStoppedException]. An effect that runs goes on, and its outcome is
   /// not written: it throws a [FlowStoppedException] at the workflow. A
   /// session's result is a [FlowStoppedException] once its workflow and its
-  /// steps have ended, and then the session is let go.
+  /// effects have ended, and then the session is let go.
   void stop() {
     _stopped = true;
     for (final session in _sessions) {
@@ -290,15 +294,15 @@ final class Flow {
     if (_stopped) throw const FlowStoppedException();
   }
 
-  /// Runs the step [name] of the session this is called in: [body] runs, and
+  /// Runs the effect [name] of the session this is called in: [body] runs, and
   /// what it returns is written to the session and returned.
   ///
-  /// What [body] prints goes to the step's log, and so does the stderr of
+  /// What [body] prints goes to the effect's log, and so does the stderr of
   /// the programs `exec` runs in it.
   ///
-  /// When [body] throws, the step fails: the exception is written, and
+  /// When [body] throws, the effect fails: the exception is written, and
   /// thrown on into the workflow. A result that would not come back from
-  /// JSON as a [T] fails the step with a [CodecException] (see [addCodec]).
+  /// JSON as a [T] fails the effect with a [CodecException] (see [addCodec]).
   ///
   /// Throws a [StateError] when called outside a session of this flow: from
   /// anywhere but the code of a workflow that [start], [run] or [resume]
@@ -306,23 +310,23 @@ final class Flow {
   /// once the flow is stopped, and what ended the session once it has
   /// ended early: the [StorageException] of a failure of its store, or the
   /// [CodecException] of a saved result whose type has no codec.
-  Future<T> step<T>(String name, FutureOr<T> Function() body) {
+  Future<T> effect<T>(String name, FutureOr<T> Function() body) {
     final session = Zone.current[this];
     if (session is! _Session) {
       throw StateError(
-        'step "$name" was called outside a session of this flow: call it '
+        'effect "$name" was called outside a session of this flow: call it '
         'from the code of a workflow that the flow runs',
       );
     }
-    return session.step(name, body, StackTrace.current);
+    return session.effect(name, body, StackTrace.current);
   }
 }
 
-/// Starts a session of [workflow] as [Flow.start] does, as one whose steps of
-/// the keys in [saved] have finished before, following the step `after`,
-/// with the result whose JSON is `value`: such a step returns its result
-/// when it follows that step, and neither runs nor writes anything (spec
-/// §4.6, a step from the journal).
+/// Starts a session of [workflow] as [Flow.start] does, as one whose effects of
+/// the keys in [saved] have finished before, following the effect `after`,
+/// with the result whose JSON is `value`: such an effect returns its result
+/// when it follows that effect, and neither runs nor writes anything (spec
+/// §4.6, an effect from the journal).
 ///
 /// For tests of the keys under many timings, which would otherwise write a
 /// journal for each.
@@ -344,26 +348,26 @@ final class FlowSession<R> {
   /// the exception it threw.
   ///
   /// A session that ended without being written to the end — its flow was
-  /// stopped, its store failed, or a step's saved result had a type without
+  /// stopped, its store failed, or an effect's saved result had a type without
   /// a codec — ends with the [FlowStoppedException], the [StorageException]
   /// or the [CodecException]; one that [Flow.resume] found failed, with a
   /// [SessionFailedException].
   final Future<R> result;
 }
 
-/// A step that finished: the key of the step it followed, and the JSON of
+/// An effect that finished: the key of the effect it followed, and the JSON of
 /// its result.
 typedef _Saved = ({String? after, Object? value});
 
-/// What a session's journal has of its steps, by key.
+/// What a session's journal has of its effects, by key.
 final class _Journal {
   const _Journal({this.saved = const {}, this.records = const {}});
 
-  /// The steps that finished.
+  /// The effects that finished.
   final Map<String, _Saved> saved;
 
-  /// The records of the steps.
-  final Map<String, Step> records;
+  /// The records of the effects.
+  final Map<String, Effect> records;
 }
 
 /// A session that runs in this process.
@@ -379,17 +383,17 @@ final class _Session {
   final SessionHandle _handle;
   final String _projectDir;
 
-  /// The package of the project, for the places of steps.
+  /// The package of the project, for the places of effects.
   final String? _package;
 
-  /// What the session's journal had of its steps when it started.
+  /// What the session's journal had of its effects when it started.
   final _Journal _journal;
 
   /// The zone the session was started from. The library's own work for the
-  /// session — writing its steps and their logs, turning values into JSON
+  /// session — writing its effects and their logs, turning values into JSON
   /// and back, running programs for `exec` — runs there, not in the
   /// session's zone, so it schedules nothing that would change the keys of
-  /// the steps.
+  /// the effects.
   final Zone _outside;
 
   late final KeyedZone _zone;
@@ -397,20 +401,20 @@ final class _Session {
   /// The programs `exec` runs in the session.
   final ExecScope _programs;
 
-  /// One future for each step that runs live, which completes when the step
+  /// One future for each effect that runs live, which completes when the effect
   /// has ended and its outcome is written.
   final _running = <Future<void>>{};
 
   /// What ended the session before its end: the [StorageException] of a
-  /// failure of its store, or the [CodecException] of a step whose saved
+  /// failure of its store, or the [CodecException] of an effect whose saved
   /// result has a type without a codec; `null` while there is none.
   Exception? _failure;
 
   /// Whether the session has ended: its workflow returned or threw, and
-  /// every step it started has ended.
+  /// every effect it started has ended.
   bool _ended = false;
 
-  /// Runs [workflow] in the session's zone; once it and every step it
+  /// Runs [workflow] in the session's zone; once it and every effect it
   /// started have ended, writes its result or its exception, then lets the
   /// session go.
   ///
@@ -456,8 +460,8 @@ final class _Session {
     }
   }
 
-  /// Waits until no step of the session runs, the steps they start
-  /// included. Then the session has ended: no step starts in it any more.
+  /// Waits until no effect of the session runs, the effects they start
+  /// included. Then the session has ended: no effect starts in it any more.
   Future<void> _settled() async {
     while (_running.isNotEmpty) {
       await Future.wait(_running.toList());
@@ -465,64 +469,64 @@ final class _Session {
     _ended = true;
   }
 
-  /// Calls the step [name] in the current context of the session's code;
+  /// Calls the effect [name] in the current context of the session's code;
   /// [trace] is the stack of the call.
   ///
-  /// A step that finished before following the same step gives its result
+  /// An effect that finished before following the same effect gives its result
   /// and writes nothing, when its result still comes back from JSON as a
   /// [T]; any other runs live.
-  Future<T> step<T>(
+  Future<T> effect<T>(
     String name,
     FutureOr<T> Function() body,
     StackTrace trace,
   ) {
     _checkWritable();
     if (_ended) {
-      throw StateError('step "$name" was called after its session ended');
+      throw StateError('effect "$name" was called after its session ended');
     }
-    return _zone.step(
+    return _zone.effect(
       name,
-      (step) => _outside.run(() {
-        final saved = _journal.saved[step.key];
-        if (saved != null && saved.after == step.after) {
+      (effect) => _outside.run(() {
+        final saved = _journal.saved[effect.key];
+        if (saved != null && saved.after == effect.after) {
           try {
             return Future.value(_flow._codecs.decode<T>(saved.value));
           } on CodecException catch (e) {
             if (!_flow._codecs.canDecode<T>()) {
               // [T] has no codec: the code that resumes the session has not
-              // registered it, and running the step again would repeat
+              // registered it, and running the effect again would repeat
               // what it did. The session ends as on a failure of its store,
               // and can be resumed once the codec is there (spec §4.4).
               return Future<T>.error(_failed(e));
             }
-            // The JSON does not decode to a [T]: not a result of this step
-            // as the code has it now, as one that followed another step is
+            // The JSON does not decode to a [T]: not a result of this effect
+            // as the code has it now, as one that followed another effect is
             // not. It runs again (spec §4.4).
           }
         }
-        return _live(step, body, trace);
+        return _live(effect, body, trace);
       }),
     );
   }
 
-  /// Runs [body] as [step] and writes it: `step-started`, then its result
-  /// and `step-finished`, or `step-failed`. What the body prints goes to the
-  /// step's log, which is written before the step's outcome.
+  /// Runs [body] as [effect] and writes it: `effect-started`, then its result
+  /// and `effect-finished`, or `effect-failed`. What the body prints goes to
+  /// the effect's log, which is written before the effect's outcome.
   Future<T> _live<T>(
-    KeyedStep step,
+    KeyedEffect effect,
     FutureOr<T> Function() body,
     StackTrace trace,
   ) async {
     final ended = Completer<void>();
     _running.add(ended.future);
     try {
-      final record = await _started(step, trace);
-      final output = _StepOutput(this, record.id);
+      final record = await _started(effect, trace);
+      final output = _EffectOutput(this, record.id);
       final T value;
       final Object? json;
       try {
         try {
-          value = await step.runBody(() => output.bodyZone().run(body));
+          value = await effect.runBody(() => output.bodyZone().run(body));
         } finally {
           await output.close();
         }
@@ -530,9 +534,9 @@ final class _Session {
       } catch (e, s) {
         await _write(
           () => _handle.appendEvent(
-            StepFailed(
+            EffectFailed(
               time: systemClock(),
-              stepId: record.id,
+              effectId: record.id,
               error: _oneLine(e),
               stack: '$s',
             ),
@@ -543,14 +547,14 @@ final class _Session {
       final outputId = await _write(() => _handle.writeDocument(json));
       await _write(
         () => _handle.appendEvent(
-          StepFinished(
+          EffectFinished(
             time: systemClock(),
-            stepId: record.id,
+            effectId: record.id,
             outputId: outputId,
           ),
         ),
       );
-      await _write(() => _handle.setStepOutput(record, outputId));
+      await _write(() => _handle.setEffectOutput(record, outputId));
       return value;
     } finally {
       _running.remove(ended.future);
@@ -558,37 +562,37 @@ final class _Session {
     }
   }
 
-  /// Writes that [step] starts, called from [trace]: `step-started` in the
+  /// Writes that [effect] starts, called from [trace]: `effect-started` in the
   /// record of its key when the session has one (D2), otherwise in a new
   /// one; gives the record.
-  Future<Step> _started(KeyedStep step, StackTrace trace) async {
-    final known = _journal.records[step.key];
+  Future<Effect> _started(KeyedEffect effect, StackTrace trace) async {
+    final known = _journal.records[effect.key];
     if (known == null) {
       final record = await _write(
-        () => _handle.createStep(
-          name: step.name,
-          key: step.key,
-          after: step.after,
+        () => _handle.createEffect(
+          name: effect.name,
+          key: effect.key,
+          after: effect.after,
           place: placeOf(trace, projectDir: _projectDir, package: _package),
         ),
       );
       await _write(
         () => _handle.appendEvent(
-          StepStarted(time: systemClock(), stepId: record.id),
+          EffectStarted(time: systemClock(), effectId: record.id),
         ),
       );
       return record;
     }
     await _write(
       () => _handle.appendEvent(
-        StepStarted(time: systemClock(), stepId: known.id),
+        EffectStarted(time: systemClock(), effectId: known.id),
       ),
     );
-    if (known.after == step.after) return known;
+    if (known.after == effect.after) return known;
     // A result the record is given from now on is for a call that follows
-    // what this one follows. Only after `step-started`, which voids the
+    // what this one follows. Only after `effect-started`, which voids the
     // result it has: until then, that result goes with the `after` it has.
-    return _write(() => _handle.setStepAfter(known, step.after));
+    return _write(() => _handle.setEffectAfter(known, effect.after));
   }
 
   /// Does [write], a write to the session's store.
@@ -638,27 +642,27 @@ Future<T> _stored<T>(Future<T> Function() io) async {
 /// The text of [error] on one line: every run of line breaks is a space.
 String _oneLine(Object error) => '$error'.replaceAll(RegExp(r'[\r\n]+'), ' ');
 
-/// What the body of a step outputs — the lines it prints and the stderr of
-/// the programs `exec` runs in it — written to the step's log, which is
+/// What the body of an effect outputs — the lines it prints and the stderr of
+/// the programs `exec` runs in it — written to the effect's log, which is
 /// opened at the first byte.
 ///
-/// Takes nothing once the step has ended, the flow is stopped or the store of
+/// Takes nothing once the effect has ended, the flow is stopped or the store of
 /// the session has failed — nothing more is written to the session then —
 /// and the output goes to the process's own. A log that cannot be written is
 /// a failure of the store.
-final class _StepOutput implements ProgramLog {
-  _StepOutput(this._session, this._stepId);
+final class _EffectOutput implements ProgramLog {
+  _EffectOutput(this._session, this._effectId);
 
   final _Session _session;
-  final String _stepId;
+  final String _effectId;
 
-  /// The step's log; `null` until the first output.
-  StepLog? _log;
+  /// The effect's log; `null` until the first output.
+  EffectLog? _log;
 
-  /// Whether the step has ended.
+  /// Whether the effect has ended.
   bool _closed = false;
 
-  /// A zone for the body of the step, forked from the current one, in
+  /// A zone for the body of the effect, forked from the current one, in
   /// which `print` and `exec` write to this output.
   Zone bodyZone() => Zone.current.fork(
     specification: ZoneSpecification(
@@ -679,12 +683,12 @@ final class _StepOutput implements ProgramLog {
     return true;
   }
 
-  /// Opens the step's log, whose failure is the session's.
+  /// Opens the effect's log, whose failure is the session's.
   ///
-  /// The record of the step was created or listed by the session's handle,
+  /// The record of the effect was created or listed by the session's handle,
   /// which so knows its directory even when it is gone: the log then fails.
-  StepLog _open() {
-    final log = _session._handle.openLog(_stepId);
+  EffectLog _open() {
+    final log = _session._handle.openLog(_effectId);
     unawaited(log.failed.then((e) => _session._failed(StorageException(e))));
     return log;
   }

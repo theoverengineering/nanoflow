@@ -1,5 +1,5 @@
 // What the library learns about the project it runs in: the project
-// directory (spec §3), the name of a workflow and the place of a step
+// directory (spec §3), the name of a workflow and the place of an effect
 // (§4.1, §5.2), the code hash and the snapshot of the graph file (§4.7).
 
 import 'dart:convert';
@@ -101,7 +101,7 @@ String workflowNameOf(Function workflow) =>
 /// program prints no column.
 final _frame = RegExp(r'^#\d+\s+.+? \((.+?):(\d+)(?::\d+)?\)$');
 
-/// Where `f.step` was called: `path:line` of the first frame of [trace] that
+/// Where `f.effect` was called: `path:line` of the first frame of [trace] that
 /// is in neither `dart:` nor `package:nanoflow/`; `null` when there is none.
 ///
 /// A file of the project's own [package] (`package:<package>/x.dart`) is

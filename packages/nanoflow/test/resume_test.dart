@@ -15,11 +15,11 @@ late String runReview;
 
 /// A workflow other than [review], whose session fails.
 Future<String> failing(Flow f, String work) async {
-  await f.step('collect', () => 'change');
+  await f.effect('collect', () => 'change');
   throw StateError('no\nway');
 }
 
-/// The keys of the steps of [review].
+/// The keys of the effects of [review].
 final collectKey = 'collect#1@${h('')}';
 final inspectKey = 'inspect#1@${h(collectKey)}';
 final publishKey = 'publish#1@${h(inspectKey)}';
@@ -28,14 +28,14 @@ final publishKey = 'publish#1@${h(inspectKey)}';
 Future<({String dir, String work})> project() async =>
     (dir: await tempDir(), work: await tempDir());
 
-/// How many times the body of the step [name] of [review] ran with [work].
+/// How many times the body of the effect [name] of [review] ran with [work].
 int runsOf(String work, String name) {
   final file = File(p.join(work, name));
   return file.existsSync() ? file.lengthSync() : 0;
 }
 
 /// Starts run_review.dart, which runs a session of [review] in [dir] with
-/// [work], and waits until its step `inspect` runs; it is killed after the
+/// [work], and waits until its effect `inspect` runs; it is killed after the
 /// test.
 Future<({Process process, String sessionId})> startUntilInspect(
   String dir,
@@ -59,7 +59,7 @@ Future<({Process process, String sessionId})> startUntilInspect(
   );
   await until(
     () => runsOf(work, 'inspect') == 1 || exitCode != null,
-    'the step inspect of run_review',
+    'the effect inspect of run_review',
   );
   expect(exitCode, isNull, reason: '$errors');
   return (process: process, sessionId: sessionId);
@@ -91,28 +91,34 @@ Future<String> writeSession(
   return handle.session.id;
 }
 
-/// Writes the step `collect` of [review] to the session of [handle],
+/// Writes the effect `collect` of [review] to the session of [handle],
 /// finished with [value], as following [after]; leaves its `outputId` out of
-/// `step.json` unless [outputInStepJson].
-Future<Step> writeCollect(
+/// `effect.json` unless [outputInEffectJson].
+Future<Effect> writeCollect(
   SessionHandle handle, {
   required String? after,
   required Object? value,
-  bool outputInStepJson = true,
+  bool outputInEffectJson = true,
 }) async {
-  final step = await handle.createStep(
+  final effect = await handle.createEffect(
     name: 'collect',
     key: collectKey,
     after: after,
     place: null,
   );
-  await handle.appendEvent(StepStarted(time: systemClock(), stepId: step.id));
+  await handle.appendEvent(
+    EffectStarted(time: systemClock(), effectId: effect.id),
+  );
   final outputId = await handle.writeDocument(value);
   await handle.appendEvent(
-    StepFinished(time: systemClock(), stepId: step.id, outputId: outputId),
+    EffectFinished(
+      time: systemClock(),
+      effectId: effect.id,
+      outputId: outputId,
+    ),
   );
-  if (outputInStepJson) await handle.setStepOutput(step, outputId);
-  return step;
+  if (outputInEffectJson) await handle.setEffectOutput(effect, outputId);
+  return effect;
 }
 
 void main() {
@@ -135,7 +141,7 @@ void main() {
     );
   });
 
-  group('a session whose process was killed in its second step', () {
+  group('a session whose process was killed in its second effect', () {
     test('cannot be resumed while that process owns it', () async {
       final (:dir, :work) = await project();
       final running = await startUntilInspect(dir, work);
@@ -152,7 +158,7 @@ void main() {
       );
     });
 
-    test('goes on where it was: the step that finished is taken from the '
+    test('goes on where it was: the effect that finished is taken from the '
         'journal, the one that ran runs again in its record', () async {
       final (:dir, :work) = await project();
       final running = await startUntilInspect(dir, work);
@@ -172,33 +178,33 @@ void main() {
       );
 
       final handle = await openSession(dir, running.sessionId);
-      final steps = await handle.steps();
+      final effects = await handle.effects();
       expect(
-        [for (final s in steps) s.key],
+        [for (final s in effects) s.key],
         [collectKey, inspectKey, publishKey],
       );
       final events = await eventsOf(handle);
       expect(events.map((e) => e.name), [
         'session-started',
-        'step-started',
-        'step-finished',
-        'step-started',
+        'effect-started',
+        'effect-finished',
+        'effect-started',
         'session-resumed',
-        'step-started',
-        'step-finished',
-        'step-started',
-        'step-finished',
+        'effect-started',
+        'effect-finished',
+        'effect-started',
+        'effect-finished',
         'session-finished',
       ]);
       final state = replaySession(events);
       expect(state.status, SessionStatus.finished);
       expect(
-        [for (final s in state.steps) (s.stepId, s.starts)],
+        [for (final s in state.effects) (s.effectId, s.starts)],
         [
           for (final (s, starts) in [
-            (steps[0], 1),
-            (steps[1], 2),
-            (steps[2], 1),
+            (effects[0], 1),
+            (effects[1], 2),
+            (effects[2], 1),
           ])
             (s.id, starts),
         ],
@@ -263,7 +269,7 @@ void main() {
       final (:dir, :work) = await project();
       final flow = Flow(directory: dir);
       final running = await flow.start(review, work);
-      await until(() => runsOf(work, 'inspect') == 1, 'the step inspect');
+      await until(() => runsOf(work, 'inspect') == 1, 'the effect inspect');
 
       for (final resume in [
         () => Flow(directory: dir).resume(failing, running.id),
@@ -361,7 +367,7 @@ void main() {
       final (:dir, :work) = await project();
       File(p.join(work, 'go')).createSync();
       final id = await writeSession(dir, work, code: 'sha256:old');
-      const graph = {'format': 1, 'package': 'review_fixture'};
+      const graph = {'format': 2, 'package': 'review_fixture'};
       File(p.join(dir, 'nanoflow.graph.json'))
           .writeAsStringSync(jsonEncode(graph));
       File(p.join(dir, 'lib', 'review.dart'))
@@ -397,17 +403,17 @@ void main() {
       final resumed = events.whereType<SessionResumed>().single;
       expect(resumed.code, isNot('sha256:old'));
       expect(resumed.graphId, isNull);
-      // The input, the output of each step and the result.
+      // The input, the output of each effect and the result.
       final documents = Directory(p.join(handle.dir, documentsDirName));
       expect(documents.listSync(), hasLength(5));
     });
 
-    test('takes a finished step from the journal only when it follows the '
-        'step it followed then; otherwise the step runs again in its '
+    test('takes a finished effect from the journal only when it follows the '
+        'effect it followed then; otherwise the effect runs again in its '
         'record', () async {
       final (:dir, :work) = await project();
       File(p.join(work, 'go')).createSync();
-      late Step collect;
+      late Effect collect;
       final id = await writeSession(
         dir,
         work,
@@ -423,26 +429,26 @@ void main() {
       expect(await session.result, 'published change: clean');
       expect(runsOf(work, 'collect'), 1);
       final handle = await openSession(dir, id);
-      final steps = await handle.steps();
+      final effects = await handle.effects();
       expect(
-        [for (final s in steps) s.key],
+        [for (final s in effects) s.key],
         [collectKey, inspectKey, publishKey],
       );
-      expect(steps.first.id, collect.id);
+      expect(effects.first.id, collect.id);
       // A result it is given from now on is for a call that follows what
       // this one followed.
-      expect(steps.first.after, isNull);
-      expect(await handle.documentValue(steps.first.outputId!), 'change');
+      expect(effects.first.after, isNull);
+      expect(await handle.documentValue(effects.first.outputId!), 'change');
       final state = replaySession(await eventsOf(handle));
-      expect(state.steps.first.stepId, collect.id);
-      expect(state.steps.first.starts, 2);
+      expect(state.effects.first.effectId, collect.id);
+      expect(state.effects.first.starts, 2);
     });
 
-    test('writes to step.json the outputId of a step whose step-finished was '
-        'written when step.json was not', () async {
+    test('writes to effect.json the outputId of an effect whose '
+        'effect-finished was written when effect.json was not', () async {
       final (:dir, :work) = await project();
       File(p.join(work, 'go')).createSync();
-      late Step collect;
+      late Effect collect;
       final id = await writeSession(
         dir,
         work,
@@ -450,7 +456,7 @@ void main() {
           handle,
           after: null,
           value: 'saved change',
-          outputInStepJson: false,
+          outputInEffectJson: false,
         ),
       );
 
@@ -459,10 +465,10 @@ void main() {
       expect(await session.result, 'published saved change: clean');
       expect(runsOf(work, 'collect'), 0);
       final handle = await openSession(dir, id);
-      final finished = (await eventsOf(handle)).whereType<StepFinished>();
-      expect(finished.first.stepId, collect.id);
+      final finished = (await eventsOf(handle)).whereType<EffectFinished>();
+      expect(finished.first.effectId, collect.id);
       expect(
-        (await handle.steps()).first,
+        (await handle.effects()).first,
         collect.withOutput(finished.first.outputId!),
       );
     });

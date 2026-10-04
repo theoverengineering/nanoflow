@@ -75,7 +75,8 @@ final class Feed {
 /// The id of the session [change] is of.
 String sessionIdOf(Change change) => switch (change) {
   SessionAdded(:final session) => session.id,
-  StepAdded(:final step) || StepChanged(:final step) => step.sessionId,
+  EffectAdded(:final effect) ||
+  EffectChanged(:final effect) => effect.sessionId,
   EventAdded(:final sessionId) ||
   DocumentAdded(:final sessionId) ||
   LogCorrupted(:final sessionId) ||

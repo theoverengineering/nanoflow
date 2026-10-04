@@ -23,8 +23,12 @@ sealed class Change {
       'session-added' => SessionAdded(
         _readModel(json, 'session', Session.fromJson),
       ),
-      'step-added' => StepAdded(_readModel(json, 'step', Step.fromJson)),
-      'step-changed' => StepChanged(_readModel(json, 'step', Step.fromJson)),
+      'effect-added' => EffectAdded(
+        _readModel(json, 'effect', Effect.fromJson),
+      ),
+      'effect-changed' => EffectChanged(
+        _readModel(json, 'effect', Effect.fromJson),
+      ),
       'event-added' => EventAdded(
         sessionId: readString(json, 'sessionId'),
         event: Event.fromJson(readObject(json, 'event')),
@@ -80,51 +84,53 @@ final class SessionAdded extends Change {
   String toString() => 'SessionAdded($session)';
 }
 
-/// A step's record appeared.
-final class StepAdded extends Change {
-  const StepAdded(this.step);
+/// An effect's record appeared.
+final class EffectAdded extends Change {
+  const EffectAdded(this.effect);
 
-  final Step step;
-
-  @override
-  String get name => 'step-added';
+  final Effect effect;
 
   @override
-  Map<String, Object?> toJson() => {'change': name, 'step': step.toJson()};
+  String get name => 'effect-added';
 
   @override
-  bool operator ==(Object other) => other is StepAdded && other.step == step;
+  Map<String, Object?> toJson() => {'change': name, 'effect': effect.toJson()};
 
   @override
-  int get hashCode => Object.hash(name, step);
+  bool operator ==(Object other) =>
+      other is EffectAdded && other.effect == effect;
 
   @override
-  String toString() => 'StepAdded($step)';
+  int get hashCode => Object.hash(name, effect);
+
+  @override
+  String toString() => 'EffectAdded($effect)';
 }
 
-/// The record of a step was rewritten: it got the `outputId` of its
-/// `step-finished`, or another `after` as it runs again. The only change to
+/// The record of an effect was rewritten: it got the `outputId` of its
+/// `effect-finished`, or another `after` as it runs again. The only change to
 /// a model already given out.
-final class StepChanged extends Change {
-  const StepChanged(this.step);
+final class EffectChanged extends Change {
+  const EffectChanged(this.effect);
 
-  /// The whole step, as it is now.
-  final Step step;
-
-  @override
-  String get name => 'step-changed';
+  /// The whole effect, as it is now.
+  final Effect effect;
 
   @override
-  Map<String, Object?> toJson() => {'change': name, 'step': step.toJson()};
+  String get name => 'effect-changed';
 
   @override
-  bool operator ==(Object other) => other is StepChanged && other.step == step;
+  Map<String, Object?> toJson() => {'change': name, 'effect': effect.toJson()};
 
   @override
-  int get hashCode => Object.hash(name, step);
+  bool operator ==(Object other) =>
+      other is EffectChanged && other.effect == effect;
 
   @override
-  String toString() => 'StepChanged($step)';
+  int get hashCode => Object.hash(name, effect);
+
+  @override
+  String toString() => 'EffectChanged($effect)';
 }
 
 /// An event was appended to a session's journal.

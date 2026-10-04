@@ -46,7 +46,7 @@ class EdgesPainter extends CustomPainter {
       final tone = marks.bar(node.id);
       final rect = bar.rect.toRect();
       // Outlined in the canvas's colour, as an exit dot is: the bar stands
-      // out of the ring round the selected step's node, under the arrows.
+      // out of the ring round the selected effect's node, under the arrows.
       canvas
         ..drawRRect(
           RRect.fromRectAndRadius(

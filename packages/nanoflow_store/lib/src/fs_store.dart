@@ -30,7 +30,7 @@ final class FsStore {
   /// [openSession]). The store's owner is written into the lock file. Builds
   /// the whole session under `runs/.tmp-<id>/` and renames it into place:
   /// `session.json` with [graph], the `documents` directory with the input
-  /// document (when [input] is given), the empty `steps` directory and
+  /// document (when [input] is given), the empty `effects` directory and
   /// `log.jsonl` with `session-started` and [code]. The session directory's
   /// name and the time of `session-started` are the time the session is
   /// created; creates [runsDir] when there is none.
@@ -55,7 +55,7 @@ final class FsStore {
           // A lock on an open file outlives the rename of its directory.
           final taken = lock = await lockSession(dir, id, owner: _owner);
           await Directory(p.join(dir, documentsDirName)).create();
-          await Directory(p.join(dir, stepsDirName)).create();
+          await Directory(p.join(dir, effectsDirName)).create();
           final inputId = input == null
               ? null
               : await writeDocumentAt(dir, id, input.value);

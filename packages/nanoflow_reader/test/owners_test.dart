@@ -60,7 +60,7 @@ void main() {
     test('comes after the other changes of a session whose journal goes on, '
         'with no owner and not alive when .owner.lock is empty or '
         'missing', () async {
-      final events = [begun, StepStarted(time: at(1), stepId: newId())];
+      final events = [begun, EffectStarted(time: at(1), effectId: newId())];
       final released = writeOwned('', events: events, createdAt: at(60));
       final document = Document(
         id: newId(),

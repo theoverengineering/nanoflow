@@ -72,8 +72,8 @@ final class FsReader {
   /// The events of a session come in the order of its journal, after the
   /// session's `session-added`; anything else may come in any order. A
   /// journal line that is still being written is given once it is complete.
-  /// A file that is not its model, such as a `step.json` that is not a step,
-  /// comes as an error on the stream, once, and the entity is not given
+  /// A file that is not its model, such as an `effect.json` that is not an
+  /// effect, comes as an error on the stream, once, and the entity is not given
   /// until the file is fixed; the feed goes on.
   ///
   /// While a session's journal goes on, `owner-changed` tells its owner from
@@ -103,11 +103,11 @@ final class FsReader {
   /// Accumulated log text first, then appended text as it grows, until
   /// cancelled. Decodes UTF-8 across chunk boundaries.
   ///
-  /// Gives nothing while there is no log file: it is created when the step
+  /// Gives nothing while there is no log file: it is created when the effect
   /// first prints. Errors with an [ArgumentError] when there is no such
-  /// session or step.
-  Stream<String> stepLog(String sessionId, String stepId) async* {
-    final path = logPath(stepId) ?? await _logOnDisk(sessionId, stepId);
+  /// session or effect.
+  Stream<String> effectLog(String sessionId, String effectId) async* {
+    final path = logPath(effectId) ?? await _logOnDisk(sessionId, effectId);
     final tail = Tail(path);
     yield* const Utf8Decoder(allowMalformed: true).bind(
       follow<Uint8List>(
@@ -143,24 +143,27 @@ final class FsReader {
   /// The directory of the session [sessionId].
   String? sessionPath(String sessionId) => _scanner.sessionPath(sessionId);
 
-  /// The directory of the step [stepId].
-  String? stepPath(String stepId) => _scanner.stepPath(stepId);
+  /// The directory of the effect [effectId].
+  String? effectPath(String effectId) => _scanner.effectPath(effectId);
 
-  /// The log file of the step [stepId], which may not exist yet.
-  String? logPath(String stepId) => _scanner.logPath(stepId);
+  /// The log file of the effect [effectId], which may not exist yet.
+  String? logPath(String effectId) => _scanner.logPath(effectId);
 
   /// The file of the document [documentId] of the session [sessionId].
   String? documentPath(String sessionId, String documentId) =>
       _scanner.documentPath(sessionId, documentId);
 
-  /// The log file of a step the feed has not given, from its `step.json`.
-  Future<String> _logOnDisk(String sessionId, String stepId) async {
-    final dir = await _stepDir(sessionId, stepId);
-    final step = await readModel(p.join(dir, stepFileName), Step.fromJson);
-    return p.join(dir, step.log);
+  /// The log file of an effect the feed has not given, from its `effect.json`.
+  Future<String> _logOnDisk(String sessionId, String effectId) async {
+    final dir = await _effectDir(sessionId, effectId);
+    final effect = await readModel(
+      p.join(dir, effectFileName),
+      Effect.fromJson,
+    );
+    return p.join(dir, effect.log);
   }
 
-  // The directories of entities, given or not: a step may be running before
+  // The directories of entities, given or not: an effect may be running before
   // the feed gives it.
 
   Future<String> _sessionDir(String sessionId) async =>
@@ -172,16 +175,16 @@ final class FsReader {
         'no session in $runsDir',
       ));
 
-  Future<String> _stepDir(String sessionId, String stepId) async =>
-      stepPath(stepId) ??
+  Future<String> _effectDir(String sessionId, String effectId) async =>
+      effectPath(effectId) ??
       await _findDir(
-        p.join(await _sessionDir(sessionId), stepsDirName),
-        stepId,
+        p.join(await _sessionDir(sessionId), effectsDirName),
+        effectId,
       ) ??
       (throw ArgumentError.value(
-        stepId,
-        'stepId',
-        'no such step in session $sessionId',
+        effectId,
+        'effectId',
+        'no such effect in session $sessionId',
       ));
 }
 
@@ -195,11 +198,11 @@ FsReader readerOwning(
 }) => FsReader._(runsDir, pollInterval, processes, ownsProcesses: true);
 
 /// What [scan] gives, run as the feed of [runsDir] runs it: when listened
-/// to, on every file system event under [runsDir] but those of a step's
-/// `step.log`, on every event of [wake], and every [interval].
+/// to, on every file system event under [runsDir] but those of an effect's
+/// `effect.log`, on every event of [wake], and every [interval].
 ///
-/// A running step writes its log all the time, and a scan does not read
-/// logs: [FsReader.stepLog] follows a log by itself.
+/// A running effect writes its log all the time, and a scan does not read
+/// logs: [FsReader.effectLog] follows a log by itself.
 Stream<T> followRuns<T>(
   String runsDir,
   Duration interval,

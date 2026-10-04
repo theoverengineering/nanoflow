@@ -18,15 +18,15 @@ const _newline = 0x0a;
 /// session's lock until [release] or the end of the process.
 final class SessionHandle {
   SessionHandle._(this.session, this.dir, this._clock, this._lock)
-    : _stepTimes = _IncreasingTimes();
+    : _effectTimes = _IncreasingTimes();
 
   /// [from] after its directory was renamed to [dir]. The times it has given
-  /// its steps stay taken, and it keeps its lock.
+  /// its effects stay taken, and it keeps its lock.
   SessionHandle._moved(SessionHandle from, this.dir)
     : session = from.session,
       _clock = from._clock,
       _lock = from._lock,
-      _stepTimes = from._stepTimes;
+      _effectTimes = from._effectTimes;
 
   /// The session's fields, as in `session.json`.
   final Session session;
@@ -40,19 +40,19 @@ final class SessionHandle {
   /// once released.
   RandomAccessFile? _lock;
 
-  /// Times of the session's steps: a step directory's name must sort after
-  /// those of the steps created before it.
-  final _IncreasingTimes _stepTimes;
+  /// Times of the session's effects: an effect directory's name must sort after
+  /// those of the effects created before it.
+  final _IncreasingTimes _effectTimes;
 
-  /// Directories of the steps looked up so far, by id. A directory keeps its
+  /// Directories of the effects looked up so far, by id. A directory keeps its
   /// name once it is built.
-  final Map<String, String> _stepDirs = {};
+  final Map<String, String> _effectDirs = {};
 
   /// Completes once the events given to [appendEvent] so far are appended,
   /// or have failed to be.
   Future<void> _appended = Future.value();
 
-  String get _stepsDir => p.join(dir, stepsDirName);
+  String get _effectsDir => p.join(dir, effectsDirName);
 
   /// The events of the session, in the order they were written.
   ///
@@ -62,19 +62,21 @@ final class SessionHandle {
   /// [UnknownEvent].
   Future<List<Event>> events() => readJournal(p.join(dir, eventsFileName));
 
-  /// The records of the session's steps, ordered by directory name: in the
+  /// The records of the session's effects, ordered by directory name: in the
   /// order they were created.
   ///
-  /// Their directories are kept, as [createStep] keeps the one it builds: a
-  /// step whose directory is removed later fails as a write into it does,
+  /// Their directories are kept, as [createEffect] keeps the one it builds: an
+  /// effect whose directory is removed later fails as a write into it does,
   /// and [openLog] gives its log, which fails.
-  Future<List<Step>> steps() async {
-    final steps = <Step>[];
-    for (final dir in _builtDirs(_stepsDir)) {
-      _stepDirs[dir.id] = dir.path;
-      steps.add(await readModel(p.join(dir.path, stepFileName), Step.fromJson));
+  Future<List<Effect>> effects() async {
+    final effects = <Effect>[];
+    for (final dir in _builtDirs(_effectsDir)) {
+      _effectDirs[dir.id] = dir.path;
+      effects.add(
+        await readModel(p.join(dir.path, effectFileName), Effect.fromJson),
+      );
     }
-    return steps;
+    return effects;
   }
 
   /// The value of the document [documentId].
@@ -83,23 +85,23 @@ final class SessionHandle {
     Document.fromJson,
   )).value;
 
-  /// Creates the record of a step: `steps/<time>-<name>-<id>/step.json`,
+  /// Creates the record of an effect: `effects/<time>-<name>-<id>/effect.json`,
   /// without `outputId`. No event is written.
   ///
-  /// The step's directory appears whole, with `step.json`. Its name holds the
-  /// time from the clock, but at least a millisecond after the time of the
-  /// step created before it, so that steps sort by name in the order they
+  /// The effect's directory appears whole, with `effect.json`. Its name holds
+  /// the time from the clock, but at least a millisecond after the time of the
+  /// effect created before it, so that effects sort by name in the order they
   /// were created.
   ///
   /// Throws a [FileSystemException], having built nothing, when the
   /// session's directory is gone.
-  Future<Step> createStep({
+  Future<Effect> createEffect({
     required String name,
     required String key,
     required String? after,
     required String? place,
   }) async {
-    final step = Step(
+    final effect = Effect(
       id: newId(),
       sessionId: session.id,
       name: name,
@@ -109,22 +111,22 @@ final class SessionHandle {
       outputId: null,
       log: logFileName,
     );
-    // Kept, so that a step whose directory is removed later is not looked up
+    // Kept, so that an effect whose directory is removed later is not looked up
     // again, which would find it missing rather than fail as a write into it
     // does.
-    _stepDirs[step.id] = await buildDirAtomically(
-      _stepsDir,
-      id: step.id,
-      name: stepDirName(_stepTimes.next(_clock), name, step.id),
+    _effectDirs[effect.id] = await buildDirAtomically(
+      _effectsDir,
+      id: effect.id,
+      name: effectDirName(_effectTimes.next(_clock), name, effect.id),
       build: (dir) =>
-          writeJsonAtomically(p.join(dir, stepFileName), step.toJson()),
+          writeJsonAtomically(p.join(dir, effectFileName), effect.toJson()),
     );
-    return step;
+    return effect;
   }
 
   /// Appends [event] to the session's journal: one line, flushed.
   ///
-  /// Events given before this one is appended — by steps that run side by
+  /// Events given before this one is appended — by effects that run side by
   /// side — are appended after it, in the order given: a file opened to
   /// append to is written where its end was when it was opened, so two
   /// appends at once would write over each other.
@@ -151,37 +153,37 @@ final class SessionHandle {
   Future<String> writeDocument(Object? value) =>
       writeDocumentAt(dir, session.id, value);
 
-  /// Rewrites `step.json` of [step] with [outputId]; returns the step as it is
-  /// now.
-  Future<Step> setStepOutput(Step step, String outputId) async {
-    final changed = step.withOutput(outputId);
+  /// Rewrites `effect.json` of [effect] with [outputId]; returns the effect
+  /// as it is now.
+  Future<Effect> setEffectOutput(Effect effect, String outputId) async {
+    final changed = effect.withOutput(outputId);
     await writeJsonAtomically(
-      p.join(_stepDir(step.id), stepFileName),
+      p.join(_effectDir(effect.id), effectFileName),
       changed.toJson(),
     );
     return changed;
   }
 
-  /// Rewrites `step.json` of [step] with [after]; returns the step as it is
-  /// now.
-  Future<Step> setStepAfter(Step step, String? after) async {
-    final changed = step.withAfter(after);
+  /// Rewrites `effect.json` of [effect] with [after]; returns the effect as it
+  /// is now.
+  Future<Effect> setEffectAfter(Effect effect, String? after) async {
+    final changed = effect.withAfter(after);
     await writeJsonAtomically(
-      p.join(_stepDir(step.id), stepFileName),
+      p.join(_effectDir(effect.id), effectFileName),
       changed.toJson(),
     );
     return changed;
   }
 
-  /// Opens the log of the step [stepId] for appending: a step that runs
+  /// Opens the log of the effect [effectId] for appending: an effect that runs
   /// again adds to the log it has.
   ///
-  /// The log throws no error of its file: [StepLog.failed] gives it, also
-  /// for a step whose directory, built by [createStep] or listed by [steps],
-  /// is gone. Throws an [ArgumentError] for a step the session does not
-  /// have.
-  StepLog openLog(String stepId) =>
-      StepLog._(File(p.join(_stepDir(stepId), logFileName)));
+  /// The log throws no error of its file: [EffectLog.failed] gives it, also
+  /// for an effect whose directory, built by [createEffect] or listed by
+  /// [effects], is gone. Throws an [ArgumentError] for an effect the session
+  /// does not have.
+  EffectLog openLog(String effectId) =>
+      EffectLog._(File(p.join(_effectDir(effectId), logFileName)));
 
   /// Gives up the session's lock, having emptied the lock file, which no
   /// longer names an owner: another process may own the session from now on.
@@ -193,16 +195,16 @@ final class SessionHandle {
     if (lock != null) await unlockSession(session.id, lock);
   }
 
-  String _stepDir(String stepId) => _stepDirs[stepId] ??=
-      _builtDirOf(_stepsDir, stepId) ??
+  String _effectDir(String effectId) => _effectDirs[effectId] ??=
+      _builtDirOf(_effectsDir, effectId) ??
       (throw ArgumentError.value(
-        stepId,
-        'stepId',
-        'no such step in session ${session.id}',
+        effectId,
+        'effectId',
+        'no such effect in session ${session.id}',
       ));
 }
 
-/// The log of one step, open for appending.
+/// The log of one effect, open for appending.
 ///
 /// Its file is written in the background, in the order the bytes were added:
 /// what is added while a write is under way waits, and goes in one write
@@ -211,8 +213,8 @@ final class SessionHandle {
 /// now or later: when the file cannot be opened, written or closed — its
 /// directory is gone, the disk is full — [failed] completes with why, and
 /// the log writes nothing more.
-final class StepLog {
-  StepLog._(File file) {
+final class EffectLog {
+  EffectLog._(File file) {
     _writing = _guarded(() async {
       _file = await file.open(mode: FileMode.append);
     });

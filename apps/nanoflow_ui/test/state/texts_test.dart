@@ -131,6 +131,6 @@ void main() {
   test('a count names one thing in the singular: 1 run, 3 runs', () {
     expect(count(1, 'run'), '1 run');
     expect(count(3, 'run'), '3 runs');
-    expect(count(0, 'step'), '0 steps');
+    expect(count(0, 'effect'), '0 effects');
   });
 }

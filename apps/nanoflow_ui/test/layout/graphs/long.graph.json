@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "long",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -21,13 +21,13 @@
           },
           {
             "id": "lint",
-            "kind": "step",
+            "kind": "effect",
             "name": "lint",
             "place": "lib/long.dart:11"
           },
           {
             "id": "compile",
-            "kind": "step",
+            "kind": "effect",
             "name": "compile",
             "place": "lib/long.dart:12"
           },
@@ -39,19 +39,19 @@
           },
           {
             "id": "package",
-            "kind": "step",
+            "kind": "effect",
             "name": "package",
             "place": "lib/long.dart:14"
           },
           {
             "id": "publish",
-            "kind": "step",
+            "kind": "effect",
             "name": "publish",
             "place": "lib/long.dart:15"
           },
           {
             "id": "done",
-            "kind": "step",
+            "kind": "effect",
             "name": "done",
             "place": "lib/long.dart:16"
           }

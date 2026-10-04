@@ -9,44 +9,44 @@ enum Speed { slow, fast }
 Future<void> route(Flow f, bool urgent, Speed speed, bool quiet) async {
   switch ((urgent, (speed, quiet))) {
     case (true, _):
-      await f.step('page', () => print('page'));
+      await f.effect('page', () => print('page'));
     case (false, (Speed.slow, _)):
-      await f.step('mail', () => print('mail'));
+      await f.effect('mail', () => print('mail'));
     case (false, (Speed.fast, true)):
-      await f.step('log', () => print('log'));
+      await f.effect('log', () => print('log'));
     case (false, (Speed.fast, false)):
-      await f.step('chat', () => print('chat'));
+      await f.effect('chat', () => print('chat'));
   }
 }
 
 Future<void> retry(Flow f, bool urgent, int tries) async {
   switch ((urgent, tries)) {
     case (true, _):
-      await f.step('now', () => print('now'));
+      await f.effect('now', () => print('now'));
     case (false, 0):
-      await f.step('later', () => print('later'));
+      await f.effect('later', () => print('later'));
   }
 }
 
 Future<void> ship(Flow f, List<String> targets) async {
   await Future.wait(eagerError: true, [
-    f.step('build', () => print('build')),
-    f.step('test', () => print('test')),
+    f.effect('build', () => print('build')),
+    f.effect('test', () => print('test')),
   ]);
   await Future.wait(
     eagerError: true,
     targets.map((target) async {
-      await f.step('upload', () => print('upload $target'));
+      await f.effect('upload', () => print('upload $target'));
     }),
   );
 }
 
 extension on Flow {
-  Future<void> announce(String text) => step('announce', () => print(text));
+  Future<void> announce(String text) => effect('announce', () => print(text));
 }
 
 extension on String {
-  Future<void> announce(Flow f) => f.step('shout', () => print(this));
+  Future<void> announce(Flow f) => f.effect('shout', () => print(this));
 }
 
 Future<void> announceBoth(Flow f, String text) async {

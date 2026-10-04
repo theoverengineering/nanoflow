@@ -50,7 +50,7 @@ String functionTitle(String id) => '${id.substring(id.indexOf('#') + 1)}()';
 /// What opening [node] can show, one level down: one choice for each
 /// function of a call that [functions] has, in the call's order (several
 /// for the implementations of an interface method); the body of copies;
-/// nothing for a step or a condition.
+/// nothing for an effect or a condition.
 List<Opened> openings(GraphNode node, Map<String, GraphFunction> functions) =>
     switch (node) {
       CallNode(:final id, functions: final ids) => [
@@ -58,12 +58,12 @@ List<Opened> openings(GraphNode node, Map<String, GraphFunction> functions) =>
           if (functions.containsKey(function)) Opened(id, functionId: function),
       ],
       CopiesNode(:final id) => [Opened(id)],
-      StepNode() || ConditionNode() => const [],
+      EffectNode() || ConditionNode() => const [],
     };
 
 /// The levels [path] goes down through from [workflow]'s body, whose calls
 /// go to [functions]: the workflow's body first, then one level for each
-/// step of [path] while it opens a node of the level above that opens so
+/// effect of [path] while it opens a node of the level above that opens so
 /// ([openings]); the rest of [path] is left out.
 List<BodyLevel> bodyLevels(
   GraphFunction workflow,

@@ -109,8 +109,8 @@ void main() {
         file: releaseFile,
         changes: changesOf([
           Journal('a1b2-session', workflow: 'release')
-            ..step('plan', 1, end: 5)
-            ..step('build', 5)
+            ..effect('plan', 1, end: 5)
+            ..effect('build', 5)
             ..processGone(),
         ]),
       ),
@@ -133,7 +133,7 @@ void main() {
     expect(status, findsOneWidget);
   });
 
-  testWidgets('a running session with failed steps says 1 failed', (
+  testWidgets('a running session with failed effects says 1 failed', (
     tester,
   ) async {
     await pump(tester);
@@ -143,7 +143,7 @@ void main() {
       findsOneWidget,
     );
     expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
-    // A failed session's failed step is in its status already.
+    // A failed session's failed effect is in its status already.
     expect(find.text('1 failed'), findsOneWidget);
   });
 
@@ -160,11 +160,11 @@ void main() {
               startedAt: -2131,
               code: 'sha256:other',
             )
-            ..step('plan', -2130, end: -2120)
-            ..step('build', -2120, end: -2100, failed: true)
-            ..step('build', -2000),
+            ..effect('plan', -2130, end: -2120)
+            ..effect('build', -2120, end: -2100, failed: true)
+            ..effect('build', -2000),
           Journal('c3d4-session', workflow: 'release', code: null)
-            ..step('plan', 1),
+            ..effect('plan', 1),
         ]),
       ),
       now: () => columnNow,
@@ -181,7 +181,7 @@ void main() {
       expect(shown.didExceedMaxLines, isFalse, reason: status);
     }
     expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
-    expect(inCard('f0a5-session', find.text('3 steps')), findsOneWidget);
+    expect(inCard('f0a5-session', find.text('3 effects')), findsOneWidget);
   });
 
   testWidgets('a session resumed on changed code says so on its card', (
@@ -193,11 +193,11 @@ void main() {
         file: releaseFile,
         changes: changesOf([
           Journal('a1b2-session', workflow: 'release')
-            ..step('plan', 1, end: 5)
+            ..effect('plan', 1, end: 5)
             ..resume(6, code: 'sha256:edited')
-            ..step('build', 7),
+            ..effect('build', 7),
           Journal('c3d4-session', workflow: 'release', startedAt: -100)
-            ..step('plan', -99),
+            ..effect('plan', -99),
         ]),
       ),
       now: () => columnNow,
@@ -221,7 +221,7 @@ void main() {
       workflow: 'release',
       startedAt: -2131,
       code: 'sha256:other',
-    )..step('plan', -2130, end: -2120, failed: true);
+    )..effect('plan', -2130, end: -2120, failed: true);
     await pumpGraphScreen(
       tester,
       model: ownedModel(
@@ -229,7 +229,7 @@ void main() {
         changes: [
           ...changesOf([
             journal,
-            Journal('c3d4-session', workflow: 'release')..step('plan', 1),
+            Journal('c3d4-session', workflow: 'release')..effect('plan', 1),
           ]),
           const LogCorrupted(
             sessionId: 'f0a5-session',
@@ -303,11 +303,11 @@ void main() {
     );
   });
 
-  testWidgets('counts the steps of each session', (tester) async {
+  testWidgets('counts the effects of each session', (tester) async {
     await pump(tester);
 
-    expect(inCard('a1b2-session', find.text('2 steps')), findsOneWidget);
-    expect(inCard('4b8d-session', find.text('1 step')), findsOneWidget);
+    expect(inCard('a1b2-session', find.text('2 effects')), findsOneWidget);
+    expect(inCard('4b8d-session', find.text('1 effect')), findsOneWidget);
   });
 
   testWidgets('a running session goes on counting its time', (tester) async {

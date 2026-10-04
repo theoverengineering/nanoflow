@@ -74,7 +74,7 @@ final class NodeBox {
   final String? place;
 
   /// What is written inside the tile instead of an icon: `start`, `end`,
-  /// the steps of a call or of a copy, `{ 3 }`.
+  /// the effects of a call or of a copy, `{ 3 }`.
   final String? inside;
 
   /// The node's layer, 0 for the leftmost.

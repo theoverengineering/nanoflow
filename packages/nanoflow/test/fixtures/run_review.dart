@@ -1,6 +1,6 @@
 // Starts a session of `review` in the project directory and with the work
 // directory its arguments name, prints the session's id and runs it to its
-// end. test/resume_test.dart kills it while the step `inspect` waits.
+// end. test/resume_test.dart kills it while the effect `inspect` waits.
 import 'package:nanoflow/nanoflow.dart';
 
 import 'review.dart';

@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "capsules",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -21,55 +21,55 @@
           },
           {
             "id": "build-mac",
-            "kind": "step",
+            "kind": "effect",
             "name": "build-mac",
             "place": "lib/capsules.dart:11"
           },
           {
             "id": "build-linux",
-            "kind": "step",
+            "kind": "effect",
             "name": "build-linux",
             "place": "lib/capsules.dart:12"
           },
           {
             "id": "build-windows",
-            "kind": "step",
+            "kind": "effect",
             "name": "build-windows",
             "place": "lib/capsules.dart:13"
           },
           {
             "id": "notes",
-            "kind": "step",
+            "kind": "effect",
             "name": "notes",
             "place": "lib/capsules.dart:14"
           },
           {
             "id": "sign",
-            "kind": "step",
+            "kind": "effect",
             "name": "sign",
             "place": "lib/capsules.dart:15"
           },
           {
             "id": "upload",
-            "kind": "step",
+            "kind": "effect",
             "name": "upload",
             "place": "lib/capsules.dart:16"
           },
           {
             "id": "announce",
-            "kind": "step",
+            "kind": "effect",
             "name": "announce",
             "place": "lib/capsules.dart:17"
           },
           {
             "id": "archive",
-            "kind": "step",
+            "kind": "effect",
             "name": "archive",
             "place": "lib/capsules.dart:18"
           },
           {
             "id": "wait",
-            "kind": "step",
+            "kind": "effect",
             "name": "wait",
             "place": "lib/capsules.dart:19"
           }

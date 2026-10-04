@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "fork6",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -21,43 +21,43 @@
           },
           {
             "id": "fix-bug",
-            "kind": "step",
+            "kind": "effect",
             "name": "fix-bug",
             "place": "lib/fork6.dart:11"
           },
           {
             "id": "build-feature",
-            "kind": "step",
+            "kind": "effect",
             "name": "build-feature",
             "place": "lib/fork6.dart:12"
           },
           {
             "id": "write-docs",
-            "kind": "step",
+            "kind": "effect",
             "name": "write-docs",
             "place": "lib/fork6.dart:13"
           },
           {
             "id": "answer",
-            "kind": "step",
+            "kind": "effect",
             "name": "answer",
             "place": "lib/fork6.dart:14"
           },
           {
             "id": "escalate",
-            "kind": "step",
+            "kind": "effect",
             "name": "escalate",
             "place": "lib/fork6.dart:15"
           },
           {
             "id": "review",
-            "kind": "step",
+            "kind": "effect",
             "name": "review",
             "place": "lib/fork6.dart:16"
           },
           {
             "id": "close",
-            "kind": "step",
+            "kind": "effect",
             "name": "close",
             "place": "lib/fork6.dart:17"
           }

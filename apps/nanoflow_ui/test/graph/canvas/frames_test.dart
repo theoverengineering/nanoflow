@@ -7,8 +7,8 @@ import 'package:nanoflow_ui/graph/canvas/function_frame.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/copy_switcher.dart';
+import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/graph/logs/logs_panel.dart';
-import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
@@ -75,7 +75,7 @@ void main() {
     final model = modelOf();
     await pumpCanvas(tester, model);
     expect(expand('5'), findsOneWidget);
-    expect(expand('1'), findsNothing, reason: 'a step does not expand');
+    expect(expand('1'), findsNothing, reason: 'an effect does not expand');
 
     await tap(tester, expand('5'));
     expect(node('5'), findsNothing);
@@ -173,14 +173,14 @@ void main() {
     expect(inside(viewport(tester), tester.getRect(tile('5/4'))), isTrue);
   });
 
-  testWidgets('a session on a call in place: the steps of its function on '
+  testWidgets('a session on a call in place: the effects of its function on '
       'their nodes in the frame, the selected one ringed', (tester) async {
     final release = graphFileNamed('release');
     final j =
         Journal('r1r1-session', workflow: 'release', graph: release.toJson())
-          ..step('plan', 1, end: 2, place: 'lib/release.dart:16')
-          ..step('upload', 3, end: 4, place: 'lib/publish.dart:12')
-          ..step('verify', 5, place: 'lib/publish.dart:13');
+          ..effect('plan', 1, end: 2, place: 'lib/release.dart:16')
+          ..effect('upload', 3, end: 4, place: 'lib/publish.dart:12')
+          ..effect('verify', 5, place: 'lib/publish.dart:13');
     final model = modelOf(changes: j.changes);
     await pumpCanvas(tester, model);
     await tap(tester, expand('5'));
@@ -306,7 +306,7 @@ void main() {
         textIn(tester, find.byKey(CopiesFrameView.footerKey)),
         'done 1 of 3',
       );
-      // How many copies are on each step now.
+      // How many copies are on each effect now.
       expect(find.byKey(NodeTile.runningKeyOf('1/2')), findsOneWidget);
       expect(find.byKey(NodeTile.runningKeyOf('1/3')), findsOneWidget);
 
@@ -317,11 +317,11 @@ void main() {
       );
       expect(
         textIn(tester, find.byKey(LogsPanel.titleKey)),
-        'Logs pkg 2 · 2 steps',
+        'Logs pkg 2 · 2 effects',
       );
-      expect(model.selection.stepId, 'c0c0-verify-4');
+      expect(model.selection.effectId, 'c0c0-verify-4');
       final tag = tester.widget<NodeTile>(node('1/3'));
-      expect(tag.marks!.steps, 0, reason: 'tool has not reached tag');
+      expect(tag.marks!.effects, 0, reason: 'tool has not reached tag');
 
       // Opened, the copies show the same copy.
       model.open(const Opened('1'));
@@ -332,33 +332,34 @@ void main() {
       );
     });
 
-    testWidgets('a step of Logs in a frame is shown at its node in the frame', (
-      tester,
-    ) async {
-      await pumpGraphScreen(
-        tester,
-        path: inlineFile,
-        model: copiesModel(),
-        now: () => columnNow,
-      );
-      await tap(tester, expand('1'));
-      for (var i = 0; i < 4; i++) {
-        await tester.tap(find.byTooltip('Zoom in'));
-      }
-      await tester.pump();
-      final canvas = tester.getRect(find.byType(GraphCanvas));
-      expect(
-        canvas.intersect(tester.getRect(tile('1/1'))),
-        isNot(tester.getRect(tile('1/1'))),
-      );
+    testWidgets(
+      'an effect of Logs in a frame is shown at its node in the frame',
+      (tester) async {
+        await pumpGraphScreen(
+          tester,
+          path: inlineFile,
+          model: copiesModel(),
+          now: () => columnNow,
+        );
+        await tap(tester, expand('1'));
+        for (var i = 0; i < 4; i++) {
+          await tester.tap(find.byTooltip('Zoom in'));
+        }
+        await tester.pump();
+        final canvas = tester.getRect(find.byType(GraphCanvas));
+        expect(
+          canvas.intersect(tester.getRect(tile('1/1'))),
+          isNot(tester.getRect(tile('1/1'))),
+        );
 
-      await tap(tester, find.byKey(StepList.rowKey('c0c0-upload-0')));
-      expect(
-        inside(canvas, tester.getRect(tile('1/1'))),
-        isTrue,
-        reason: 'upload is revealed in the frame',
-      );
-    });
+        await tap(tester, find.byKey(EffectList.rowKey('c0c0-upload-0')));
+        expect(
+          inside(canvas, tester.getRect(tile('1/1'))),
+          isTrue,
+          reason: 'upload is revealed in the frame',
+        );
+      },
+    );
   });
 }
 

@@ -1,12 +1,12 @@
-// Reads the functions with steps of a package from its resolved sources,
-// without running them: every step a function can take and every way between
+// Reads the functions with effects of a package from its resolved sources,
+// without running them: every effect a function can take and every way between
 // them (spec §7.1). Ported from prototypes/static_graph, which inlined the
 // functions it called; here a call is a node, and the function it calls has a
 // graph of its own.
 //
 // A body is followed statement by statement; what is left of its control flow
-// between `Flow.step` calls, calls of functions with steps and copies run by
-// `Future.wait` are the edges. An `if`, a loop and a `switch` are forks,
+// between `Flow.effect` calls, calls of functions with effects and copies run
+// by `Future.wait` are the edges. An `if`, a loop and a `switch` are forks,
 // labelled with their source.
 
 import 'package:analyzer/dart/analysis/results.dart';
@@ -23,25 +23,25 @@ typedef Extracted = ({
   /// `Flow.resume`, sorted.
   List<String> workflows,
 
-  /// The functions with steps and the workflows by id, sorted by id.
+  /// The functions with effects and the workflows by id, sorted by id.
   Map<String, GraphFunction> functions,
 
   /// What could not be drawn, sorted by place.
   List<GraphWarning> warnings,
 });
 
-/// The functions with steps of the package whose sources are [units].
+/// The functions with effects of the package whose sources are [units].
 ///
 /// [paths] gives the path from the package root of every unit by its absolute
 /// path. [session] resolved [units]; a function outside them that a source
-/// calls with a `Flow` is read through it to tell whether it has steps.
+/// calls with a `Flow` is read through it to tell whether it has effects.
 Future<Extracted> extract(
   List<ResolvedUnitResult> units,
   Map<String, String> paths,
   AnalysisSession session,
 ) async {
   final package = _Package(units, paths);
-  await package._findStepsOutside(session);
+  await package._findEffectsOutside(session);
   return package._extract();
 }
 
@@ -81,21 +81,21 @@ final class _Package {
   /// The methods of the sources that override a method, by the method.
   final _overriders = <ExecutableElement, Set<_Declaration>>{};
 
-  /// The functions with steps, once [_findWithSteps] has found them.
-  final _withSteps = <_Declaration>{};
+  /// The functions with effects, once [_findWithEffects] has found them.
+  final _withEffects = <_Declaration>{};
 
-  /// The functions outside the sources that take steps.
-  final _stepsOutside = <ExecutableElement>{};
+  /// The functions outside the sources that call effects.
+  final _effectsOutside = <ExecutableElement>{};
 
-  final _stepsMemo = <AstNode, bool>{};
+  final _effectsMemo = <AstNode, bool>{};
 
   /// A set: a `finally` drawn once per way out of its try would repeat the
-  /// warnings of its steps.
+  /// warnings of its effects.
   final _warnings = <GraphWarning>{};
 
   /// Reads the functions outside the sources that the sources call with a
-  /// `Flow`, to warn that their steps are not drawn.
-  Future<void> _findStepsOutside(AnalysisSession session) async {
+  /// `Flow`, to warn that their effects are not drawn.
+  Future<void> _findEffectsOutside(AnalysisSession session) async {
     final callees = <ExecutableElement>{};
     for (final unit in _units) {
       _walk(unit.unit, (node) {
@@ -122,18 +122,18 @@ final class _Package {
         MethodDeclaration(:final body) => body,
         _ => null,
       };
-      if (body != null && _takesStepItself(body)) _stepsOutside.add(callee);
+      if (body != null && _callsEffectItself(body)) _effectsOutside.add(callee);
     }
   }
 
   Extracted _extract() {
     _index();
-    _findWithSteps();
+    _findWithEffects();
     final workflows = <_Declaration>{};
     for (final unit in _units) {
       _walk(unit.unit, (node) => _look(node, workflows));
     }
-    final drawn = {..._withSteps, ...workflows}.toList()
+    final drawn = {..._withEffects, ...workflows}.toList()
       ..sort((a, b) => a.id.compareTo(b.id));
     final functions = {
       for (final d in drawn)
@@ -204,25 +204,25 @@ final class _Package {
     );
   }
 
-  /// Finds the functions with steps: those that take a step and, until
+  /// Finds the functions with effects: those that call an effect and, until
   /// nothing changes, those that call one of them.
-  void _findWithSteps() {
+  void _findWithEffects() {
     final callees = <_Declaration, Set<_Declaration>>{};
     for (final declaration in _declarations.values) {
-      var steps = false;
+      var effects = false;
       final calls = callees[declaration] = {};
       _walkRunning(declaration.body, (node) {
-        if (node is MethodInvocation && _isStep(node)) steps = true;
+        if (node is MethodInvocation && _isEffect(node)) effects = true;
         calls.addAll(_candidates(node));
       });
-      if (steps) _withSteps.add(declaration);
+      if (effects) _withEffects.add(declaration);
     }
     for (var changed = true; changed;) {
       changed = false;
       for (final MapEntry(key: declaration, value: calls) in callees.entries) {
-        if (!_withSteps.contains(declaration) &&
-            calls.any(_withSteps.contains)) {
-          _withSteps.add(declaration);
+        if (!_withEffects.contains(declaration) &&
+            calls.any(_withEffects.contains)) {
+          _withEffects.add(declaration);
           changed = true;
         }
       }
@@ -230,20 +230,20 @@ final class _Package {
   }
 
   /// Takes the workflows and the warnings of the whole sources from [node],
-  /// in a function with steps or not.
+  /// in a function with effects or not.
   void _look(AstNode node, Set<_Declaration> workflows) {
     switch (node) {
       case final FunctionExpression closure
           when closure.parent is! FunctionDeclaration &&
               !_runsHere(closure) &&
-              _hasSteps(closure.body):
-        _warn(closure, 'steps in a closure passed on are not drawn');
+              _hasEffects(closure.body):
+        _warn(closure, 'effects in a closure passed on are not drawn');
       case final FunctionDeclaration local
           when local.parent is FunctionDeclarationStatement &&
-              _hasSteps(local.functionExpression.body):
+              _hasEffects(local.functionExpression.body):
         _warn(
           local,
-          'steps in a local function are not drawn',
+          'effects in a local function are not drawn',
           offset: local.name.offset,
         );
       case final MethodInvocation start
@@ -257,33 +257,33 @@ final class _Package {
       default:
     }
     if (_callee(node)?.element case final callee?
-        when _stepsOutside.contains(callee)) {
+        when _effectsOutside.contains(callee)) {
       _warn(
         node,
-        'steps of ${callee.name} are not drawn: '
+        'effects of ${callee.name} are not drawn: '
         'it is outside the package sources',
       );
     }
   }
 
-  // ---- steps and calls --------------------------------------------------------
+  // ---- effects and calls ------------------------------------------------------
 
-  /// Whether running [node] can take a step: a closure written in it does
-  /// not run there, a function with steps it calls does.
-  bool _hasSteps(AstNode node) => _stepsMemo[node] ??= _findsSteps(node);
+  /// Whether running [node] can call an effect: a closure written in it does
+  /// not run there, a function with effects it calls does.
+  bool _hasEffects(AstNode node) => _effectsMemo[node] ??= _findsEffects(node);
 
-  bool _findsSteps(AstNode node) {
+  bool _findsEffects(AstNode node) {
     if (node is FunctionExpression && !_runsHere(node)) return false;
-    if (node is MethodInvocation && _isStep(node)) return true;
+    if (node is MethodInvocation && _isEffect(node)) return true;
     if (_callTargets(node).isNotEmpty) return true;
-    return node.childEntities.whereType<AstNode>().any(_hasSteps);
+    return node.childEntities.whereType<AstNode>().any(_hasEffects);
   }
 
-  /// The ids of the functions with steps that [node] calls, sorted: one for a
+  /// The ids of the functions with effects that [node] calls, sorted: one for a
   /// function, every implementation for a method of an interface.
   List<String> _callTargets(AstNode node) => [
     for (final d in _candidates(node))
-      if (_withSteps.contains(d)) d.id,
+      if (_withEffects.contains(d)) d.id,
   ]..sort();
 
   /// The functions of the sources that [node] can call.
@@ -332,16 +332,16 @@ final class _Package {
   bool _takesFlow(ExecutableElement element) =>
       element.formalParameters.any((parameter) => _isFlowType(parameter.type));
 
-  /// Whether [body] calls `Flow.step` where it runs.
-  bool _takesStepItself(FunctionBody body) {
-    var steps = false;
+  /// Whether [body] calls `Flow.effect` where it runs.
+  bool _callsEffectItself(FunctionBody body) {
+    var effects = false;
     _walkRunning(body, (node) {
-      if (node is MethodInvocation && _isStep(node)) steps = true;
+      if (node is MethodInvocation && _isEffect(node)) effects = true;
     });
-    return steps;
+    return effects;
   }
 
-  bool _isStep(MethodInvocation node) => _isFlow(node, const {'step'});
+  bool _isEffect(MethodInvocation node) => _isFlow(node, const {'effect'});
 
   /// Whether [node] calls a method of `Flow` named one of [names].
   bool _isFlow(MethodInvocation node, Set<String> names) {
@@ -531,12 +531,12 @@ sealed class _Drawn extends _V {
   GraphNode node(String id);
 }
 
-final class _Step extends _Drawn {
-  _Step(this.name, super.place);
+final class _Effect extends _Drawn {
+  _Effect(this.name, super.place);
   final String name;
 
   @override
-  GraphNode node(String id) => StepNode(id: id, place: place, name: name);
+  GraphNode node(String id) => EffectNode(id: id, place: place, name: name);
 }
 
 final class _Fork extends _Drawn {
@@ -730,9 +730,9 @@ final class _Body {
 
   List<_Out> _statement(Statement s, List<_Out> into, _Scope scope) {
     if (into.isEmpty) return into; // unreachable
-    // No step and no jump out of it: the flow goes through as if it were not
+    // No effect and no jump out of it: the flow goes through as if it were not
     // there.
-    if (!_package._hasSteps(s) && !_jumpsOut(s)) return into;
+    if (!_package._hasEffects(s) && !_jumpsOut(s)) return into;
     switch (s) {
       case Block():
         return _statements(s.statements, into, scope);
@@ -855,8 +855,8 @@ final class _Body {
   /// `finally` when it leaves the `try`.
   List<_Out> _try(TryStatement s, List<_Out> into, _Scope scope) {
     if (s.catchClauses.isNotEmpty &&
-        (_package._hasSteps(s.body) ||
-            s.catchClauses.any((c) => _package._hasSteps(c.body)))) {
+        (_package._hasEffects(s.body) ||
+            s.catchClauses.any((c) => _package._hasEffects(c.body)))) {
       _package._warn(s.catchClauses.first, 'catch clauses are not drawn');
     }
     final finallyBlock = s.finallyBlock;
@@ -1082,12 +1082,12 @@ final class _Body {
   List<_Out> _expression(AstNode e, List<_Out> into, _Scope scope) {
     // A closure's body does not run where the closure is written, unless it
     // is called right there; that call draws it.
-    if (into.isEmpty || !_package._hasSteps(e)) return into;
+    if (into.isEmpty || !_package._hasEffects(e)) return into;
     switch (e) {
-      case MethodInvocation() when _package._isStep(e):
-        final step = _step(e);
-        _connect(into, step);
-        return [(step, null)];
+      case MethodInvocation() when _package._isEffect(e):
+        final effect = _effect(e);
+        _connect(into, effect);
+        return [(effect, null)];
       case MethodInvocation() when _package._isFutureWait(e):
         final futures = _firstPositional(e.argumentList);
         if (futures == null) return into;
@@ -1109,7 +1109,7 @@ final class _Body {
         // `(a, b).wait`: each field starts here, side by side.
         return [
           for (final field in fields)
-            if (_package._hasSteps(field)) ..._expression(field, into, scope),
+            if (_package._hasEffects(field)) ..._expression(field, into, scope),
         ];
       case ConditionalExpression():
         final condition = _expression(e.condition, into, scope);
@@ -1136,7 +1136,7 @@ final class _Body {
       case BinaryExpression(:final operator)
           when (operator.type == TokenType.AMPERSAND_AMPERSAND ||
                   operator.type == TokenType.BAR_BAR) &&
-              _package._hasSteps(e.rightOperand):
+              _package._hasEffects(e.rightOperand):
         final left = _expression(e.leftOperand, into, scope);
         final fork = _fork(_source(e.leftOperand), e.leftOperand, _ifOutcomes);
         _connect(left, fork);
@@ -1190,7 +1190,7 @@ final class _Body {
       case ListLiteral(:final elements):
         final exits = <_Out>[];
         for (final element in elements) {
-          if (!_package._hasSteps(element)) continue;
+          if (!_package._hasEffects(element)) continue;
           exits.addAll(switch (element) {
             ForElement(forLoopParts: final ForEachParts parts) => _copies(
               '${_loopVariable(parts)} in ${_source(parts.iterable)}',
@@ -1256,7 +1256,7 @@ final class _Body {
 
   // ---- building the graph -----------------------------------------------------
 
-  _Step _step(MethodInvocation e) {
+  _Effect _effect(MethodInvocation e) {
     final first = e.argumentList.arguments.first;
     final name = switch (first) {
       StringLiteral(:final stringValue) => stringValue,
@@ -1265,12 +1265,12 @@ final class _Body {
     if (name == null) {
       _package._warn(
         e,
-        'step name is not a string literal',
+        'effect name is not a string literal',
         offset: e.methodName.offset,
       );
     }
     return _add(
-      _Step(
+      _Effect(
         name ?? _source(first),
         _package._place(e, offset: e.methodName.offset),
       ),

@@ -8,7 +8,7 @@ import '../../theme.dart';
 import '../../widgets/clickable.dart';
 
 /// How many lines of a log or a document are shown until `Show all`: a log's
-/// last, a document's first (docs/ui-spec.md «Окно деталей шага»: «Большие
+/// last, a document's first (docs/ui-spec.md «Окно деталей эффекта»: «Большие
 /// данные показаны не целиком»).
 const previewLines = 1000;
 
@@ -34,7 +34,7 @@ typedef TextStart = ({int count, String widest, String? cut});
 
 /// The first [previewLines] of [lines] — all of them when [all] — with lines
 /// cut at [previewLineLength] unless [all] (docs/ui-spec.md «Окно деталей
-/// шага»: «у JSON — начало»).
+/// эффекта»: «у JSON — начало»).
 TextStart textStart(List<String> lines, {required bool all}) {
   final linesCut = !all && lines.length > previewLines;
   final count = linesCut ? previewLines : lines.length;

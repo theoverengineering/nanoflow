@@ -19,7 +19,7 @@ import 'copies_frame.dart';
 import 'layout_geometry.dart';
 import 'legend.dart';
 
-export 'canvas_bodies.dart' show ExpandNode, OpenNode, OpenStep;
+export 'canvas_bodies.dart' show ExpandNode, OpenNode, OpenEffect;
 
 /// Moves the view of a [GraphCanvas] from outside it.
 class GraphCanvasController {
@@ -32,7 +32,7 @@ class GraphCanvasController {
   Offset get offset => _state?._offset ?? Offset.zero;
 
   /// Pans the view so that the node [id] is in it, unless it already is
-  /// (docs/ui-spec.md «Выбор»: «Шаг в ленте прокручивает холст к своему
+  /// (docs/ui-spec.md «Выбор»: «Эффект в ленте прокручивает холст к своему
   /// узлу, если тот не виден»). A node in a frame drawn in place is named
   /// by the ids of the frames it is in and its own, joined by `/`: `5/2`.
   void revealNode(String id) => _state?._reveal(id);
@@ -48,12 +48,12 @@ class GraphCanvasController {
 /// fitted when first shown and when another graph replaces it, but not when
 /// new data comes for the same graph.
 ///
-/// With a session, its steps are marked on the nodes (spec §9 «Шаги на
-/// графе»); a click on a node selects its last step. The body of copies is
+/// With a session, its effects are marked on the nodes (spec §9 «Эффекты на
+/// графе»); a click on a node selects its last effect. The body of copies is
 /// drawn in their frame, with the copy switcher (decisions 10, 11).
 ///
 /// A double click on a call or on copies is [onOpenNode]: what it opens
-/// (`openings`) is drawn instead; on a step, [onOpenStep]. The `+` on a
+/// (`openings`) is drawn instead; on an effect, [onOpenEffect]. The `+` on a
 /// call or copies is [onExpandNode]: the model's expanded nodes are drawn
 /// in place, each a frame round its body (decision 6), whose `−` collapses
 /// it; in a frame, everything works as on the level drawn, and a copies
@@ -67,7 +67,7 @@ class GraphCanvas extends StatefulWidget {
     this.now = DateTime.now,
     this.controller,
     this.onOpenNode,
-    this.onOpenStep,
+    this.onOpenEffect,
     this.onExpandNode,
     this.topInset = sessionBarRoom,
   });
@@ -86,8 +86,8 @@ class GraphCanvas extends StatefulWidget {
   /// Opens a call or copies: on a double click on it.
   final OpenNode? onOpenNode;
 
-  /// Opens the step details window on a step node: on a double click on it.
-  final OpenStep? onOpenStep;
+  /// Opens the effect details window on an effect node: on a double click.
+  final OpenEffect? onOpenEffect;
 
   /// Expands a call or copies in place: on its `+`; without it, no `+`.
   final ExpandNode? onExpandNode;
@@ -489,7 +489,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
   /// The arrows, the exits and the nodes of [graph], with the marks, in
   /// the frame of [copies] when it is their body that is drawn, [frame] the
   /// session's copies of it; calls and copies open on a double click,
-  /// steps their details. The nodes expanded in place are frames, the
+  /// effects their details. The nodes expanded in place are frames, the
   /// bodies in them drawn the same way, [view] the session's.
   Widget _draw(
     layout.GraphLayout graph,
@@ -506,7 +506,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
       anchor: _anchorAt,
       unanchor: () => _anchor = null,
       onOpenNode: widget.onOpenNode,
-      onOpenStep: widget.onOpenStep,
+      onOpenEffect: widget.onOpenEffect,
       onExpandNode: widget.onExpandNode,
     )..draw(graph, _marks, frames: _canvas.frames)).layers;
     return RepaintBoundary(

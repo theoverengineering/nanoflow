@@ -63,8 +63,8 @@ void main() {
         file: releaseFile,
         changes: changesOf([
           Journal('a1b2-session', workflow: 'release')
-            ..step('plan', 1, end: 5)
-            ..step('build', 5)
+            ..effect('plan', 1, end: 5)
+            ..effect('build', 5)
             ..processGone(),
         ]),
       ),
@@ -87,9 +87,9 @@ void main() {
         file: releaseFile,
         changes: changesOf([
           Journal('a1b2-session', workflow: 'release')
-            ..step('plan', 1, end: 5)
+            ..effect('plan', 1, end: 5)
             ..resume(6, code: 'sha256:edited')
-            ..step('build', 7),
+            ..effect('build', 7),
         ]),
       ),
       now: () => columnNow,

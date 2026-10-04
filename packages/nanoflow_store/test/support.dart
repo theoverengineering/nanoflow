@@ -66,7 +66,7 @@ const code = 'sha256:7d3e9f0c';
 /// A graph file, cut down: what a session stores is whatever map it is
 /// given.
 const graph = <String, Object?>{
-  'format': 1,
+  'format': 2,
   'workflows': ['lib/review.dart#review'],
 };
 
@@ -77,7 +77,7 @@ String sessionJson(String sessionId, {required String? inputId}) =>
   "id": "$sessionId",
   "workflow": "review",
   "graph": {
-    "format": 1,
+    "format": 2,
     "workflows": [
       "lib/review.dart#review"
     ]
@@ -103,21 +103,21 @@ Future<SessionHandle> newSession({
   );
 }
 
-/// A new step of [handle] named [name], with a key made of it.
-Future<Step> newStep(
+/// A new effect of [handle] named [name], with a key made of it.
+Future<Effect> newEffect(
   SessionHandle handle, {
   String name = 'collect',
   String? after,
-}) => handle.createStep(
+}) => handle.createEffect(
   name: name,
   key: '$name#1@e3b0c44298fc1c14',
   after: after,
   place: 'lib/review.dart:12',
 );
 
-/// The directory of the step [stepId] in the session of [handle].
-String stepDir(SessionHandle handle, String stepId) =>
-    only(p.join(handle.dir, 'steps'), '.*-($stepId)').path;
+/// The directory of the effect [effectId] in the session of [handle].
+String effectDir(SessionHandle handle, String effectId) =>
+    only(p.join(handle.dir, 'effects'), '.*-($effectId)').path;
 
 /// The journal of the session of [handle].
 String journal(SessionHandle handle) => p.join(handle.dir, 'log.jsonl');

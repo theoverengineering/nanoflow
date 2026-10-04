@@ -1,10 +1,10 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "interfaces",
-  "fingerprint": "sha256:1fcaf63a8d32bf045de27ae4874376b5b80b9ccd9b1c4cd0f54f9b30fa716ccb",
+  "fingerprint": "sha256:9ef46ad73b3d599643205f5274527cbfca0134f378882c90967645201bc9ff2f",
   "sources": {
     "bin/main.dart": "sha256:4890a4c16e366110bed8d9bbfc515216c009844a56f3a640ee4dbc3c373ae839",
-    "lib/deploy.dart": "sha256:29e8e68ea82f60bfc1a85d76c3c3abfdaf2edc1c512c3737b2576eca75aa1d63"
+    "lib/deploy.dart": "sha256:f7de2b6f17f2518bf7df7271d357b9eab162c32ac981f91285e4a5e2efe551aa"
   },
   "builds": {},
   "workflows": [
@@ -18,7 +18,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "post",
             "place": "lib/deploy.dart:12"
           }
@@ -44,13 +44,13 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "find-owners",
             "place": "lib/deploy.dart:19"
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "send-mail",
             "place": "lib/deploy.dart:20"
           }
@@ -81,7 +81,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "roll-out",
             "place": "lib/deploy.dart:31"
           },

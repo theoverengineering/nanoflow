@@ -7,10 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/details/data_view.dart';
+import 'package:nanoflow_ui/graph/details/effect_details_window.dart';
 import 'package:nanoflow_ui/graph/details/node_column.dart';
 import 'package:nanoflow_ui/graph/details/output_column.dart';
-import 'package:nanoflow_ui/graph/details/step_details_window.dart';
-import 'package:nanoflow_ui/graph/logs/step_details_pane.dart';
+import 'package:nanoflow_ui/graph/logs/effect_details_pane.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/theme.dart';
@@ -23,13 +23,13 @@ import '../logs/support.dart';
 import '../support.dart';
 
 void main() {
-  Finder window() => find.byType(StepDetailsWindow);
+  Finder window() => find.byType(EffectDetailsWindow);
   Finder inColumn(Type column, Finder finder) =>
       find.descendant(of: find.byType(column), matching: finder);
   String textOf(WidgetTester tester, Type column) =>
       textIn(tester, find.byType(column));
   String topBar(WidgetTester tester) =>
-      textIn(tester, find.byKey(StepDetailsWindow.topBarKey));
+      textIn(tester, find.byKey(EffectDetailsWindow.topBarKey));
 
   /// Lets the window read its documents.
   Future<void> settleWindow(WidgetTester tester) async {
@@ -54,10 +54,10 @@ void main() {
     await settleWindow(tester);
   }
 
-  /// The review session with a failed step on inspect after it.
+  /// The review session with a failed effect on inspect after it.
   GraphModel failedModel() {
     final session = reviewSession()
-      ..step(
+      ..effect(
         'inspect',
         700,
         end: 701,
@@ -74,11 +74,11 @@ void main() {
   }
 
   group('opens', () {
-    testWidgets('from Open in Logs, on the selected step', (tester) async {
+    testWidgets('from Open in Logs, on the selected effect', (tester) async {
       await pumpReview(tester);
       expect(window(), findsNothing);
 
-      await tap(tester, find.byKey(StepDetailsPane.openKey));
+      await tap(tester, find.byKey(EffectDetailsPane.openKey));
 
       expect(window(), findsOneWidget);
       expect(
@@ -88,7 +88,7 @@ void main() {
       );
     });
 
-    testWidgets("on a double click, at the node's last step", (tester) async {
+    testWidgets("on a double click, at the node's last effect", (tester) async {
       final model = await pumpReview(tester);
 
       await doubleClick(tester, '4');
@@ -97,10 +97,10 @@ void main() {
         topBar(tester),
         contains('inspect lib/review.dart:55 Visit 2 of 2 finished · 4m 02s'),
       );
-      expect(model.selection.stepId, 'a1b2-inspect-3');
+      expect(model.selection.effectId, 'a1b2-inspect-3');
     });
 
-    testWidgets('on a node without steps with its name and place alone', (
+    testWidgets('on a node without effects with its name and place alone', (
       tester,
     ) async {
       final model = await pumpReview(tester);
@@ -109,10 +109,10 @@ void main() {
 
       expect(topBar(tester), 'Back to canvas discard lib/review.dart:51');
       expect(textOf(tester, OutputColumn), 'OUTPUT');
-      final step = textOf(tester, NodeColumn);
-      expect(step, contains('PLACE IN CODE lib/review.dart:51'));
-      expect(step, isNot(contains('THIS STEP')));
-      expect(model.selection.stepId, 'a1b2-notify-5');
+      final effect = textOf(tester, NodeColumn);
+      expect(effect, contains('PLACE IN CODE lib/review.dart:51'));
+      expect(effect, isNot(contains('THIS EFFECT')));
+      expect(model.selection.effectId, 'a1b2-notify-5');
     });
 
     testWidgets('on a node of Current graph with its name and place alone', (
@@ -125,7 +125,7 @@ void main() {
       await doubleClick(tester, '4');
 
       expect(topBar(tester), 'Back to canvas inspect lib/review.dart:55');
-      expect(textOf(tester, NodeColumn), isNot(contains('THIS STEP')));
+      expect(textOf(tester, NodeColumn), isNot(contains('THIS EFFECT')));
     });
   });
 
@@ -144,12 +144,12 @@ void main() {
       (
         'Back to canvas',
         (WidgetTester tester) =>
-            tester.tap(find.byKey(StepDetailsWindow.backKey)),
+            tester.tap(find.byKey(EffectDetailsWindow.backKey)),
       ),
       (
         'the close button',
         (WidgetTester tester) =>
-            tester.tap(find.byKey(StepDetailsWindow.closeKey)),
+            tester.tap(find.byKey(EffectDetailsWindow.closeKey)),
       ),
       (
         'Esc',
@@ -158,7 +158,7 @@ void main() {
     ]) {
       testWidgets('with $how', (tester) async {
         await pumpReview(tester);
-        await tap(tester, find.byKey(StepDetailsPane.openKey));
+        await tap(tester, find.byKey(EffectDetailsPane.openKey));
         expect(window(), findsOneWidget);
 
         await close(tester);
@@ -168,7 +168,7 @@ void main() {
       });
     }
 
-    testWidgets("on a running session's newest step when the window showed "
+    testWidgets("on a running session's newest effect when the window showed "
         'its last: following goes on under the window', (tester) async {
       final more = StreamController<Change>();
       addTearDown(more.close);
@@ -183,12 +183,12 @@ void main() {
           files: reviewFiles(),
         ),
       );
-      await tap(tester, find.byKey(StepDetailsPane.openKey));
+      await tap(tester, find.byKey(EffectDetailsPane.openKey));
 
       final session = reviewSession();
-      final next = session.step('notify', 700, place: 'lib/review.dart:59');
+      final next = session.effect('notify', 700, place: 'lib/review.dart:59');
       more
-        ..add(StepAdded(session.steps.last))
+        ..add(EffectAdded(session.effects.last))
         ..add(EventAdded(sessionId: session.id, event: session.events.last));
       await settle(tester);
 
@@ -196,48 +196,48 @@ void main() {
         topBar(tester),
         contains('notify lib/review.dart:59 Visit 1 of 2'),
       );
-      expect(model.selection.stepId, next);
-      await tap(tester, find.byKey(StepDetailsWindow.closeKey));
-      expect(model.selection.stepId, next);
+      expect(model.selection.effectId, next);
+      await tap(tester, find.byKey(EffectDetailsWindow.closeKey));
+      expect(model.selection.effectId, next);
     });
 
-    testWidgets('leaving the canvas and Logs on the step shown last', (
+    testWidgets('leaving the canvas and Logs on the effect shown last', (
       tester,
     ) async {
       final model = await pumpReview(tester);
       await doubleClick(tester, '4');
-      await tap(tester, find.byKey(StepDetailsWindow.previousKey));
+      await tap(tester, find.byKey(EffectDetailsWindow.previousKey));
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pump();
 
-      expect(model.selection.stepId, 'a1b2-inspect-1');
+      expect(model.selection.effectId, 'a1b2-inspect-1');
       expect(
-        textIn(tester, find.byKey(StepDetailsPane.headerKey)),
+        textIn(tester, find.byKey(EffectDetailsPane.headerKey)),
         startsWith('inspect'),
       );
     });
   });
 
-  testWidgets('the visit switcher goes through every step on the node, and '
+  testWidgets('the visit switcher goes through every effect on the node, and '
       'selects the one shown', (tester) async {
     final model = await pumpReview(tester);
     await doubleClick(tester, '4');
 
-    await tap(tester, find.byKey(StepDetailsWindow.previousKey));
+    await tap(tester, find.byKey(EffectDetailsWindow.previousKey));
     expect(topBar(tester), contains('Visit 1 of 2 finished · 3m 12s'));
-    expect(model.selection.stepId, 'a1b2-inspect-1');
+    expect(model.selection.effectId, 'a1b2-inspect-1');
     // No visit before the first.
-    await tap(tester, find.byKey(StepDetailsWindow.previousKey));
+    await tap(tester, find.byKey(EffectDetailsWindow.previousKey));
     expect(topBar(tester), contains('Visit 1 of 2'));
 
-    await tap(tester, find.byKey(StepDetailsWindow.nextKey));
+    await tap(tester, find.byKey(EffectDetailsWindow.nextKey));
     expect(topBar(tester), contains('Visit 2 of 2'));
-    expect(model.selection.stepId, 'a1b2-inspect-3');
+    expect(model.selection.effectId, 'a1b2-inspect-3');
   });
 
   group('the output', () {
-    testWidgets('is the value the step returned, with its size, as JSON', (
+    testWidgets('is the value the effect returned, with its size, as JSON', (
       tester,
     ) async {
       await pumpReview(tester);
@@ -249,17 +249,20 @@ void main() {
       expect(inColumn(OutputColumn, find.byType(JsonView)), findsOneWidget);
     });
 
-    testWidgets('is not there yet while the step runs', (tester) async {
+    testWidgets('is not there yet while the effect runs', (tester) async {
       await pumpReview(tester);
       await doubleClick(tester, '7');
 
       expect(
-        inColumn(OutputColumn, find.text('Not yet: the step is still running')),
+        inColumn(
+          OutputColumn,
+          find.text('Not yet: the effect is still running'),
+        ),
         findsOneWidget,
       );
     });
 
-    testWidgets('of a failed step is its error, with the stack', (
+    testWidgets('of a failed effect is its error, with the stack', (
       tester,
     ) async {
       await pumpReview(tester, model: failedModel());
@@ -279,7 +282,7 @@ void main() {
       );
     });
 
-    testWidgets('Log shows the step\'s log', (tester) async {
+    testWidgets('Log shows the effect\'s log', (tester) async {
       await pumpReview(tester);
       await doubleClick(tester, '7');
       await tap(tester, find.byKey(OutputColumn.tabKey(OutputTab.log)));
@@ -291,7 +294,7 @@ void main() {
     });
   });
 
-  testWidgets('on a step that was running when the process of its session '
+  testWidgets('on an effect that was running when the process of its session '
       'went: interrupted, nothing turning, its start interrupted, no output '
       'yet (owner spec §6)', (tester) async {
     await pumpReview(
@@ -332,14 +335,14 @@ void main() {
     expect(
       inColumn(
         OutputColumn,
-        find.text('Not yet: the step was interrupted — the process stopped'),
+        find.text('Not yet: the effect was interrupted — the process stopped'),
       ),
       findsOneWidget,
     );
   });
 
-  group('the step column', () {
-    testWidgets('tells the place in the code and the facts of the step', (
+  group('the effect column', () {
+    testWidgets('tells the place in the code and the facts of the effect', (
       tester,
     ) async {
       await pumpReview(tester);
@@ -347,12 +350,12 @@ void main() {
       expect(
         textIn(tester, find.byKey(NodeColumn.descriptionKey)),
         'PLACE IN CODE lib/review.dart:55 '
-        'THIS STEP Started 14:09:20.000 Finished 14:13:22.000 took 4m 02s '
+        'THIS EFFECT Started 14:09:20.000 Finished 14:13:22.000 took 4m 02s '
         'Starts 14:09:20 interrupted — the process stopped 14:11:51',
       );
       expect(
         textIn(tester, find.byKey(NodeColumn.pathKey)),
-        allOf(startsWith('…'), endsWith(p.basename(inspectStepPath))),
+        allOf(startsWith('…'), endsWith(p.basename(inspectEffectPath))),
       );
     });
 
@@ -377,7 +380,7 @@ void main() {
       );
     });
 
-    testWidgets("reveals the step's directory in Finder, and copies its "
+    testWidgets("reveals the effect's directory in Finder, and copies its "
         'path', (tester) async {
       final ran = <List<String>>[];
       await pumpReview(
@@ -393,10 +396,10 @@ void main() {
 
       await tap(tester, inColumn(NodeColumn, find.text('Reveal in Finder')));
       expect(ran, [
-        ['/usr/bin/open', '-R', inspectStepPath],
+        ['/usr/bin/open', '-R', inspectEffectPath],
       ]);
       expect(
-        inColumn(NodeColumn, find.byTooltip(inspectStepPath)),
+        inColumn(NodeColumn, find.byTooltip(inspectEffectPath)),
         findsOneWidget,
       );
 
@@ -404,22 +407,22 @@ void main() {
       mockClipboard(tester, copied);
       await tap(tester, inColumn(NodeColumn, find.byTooltip('Copy path')));
       expect(copied, [
-        {'text': inspectStepPath},
+        {'text': inspectEffectPath},
       ]);
     });
   });
 
-  testWidgets("stops following a step's log when the window shows another "
+  testWidgets("stops following an effect's log when the window shows another "
       'visit, and when it closes', (tester) async {
     final files = reviewFiles();
     await pumpReview(tester, model: reviewModel(files: files));
-    // Logs shows the selected step's output: only the window follows logs.
-    await tap(tester, find.byKey(StepDetailsPane.tabKey(StepTab.output)));
+    // Logs shows the selected effect's output: only the window follows logs.
+    await tap(tester, find.byKey(EffectDetailsPane.tabKey(EffectTab.output)));
     await doubleClick(tester, '4');
     await tap(tester, find.byKey(OutputColumn.tabKey(OutputTab.log)));
     expect(files.followed, ['a1b2-inspect-3']);
 
-    await tap(tester, find.byKey(StepDetailsWindow.previousKey));
+    await tap(tester, find.byKey(EffectDetailsWindow.previousKey));
     expect(files.followed, ['a1b2-inspect-1']);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);

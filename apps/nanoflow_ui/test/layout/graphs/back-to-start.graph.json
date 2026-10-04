@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "back-to-start",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -15,7 +15,7 @@
         "nodes": [
           {
             "id": "poll",
-            "kind": "step",
+            "kind": "effect",
             "name": "poll",
             "place": "lib/back-to-start.dart:10"
           },
@@ -27,7 +27,7 @@
           },
           {
             "id": "sync",
-            "kind": "step",
+            "kind": "effect",
             "name": "sync",
             "place": "lib/back-to-start.dart:12"
           },
@@ -39,7 +39,7 @@
           },
           {
             "id": "alert",
-            "kind": "step",
+            "kind": "effect",
             "name": "alert",
             "place": "lib/back-to-start.dart:14"
           }

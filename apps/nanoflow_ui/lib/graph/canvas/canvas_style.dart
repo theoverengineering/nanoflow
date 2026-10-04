@@ -42,7 +42,7 @@ abstract final class CanvasColors {
   static const stackFill = Color(0xFF2C2D32);
   static const stackBorder = Color(0xFF55565C);
 
-  /// The ring round the selected step's node: 4 px of the accent at 38 %.
+  /// The ring round the selected effect's node: 4 px of the accent at 38 %.
   static const ring = Color(0x619C8CFF);
 
   /// The badges over a tile: `×3` across the stack of copies, `2×` over a
@@ -90,7 +90,7 @@ abstract final class CanvasText {
   /// A node's place in the code under its name.
   static final place = _mono.copyWith(fontSize: 10.5);
 
-  /// The steps of a call or of a copy: `{ 3 }`.
+  /// The effects of a call or of a copy: `{ 3 }`.
   static final inside = _mono.copyWith(fontSize: 15, color: CanvasColors.icon);
 
   /// The badges over a tile: `×3`, `2×`.

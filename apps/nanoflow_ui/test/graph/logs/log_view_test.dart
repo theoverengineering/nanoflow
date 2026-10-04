@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_ui/graph/logs/effect_details_pane.dart';
+import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/graph/logs/log_view.dart';
 import 'package:nanoflow_ui/graph/logs/mono_lines.dart';
-import 'package:nanoflow_ui/graph/logs/step_details_pane.dart';
-import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/theme.dart';
 
 import '../../state/support.dart';
@@ -14,7 +14,7 @@ import 'support.dart';
 
 void main() {
   Finder lines() => find.byKey(MonoLines.linesKey);
-  Finder badge() => find.byKey(StepDetailsPane.followingKey);
+  Finder badge() => find.byKey(EffectDetailsPane.followingKey);
   Finder line(String text) =>
       find.descendant(of: lines(), matching: find.text(text));
 
@@ -37,7 +37,7 @@ void main() {
     return files;
   }
 
-  testWidgets('shows the step\'s log in monospace', (tester) async {
+  testWidgets('shows the effect\'s log in monospace', (tester) async {
     await pumpReview(tester);
 
     for (final text in notifyLog.trimRight().split('\n')) {
@@ -46,7 +46,7 @@ void main() {
     }
   });
 
-  testWidgets('follows the tail of a running step\'s log, and says so', (
+  testWidgets('follows the tail of a running effect\'s log, and says so', (
     tester,
   ) async {
     final files = await pumpLog(tester, numbered(1, 100));
@@ -87,9 +87,9 @@ void main() {
     await wheel(tester, lines(), -300);
     expect(badge(), findsNothing);
 
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.output)));
+    await tester.tap(find.byKey(EffectDetailsPane.tabKey(EffectTab.output)));
     await tester.pump();
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.log)));
+    await tester.tap(find.byKey(EffectDetailsPane.tabKey(EffectTab.log)));
     // The text comes, then the view goes to its end.
     await tester.pump();
     await tester.pump();
@@ -103,21 +103,21 @@ void main() {
     expect(badge(), findsOneWidget);
   });
 
-  testWidgets('a finished step\'s log shows no badge', (tester) async {
+  testWidgets('a finished effect\'s log shows no badge', (tester) async {
     final files = reviewFiles()..logs['a1b2-collect-0'] = 'collected\n';
     await pumpReview(tester, model: reviewModel(files: files));
 
-    await tester.tap(find.byKey(StepList.rowKey('a1b2-collect-0')));
+    await tester.tap(find.byKey(EffectList.rowKey('a1b2-collect-0')));
     await tester.pump();
     await tester.pump();
     expect(line('collected'), findsOneWidget);
     expect(badge(), findsNothing);
   });
 
-  testWidgets('a finished step that wrote nothing says so', (tester) async {
+  testWidgets('a finished effect that wrote nothing says so', (tester) async {
     await pumpReview(tester);
 
-    await tester.tap(find.byKey(StepList.rowKey('a1b2-collect-0')));
+    await tester.tap(find.byKey(EffectList.rowKey('a1b2-collect-0')));
     await tester.pump();
     await tester.pump();
     expect(find.text(LogView.nothing), findsNothing);
@@ -130,13 +130,13 @@ void main() {
       tester,
       model: reviewModel(
         files: FakeFiles(
-          logErrors: {'a1b2-notify-5': ArgumentError('no such step')},
+          logErrors: {'a1b2-notify-5': ArgumentError('no such effect')},
         ),
       ),
     );
 
     expect(
-      find.text('Could not read the log: Invalid argument(s): no such step'),
+      find.text('Could not read the log: Invalid argument(s): no such effect'),
       findsOneWidget,
     );
   });
@@ -157,19 +157,19 @@ void main() {
     expect(line('subscriber 3: sent'), findsOneWidget);
   });
 
-  testWidgets('stops reading the log of a step no longer shown', (
+  testWidgets('stops reading the log of an effect no longer shown', (
     tester,
   ) async {
     final files = await pumpLog(tester, notifyLog);
     expect(files.followed, ['a1b2-notify-5']);
 
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.output)));
+    await tester.tap(find.byKey(EffectDetailsPane.tabKey(EffectTab.output)));
     await tester.pump();
     expect(files.followed, isEmpty);
 
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.log)));
+    await tester.tap(find.byKey(EffectDetailsPane.tabKey(EffectTab.log)));
     await tester.pump();
-    await tester.tap(find.byKey(StepList.rowKey('a1b2-collect-0')));
+    await tester.tap(find.byKey(EffectList.rowKey('a1b2-collect-0')));
     await tester.pump();
     expect(files.followed, ['a1b2-collect-0']);
   });
@@ -203,9 +203,9 @@ void main() {
       ..documents['report-2'] = [for (var i = 1; i <= 1500; i++) 'f$i'];
     await pumpReview(tester, model: reviewModel(files: files));
 
-    await tester.tap(find.byKey(StepList.rowKey('a1b2-inspect-3')));
+    await tester.tap(find.byKey(EffectList.rowKey('a1b2-inspect-3')));
     await tester.pump();
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.output)));
+    await tester.tap(find.byKey(EffectDetailsPane.tabKey(EffectTab.output)));
     await tester.pump();
     await tester.pump();
     final cut = find.byKey(MonoLines.cutKey);
@@ -252,9 +252,9 @@ void main() {
     final long = 'y' * (previewLineLength + 10);
     final files = reviewFiles()..documents['report-2'] = {'diff': long};
     await pumpReview(tester, model: reviewModel(files: files));
-    await tester.tap(find.byKey(StepList.rowKey('a1b2-inspect-3')));
+    await tester.tap(find.byKey(EffectList.rowKey('a1b2-inspect-3')));
     await tester.pump();
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(StepTab.output)));
+    await tester.tap(find.byKey(EffectDetailsPane.tabKey(EffectTab.output)));
     await tester.pump();
     await tester.pump();
 

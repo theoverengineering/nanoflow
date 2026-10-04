@@ -1,5 +1,5 @@
 // The graph file of a package, `nanoflow.graph.json`: the graph of every
-// function with steps, read from the package's code. Written by the describe
+// function with effects, read from the package's code. Written by the describe
 // tool, read by the workflow library and the UI.
 
 import 'package:collection/collection.dart';
@@ -12,7 +12,7 @@ const DeepCollectionEquality _deep = DeepCollectionEquality();
 const String graphFileName = 'nanoflow.graph.json';
 
 /// The only format of the graph file there is.
-const int graphFileFormat = 1;
+const int graphFileFormat = 2;
 
 /// The graph file of a package.
 final class GraphFile {
@@ -71,8 +71,8 @@ final class GraphFile {
   /// `Flow.resume`.
   final List<String> workflows;
 
-  /// The functions with steps by their ids: `path#name`, and `path#Class.name`
-  /// for a method.
+  /// The functions with effects by their ids: `path#name`, and
+  /// `path#Class.name` for a method.
   final Map<String, GraphFunction> functions;
 
   /// What the describe tool could not draw.
@@ -134,7 +134,7 @@ final class GraphFile {
       'workflows: $workflows, functions: $functions, warnings: $warnings)';
 }
 
-/// A function with steps and the graph of its body.
+/// A function with effects and the graph of its body.
 final class GraphFunction {
   const GraphFunction({
     required this.id,
@@ -226,7 +226,7 @@ final class GraphBody {
   String toString() => 'GraphBody(nodes: $nodes, edges: $edges)';
 }
 
-/// A node of a [GraphBody]: a step, a condition, a call or copies of a body.
+/// A node of a [GraphBody]: an effect, a condition, a call or copies of a body.
 sealed class GraphNode {
   const GraphNode({required this.id, required this.place});
 
@@ -235,7 +235,7 @@ sealed class GraphNode {
     final id = readString(json, 'id');
     final kind = readString(json, 'kind');
     return switch (kind) {
-      'step' => StepNode(
+      'effect' => EffectNode(
         id: id,
         place: readStringOrNull(json, 'place'),
         name: readString(json, 'name'),
@@ -257,7 +257,7 @@ sealed class GraphNode {
         body: readNested(json, 'body', GraphBody.fromJson),
       ),
       _ => throw FormatException(
-        'kind: unknown kind "$kind", expected step, fork, call or copies',
+        'kind: unknown kind "$kind", expected effect, fork, call or copies',
       ),
     };
   }
@@ -271,34 +271,38 @@ sealed class GraphNode {
   Map<String, Object?> toJson();
 }
 
-/// A call of `f.step`.
-final class StepNode extends GraphNode {
-  const StepNode({required super.id, required super.place, required this.name});
+/// A call of `f.effect`.
+final class EffectNode extends GraphNode {
+  const EffectNode({
+    required super.id,
+    required super.place,
+    required this.name,
+  });
 
-  /// The literal name of the step, or the source of the expression that gives
+  /// The literal name of the effect, or the source of the expression that gives
   /// it.
   final String name;
 
   @override
   Map<String, Object?> toJson() => {
     'id': id,
-    'kind': 'step',
+    'kind': 'effect',
     'name': name,
     'place': place,
   };
 
   @override
   bool operator ==(Object other) =>
-      other is StepNode &&
+      other is EffectNode &&
       other.id == id &&
       other.place == place &&
       other.name == name;
 
   @override
-  int get hashCode => Object.hash(StepNode, id, place, name);
+  int get hashCode => Object.hash(EffectNode, id, place, name);
 
   @override
-  String toString() => 'StepNode(id: $id, place: $place, name: $name)';
+  String toString() => 'EffectNode(id: $id, place: $place, name: $name)';
 }
 
 /// A condition the flow goes one of several ways on; kind `fork`.
@@ -334,7 +338,7 @@ final class ConditionNode extends GraphNode {
   String toString() => 'ConditionNode(id: $id, place: $place, label: $label)';
 }
 
-/// A call of a function that has steps.
+/// A call of a function that has effects.
 final class CallNode extends GraphNode {
   const CallNode({
     required super.id,

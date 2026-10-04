@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "many-sources",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -21,31 +21,31 @@
           },
           {
             "id": "check-a",
-            "kind": "step",
+            "kind": "effect",
             "name": "check-a",
             "place": "lib/many-sources.dart:11"
           },
           {
             "id": "check-b",
-            "kind": "step",
+            "kind": "effect",
             "name": "check-b",
             "place": "lib/many-sources.dart:12"
           },
           {
             "id": "check-c",
-            "kind": "step",
+            "kind": "effect",
             "name": "check-c",
             "place": "lib/many-sources.dart:13"
           },
           {
             "id": "check-d",
-            "kind": "step",
+            "kind": "effect",
             "name": "check-d",
             "place": "lib/many-sources.dart:14"
           },
           {
             "id": "check-e",
-            "kind": "step",
+            "kind": "effect",
             "name": "check-e",
             "place": "lib/many-sources.dart:15"
           },
@@ -57,7 +57,7 @@
           },
           {
             "id": "report",
-            "kind": "step",
+            "kind": "effect",
             "name": "report",
             "place": "lib/many-sources.dart:17"
           }

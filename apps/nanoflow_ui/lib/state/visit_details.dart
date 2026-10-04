@@ -1,30 +1,30 @@
-/// What the step details window shows of a step: the step among all the
+/// What the effect details window shows of an effect: the effect among all the
 /// visits to its node, how it went, when it started and ended, and its
-/// place in the code; or, for a node without steps, the node's name and
-/// place alone (docs/ui-spec.md «Окно деталей шага»; spec §9 «Окно шага»).
-/// Pure: the time is passed in.
+/// place in the code; or, for a node without effects, the node's name and
+/// place alone (docs/ui-spec.md «Окно деталей эффекта»; spec §9 «Окно
+/// эффекта»). Pure: the time is passed in.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
+import 'effect_details.dart';
+import 'effect_places.dart';
 import 'session_feed.dart';
-import 'step_details.dart';
-import 'step_places.dart';
 import 'texts.dart';
 import 'visits.dart';
 
-/// How the step went, at the top of the window: `finished · 4m 02s`,
+/// How the effect went, at the top of the window: `finished · 4m 02s`,
 /// `running · 2m 14s`, `failed · 0.1s`; `interrupted` alone: when it would
 /// have ended is not known.
-typedef StepResult = ({StartOutcome status, String text});
+typedef EffectResult = ({StartOutcome status, String text});
 
-/// A start of the step, as the window lists it: `14:09:20`, and how it
+/// A start of the effect, as the window lists it: `14:09:20`, and how it
 /// ended.
 typedef StartText = ({String time, StartOutcome outcome});
 
-/// The facts of the step: `Started`, `Finished`, `Starts`.
-final class StepFacts {
-  StepFacts._({
+/// The facts of the effect: `Started`, `Finished`, `Starts`.
+final class EffectFacts {
+  EffectFacts._({
     required this.started,
     required this.finished,
     required this.took,
@@ -35,7 +35,7 @@ final class StepFacts {
   final String started;
 
   /// The outcome of the last start, to the millisecond; `null` while the
-  /// step runs.
+  /// effect runs.
   final String? finished;
 
   /// `took 4m 02s`; `null` with [finished].
@@ -45,26 +45,26 @@ final class StepFacts {
   final List<StartText> starts;
 }
 
-/// The step details window on a step, or on a node without one.
+/// The effect details window on an effect, or on a node without one.
 final class VisitDetails {
   VisitDetails._({
     required this.name,
     required this.place,
     required List<Visit> visits,
     this.index,
-    this.step,
+    this.effect,
     this.result,
     this.facts,
     this.copy,
   }) : visits = List.unmodifiable(visits);
 
-  /// The step's name, or the node's.
+  /// The effect's name, or the node's.
   final String name;
 
-  /// Where the step was called, or where the node is: `lib/review.dart:49`.
+  /// Where the effect was called, or where the node is: `lib/review.dart:49`.
   final String? place;
 
-  /// Every visit to the step's node among the steps shown, in order.
+  /// Every visit to the effect's node among the effects shown, in order.
   final List<Visit> visits;
 
   /// Which of [visits] is shown; `null` for a node alone.
@@ -85,33 +85,33 @@ final class VisitDetails {
   Visit? get next =>
       index != null && index! < visits.length - 1 ? visits[index! + 1] : null;
 
-  /// The step: its output, its error with the stack.
-  final StepDetails? step;
+  /// The effect: its output, its error with the stack.
+  final EffectDetails? effect;
 
-  final StepResult? result;
+  final EffectResult? result;
 
-  final StepFacts? facts;
+  final EffectFacts? facts;
 
-  /// The copies the step is in: `pkg 2 › target 1`; `null` outside copies.
+  /// The copies the effect is in: `pkg 2 › target 1`; `null` outside copies.
   final String? copy;
 }
 
-/// The window on the step [stepId] of [session] among [steps], the steps
-/// shown, at [now]; [copyOf] names the copy of a step. Without the step —
-/// for `Current graph`, or a node without steps — the window shows the
-/// step node [node] alone.
+/// The window on the effect [effectId] of [session] among [effects], the
+/// effects shown, at [now]; [copyOf] names the copy of an effect. Without the
+/// effect — for `Current graph`, or a node without effects — the window shows
+/// the effect node [node] alone.
 VisitDetails visitDetails({
   required SessionData? session,
-  required Iterable<StepState> steps,
-  required StepPlaces places,
-  required String? stepId,
-  StepNode? node,
-  String? Function(String stepId)? copyOf,
+  required Iterable<EffectState> effects,
+  required EffectPlaces places,
+  required String? effectId,
+  EffectNode? node,
+  String? Function(String effectId)? copyOf,
   required DateTime now,
 }) {
-  final details = session == null || stepId == null
+  final details = session == null || effectId == null
       ? null
-      : stepDetails(session, stepId);
+      : effectDetails(session, effectId);
   if (session == null || details == null) {
     return VisitDetails._(
       name: node?.name ?? '',
@@ -119,11 +119,13 @@ VisitDetails visitDetails({
       visits: const [],
     );
   }
-  final visits = visitsLike(session, steps, places, details.stepId);
-  final index = visits.indexWhere((visit) => visit.stepId == details.stepId);
+  final visits = visitsLike(session, effects, places, details.effectId);
+  final index = visits.indexWhere(
+    (visit) => visit.effectId == details.effectId,
+  );
   final state = visits[index].state;
   final status = outcomeOf(session, state);
-  // Not shown for an interrupted step: when it would have ended is not
+  // Not shown for an interrupted effect: when it would have ended is not
   // known.
   final took = formatDuration(
     (state.finishedAt ?? now).difference(state.startedAt),
@@ -133,24 +135,24 @@ VisitDetails visitDetails({
     place: details.place,
     visits: visits,
     index: index,
-    step: details,
+    effect: details,
     result: (
       status: status,
       text: status == StartOutcome.interrupted
           ? status.name
           : '${status.name} · $took',
     ),
-    facts: StepFacts._(
+    facts: EffectFacts._(
       started: clockTimeMillis(state.startedAt),
       finished: state.finishedAt == null
           ? null
           : clockTimeMillis(state.finishedAt!),
       took: state.finishedAt == null ? null : 'took $took',
       starts: [
-        for (final start in startsOf(session, details.stepId))
+        for (final start in startsOf(session, details.effectId))
           (time: clockTime(start.at), outcome: start.outcome),
       ],
     ),
-    copy: copyOf?.call(details.stepId),
+    copy: copyOf?.call(details.effectId),
   );
 }

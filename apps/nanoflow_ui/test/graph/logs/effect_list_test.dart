@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart' hide Step;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
-import 'package:nanoflow_ui/graph/logs/step_bar.dart';
-import 'package:nanoflow_ui/graph/logs/step_list.dart';
+import 'package:nanoflow_ui/graph/logs/effect_bar.dart';
+import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/state/log_rows.dart' show notOnGraph;
 import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
@@ -19,12 +19,12 @@ import '../support.dart';
 import 'support.dart';
 
 void main() {
-  Finder row(String stepId) => find.byKey(StepList.rowKey(stepId));
+  Finder row(String effectId) => find.byKey(EffectList.rowKey(effectId));
 
-  Finder icon(String stepId, StartOutcome status) => find.descendant(
-    of: row(stepId),
+  Finder icon(String effectId, StartOutcome status) => find.descendant(
+    of: row(effectId),
     matching: find.byWidgetPredicate(
-      (w) => w is StepIcon && w.status == status,
+      (w) => w is EffectIcon && w.status == status,
     ),
   );
 
@@ -54,12 +54,12 @@ void main() {
     );
   }
 
-  group('the steps list', () {
-    testWidgets('has a row per step: its name, `2 starts`, when it first '
+  group('the effects list', () {
+    testWidgets('has a row per effect: its name, `2 starts`, when it first '
         'started, how long it took', (tester) async {
       await pumpReview(tester);
 
-      for (final (stepId, text) in [
+      for (final (effectId, text) in [
         ('a1b2-collect-0', 'collect 14:03:11 2m 29s'),
         ('a1b2-inspect-1', 'inspect 14:05:41 3m 12s'),
         ('a1b2-fix-2', 'fix 14:08:54 26s'),
@@ -67,20 +67,20 @@ void main() {
         ('a1b2-publish-4', 'publish 14:13:23 1s'),
         ('a1b2-notify-5', 'notify 14:13:23 2m 14s'),
       ]) {
-        expect(textIn(tester, row(stepId)), text, reason: stepId);
+        expect(textIn(tester, row(effectId)), text, reason: effectId);
       }
       expect(
-        textIn(tester, find.byType(StepList)),
-        startsWith('Step Started Took 0m 6m 12m'),
+        textIn(tester, find.byType(EffectList)),
+        startsWith('Effect Started Took 0m 6m 12m'),
       );
     });
 
-    testWidgets('marks steps finished, running and failed; a failed one '
+    testWidgets('marks effects finished, running and failed; a failed one '
         'with its error in red', (tester) async {
       await pumpReview(
         tester,
         model: endedModel(
-          (session) => session.step(
+          (session) => session.effect(
             'inspect',
             700,
             end: 701,
@@ -113,7 +113,7 @@ void main() {
       expect(colors['StateError: inspect failed'], AppColors.dangerText);
     });
 
-    testWidgets('in a session whose process is gone, the step that was '
+    testWidgets('in a session whose process is gone, the effect that was '
         'running is interrupted: its pause, a bar not filled to the end of '
         'the scale, a Took not known (owner spec §6)', (tester) async {
       var now = columnNow;
@@ -131,9 +131,9 @@ void main() {
         ),
         findsNothing,
       );
-      final bar = find.byKey(StepTrack.barKey('a1b2-notify-5'));
-      expect(tester.widget<StepBar>(bar).status, StartOutcome.interrupted);
-      expect(tester.widget<StepBar>(bar).striped, isFalse);
+      final bar = find.byKey(EffectTrack.barKey('a1b2-notify-5'));
+      expect(tester.widget<EffectBar>(bar).status, StartOutcome.interrupted);
+      expect(tester.widget<EffectBar>(bar).striped, isFalse);
       expect(
         find.descendant(of: bar, matching: find.byType(ColoredBox)),
         findsNothing,
@@ -146,14 +146,14 @@ void main() {
       expect(textIn(tester, row('a1b2-notify-5')), endsWith('14:13:23 —'));
     });
 
-    testWidgets('says of a step that is on no node: not on the graph', (
+    testWidgets('says of an effect that is on no node: not on the graph', (
       tester,
     ) async {
       await pumpReview(
         tester,
         model: endedModel(
           (session) =>
-              session.step('gather', 700, end: 701, place: 'lib/old.dart:3'),
+              session.effect('gather', 700, end: 701, place: 'lib/old.dart:3'),
         ),
       );
       expect(
@@ -162,7 +162,7 @@ void main() {
       );
     });
 
-    testWidgets("the running step's Took ticks", (tester) async {
+    testWidgets("the running effect's Took ticks", (tester) async {
       var now = columnNow;
       await pumpReview(tester, now: () => now);
       expect(textIn(tester, row('a1b2-notify-5')), endsWith('2m 14s'));
@@ -172,14 +172,14 @@ void main() {
       expect(textIn(tester, row('a1b2-notify-5')), endsWith('2m 15s'));
     });
 
-    testWidgets("draws each step's bar on the session's time scale, the "
+    testWidgets("draws each effect's bar on the session's time scale, the "
         'running one striped', (tester) async {
       await pumpReview(tester);
 
-      Rect bar(String stepId) =>
-          tester.getRect(find.byKey(StepTrack.barKey(stepId)));
-      Rect track(String stepId) =>
-          tester.getRect(find.byKey(StepTrack.trackKey(stepId)));
+      Rect bar(String effectId) =>
+          tester.getRect(find.byKey(EffectTrack.barKey(effectId)));
+      Rect track(String effectId) =>
+          tester.getRect(find.byKey(EffectTrack.trackKey(effectId)));
       final collect = track('a1b2-collect-0');
       expect(collect.width, 150);
       expect(bar('a1b2-collect-0').left, collect.left);
@@ -194,19 +194,19 @@ void main() {
       expect(bar('a1b2-notify-5').right, notify.right);
       expect(
         tester
-            .widget<StepBar>(find.byKey(StepTrack.barKey('a1b2-notify-5')))
+            .widget<EffectBar>(find.byKey(EffectTrack.barKey('a1b2-notify-5')))
             .striped,
         isTrue,
       );
       expect(
         tester
-            .widget<StepBar>(find.byKey(StepTrack.barKey('a1b2-fix-2')))
+            .widget<EffectBar>(find.byKey(EffectTrack.barKey('a1b2-fix-2')))
             .striped,
         isFalse,
       );
     });
 
-    final end = find.byKey(StepList.endKey);
+    final end = find.byKey(EffectList.endKey);
     Color? colorOf(WidgetTester tester, String text) => tester
         .widget<Text>(find.descendant(of: end, matching: find.text(text)))
         .style
@@ -223,9 +223,9 @@ void main() {
         model: endedModel(
           (session) => session
             ..events.add(
-              StepFinished(
+              EffectFinished(
                 time: at(700),
-                stepId: 'a1b2-notify-5',
+                effectId: 'a1b2-notify-5',
                 outputId: 'notified',
               ),
             )
@@ -248,14 +248,14 @@ void main() {
       );
     });
 
-    testWidgets('highlights the selected step', (tester) async {
+    testWidgets('highlights the selected effect', (tester) async {
       await pumpReview(tester);
 
       expect(fillOf(tester, row('a1b2-notify-5')), AppColors.accentSurface);
       expect(fillOf(tester, row('a1b2-collect-0')), isNull);
     });
 
-    testWidgets('a click on a row selects its step and brings its node into '
+    testWidgets('a click on a row selects its effect and brings its node into '
         'view on the canvas', (tester) async {
       final model = await pumpReview(tester);
       final canvas = find.byType(GraphCanvas);
@@ -268,7 +268,7 @@ void main() {
       await tester.tap(row('a1b2-collect-0'));
       await tester.pump();
 
-      expect(model.selection.stepId, 'a1b2-collect-0');
+      expect(model.selection.effectId, 'a1b2-collect-0');
       expect(model.selection.following, isFalse);
       expect(fillOf(tester, row('a1b2-collect-0')), AppColors.accentSurface);
       expect(fillOf(tester, row('a1b2-notify-5')), isNull);
@@ -276,7 +276,7 @@ void main() {
     });
   });
 
-  group('a long steps list', () {
+  group('a long effects list', () {
     late StreamController<Change> more;
 
     /// Review round inspect and fix eight times, then on inspect.
@@ -288,23 +288,23 @@ void main() {
         'l0ng-session',
         graph: graph.toJson(),
         code: graph.fingerprint,
-      )..step('collect', 0, end: 10, place: 'lib/review.dart:49');
+      )..effect('collect', 0, end: 10, place: 'lib/review.dart:49');
       for (var i = 0; i < 8; i++) {
         session
-          ..step(
+          ..effect(
             'inspect',
             10 + i * 20,
             end: 20 + i * 20,
             place: 'lib/review.dart:55',
           )
-          ..step(
+          ..effect(
             'fix',
             20 + i * 20,
             end: 30 + i * 20,
             place: 'lib/review.dart:63',
           );
       }
-      session.step('inspect', 170, place: 'lib/review.dart:55');
+      session.effect('inspect', 170, place: 'lib/review.dart:55');
       return pumpReview(
         tester,
         model: ownedModel(
@@ -317,17 +317,17 @@ void main() {
       );
     }
 
-    Finder list() => find.byType(StepList);
+    Finder list() => find.byType(EffectList);
 
-    testWidgets('is scrolled to the selected last step, and says how many '
-        'steps are above it', (tester) async {
+    testWidgets('is scrolled to the selected last effect, and says how many '
+        'effects are above it', (tester) async {
       await pumpLong(tester);
 
       expect(shownWithin(tester, row('l0ng-inspect-17'), list()), isTrue);
-      final earlier = find.byKey(StepList.earlierKey);
+      final earlier = find.byKey(EffectList.earlierKey);
       expect(
         textIn(tester, earlier),
-        matches(RegExp(r'^↑ \d+ earlier steps$')),
+        matches(RegExp(r'^↑ \d+ earlier effects$')),
       );
 
       await tester.tap(earlier);
@@ -338,7 +338,7 @@ void main() {
       expect(shownWithin(tester, row('l0ng-collect-0'), list()), isTrue);
     });
 
-    testWidgets('follows the session: a new step is selected and scrolled '
+    testWidgets('follows the session: a new effect is selected and scrolled '
         'into view', (tester) async {
       final model = await pumpLong(tester);
 
@@ -346,16 +346,16 @@ void main() {
         ..add(
           EventAdded(
             sessionId: 'l0ng-session',
-            event: StepFinished(
+            event: EffectFinished(
               time: at(180),
-              stepId: 'l0ng-inspect-17',
+              effectId: 'l0ng-inspect-17',
               outputId: 'report',
             ),
           ),
         )
         ..add(
-          const StepAdded(
-            Step(
+          const EffectAdded(
+            Effect(
               id: 'l0ng-publish-18',
               sessionId: 'l0ng-session',
               name: 'publish',
@@ -370,16 +370,16 @@ void main() {
         ..add(
           EventAdded(
             sessionId: 'l0ng-session',
-            event: StepStarted(time: at(181), stepId: 'l0ng-publish-18'),
+            event: EffectStarted(time: at(181), effectId: 'l0ng-publish-18'),
           ),
         );
       await settle(tester);
 
-      expect(model.selection.stepId, 'l0ng-publish-18');
+      expect(model.selection.effectId, 'l0ng-publish-18');
       expect(shownWithin(tester, row('l0ng-publish-18'), list()), isTrue);
     });
 
-    testWidgets('a step selected on the canvas is scrolled into view', (
+    testWidgets('an effect selected on the canvas is scrolled into view', (
       tester,
     ) async {
       final model = await pumpLong(tester);
@@ -389,7 +389,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
 
-      expect(model.selection.stepId, 'l0ng-collect-0');
+      expect(model.selection.effectId, 'l0ng-collect-0');
       expect(shownWithin(tester, row('l0ng-collect-0'), list()), isTrue);
     });
   });

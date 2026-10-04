@@ -1,10 +1,10 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "inline",
-  "fingerprint": "sha256:02180d68a19d20888cbeb860f29d5d2f8ea5795364c642e2f82a45cae66bf66f",
+  "fingerprint": "sha256:d350a8deb5d40358836f40d24bb5d7f3a8c94112a080e472c6ebbc3aed66be5a",
   "sources": {
     "bin/main.dart": "sha256:b59318ec850e12a53b62bf7d1cddf9afee81f3fc44509d2d6aae155b976d71b4",
-    "lib/inline.dart": "sha256:2a735c1390b4668c6345eaaa9cfd5643157ee4d8b9603a5616e180e0ff45cd8d"
+    "lib/inline.dart": "sha256:1d7a832cc65d208b600f142d8b75e02535da9383cab1f21fca7e3533df5c1c14"
   },
   "builds": {},
   "workflows": [
@@ -28,19 +28,19 @@
               "nodes": [
                 {
                   "id": "1",
-                  "kind": "step",
+                  "kind": "effect",
                   "name": "upload",
                   "place": "lib/inline.dart:10"
                 },
                 {
                   "id": "2",
-                  "kind": "step",
+                  "kind": "effect",
                   "name": "verify",
                   "place": "lib/inline.dart:11"
                 },
                 {
                   "id": "3",
-                  "kind": "step",
+                  "kind": "effect",
                   "name": "tag",
                   "place": "lib/inline.dart:12"
                 }
@@ -71,7 +71,7 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "announce",
             "place": "lib/inline.dart:15"
           }
@@ -102,19 +102,19 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "upload",
             "place": "lib/inline.dart:47"
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "verify",
             "place": "lib/inline.dart:48"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "tag",
             "place": "lib/inline.dart:49"
           }
@@ -156,25 +156,25 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "upload",
             "place": "lib/inline.dart:39"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "verify",
             "place": "lib/inline.dart:40"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "tag",
             "place": "lib/inline.dart:41"
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "announce",
             "place": "lib/inline.dart:43"
           }
@@ -255,7 +255,7 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "announce",
             "place": "lib/inline.dart:33"
           }
@@ -293,19 +293,19 @@
               "nodes": [
                 {
                   "id": "1",
-                  "kind": "step",
+                  "kind": "effect",
                   "name": "upload",
                   "place": "lib/inline.dart:21"
                 },
                 {
                   "id": "2",
-                  "kind": "step",
+                  "kind": "effect",
                   "name": "verify",
                   "place": "lib/inline.dart:22"
                 },
                 {
                   "id": "3",
-                  "kind": "step",
+                  "kind": "effect",
                   "name": "tag",
                   "place": "lib/inline.dart:23"
                 }
@@ -336,7 +336,7 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "announce",
             "place": "lib/inline.dart:26"
           }

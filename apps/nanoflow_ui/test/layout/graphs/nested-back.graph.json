@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "nested-back",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -15,7 +15,7 @@
         "nodes": [
           {
             "id": "draft",
-            "kind": "step",
+            "kind": "effect",
             "name": "draft",
             "place": "lib/nested-back.dart:10"
           },
@@ -39,7 +39,7 @@
           },
           {
             "id": "approve",
-            "kind": "step",
+            "kind": "effect",
             "name": "approve",
             "place": "lib/nested-back.dart:14"
           }

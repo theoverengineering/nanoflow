@@ -50,8 +50,8 @@ void main() {
         file: releaseFile,
         changes: changesOf([
           Journal('r1r1-session', workflow: 'release', snapshot: false)
-            ..step('plan', 1, end: 3, place: 'lib/release.dart:16')
-            ..step('build', 3, place: 'lib/release.dart:18'),
+            ..effect('plan', 1, end: 3, place: 'lib/release.dart:16')
+            ..effect('build', 3, place: 'lib/release.dart:18'),
           Journal('d1d1-session', workflow: 'deploy', startedAt: -60),
         ]),
       ),
@@ -60,14 +60,14 @@ void main() {
     await expectGolden(tester, 'graph_session');
   });
 
-  testWidgets('a running session on its graph: its steps on the nodes, Logs '
+  testWidgets('a running session on its graph: its effects on the nodes, Logs '
       '(docs/design/graph.png)', (tester) async {
     await pumpReview(tester);
     await expectGolden(tester, 'graph_review');
   });
 
   testWidgets('a session whose process is gone: Interrupted on its card and '
-      'bar, the step that was running interrupted on its node and in Logs '
+      'bar, the effect that was running interrupted on its node and in Logs '
       '(owner spec §6)', (tester) async {
     await pumpReview(
       tester,
@@ -84,7 +84,7 @@ void main() {
     await expectGolden(tester, 'graph_interrupted');
   });
 
-  testWidgets('the body of copies, all of them: how many are on each step, '
+  testWidgets('the body of copies, all of them: how many are on each effect, '
       'done 1 of 3 (docs/design/code-first/copies-frame.html)', (tester) async {
     final model = await pumpGraphScreen(
       tester,
@@ -98,7 +98,7 @@ void main() {
   });
 
   testWidgets('a running session on functions expanded in place: publish() '
-      'and upload() in it, its steps on their nodes, sign() done as a tile '
+      'and upload() in it, its effects on their nodes, sign() done as a tile '
       '(docs/design/code-first/function-frames.html)', (tester) async {
     final graph = framesGraphFile();
     String release(int line) => 'lib/release.dart:$line';
@@ -115,11 +115,11 @@ void main() {
               graph: graph.toJson(),
               code: graph.fingerprint,
             )
-            ..step('plan', 0, end: 20, place: release(16))
-            ..step('build', 21, end: 140, place: release(18))
-            ..step('hash', 141, end: 150, place: publish(26))
-            ..step('signature', 151, end: 170, place: publish(27))
-            ..step('put', 171, place: publish(22)),
+            ..effect('plan', 0, end: 20, place: release(16))
+            ..effect('build', 21, end: 140, place: release(18))
+            ..effect('hash', 141, end: 150, place: publish(26))
+            ..effect('signature', 151, end: 170, place: publish(27))
+            ..effect('put', 171, place: publish(22)),
         ]),
       ),
       now: () => columnNow,
@@ -135,7 +135,7 @@ void main() {
   });
 
   testWidgets('copies expanded in place in a running session: the stack, '
-      'the switcher, how many are on each step, done 1 of 3 '
+      'the switcher, how many are on each effect, done 1 of 3 '
       '(docs/design/code-first/copies-frame.html)', (tester) async {
     final model = await pumpGraphScreen(
       tester,

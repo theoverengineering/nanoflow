@@ -1,5 +1,5 @@
 // A call through an interface: which implementation runs is known only when
-// the session runs, so the call goes to every implementation that has steps.
+// the session runs, so the call goes to every implementation that has effects.
 import 'package:nanoflow/nanoflow.dart';
 
 abstract interface class Notifier {
@@ -9,26 +9,26 @@ abstract interface class Notifier {
 class ChatNotifier implements Notifier {
   @override
   Future<void> notify(Flow f, String message) async {
-    await f.step('post', () => print('chat: $message'));
+    await f.effect('post', () => print('chat: $message'));
   }
 }
 
 class MailNotifier implements Notifier {
   @override
   Future<void> notify(Flow f, String message) async {
-    final to = await f.step('find-owners', () => 'owners@example.com');
-    await f.step('send-mail', () => print('mail to $to: $message'));
+    final to = await f.effect('find-owners', () => 'owners@example.com');
+    await f.effect('send-mail', () => print('mail to $to: $message'));
   }
 }
 
-/// Takes no step: not a function with steps, so not one of the calls.
+/// Calls no effect: not a function with effects, so not one of the calls.
 class QuietNotifier implements Notifier {
   @override
   Future<void> notify(Flow f, String message) async {}
 }
 
 Future<void> deploy(Flow f, String service) async {
-  await f.step('roll-out', () => print('roll out $service'));
+  await f.effect('roll-out', () => print('roll out $service'));
   await notifierFor(service).notify(f, '$service deployed');
 }
 

@@ -27,7 +27,7 @@ Future<Map<String, Object?>> expectedFile(
   final dir = fixture(name);
   final sources = await hashSources(dir, await packageSourcePaths(dir));
   return {
-    'format': 1,
+    'format': 2,
     'package': name,
     'fingerprint': fingerprintOf(sources),
     'sources': sources,
@@ -65,7 +65,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'collect',
                   'place': 'lib/review.dart:36',
                 },
@@ -77,13 +77,13 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'discard',
                   'place': 'lib/review.dart:38',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'inspect',
                   'place': 'lib/review.dart:42',
                 },
@@ -95,19 +95,19 @@ void main() {
                 },
                 {
                   'id': '6',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'publish',
                   'place': 'lib/review.dart:45',
                 },
                 {
                   'id': '7',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'notify',
                   'place': 'lib/review.dart:46',
                 },
                 {
                   'id': '8',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'fix',
                   'place': 'lib/review.dart:50',
                 },
@@ -150,13 +150,13 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'upload',
                   'place': 'lib/publish.dart:12',
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'verify',
                   'place': 'lib/publish.dart:13',
                 },
@@ -168,7 +168,7 @@ void main() {
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'rollback',
                   'place': 'lib/publish.dart:14',
                 },
@@ -190,7 +190,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'plan',
                   'place': 'lib/release.dart:16',
                 },
@@ -202,7 +202,7 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'build',
                   'place': 'lib/release.dart:18',
                 },
@@ -226,13 +226,13 @@ void main() {
                 },
                 {
                   'id': '7',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'announce',
                   'place': 'lib/release.dart:23',
                 },
                 {
                   'id': '8',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'notify-testers',
                   'place': 'lib/release.dart:26',
                 },
@@ -288,19 +288,19 @@ void main() {
                     'nodes': [
                       {
                         'id': '1',
-                        'kind': 'step',
+                        'kind': 'effect',
                         'name': 'upload',
                         'place': 'lib/inline.dart:10',
                       },
                       {
                         'id': '2',
-                        'kind': 'step',
+                        'kind': 'effect',
                         'name': 'verify',
                         'place': 'lib/inline.dart:11',
                       },
                       {
                         'id': '3',
-                        'kind': 'step',
+                        'kind': 'effect',
                         'name': 'tag',
                         'place': 'lib/inline.dart:12',
                       },
@@ -315,7 +315,7 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'announce',
                   'place': 'lib/inline.dart:15',
                 },
@@ -335,19 +335,19 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'upload',
                   'place': 'lib/inline.dart:47',
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'verify',
                   'place': 'lib/inline.dart:48',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'tag',
                   'place': 'lib/inline.dart:49',
                 },
@@ -374,25 +374,25 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'upload',
                   'place': 'lib/inline.dart:39',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'verify',
                   'place': 'lib/inline.dart:40',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'tag',
                   'place': 'lib/inline.dart:41',
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'announce',
                   'place': 'lib/inline.dart:43',
                 },
@@ -436,7 +436,7 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'announce',
                   'place': 'lib/inline.dart:33',
                 },
@@ -464,19 +464,19 @@ void main() {
                     'nodes': [
                       {
                         'id': '1',
-                        'kind': 'step',
+                        'kind': 'effect',
                         'name': 'upload',
                         'place': 'lib/inline.dart:21',
                       },
                       {
                         'id': '2',
-                        'kind': 'step',
+                        'kind': 'effect',
                         'name': 'verify',
                         'place': 'lib/inline.dart:22',
                       },
                       {
                         'id': '3',
-                        'kind': 'step',
+                        'kind': 'effect',
                         'name': 'tag',
                         'place': 'lib/inline.dart:23',
                       },
@@ -491,7 +491,7 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'announce',
                   'place': 'lib/inline.dart:26',
                 },
@@ -510,14 +510,14 @@ void main() {
   });
 
   test(
-    'calls every implementation of an interface method that has steps',
+    'calls every implementation of an interface method that has effects',
     () async {
       expectFile(
         await describeFixture('interfaces'),
         await expectedFile(
           'interfaces',
           workflows: ['lib/deploy.dart#deploy'],
-          // QuietNotifier.notify takes no step: not a function with steps.
+          // QuietNotifier.notify calls no effect: not a function with effects.
           functions: {
             'lib/deploy.dart#ChatNotifier.notify': {
               'name': 'notify',
@@ -526,7 +526,7 @@ void main() {
                 'nodes': [
                   {
                     'id': '1',
-                    'kind': 'step',
+                    'kind': 'effect',
                     'name': 'post',
                     'place': 'lib/deploy.dart:12',
                   },
@@ -544,13 +544,13 @@ void main() {
                 'nodes': [
                   {
                     'id': '1',
-                    'kind': 'step',
+                    'kind': 'effect',
                     'name': 'find-owners',
                     'place': 'lib/deploy.dart:19',
                   },
                   {
                     'id': '2',
-                    'kind': 'step',
+                    'kind': 'effect',
                     'name': 'send-mail',
                     'place': 'lib/deploy.dart:20',
                   },
@@ -569,7 +569,7 @@ void main() {
                 'nodes': [
                   {
                     'id': '1',
-                    'kind': 'step',
+                    'kind': 'effect',
                     'name': 'roll-out',
                     'place': 'lib/deploy.dart:31',
                   },
@@ -602,7 +602,7 @@ void main() {
       await expectedFile(
         'recursion',
         workflows: ['lib/crawl.dart#crawl', 'lib/crawl.dart#deploy'],
-        // backoff calls itself but takes no step: not a function with steps.
+        // backoff calls itself but no effect: not a function with effects.
         functions: {
           'lib/crawl.dart#crawl': {
             'name': 'crawl',
@@ -611,7 +611,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'fetch',
                   'place': 'lib/crawl.dart:23',
                 },
@@ -644,7 +644,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'try-deploy',
                   'place': 'lib/crawl.dart:7',
                 },
@@ -670,7 +670,7 @@ void main() {
               ],
             },
           },
-          // No step of its own: a function with steps through crawl.
+          // No effect of its own: a function with effects through crawl.
           'lib/crawl.dart#visit': {
             'name': 'visit',
             'place': 'lib/crawl.dart:31',
@@ -715,7 +715,7 @@ void main() {
         'warnings',
         workflows: ['lib/migrate.dart#check', 'lib/migrate.dart#migrate'],
         functions: {
-          // A workflow has a graph even when none of its steps can be
+          // A workflow has a graph even when none of its effects can be
           // drawn: the body is left as it is entered.
           'lib/migrate.dart#check': {
             'name': 'check',
@@ -740,13 +740,13 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': r"'copy-$table'",
                   'place': 'lib/migrate.dart:10',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'switch-over',
                   'place': 'lib/migrate.dart:18',
                 },
@@ -764,11 +764,11 @@ void main() {
         warnings: [
           {
             'place': 'lib/migrate.dart:10',
-            'message': 'step name is not a string literal',
+            'message': 'effect name is not a string literal',
           },
           {
             'place': 'lib/migrate.dart:12',
-            'message': 'steps in a local function are not drawn',
+            'message': 'effects in a local function are not drawn',
           },
           {
             'place': 'lib/migrate.dart:19',
@@ -777,12 +777,12 @@ void main() {
           {
             'place': 'lib/migrate.dart:22',
             'message':
-                'steps of notifyTeam are not drawn: '
+                'effects of notifyTeam are not drawn: '
                 'it is outside the package sources',
           },
           {
             'place': 'lib/migrate.dart:27',
-            'message': 'steps in a closure passed on are not drawn',
+            'message': 'effects in a closure passed on are not drawn',
           },
         ],
       ),
@@ -811,13 +811,13 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'page',
                   'place': 'lib/backup.dart:133',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'log',
                   'place': 'lib/backup.dart:135',
                 },
@@ -846,19 +846,19 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'zip',
                   'place': 'lib/backup.dart:33',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'tar',
                   'place': 'lib/backup.dart:35',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'checksum',
                   'place': 'lib/backup.dart:37',
                 },
@@ -883,7 +883,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'lock',
                   'place': 'lib/backup.dart:107',
                 },
@@ -895,25 +895,25 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'work',
                   'place': 'lib/backup.dart:109',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'unlock',
                   'place': 'lib/backup.dart:111',
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'unlock',
                   'place': 'lib/backup.dart:111',
                 },
                 {
                   'id': '6',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'report',
                   'place': 'lib/backup.dart:113',
                 },
@@ -945,7 +945,7 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'measure',
                   'place': 'lib/backup.dart:119',
                 },
@@ -963,31 +963,31 @@ void main() {
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'process',
                   'place': 'lib/backup.dart:122',
                 },
                 {
                   'id': '6',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'release',
                   'place': 'lib/backup.dart:124',
                 },
                 {
                   'id': '7',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'release',
                   'place': 'lib/backup.dart:124',
                 },
                 {
                   'id': '8',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'release',
                   'place': 'lib/backup.dart:124',
                 },
                 {
                   'id': '9',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'done',
                   'place': 'lib/backup.dart:127',
                 },
@@ -1017,19 +1017,19 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'measure-disk',
                   'place': 'lib/backup.dart:147',
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'measure-memory',
                   'place': 'lib/backup.dart:148',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'plan',
                   'place': 'lib/backup.dart:150',
                 },
@@ -1043,7 +1043,7 @@ void main() {
               ],
             },
           },
-          // ?:, then || whose right side is an && with a step on its right.
+          // ?:, then || whose right side is an && with an effect on its right.
           'lib/backup.dart#report': {
             'name': 'report',
             'place': 'lib/backup.dart:69',
@@ -1057,7 +1057,7 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'summarize',
                   'place': 'lib/backup.dart:70',
                 },
@@ -1075,7 +1075,7 @@ void main() {
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'ask',
                   'place': 'lib/backup.dart:71',
                 },
@@ -1084,12 +1084,12 @@ void main() {
                   'kind': 'fork',
                   'label':
                       'urgent || text.isNotEmpty && '
-                      "await f.step('ask', () => true)",
+                      "await f.effect('ask', () => true)",
                   'place': 'lib/backup.dart:71',
                 },
                 {
                   'id': '7',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'mail',
                   'place': 'lib/backup.dart:72',
                 },
@@ -1121,7 +1121,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'find',
                   'place': 'lib/backup.dart:140',
                 },
@@ -1133,7 +1133,7 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'restore',
                   'place': 'lib/backup.dart:142',
                 },
@@ -1146,7 +1146,7 @@ void main() {
               ],
             },
           },
-          // The loop without steps is not drawn, nor is the last if: either
+          // The loop without effects is not drawn, nor is the last if: either
           // way the body ends. try draws its body, then finally. A label
           // the formatter wrapped is on one line.
           'lib/backup.dart#rotate': {
@@ -1164,13 +1164,13 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'lock',
                   'place': 'lib/backup.dart:89',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'unlock',
                   'place': 'lib/backup.dart:91',
                 },
@@ -1197,7 +1197,7 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'schedule',
                   'place': 'lib/backup.dart:42',
                 },
@@ -1230,7 +1230,7 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'send',
                   'place': 'lib/backup.dart:63',
                 },
@@ -1242,7 +1242,7 @@ void main() {
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'close',
                   'place': 'lib/backup.dart:66',
                 },
@@ -1275,13 +1275,13 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'copy',
                   'place': 'lib/backup.dart:24',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'upload',
                   'place': 'lib/backup.dart:26',
                 },
@@ -1309,19 +1309,19 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'stat',
                   'place': 'lib/backup.dart:99',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'head',
                   'place': 'lib/backup.dart:100',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'record',
                   'place': 'lib/backup.dart:102',
                 },
@@ -1351,7 +1351,7 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'is-up',
                   'place': 'lib/backup.dart:49',
                 },
@@ -1363,13 +1363,13 @@ void main() {
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'ping',
                   'place': 'lib/backup.dart:55',
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'is-busy',
                   'place': 'lib/backup.dart:56',
                 },
@@ -1407,7 +1407,7 @@ void main() {
         'throws',
         workflows: [],
         functions: {
-          // finally is drawn twice, its step name warns once.
+          // finally is drawn twice, its effect name warns once.
           'lib/throws.dart#cleanUp': {
             'name': 'cleanUp',
             'place': 'lib/throws.dart:7',
@@ -1415,7 +1415,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'acquire',
                   'place': 'lib/throws.dart:9',
                 },
@@ -1427,19 +1427,19 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'use',
                   'place': 'lib/throws.dart:11',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': r"'release-$lock'",
                   'place': 'lib/throws.dart:13',
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': r"'release-$lock'",
                   'place': 'lib/throws.dart:13',
                 },
@@ -1456,7 +1456,7 @@ void main() {
             },
           },
           // The throw is in a catch clause, which is not drawn: the loop
-          // has no steps and nothing that leaves it, so it is left out.
+          // has no effects and nothing that leaves it, so it is left out.
           'lib/throws.dart#importLines': {
             'name': 'importLines',
             'place': 'lib/throws.dart:17',
@@ -1464,7 +1464,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'import',
                   'place': 'lib/throws.dart:25',
                 },
@@ -1489,7 +1489,7 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'stat',
                   'place': 'lib/throws.dart:56',
                 },
@@ -1501,13 +1501,13 @@ void main() {
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'unit',
                   'place': 'lib/throws.dart:60',
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'record',
                   'place': 'lib/throws.dart:62',
                 },
@@ -1531,7 +1531,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'fetch',
                   'place': 'lib/throws.dart:42',
                 },
@@ -1543,25 +1543,25 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'write',
                   'place': 'lib/throws.dart:44',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'close',
                   'place': 'lib/throws.dart:46',
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'close',
                   'place': 'lib/throws.dart:46',
                 },
                 {
                   'id': '6',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'report',
                   'place': 'lib/throws.dart:51',
                 },
@@ -1586,7 +1586,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'ping',
                   'place': 'lib/throws.dart:30',
                 },
@@ -1598,13 +1598,13 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'pull',
                   'place': 'lib/throws.dart:32',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'log',
                   'place': 'lib/throws.dart:36',
                 },
@@ -1623,7 +1623,7 @@ void main() {
         warnings: [
           {
             'place': 'lib/throws.dart:13',
-            'message': 'step name is not a string literal',
+            'message': 'effect name is not a string literal',
           },
           {
             'place': 'lib/throws.dart:33',
@@ -1654,7 +1654,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'measure',
                   'place': 'lib/catches.dart:25',
                 },
@@ -1666,13 +1666,13 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'copy',
                   'place': 'lib/catches.dart:27',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'verify',
                   'place': 'lib/catches.dart:32',
                 },
@@ -1701,19 +1701,19 @@ void main() {
                 },
                 {
                   'id': '2',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'scale',
                   'place': 'lib/catches.dart:76',
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'apply',
                   'place': 'lib/catches.dart:78',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'report',
                   'place': 'lib/catches.dart:82',
                 },
@@ -1737,7 +1737,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'prepare',
                   'place': 'lib/catches.dart:49',
                 },
@@ -1749,19 +1749,19 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'ship',
                   'place': 'lib/catches.dart:51',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'unlock',
                   'place': 'lib/catches.dart:55',
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'announce',
                   'place': 'lib/catches.dart:57',
                 },
@@ -1786,7 +1786,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'download',
                   'place': 'lib/catches.dart:37',
                 },
@@ -1804,13 +1804,13 @@ void main() {
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'parse',
                   'place': 'lib/catches.dart:40',
                 },
                 {
                   'id': '5',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'store',
                   'place': 'lib/catches.dart:44',
                 },
@@ -1826,7 +1826,7 @@ void main() {
               ],
             },
           },
-          // A loop without steps, left by a throw its catch rethrows.
+          // A loop without effects, left by a throw its catch rethrows.
           'lib/catches.dart#importAll': {
             'name': 'importAll',
             'place': 'lib/catches.dart:85',
@@ -1846,7 +1846,7 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'import',
                   'place': 'lib/catches.dart:94',
                 },
@@ -1868,7 +1868,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'read',
                   'place': 'lib/catches.dart:63',
                 },
@@ -1880,13 +1880,13 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'replace',
                   'place': 'lib/catches.dart:65',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'audit',
                   'place': 'lib/catches.dart:70',
                 },
@@ -1909,7 +1909,7 @@ void main() {
               'nodes': [
                 {
                   'id': '1',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'check',
                   'place': 'lib/catches.dart:13',
                 },
@@ -1921,13 +1921,13 @@ void main() {
                 },
                 {
                   'id': '3',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'send',
                   'place': 'lib/catches.dart:15',
                 },
                 {
                   'id': '4',
-                  'kind': 'step',
+                  'kind': 'effect',
                   'name': 'confirm',
                   'place': 'lib/catches.dart:20',
                 },
@@ -1956,9 +1956,9 @@ void main() {
   test('draws no default for a switch on a record of types a switch must '
       'cover, reads the list of a Future.wait after a named argument, and '
       'tells apart methods of unnamed extensions', () async {
-    Map<String, Object?> step(String id, String name, int line) => {
+    Map<String, Object?> effect(String id, String name, int line) => {
       'id': id,
-      'kind': 'step',
+      'kind': 'effect',
       'name': name,
       'place': 'lib/corners.dart:$line',
     };
@@ -1978,7 +1978,7 @@ void main() {
             'name': 'announce',
             'place': 'lib/corners.dart:49',
             'body': {
-              'nodes': [step('1', 'shout', 49)],
+              'nodes': [effect('1', 'shout', 49)],
               'edges': [edge(null, '1'), edge('1', null)],
             },
           },
@@ -1986,7 +1986,7 @@ void main() {
             'name': 'announce',
             'place': 'lib/corners.dart:45',
             'body': {
-              'nodes': [step('1', 'announce', 45)],
+              'nodes': [effect('1', 'announce', 45)],
               'edges': [edge(null, '1'), edge('1', null)],
             },
           },
@@ -2023,8 +2023,8 @@ void main() {
                   'label': 'switch ((urgent, tries))',
                   'place': 'lib/corners.dart:23',
                 },
-                step('2', 'now', 25),
-                step('3', 'later', 27),
+                effect('2', 'now', 25),
+                effect('3', 'later', 27),
               ],
               'edges': [
                 edge(null, '1'),
@@ -2047,10 +2047,10 @@ void main() {
                   'label': 'switch ((urgent, (speed, quiet)))',
                   'place': 'lib/corners.dart:10',
                 },
-                step('2', 'page', 12),
-                step('3', 'mail', 14),
-                step('4', 'log', 16),
-                step('5', 'chat', 18),
+                effect('2', 'page', 12),
+                effect('3', 'mail', 14),
+                effect('4', 'log', 16),
+                effect('5', 'chat', 18),
               ],
               'edges': [
                 edge(null, '1'),
@@ -2070,15 +2070,15 @@ void main() {
             'place': 'lib/corners.dart:31',
             'body': {
               'nodes': [
-                step('1', 'build', 33),
-                step('2', 'test', 34),
+                effect('1', 'build', 33),
+                effect('2', 'test', 34),
                 {
                   'id': '3',
                   'kind': 'copies',
                   'label': 'target in targets',
                   'place': 'lib/corners.dart:38',
                   'body': {
-                    'nodes': [step('1', 'upload', 39)],
+                    'nodes': [effect('1', 'upload', 39)],
                     'edges': [edge(null, '1'), edge('1', null)],
                   },
                 },
@@ -2132,7 +2132,7 @@ void main() {
         'lib/tiny.dart': sourceHash(utf8.encode('int answer() => 42;\n')),
       };
       expectFile(result.graph!.toJson(), {
-        'format': 1,
+        'format': 2,
         'package': 'tiny_app',
         'fingerprint': fingerprintOf(sources),
         'sources': sources,

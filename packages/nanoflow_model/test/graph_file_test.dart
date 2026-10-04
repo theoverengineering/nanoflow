@@ -9,7 +9,7 @@ const String _publish = 'lib/release.dart#publish';
 /// A graph file with every kind of node, `null` in every place that allows
 /// it, and the keys in the order of the spec.
 Map<String, Object?> _fileJson() => {
-  'format': 1,
+  'format': 2,
   'package': 'review_example',
   'fingerprint': 'sha256:7d3e',
   'sources': {'bin/main.dart': 'sha256:aa11', 'lib/review.dart': 'sha256:9f2c'},
@@ -23,7 +23,7 @@ Map<String, Object?> _fileJson() => {
         'nodes': [
           {
             'id': '1',
-            'kind': 'step',
+            'kind': 'effect',
             'name': 'collect',
             'place': 'lib/review.dart:22',
           },
@@ -46,7 +46,7 @@ Map<String, Object?> _fileJson() => {
             'place': 'lib/review.dart:25',
             'body': {
               'nodes': [
-                {'id': '1', 'kind': 'step', 'name': 'lint', 'place': null},
+                {'id': '1', 'kind': 'effect', 'name': 'lint', 'place': null},
               ],
               'edges': [
                 {'from': null, 'to': '1', 'label': null},
@@ -73,7 +73,7 @@ Map<String, Object?> _fileJson() => {
   'warnings': [
     {
       'place': 'lib/review.dart:40',
-      'message': 'steps in a closure passed on are not drawn',
+      'message': 'effects in a closure passed on are not drawn',
     },
     {'place': null, 'message': 'a warning without a place'},
   ],
@@ -123,7 +123,7 @@ GraphFile _fileWithWorkflows(List<String> workflows, [List<String>? others]) {
     body: const GraphBody(nodes: [], edges: []),
   );
   return GraphFile(
-    format: 1,
+    format: 2,
     package: 'p',
     fingerprint: 'sha256:00',
     sources: const {},
@@ -139,7 +139,7 @@ GraphFile _fileWithWorkflows(List<String> workflows, [List<String>? others]) {
 void main() {
   test('names the file and its format', () {
     expect(graphFileName, 'nanoflow.graph.json');
-    expect(graphFileFormat, 1);
+    expect(graphFileFormat, 2);
   });
 
   group('GraphFile', () {
@@ -196,7 +196,7 @@ void main() {
     test('reads every kind of node', () {
       final body = GraphFile.fromJson(_fileJson()).functions[_review]!.body;
       expect(body.nodes, [
-        const StepNode(id: '1', place: 'lib/review.dart:22', name: 'collect'),
+        const EffectNode(id: '1', place: 'lib/review.dart:22', name: 'collect'),
         const ConditionNode(
           id: '2',
           place: 'lib/review.dart:23',
@@ -212,7 +212,7 @@ void main() {
           place: 'lib/review.dart:25',
           label: 'pkg in packages',
           body: GraphBody(
-            nodes: [StepNode(id: '1', place: null, name: 'lint')],
+            nodes: [EffectNode(id: '1', place: null, name: 'lint')],
             edges: [
               GraphEdge(from: null, to: '1', label: null),
               GraphEdge(from: '1', to: null, label: null),
@@ -234,7 +234,7 @@ void main() {
     test('finds a node of a body by its id', () {
       final body = GraphFile.fromJson(_fileJson()).functions[_review]!.body;
       expect(body.node('2'), isA<ConditionNode>());
-      expect((body.node('4') as CopiesNode).body.node('1'), isA<StepNode>());
+      expect((body.node('4') as CopiesNode).body.node('1'), isA<EffectNode>());
       expect(body.node('9'), isNull);
     });
 
@@ -272,9 +272,16 @@ void main() {
   });
 
   group('GraphFile.fromJson problems', () {
-    test('rejects a format other than 1', () {
-      expect(_problem(_edited(['format'], value: 2)), startsWith('format:'));
+    test('rejects a format other than 2', () {
+      expect(_problem(_edited(['format'], value: 3)), startsWith('format:'));
       expect(_problem(_edited(['format'], value: 0)), startsWith('format:'));
+    });
+
+    test('refuses a graph file of format 1, from before effects', () {
+      expect(
+        _problem(_edited(['format'], value: 1)),
+        startsWith('format: expected 2'),
+      );
     });
 
     test('names the top-level field that is missing or mistyped', () {
@@ -478,7 +485,7 @@ void main() {
 
     test('is null when a workflow has no function', () {
       final file = GraphFile(
-        format: 1,
+        format: 2,
         package: 'p',
         fingerprint: 'sha256:00',
         sources: const {},

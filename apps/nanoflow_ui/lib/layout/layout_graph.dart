@@ -144,13 +144,13 @@ enum NodeKind {
   /// Where the body ends: the edges `to: null` enter it.
   end,
 
-  /// A call of `f.step`.
-  step,
+  /// A call of `f.effect`.
+  effect,
 
   /// A condition the flow goes one of several ways on.
   condition,
 
-  /// A call of a function with steps: a stack of tiles.
+  /// A call of a function with effects: a stack of tiles.
   call,
 
   /// A body run in copies side by side: a stack of tiles.
@@ -167,11 +167,11 @@ const String endMarker = '(end)';
 /// [endMarker], `(end)2`, `(end)3`.
 String endMarkerAt(int n) => n == 1 ? endMarker : '$endMarker$n';
 
-/// The name under the tile of [node]: a step's name, a condition's or
+/// The name under the tile of [node]: an effect's name, a condition's or
 /// copies' label, a call's function with `()`.
 String nodeName(GraphNode node, Map<String, GraphFunction> functions) =>
     switch (node) {
-      StepNode(:final name) => name,
+      EffectNode(:final name) => name,
       ConditionNode(:final label) || CopiesNode(:final label) => label,
       CallNode(functions: final ids) => '${_functionName(ids, functions)}()',
     };
@@ -188,24 +188,24 @@ String _functionName(List<String> ids, Map<String, GraphFunction> functions) {
 }
 
 /// What is written inside the tile of [node], when not an icon: how many
-/// steps can run in it ([reachableSteps]). `{ 3 }` on a call, the steps of
-/// its function; `{ 1–2 }` for implementations of a method with different
+/// effects can run in it ([reachableEffects]). `{ 3 }` on a call, the effects
+/// of its function; `{ 1–2 }` for implementations of a method with different
 /// counts; `{ ? }` when the file has none of its functions. `{ 3 }` on
-/// copies, the steps of one copy; `{ ? }` when they have none but call a
+/// copies, the effects of one copy; `{ ? }` when they have none but call a
 /// function the file does not have. `{ }` when there are none.
 String? insideText(GraphNode node, Map<String, GraphFunction> functions) {
   final List<int> counts;
   switch (node) {
-    case StepNode() || ConditionNode():
+    case EffectNode() || ConditionNode():
       return null;
     case CopiesNode(:final body):
-      counts = [reachableSteps(body, functions)];
+      counts = [reachableEffects(body, functions)];
       if (counts.single == 0 && _callsUnknown(body, functions)) return '{ ? }';
     case CallNode(functions: final ids):
       counts = [
         for (final id in ids)
           if (functions[id] case final function?)
-            reachableSteps(function.body, functions, {id}),
+            reachableEffects(function.body, functions, {id}),
       ]..sort();
       if (counts.isEmpty) return '{ ? }';
   }
@@ -222,16 +222,16 @@ bool _callsUnknown(GraphBody body, Map<String, GraphFunction> functions) =>
       (node) => switch (node) {
         CallNode(functions: final ids) => !ids.any(functions.containsKey),
         CopiesNode(body: final copy) => _callsUnknown(copy, functions),
-        StepNode() || ConditionNode() => false,
+        EffectNode() || ConditionNode() => false,
       },
     );
 
-/// How many steps can run in [body]: its own, those of the bodies of its
+/// How many effects can run in [body]: its own, those of the bodies of its
 /// copies, and those of the functions it calls that [functions] has — of
 /// the one with the most, for a call of several. A function in [counting],
 /// being counted already, counts nothing again: a recursive call adds no
-/// steps.
-int reachableSteps(
+/// effects.
+int reachableEffects(
   GraphBody body,
   Map<String, GraphFunction> functions, [
   Set<String> counting = const {},
@@ -239,13 +239,17 @@ int reachableSteps(
   var count = 0;
   for (final node in body.nodes) {
     count += switch (node) {
-      StepNode() => 1,
+      EffectNode() => 1,
       ConditionNode() => 0,
-      CopiesNode(body: final copy) => reachableSteps(copy, functions, counting),
+      CopiesNode(body: final copy) => reachableEffects(
+        copy,
+        functions,
+        counting,
+      ),
       CallNode(functions: final ids) => [
         for (final id in ids)
           if (functions[id] case final function? when !counting.contains(id))
-            reachableSteps(function.body, functions, {...counting, id}),
+            reachableEffects(function.body, functions, {...counting, id}),
       ].fold(0, math.max),
     };
   }
@@ -444,7 +448,7 @@ final class LayoutGraph {
     for (final node in body.nodes) {
       if (!known.add(node.id)) continue;
       byId[node.id] = add(node.id, switch (node) {
-        StepNode() => NodeKind.step,
+        EffectNode() => NodeKind.effect,
         ConditionNode() => NodeKind.condition,
         CallNode() => NodeKind.call,
         CopiesNode() => NodeKind.copies,

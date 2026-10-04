@@ -63,10 +63,10 @@ final class Session {
       'inputId: $inputId)';
 }
 
-/// One call of `f.step` that ran live: its record, kept when the step runs
+/// One call of `f.effect` that ran live: its record, kept when the effect runs
 /// again after a crash.
-final class Step {
-  const Step({
+final class Effect {
+  const Effect({
     required this.id,
     required this.sessionId,
     required this.name,
@@ -77,11 +77,11 @@ final class Step {
     required this.log,
   });
 
-  /// Reads a step from its JSON form.
+  /// Reads an effect from its JSON form.
   ///
   /// Throws a [FormatException] whose message starts with the field that is
   /// missing or of the wrong kind.
-  factory Step.fromJson(Map<String, Object?> json) => Step(
+  factory Effect.fromJson(Map<String, Object?> json) => Effect(
     id: readString(json, 'id'),
     sessionId: readString(json, 'sessionId'),
     name: readString(json, 'name'),
@@ -94,32 +94,32 @@ final class Step {
 
   final String id;
 
-  /// The session the step belongs to.
+  /// The session the effect belongs to.
   final String sessionId;
 
-  /// The name given to `f.step`.
+  /// The name given to `f.effect`.
   final String name;
 
-  /// The key that finds the step again when the session goes on after a
+  /// The key that finds the effect again when the session goes on after a
   /// crash: `collect#1@e3b0c44298fc1c14`.
   final String key;
 
-  /// The key of the step adopted last before this one in its context, in
-  /// the call it was last started in; `null` for a step with none before it.
+  /// The key of the effect adopted last before this one in its context, in
+  /// the call it was last started in; `null` for an effect with none before it.
   final String? after;
 
-  /// Where `f.step` was called: `path:line`; `null` when not known.
+  /// Where `f.effect` was called: `path:line`; `null` when not known.
   final String? place;
 
-  /// The document with the step's result. `null` until the step has
-  /// finished; the journal's `step-finished` is what tells, this is a copy.
+  /// The document with the effect's result. `null` until the effect has
+  /// finished; the journal's `effect-finished` is what tells, this is a copy.
   final String? outputId;
 
-  /// The name of the step's log file, relative to the step's directory.
+  /// The name of the effect's log file, relative to the effect's directory.
   final String log;
 
-  /// This step with [outputId] set: it has finished.
-  Step withOutput(String outputId) => Step(
+  /// This effect with [outputId] set: it has finished.
+  Effect withOutput(String outputId) => Effect(
     id: id,
     sessionId: sessionId,
     name: name,
@@ -130,9 +130,9 @@ final class Step {
     log: log,
   );
 
-  /// This step with [after] set: it runs again, after a resume, in a call
-  /// that follows another step than the call it ran in before.
-  Step withAfter(String? after) => Step(
+  /// This effect with [after] set: it runs again, after a resume, in a call
+  /// that follows another effect than the call it ran in before.
+  Effect withAfter(String? after) => Effect(
     id: id,
     sessionId: sessionId,
     name: name,
@@ -156,7 +156,7 @@ final class Step {
 
   @override
   bool operator ==(Object other) =>
-      other is Step &&
+      other is Effect &&
       other.id == id &&
       other.sessionId == sessionId &&
       other.name == name &&
@@ -172,11 +172,11 @@ final class Step {
 
   @override
   String toString() =>
-      'Step(id: $id, sessionId: $sessionId, name: $name, key: $key, '
+      'Effect(id: $id, sessionId: $sessionId, name: $name, key: $key, '
       'after: $after, place: $place, outputId: $outputId, log: $log)';
 }
 
-/// Data of a session: the input of the workflow, the result of a step or of
+/// Data of a session: the input of the workflow, the result of an effect or of
 /// the workflow, a snapshot of the graph.
 final class Document {
   const Document({

@@ -1,15 +1,15 @@
-// Step keys (spec §4.3, decision D1), ported from
+// Effect keys (spec §4.3, decision D1), ported from
 // prototypes/step_keys/lib/flow.dart.
 //
 // A session's code runs in a zone that gives every callback the code
 // registers — above all the one continuation the VM registers for each call
 // of an async function, at its first await — a context of its own: the
 // context it was registered in plus its number among the callbacks of its
-// kind registered there. Right after `await <step>` — when a call is resumed
-// with that step's very result — the call takes the step's context instead;
+// kind registered there. Right after `await <effect>` — when a call is resumed
+// with that effect's very result — the call takes the effect's context instead;
 // after any other await it keeps its own, so after `await Future.wait(copies)`
-// the parent goes on in its own context, whichever copy finished last. A
-// step's key is its name, its number among the steps of that name in the
+// the parent goes on in its own context, whichever copy finished last. An
+// effect's key is its name, its number among the effects of that name in the
 // context it is called in, and the hash of that context: `upload#2@<h>`.
 //
 // Callbacks of two kinds are numbered apart. Those with an argument — the
@@ -22,32 +22,32 @@
 // future that is done already, nor the registration the root zone makes of a
 // microtask or a timer this zone hands it to schedule, takes a number.
 //
-// What that guarantees: a step's key is the same on every run when, in each
+// What that guarantees: an effect's key is the same on every run when, in each
 // context on its way, the sequence of continuations and `then` callbacks
 // registered there before it does not depend on the timing. Code runs one
 // piece at a time in each context, so awaits, `Future.wait`, loops and
 // `await for` register them in the order the code runs, and copies side by
-// side get different numbers even before their first step. A timer's or a
+// side get different numbers even before their first effect. A timer's or a
 // microtask's number is steady only where the sequence of timers and
 // microtasks made in its context is: dart:async makes microtasks of its own
 // for a stream when items wait in it, which depends on the timing. Numbered
 // apart, they do not move the continuations around them, but they can move a
-// timer made in the same context, and with it the key of a step that the
+// timer made in the same context, and with it the key of an effect that the
 // timer's callback calls directly, as `Future.delayed(d, () => publish(f))`
 // in the body of an `await for` does.
 //
-// Unlike the prototype, a step's body runs in a context of its own, `~0` of
-// the step's, and not in the step's context itself, which is the context of
-// the code that takes the step's result. A body that runs and one that does
+// Unlike the prototype, an effect's body runs in a context of its own, `~0` of
+// the effect's, and not in the effect's context itself, which is the context of
+// the code that takes the effect's result. A body that runs and one that does
 // not, its result coming from the journal, then leave the numbers there the
-// same: in the prototype the numbers in a step's context counted the
-// callbacks of its body too, and after a resume the steps that followed a
+// same: in the prototype the numbers in an effect's context counted the
+// callbacks of its body too, and after a resume the effects that followed a
 // call there moved to other keys and ran again.
 //
-// And a step hands its result over in a future of the zone the session's zone
-// was forked from, whatever gave it: a live step's result comes from there,
-// and a saved one then behaves the same in every respect, the zone in which a
-// late listener's microtask runs included.
+// And an effect hands its result over in a future of the zone the session's
+// zone was forked from, whatever gave it: a live effect's result comes from
+// there, and a saved one then behaves the same in every respect, the zone in
+// which a late listener's microtask runs included.
 
 import 'dart:async';
 import 'dart:convert';
@@ -58,11 +58,11 @@ import 'package:crypto/crypto.dart';
 String contextHash(String s) =>
     sha256.convert(utf8.encode(s)).toString().substring(0, 16);
 
-/// A zone that gives every step called in it a key that is the same on every
+/// A zone that gives every effect called in it a key that is the same on every
 /// run of the same code: one per session.
 ///
-/// Code runs in it through [run]; [step] keys a step and hands its result to
-/// the code that awaits it in the step's context.
+/// Code runs in it through [run]; [effect] keys an effect and hands its result
+/// to the code that awaits it in the effect's context.
 final class KeyedZone {
   /// A zone forked from the current one, with [zoneValues].
   KeyedZone({Map<Object?, Object?>? zoneValues}) : _parent = Zone.current {
@@ -72,7 +72,7 @@ final class KeyedZone {
     );
   }
 
-  /// The zone this one was forked from: the futures of steps belong to it.
+  /// The zone this one was forked from: the futures of effects belong to it.
   final Zone _parent;
 
   late final Zone _zone;
@@ -84,7 +84,7 @@ final class KeyedZone {
   /// the session runs in after its first synchronous part.
   late _Context _current = _root;
 
-  /// The result a step is handing over right now, and the step's context.
+  /// The result an effect is handing over right now, and the effect's context.
   ({Object? value, _Context context})? _delivering;
 
   /// Whether the zone is handing a microtask or a timer to the zone it was
@@ -94,29 +94,32 @@ final class KeyedZone {
   /// Runs [body] in the zone, in the root context.
   R run<R>(R Function() body) => _zone.run(() => _with(_root, body));
 
-  /// Calls the step [name] in the current context and returns what [start]
+  /// Calls the effect [name] in the current context and returns what [start]
   /// gives for it, in a future that resumes the code awaiting it in the
-  /// step's context.
+  /// effect's context.
   ///
-  /// [start] is called at once, in the step's own context, with the step's
-  /// key: it gives the step's result, saved or from [KeyedStep.runBody]. The
-  /// code that calls the step registers the same callbacks either way, and
-  /// the result is handed over in a future of the zone this one was forked
+  /// [start] is called at once, in the effect's own context, with the effect's
+  /// key: it gives the effect's result, saved or from [KeyedEffect.runBody].
+  /// The code that calls the effect registers the same callbacks either way,
+  /// and the result is handed over in a future of the zone this one was forked
   /// from.
-  Future<T> step<T>(String name, Future<T> Function(KeyedStep step) start) {
+  Future<T> effect<T>(
+    String name,
+    Future<T> Function(KeyedEffect effect) start,
+  ) {
     final caller = _current;
-    final key = '$name#${caller.nextStep(name)}@${contextHash(caller.id)}';
-    // One context for every code that takes the step's result: what takes
+    final key = '$name#${caller.nextEffect(name)}@${contextHash(caller.id)}';
+    // One context for every code that takes the effect's result: what takes
     // it twice goes on numbering where it was.
-    final context = _Context.ofStep(key);
-    // The body's own context. A step called in the body follows this step:
-    // its `after` is this step's key.
+    final context = _Context.ofEffect(key);
+    // The body's own context. An effect called in the body follows this effect:
+    // its `after` is this effect's key.
     final own = _Context.child(context, '~0');
     final value = _with(own, () {
-      final result = start(KeyedStep._(this, own, name, key, caller.after));
+      final result = start(KeyedEffect._(this, own, name, key, caller.after));
       return _parent.run(() => result.then((v) => v));
     });
-    return _StepFuture(this, context, value);
+    return _EffectFuture(this, context, value);
   }
 
   ZoneSpecification _specification() => ZoneSpecification(
@@ -147,7 +150,7 @@ final class KeyedZone {
       return parent.registerUnaryCallback(zone, (T a) {
         final d = _delivering;
         if (d != null && identical(d.value, a)) {
-          // Resumed with a step's very result: right after `await <step>`.
+          // Resumed with an effect's very result: right after `await <effect>`.
           context = d.context;
           _delivering = null;
         }
@@ -199,50 +202,50 @@ final class KeyedZone {
   }
 }
 
-/// A step called in a [KeyedZone], as [KeyedZone.step] gives it to the code
-/// that runs it.
-final class KeyedStep {
-  KeyedStep._(this._zone, this._own, this.name, this.key, this.after);
+/// An effect called in a [KeyedZone], as [KeyedZone.effect] gives it to the
+/// code that runs it.
+final class KeyedEffect {
+  KeyedEffect._(this._zone, this._own, this.name, this.key, this.after);
 
   final KeyedZone _zone;
 
-  /// The step's own context, which its body runs in.
+  /// The effect's own context, which its body runs in.
   final _Context _own;
 
-  /// The name the step was called with.
+  /// The name the effect was called with.
   final String name;
 
-  /// The key that finds the step's result again: `name#n@<h(context)>`.
+  /// The key that finds the effect's result again: `name#n@<h(context)>`.
   final String key;
 
-  /// The key of the step whose result the context the step was called in
+  /// The key of the effect whose result the context the effect was called in
   /// took last; `null` when it took none.
   final String? after;
 
-  /// Runs [body] in the zone, in the step's own context, from wherever it is
+  /// Runs [body] in the zone, in the effect's own context, from wherever it is
   /// called.
   R runBody<R>(R Function() body) =>
       _zone._zone.run(() => _zone._with(_own, body));
 }
 
-/// Where code runs, as far as step keys go.
+/// Where code runs, as far as effect keys go.
 final class _Context {
   _Context._(this._id, this._parent, this._label, this.after);
 
   /// The root of a session: `""`.
   _Context.root() : this._('', null, '', null);
 
-  /// The context of the step [key]: the one the code that takes the step's
+  /// The context of the effect [key]: the one the code that takes the effect's
   /// result goes on in.
-  _Context.ofStep(String key) : this._(key, null, '', key);
+  _Context.ofEffect(String key) : this._(key, null, '', key);
 
   /// The context [label] in [parent]: `~k` for the callback with an argument
-  /// numbered k there, `~tk` for the one without, `~0` for a step's body.
+  /// numbered k there, `~tk` for the one without, `~0` for an effect's body.
   _Context.child(_Context parent, String label)
     : this._(null, parent, label, parent.after);
 
   /// The context's name, `null` until it is needed: it is a hash, and most
-  /// callbacks never call a step.
+  /// callbacks never call an effect.
   String? _id;
 
   /// The context this one was registered in, until [_id] is known.
@@ -251,7 +254,7 @@ final class _Context {
   /// What tells this context from the others in its parent: `~3`, `~t2`.
   final String _label;
 
-  /// The key of the step whose result this context took last; `null` when
+  /// The key of the effect whose result this context took last; `null` when
   /// none. A callback gets the one of the context it was registered in.
   final String? after;
 
@@ -263,10 +266,10 @@ final class _Context {
   /// so far.
   int _timed = 0;
 
-  /// How many steps of each name were called in this context so far.
-  Map<String, int>? _steps;
+  /// How many effects of each name were called in this context so far.
+  Map<String, int>? _effects;
 
-  /// `""` for the root, the key for a step's context, and for a callback's
+  /// `""` for the root, the key for an effect's context, and for a callback's
   /// `h(parent + "/" + label)`: the hash of the name of the context it was
   /// registered in and its label there, `~k` or `~tk`.
   String get id {
@@ -291,17 +294,17 @@ final class _Context {
   /// now.
   _Context timed() => _Context.child(this, '~t${++_timed}');
 
-  /// The number of a step of [name] called in this context now, from 1.
-  int nextStep(String name) {
-    final steps = _steps ??= {};
-    return steps[name] = (steps[name] ?? 0) + 1;
+  /// The number of an effect of [name] called in this context now, from 1.
+  int nextEffect(String name) {
+    final effects = _effects ??= {};
+    return effects[name] = (effects[name] ?? 0) + 1;
   }
 }
 
-/// What [KeyedZone.step] returns: `await` hands it the code that follows,
-/// which the step resumes in its own context.
-final class _StepFuture<T> implements Future<T> {
-  _StepFuture(this._zone, this._context, this._value);
+/// What [KeyedZone.effect] returns: `await` hands it the code that follows,
+/// which the effect resumes in its own context.
+final class _EffectFuture<T> implements Future<T> {
+  _EffectFuture(this._zone, this._context, this._value);
 
   final KeyedZone _zone;
   final _Context _context;

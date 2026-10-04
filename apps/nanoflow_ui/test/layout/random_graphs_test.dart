@@ -40,7 +40,7 @@ GraphBody randomBody(int seed) {
         }
       case final kind:
         nodes.add(switch (kind) {
-          1 => StepNode(id: id, place: place, name: 'run $id'),
+          1 => EffectNode(id: id, place: place, name: 'run $id'),
           2 => CallNode(id: id, place: place, functions: ['lib/f.dart#f$id']),
           _ => CopiesNode(
             id: id,
@@ -91,7 +91,7 @@ void main() {
   test('edges between nodes the body does not have are left out', () {
     final layout = layoutBody(
       const GraphBody(
-        nodes: [StepNode(id: 'a', place: null, name: 'a')],
+        nodes: [EffectNode(id: 'a', place: null, name: 'a')],
         edges: [
           GraphEdge(from: null, to: 'a', label: null),
           GraphEdge(from: 'a', to: 'missing', label: null),
@@ -108,8 +108,8 @@ void main() {
     final layout = layoutBody(
       const GraphBody(
         nodes: [
-          StepNode(id: 'a', place: null, name: 'first'),
-          StepNode(id: 'a', place: null, name: 'second'),
+          EffectNode(id: 'a', place: null, name: 'first'),
+          EffectNode(id: 'a', place: null, name: 'second'),
         ],
         edges: [GraphEdge(from: null, to: 'a', label: null)],
       ),

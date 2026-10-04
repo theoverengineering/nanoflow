@@ -2,21 +2,21 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../state/log_rows.dart' show StepRow;
+import '../../state/log_rows.dart' show EffectRow;
 import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
 import '../../widgets/icons.dart';
 import '../../widgets/spinner.dart';
 
-/// A step's timeline: the track, and on it the step's bar from where it
+/// An effect's timeline: the track, and on it the effect's bar from where it
 /// started to where it ended or is now.
-class StepTrack extends StatelessWidget {
-  const StepTrack(this.row, {super.key});
+class EffectTrack extends StatelessWidget {
+  const EffectTrack(this.row, {super.key});
 
-  final StepRow row;
+  final EffectRow row;
 
-  static Key trackKey(String stepId) => ValueKey(('step track', stepId));
-  static Key barKey(String stepId) => ValueKey(('step bar', stepId));
+  static Key trackKey(String effectId) => ValueKey(('effect track', effectId));
+  static Key barKey(String effectId) => ValueKey(('effect bar', effectId));
 
   /// Shorter than this, a bar is this long.
   static const _leastBar = 2.0;
@@ -29,7 +29,7 @@ class StepTrack extends StatelessWidget {
       final left = math.min(row.barStart * width, width - length);
       return Center(
         child: Container(
-          key: StepTrack.trackKey(row.stepId),
+          key: EffectTrack.trackKey(row.effectId),
           height: 6,
           decoration: BoxDecoration(
             color: AppColors.divider,
@@ -42,8 +42,8 @@ class StepTrack extends StatelessWidget {
                 width: length,
                 top: 0,
                 bottom: 0,
-                child: StepBar(
-                  key: StepTrack.barKey(row.stepId),
+                child: EffectBar(
+                  key: EffectTrack.barKey(row.effectId),
                   status: row.status,
                   striped: row.striped,
                   radius: length > _leastBar ? 3 : 1,
@@ -57,10 +57,10 @@ class StepTrack extends StatelessWidget {
   );
 }
 
-/// A step's bar in the color of its state; striped while it runs; only
+/// An effect's bar in the color of its state; striped while it runs; only
 /// outlined once it was interrupted: when it would have ended is not known.
-class StepBar extends StatelessWidget {
-  const StepBar({
+class EffectBar extends StatelessWidget {
+  const EffectBar({
     super.key,
     required this.status,
     required this.striped,
@@ -101,11 +101,11 @@ class _StripesPainter extends CustomPainter {
       Paint()..color = AppColors.runningStripe,
     );
     // Along the bar, a period and a stripe are √2 times as long.
-    final step = _period * math.sqrt2;
-    final stripe = step / 2;
+    final effect = _period * math.sqrt2;
+    final stripe = effect / 2;
     final h = size.height;
     final paint = Paint()..color = AppColors.running;
-    for (var x = -h; x < size.width; x += step) {
+    for (var x = -h; x < size.width; x += effect) {
       canvas.drawPath(
         Path()
           ..moveTo(x, h)
@@ -122,10 +122,10 @@ class _StripesPainter extends CustomPainter {
   bool shouldRepaint(_StripesPainter old) => false;
 }
 
-/// A step's sign: a green check finished, the turning sign running, a red
+/// An effect's sign: a green check finished, the turning sign running, a red
 /// cross failed, a grey pause interrupted.
-class StepIcon extends StatelessWidget {
-  const StepIcon(this.status, {super.key});
+class EffectIcon extends StatelessWidget {
+  const EffectIcon(this.status, {super.key});
 
   final StartOutcome status;
 
@@ -141,14 +141,14 @@ class StepIcon extends StatelessWidget {
     ),
     StartOutcome.finished || StartOutcome.failed => CustomPaint(
       size: const Size.square(size),
-      painter: _StepSignPainter(status),
+      painter: _EffectSignPainter(status),
     ),
   };
 }
 
 /// The mockup's check, 10 units; a cross of the same weight.
-class _StepSignPainter extends CustomPainter {
-  const _StepSignPainter(this.status);
+class _EffectSignPainter extends CustomPainter {
+  const _EffectSignPainter(this.status);
 
   final StartOutcome status;
 
@@ -177,5 +177,5 @@ class _StepSignPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_StepSignPainter old) => old.status != status;
+  bool shouldRepaint(_EffectSignPainter old) => old.status != status;
 }

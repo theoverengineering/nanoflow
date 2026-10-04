@@ -8,11 +8,11 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
 import 'body_path.dart';
+import 'effect_places.dart';
 import 'freshness.dart';
 import 'in_place.dart';
 import 'session_feed.dart';
 import 'session_view.dart';
-import 'step_places.dart';
 import 'texts.dart';
 
 /// Something to know of the graph on the canvas, over its top left (spec
@@ -110,17 +110,18 @@ const sessionCodeNotChecked = 'Session code not checked';
 /// Said under [sessionCodeNotChecked].
 const notCheckedDetail = 'The session recorded no hash of the code it ran on.';
 
-/// [steps] steps of the session ran where the graph has no step: `2 steps
-/// not on the graph`.
-String notOnGraphTitle(int steps) => '${count(steps, 'step')} not on the graph';
+/// [effects] effects of the session ran where the graph has no effect:
+/// `2 effects not on the graph`.
+String notOnGraphTitle(int effects) =>
+    '${count(effects, 'effect')} not on the graph';
 
-/// The most steps the note of those not on the graph lists; `Logs` marks
+/// The most effects the note of those not on the graph lists; `Logs` marks
 /// each of them.
 const notOnGraphLines = 5;
 
-/// Said under the steps not on the graph.
+/// Said under the effects not on the graph.
 const notOnGraphDetail =
-    'They ran at no step of the graph: the code may differ from the one it '
+    'They ran at no effect of the graph: the code may differ from the one it '
     'was read from.';
 
 /// The chosen workflow [workflow] is not in the graph file [fileName]: its
@@ -148,13 +149,14 @@ final class CanvasGraph {
     required this.ofSession,
     required List<Opened> path,
     Expansions? expansions,
-    StepPlaces? places,
+    EffectPlaces? places,
     this.placeholder,
     this.notes = const [],
   }) : levels = workflow == null
            ? const []
            : List.unmodifiable(bodyLevels(workflow, file!.functions, path)),
-       places = places ?? StepPlaces.of(workflow, file?.functions ?? const {}) {
+       places =
+           places ?? EffectPlaces.of(workflow, file?.functions ?? const {}) {
     frames = expansions == null || levels.isEmpty
         ? const []
         : List.unmodifiable(inPlaceFrames(levels, file!.functions, expansions));
@@ -169,7 +171,7 @@ final class CanvasGraph {
   final GraphFunction? workflow;
 
   /// Whether the graph is the selected session's own: then the session's
-  /// steps go on it. For `Current graph` they do not.
+  /// effects go on it. For `Current graph` they do not.
   final bool ofSession;
 
   /// What the canvas says instead of a graph: [noValidGraphYet],
@@ -191,9 +193,9 @@ final class CanvasGraph {
   /// (decision 6).
   late final List<InPlaceFrame> frames;
 
-  /// The places of the step nodes of the [workflow]: which nodes a
-  /// session's steps are on.
-  final StepPlaces places;
+  /// The places of the effect nodes of the [workflow]: which nodes a
+  /// session's effects are on.
+  final EffectPlaces places;
 
   /// The levels opened under the [workflow]'s body, as far as the graph has
   /// them.
@@ -279,12 +281,12 @@ CanvasGraph sessionCanvas(
   final file = graph.graph;
   final name = session.session.workflow;
   final workflow = file?.workflowNamed(name);
-  final places = StepPlaces.of(workflow, file?.functions ?? const {});
-  // Without a workflow there is no graph to put the steps on: the canvas
+  final places = EffectPlaces.of(workflow, file?.functions ?? const {});
+  // Without a workflow there is no graph to put the effects on: the canvas
   // says so instead.
   final offGraph = workflow == null
-      ? const <Step>[]
-      : stepsNotOnGraph(session.stepsInOrder, places);
+      ? const <Effect>[]
+      : effectsNotOnGraph(session.effectsInOrder, places);
   return CanvasGraph._(
     file: file,
     workflow: workflow,
@@ -310,8 +312,8 @@ CanvasGraph sessionCanvas(
         GraphNote(
           notOnGraphTitle(offGraph.length),
           lines: [
-            for (final step in offGraph.take(notOnGraphLines))
-              '${step.name}  ${step.place ?? 'no place'}',
+            for (final effect in offGraph.take(notOnGraphLines))
+              '${effect.name}  ${effect.place ?? 'no place'}',
             if (offGraph.length > notOnGraphLines)
               'and ${offGraph.length - notOnGraphLines} more',
           ],

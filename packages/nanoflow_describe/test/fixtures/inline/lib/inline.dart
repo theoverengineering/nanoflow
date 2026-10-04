@@ -7,44 +7,44 @@ Future<void> inPlace(Flow f, List<String> packages) async {
   final results = await Future.wait([
     for (final pkg in packages)
       () async {
-        final up = await f.step('upload', () => '$pkg:uploaded');
-        final ok = await f.step('verify', () => '$up:verified');
-        return f.step('tag', () => '$ok:tagged');
+        final up = await f.effect('upload', () => '$pkg:uploaded');
+        final ok = await f.effect('verify', () => '$up:verified');
+        return f.effect('tag', () => '$ok:tagged');
       }(),
   ]);
-  await f.step('announce', () => results.join(' + '));
+  await f.effect('announce', () => results.join(' + '));
 }
 
 Future<void> viaMap(Flow f, List<String> packages) async {
   final results = await Future.wait(
     packages.map((pkg) async {
-      final up = await f.step('upload', () => '$pkg:uploaded');
-      final ok = await f.step('verify', () => '$up:verified');
-      return f.step('tag', () => '$ok:tagged');
+      final up = await f.effect('upload', () => '$pkg:uploaded');
+      final ok = await f.effect('verify', () => '$up:verified');
+      return f.effect('tag', () => '$ok:tagged');
     }),
   );
-  await f.step('announce', () => results.join(' + '));
+  await f.effect('announce', () => results.join(' + '));
 }
 
 Future<void> viaCall(Flow f, List<String> packages) async {
   final results = await Future.wait([
     for (final pkg in packages) publish(f, pkg),
   ]);
-  await f.step('announce', () => results.join(' + '));
+  await f.effect('announce', () => results.join(' + '));
 }
 
 Future<void> sequential(Flow f, List<String> packages) async {
   final results = <String>[];
   for (final pkg in packages) {
-    final up = await f.step('upload', () => '$pkg:uploaded');
-    final ok = await f.step('verify', () => '$up:verified');
-    results.add(await f.step('tag', () => '$ok:tagged'));
+    final up = await f.effect('upload', () => '$pkg:uploaded');
+    final ok = await f.effect('verify', () => '$up:verified');
+    results.add(await f.effect('tag', () => '$ok:tagged'));
   }
-  await f.step('announce', () => results.join(' + '));
+  await f.effect('announce', () => results.join(' + '));
 }
 
 Future<String> publish(Flow f, String pkg) async {
-  final up = await f.step('upload', () => '$pkg:uploaded');
-  final ok = await f.step('verify', () => '$up:verified');
-  return f.step('tag', () => '$ok:tagged');
+  final up = await f.effect('upload', () => '$pkg:uploaded');
+  final ok = await f.effect('verify', () => '$up:verified');
+  return f.effect('tag', () => '$ok:tagged');
 }

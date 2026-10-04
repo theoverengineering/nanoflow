@@ -5,7 +5,7 @@ import 'package:test/test.dart';
 
 const String _sessionId = '8d3a9c1e-5b2f-4e7a-a0c4-1f6b2d9e3a57';
 const String _otherId = '0c6e1f7a-93d4-4b58-8e21-5a7d3c9b4f06';
-const String _stepId = '2e9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
+const String _effectId = '2e9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
 const String _outputId = '5f2d8b6a-1c93-4e07-a4b8-9e3c7a1d5b20';
 
 final DateTime _time = DateTime.utc(2026, 10, 3, 10, 0, 0, 482);
@@ -19,14 +19,14 @@ const String _key = 'collect#1@e3b0c44298fc1c14';
 
 const String _sessionJson =
     '{"id":"$_sessionId","workflow":"review","graph":null,"inputId":null}';
-const String _stepJson =
-    '{"id":"$_stepId","sessionId":"$_sessionId","name":"collect",'
+const String _effectJson =
+    '{"id":"$_effectId","sessionId":"$_sessionId","name":"collect",'
     '"key":"$_key","after":null,"place":"lib/review.dart:12",'
-    '"outputId":null,"log":"step.log"}';
-const String _stepDoneJson =
-    '{"id":"$_stepId","sessionId":"$_sessionId","name":"collect",'
+    '"outputId":null,"log":"effect.log"}';
+const String _effectDoneJson =
+    '{"id":"$_effectId","sessionId":"$_sessionId","name":"collect",'
     '"key":"$_key","after":null,"place":"lib/review.dart:12",'
-    '"outputId":"$_outputId","log":"step.log"}';
+    '"outputId":"$_outputId","log":"effect.log"}';
 const String _eventJson =
     '{"time":"$_timeText","event":"session-finished","outputId":null}';
 
@@ -45,8 +45,8 @@ String _problem(void Function() read) {
 /// What a consumer of changes can do without a default branch.
 String _kind(Change change) => switch (change) {
   SessionAdded() => 'session',
-  StepAdded() => 'step',
-  StepChanged() => 'step-changed',
+  EffectAdded() => 'effect',
+  EffectChanged() => 'effect-changed',
   EventAdded() => 'event',
   DocumentAdded() => 'document',
   LogCorrupted() => 'log',
@@ -60,15 +60,15 @@ void main() {
     graph: null,
     inputId: null,
   );
-  final step = Step(
-    id: _stepId,
+  final effect = Effect(
+    id: _effectId,
     sessionId: _sessionId,
     name: 'collect',
     key: _key,
     after: null,
     place: 'lib/review.dart:12',
     outputId: null,
-    log: 'step.log',
+    log: 'effect.log',
   );
 
   /// Every change with its name and the exact text it must be written as.
@@ -79,14 +79,14 @@ void main() {
       '{"change":"session-added","session":$_sessionJson}',
     ),
     (
-      StepAdded(step),
-      'step-added',
-      '{"change":"step-added","step":$_stepJson}',
+      EffectAdded(effect),
+      'effect-added',
+      '{"change":"effect-added","effect":$_effectJson}',
     ),
     (
-      StepChanged(step.withOutput(_outputId)),
-      'step-changed',
-      '{"change":"step-changed","step":$_stepDoneJson}',
+      EffectChanged(effect.withOutput(_outputId)),
+      'effect-changed',
+      '{"change":"effect-changed","effect":$_effectDoneJson}',
     ),
     (
       EventAdded(
@@ -164,8 +164,8 @@ void main() {
         [for (final (change, _, _) in cases) _kind(change)],
         [
           'session',
-          'step',
-          'step-changed',
+          'effect',
+          'effect-changed',
           'event',
           'document',
           'log',
@@ -176,8 +176,11 @@ void main() {
 
     test('compare by value and by kind', () {
       final finished = SessionFinished(time: _time, outputId: null);
-      expect(StepAdded(step), isNot(StepChanged(step)));
-      expect(StepAdded(step), isNot(StepAdded(step.withOutput(_outputId))));
+      expect(EffectAdded(effect), isNot(EffectChanged(effect)));
+      expect(
+        EffectAdded(effect),
+        isNot(EffectAdded(effect.withOutput(_outputId))),
+      );
       expect(
         DocumentAdded(sessionId: _sessionId, documentId: _outputId),
         isNot(DocumentAdded(sessionId: _sessionId, documentId: _otherId)),
@@ -484,8 +487,10 @@ void main() {
         'session: missing',
       );
       expect(
-        _problem(() => Change.fromJson({'change': 'step-added', 'step': 'x'})),
-        'step: expected an object',
+        _problem(
+          () => Change.fromJson({'change': 'effect-added', 'effect': 'x'}),
+        ),
+        'effect: expected an object',
       );
       expect(
         _problem(
@@ -562,11 +567,11 @@ void main() {
       expect(
         _problem(
           () => Change.fromJson({
-            'change': 'step-changed',
-            'step': {...step.toJson()}..remove('log'),
+            'change': 'effect-changed',
+            'effect': {...effect.toJson()}..remove('log'),
           }),
         ),
-        'step.log: missing',
+        'effect.log: missing',
       );
     });
   });

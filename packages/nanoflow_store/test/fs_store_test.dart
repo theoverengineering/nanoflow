@@ -38,9 +38,9 @@ void main() {
         // The lock the process that owns the session holds.
         '.owner.lock',
         'documents',
+        'effects',
         'log.jsonl',
         'session.json',
-        'steps',
       ]);
       expect(
         read(p.join(session.path, 'session.json')),
@@ -60,9 +60,9 @@ void main() {
         '{"time":"2026-10-03T10:00:00.482Z","event":"session-started",'
         '"code":"$code"}\n',
       );
-      expect(names(p.join(session.path, 'steps')), isEmpty);
+      expect(names(p.join(session.path, 'effects')), isEmpty);
       expect(await handle.events(), [SessionStarted(time: start, code: code)]);
-      expect(await handle.steps(), isEmpty);
+      expect(await handle.effects(), isEmpty);
       expect(await handle.documentValue(document.id), {'branch': 'main'});
     });
 
@@ -174,11 +174,11 @@ void main() {
         input: (value: {'branch': 'main'}),
         code: code,
       );
-      final step = await newStep(created);
+      final effect = await newEffect(created);
       await created.appendEvent(
-        StepStarted(
+        EffectStarted(
           time: start.add(const Duration(minutes: 1)),
-          stepId: step.id,
+          effectId: effect.id,
         ),
       );
       final other = await store.createSession(
@@ -194,7 +194,7 @@ void main() {
 
       expect(opened.session, created.session);
       expect(opened.dir, created.dir);
-      expect(await opened.steps(), [step]);
+      expect(await opened.effects(), [effect]);
       expect(await opened.events(), await created.events());
       expect(await opened.documentValue(created.session.inputId!), {
         'branch': 'main',
@@ -325,15 +325,15 @@ void main() {
     test('cuts an incomplete last line off the journal, so new events append '
         'cleanly', () async {
       final created = await newSession();
-      final step = await newStep(created);
-      final started = StepStarted(
+      final effect = await newEffect(created);
+      final started = EffectStarted(
         time: DateTime.utc(2026, 10, 3, 10, 1),
-        stepId: step.id,
+        effectId: effect.id,
       );
       await created.appendEvent(started);
       final complete = read(journal(created));
       File(journal(created)).writeAsStringSync(
-        '{"time":"2026-10-03T10:02:00.000Z","event":"step-fini',
+        '{"time":"2026-10-03T10:02:00.000Z","event":"effect-fini',
         mode: FileMode.append,
       );
       await created.release();
@@ -342,9 +342,9 @@ void main() {
           .openSession(created.session.id))!;
 
       expect(read(journal(created)), complete);
-      final finished = StepFinished(
+      final finished = EffectFinished(
         time: DateTime.utc(2026, 10, 3, 10, 3),
-        stepId: step.id,
+        effectId: effect.id,
         outputId: null,
       );
       await opened.appendEvent(finished);

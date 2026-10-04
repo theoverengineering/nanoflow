@@ -125,7 +125,7 @@ void main() {
       );
     });
 
-    test('nodes the body does not have, steps, and functions a call does '
+    test('nodes the body does not have, effects, and functions a call does '
         'not go to are not drawn in place', () {
       final frames = framesAt(
         releaseFunction,

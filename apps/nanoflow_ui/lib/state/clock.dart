@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 /// The current time, and a tick every [interval] for what shows durations
-/// that grow while something runs: `Running for 12m 26s`, a running step's
+/// that grow while something runs: `Running for 12m 26s`, a running effect's
 /// `Took`.
 ///
 /// It ticks only while someone listens.

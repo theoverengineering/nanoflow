@@ -3,40 +3,40 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../state/step_details.dart';
-import '../../state/step_files.dart';
+import '../../state/effect_details.dart';
+import '../../state/effect_files.dart';
 import '../../state/texts.dart' show thousands;
 import '../../theme.dart';
 import 'document_view.dart' show TabNote;
 import 'mono_lines.dart';
 
-/// A step's log in monospace, as it grows (docs/ui-spec.md «Logs»): its
+/// An effect's log in monospace, as it grows (docs/ui-spec.md «Logs»): its
 /// last [previewLines] lines until `Show all`.
 ///
 /// It opens at the end of the log and holds on to it as lines come, until
 /// the user scrolls up; scrolled back down, it holds on again. Whether it
-/// holds on is [following]. A running step's log ends in a cursor.
+/// holds on is [following]. A running effect's log ends in a cursor.
 class LogView extends StatefulWidget {
   const LogView({
     super.key,
     required this.files,
-    required this.step,
+    required this.effect,
     required this.following,
   });
 
-  final StepFiles files;
-  final StepDetails step;
+  final EffectFiles files;
+  final EffectDetails effect;
   final ValueNotifier<bool> following;
 
-  /// What a finished step that wrote no log shows.
-  static const nothing = 'The step wrote nothing to its log';
+  /// What a finished effect that wrote no log shows.
+  static const nothing = 'The effect wrote nothing to its log';
 
   @override
   State<LogView> createState() => _LogViewState();
 }
 
 class _LogViewState extends State<LogView> {
-  /// How long a step's log may stay empty before the view says it is: the
+  /// How long an effect's log may stay empty before the view says it is: the
   /// text on disk comes a moment after the view opens.
   static const _quietTime = Duration(milliseconds: 300);
 
@@ -62,9 +62,9 @@ class _LogViewState extends State<LogView> {
   @override
   void initState() {
     super.initState();
-    final step = widget.step;
+    final effect = widget.effect;
     _log = widget.files
-        .stepLog(step.sessionId, step.stepId)
+        .effectLog(effect.sessionId, effect.effectId)
         .listen(_add, onError: _failed);
     _scroll.addListener(_scrolled);
     _quietTimer = Timer(_quietTime, () => setState(() => _quiet = true));
@@ -141,7 +141,7 @@ class _LogViewState extends State<LogView> {
         color: AppColors.dangerText,
       );
     }
-    final running = widget.step.running;
+    final running = widget.effect.running;
     if (_count == 0 && !running) {
       return _quiet ? const TabNote(LogView.nothing) : const TabNote('');
     }

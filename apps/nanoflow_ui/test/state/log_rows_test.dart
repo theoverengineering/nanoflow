@@ -1,59 +1,59 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/log_rows.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
-import 'package:nanoflow_ui/state/step_places.dart';
 import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 
 import 'support.dart';
 
 void main() {
   final file = copiesGraphFile();
-  final places = StepPlaces.of(
+  final places = EffectPlaces.of(
     file.functions['lib/copies.dart#inPlace'],
     file.functions,
   );
   final now = at(746);
 
-  /// review's steps as docs/design/graph.png has them, at [places] of
+  /// review's effects as docs/design/graph.png has them, at [places] of
   /// inPlace: collect and inspect done, inspect again, then notify running.
   Journal mockupJournal() => Journal('a1b2-session', workflow: 'inPlace')
-    ..step('collect', 0, end: 149, place: copiesAt(4))
-    ..step('inspect', 149, end: 341, place: copiesAt(7))
-    ..step('inspect', 341, end: 612, place: copiesAt(7), restarts: [400])
-    ..step('notify', 612, place: copiesAt(8));
+    ..effect('collect', 0, end: 149, place: copiesAt(4))
+    ..effect('inspect', 149, end: 341, place: copiesAt(7))
+    ..effect('inspect', 341, end: 612, place: copiesAt(7), restarts: [400])
+    ..effect('notify', 612, place: copiesAt(8));
 
   SessionData mockup() => mockupJournal().data;
 
-  List<StepRow> stepRows(
+  List<EffectRow> effectRows(
     SessionData session, {
-    String? Function(String stepId)? copyOf,
+    String? Function(String effectId)? copyOf,
     DateTime? time,
   }) => [
     for (final row in logRows(
       session,
-      steps: session.state.steps,
+      effects: session.state.effects,
       places: places,
       copyOf: copyOf,
       now: time ?? now,
     ))
-      if (row is StepRow) row,
+      if (row is EffectRow) row,
   ];
 
   group('the header (ui-spec «Logs»)', () {
-    test('counts the steps shown', () {
-      expect(const LogsHeader(8).text, '8 steps');
-      expect(const LogsHeader(1).text, '1 step');
+    test('counts the effects shown', () {
+      expect(const LogsHeader(8).text, '8 effects');
+      expect(const LogsHeader(1).text, '1 effect');
     });
 
     test('names the copy shown', () {
-      expect(const LogsHeader(3, copy: 'copy 2').text, 'copy 2 · 3 steps');
+      expect(const LogsHeader(3, copy: 'copy 2').text, 'copy 2 · 3 effects');
     });
   });
 
-  test('a row is the step, its first start, and how long it took, in the '
-      'order of first step-started', () {
-    final rows = stepRows(mockup());
+  test('a row is the effect, its first start, and how long it took, in the '
+      'order of first effect-started', () {
+    final rows = effectRows(mockup());
     expect(
       [for (final row in rows) row.name],
       ['collect', 'inspect', 'inspect', 'notify'],
@@ -66,12 +66,12 @@ void main() {
     expect(first.startsText, isNull);
   });
 
-  test('a restarted step is marked 2 starts', () {
-    expect(stepRows(mockup())[2].startsText, '2 starts');
+  test('a restarted effect is marked 2 starts', () {
+    expect(effectRows(mockup())[2].startsText, '2 starts');
   });
 
-  test('a running step ticks until now and is striped', () {
-    final last = stepRows(mockup()).last;
+  test('a running effect ticks until now and is striped', () {
+    final last = effectRows(mockup()).last;
     expect(last.duration, const Duration(seconds: 746 - 612));
     expect(last.striped, isTrue);
   });
@@ -81,15 +81,15 @@ void main() {
     /// gone.
     SessionData interrupted() =>
         (mockupJournal()
-              ..step('tag', 620, end: 700, place: copiesAt(9), after: null)
+              ..effect('tag', 620, end: 700, place: copiesAt(9), after: null)
               ..processGone())
             .data;
 
-    test('its running step is interrupted: when it would have ended is not '
+    test('its running effect is interrupted: when it would have ended is not '
         'known, so it took — ; its bar, not striped, runs to the end of the '
         'scale, whenever it is now', () {
       for (final time in [now, at(2000)]) {
-        final rows = stepRows(interrupted(), time: time);
+        final rows = effectRows(interrupted(), time: time);
         final notify = rows[3];
         expect(notify.name, 'notify');
         expect(notify.status, StartOutcome.interrupted);
@@ -103,9 +103,9 @@ void main() {
       }
     });
 
-    test('killed in the middle of a step, the start of which is the last '
+    test('killed in the middle of an effect, the start of which is the last '
         'event of the journal: no 0.0s', () {
-      final row = stepRows((mockupJournal()..processGone()).data).last;
+      final row = effectRows((mockupJournal()..processGone()).data).last;
       expect(row.name, 'notify');
       expect(row.status, StartOutcome.interrupted);
       expect(row.took, '—');
@@ -121,18 +121,18 @@ void main() {
       expect(
         logRows(
           session,
-          steps: session.state.steps,
+          effects: session.state.effects,
           places: places,
           now: now,
         ).last,
-        isA<StepRow>(),
+        isA<EffectRow>(),
       );
     });
 
     test('runs as before while its process runs or is not known to', () {
       for (final alive in [true, null]) {
         final session = (mockupJournal()..owned(testOwner, alive: alive)).data;
-        final last = stepRows(session).last;
+        final last = effectRows(session).last;
         expect(last.status, StartOutcome.running);
         expect(last.striped, isTrue);
         expect(last.duration, const Duration(seconds: 746 - 612));
@@ -141,43 +141,43 @@ void main() {
     });
   });
 
-  test("a failed step's row shows its error, took until it failed", () {
+  test("a failed effect's row shows its error, took until it failed", () {
     final session = (Journal(
       'a1b2-session',
       workflow: 'inPlace',
-    )..step('plan', 0, end: 6, failed: true, place: copiesAt(4))).data;
-    final row = stepRows(session).single;
+    )..effect('plan', 0, end: 6, failed: true, place: copiesAt(4))).data;
+    final row = effectRows(session).single;
     expect(row.detail, 'StateError: plan failed');
     expect(row.failure, isTrue);
     expect(row.took, '6s');
   });
 
-  test('a step not on the graph says so', () {
+  test('an effect not on the graph says so', () {
     final session =
         (Journal('a1b2-session', workflow: 'inPlace')
-              ..step('stray', 0, end: 6, place: 'lib/old.dart:3')
-              ..step('placeless', 6, end: 7))
+              ..effect('stray', 0, end: 6, place: 'lib/old.dart:3')
+              ..effect('placeless', 6, end: 7))
             .data;
-    final rows = stepRows(session);
+    final rows = effectRows(session);
     expect(rows.map((row) => row.detail), [notOnGraph, notOnGraph]);
     expect(rows.map((row) => row.failure), [false, false]);
   });
 
-  test('a step in copies names them', () {
+  test('an effect in copies names them', () {
     final session = mockup();
-    final second = session.state.steps[1].stepId;
-    final rows = stepRows(
+    final second = session.state.effects[1].effectId;
+    final rows = effectRows(
       session,
-      copyOf: (stepId) => stepId == second ? 'pkg 2' : null,
+      copyOf: (effectId) => effectId == second ? 'pkg 2' : null,
     );
     expect(rows.map((row) => row.copy), [null, 'pkg 2', null, null]);
   });
 
-  test('only the steps given, in their order', () {
+  test('only the effects given, in their order', () {
     final session = mockup();
     final rows = logRows(
       session,
-      steps: session.state.steps.skip(1).take(2),
+      effects: session.state.effects.skip(1).take(2),
       places: places,
       now: now,
       end: false,
@@ -188,12 +188,12 @@ void main() {
   test('an ended session ends with how it ended, unless the end is left '
       'out', () {
     final finished = Journal('a1b2-session', workflow: 'inPlace')
-      ..step('plan', 0, end: 6, place: copiesAt(4))
+      ..effect('plan', 0, end: 6, place: copiesAt(4))
       ..finish(7);
     final end =
         logRows(
               finished.data,
-              steps: finished.data.state.steps,
+              effects: finished.data.state.effects,
               places: places,
               now: now,
             ).last
@@ -201,12 +201,12 @@ void main() {
     expect(end.text, 'Session finished');
     expect(end.atText, '14:03:18');
     final failed = Journal('a1b2-session', workflow: 'inPlace')
-      ..step('plan', 0, end: 6, place: copiesAt(4))
+      ..effect('plan', 0, end: 6, place: copiesAt(4))
       ..fail(7, 'StateError: plan failed');
     final failure =
         logRows(
               failed.data,
-              steps: failed.data.state.steps,
+              effects: failed.data.state.effects,
               places: places,
               now: now,
             ).last
@@ -216,27 +216,27 @@ void main() {
     expect(
       logRows(
         failed.data,
-        steps: failed.data.state.steps,
+        effects: failed.data.state.effects,
         places: places,
         now: now,
         end: false,
       ).last,
-      isA<StepRow>(),
+      isA<EffectRow>(),
     );
     expect(
       logRows(
         mockup(),
-        steps: mockup().state.steps,
+        effects: mockup().state.effects,
         places: places,
         now: now,
       ).last,
-      isA<StepRow>(),
+      isA<EffectRow>(),
       reason: 'a running session has not ended',
     );
   });
 
   test("a row's bar sits on the time scale of the session", () {
-    final rows = stepRows(mockup());
+    final rows = effectRows(mockup());
     expect(rows.first.barStart, 0);
     expect(rows.first.barEnd, closeTo(149 / 746, 1e-9));
     expect(rows.last.barStart, closeTo(612 / 746, 1e-9));
@@ -248,7 +248,7 @@ void main() {
     final running = timeScale(mockup(), now);
     expect((running.start, running.end), (at(0), now));
     final done = Journal('a1b2-session', workflow: 'inPlace')
-      ..step('plan', 0, end: 184)
+      ..effect('plan', 0, end: 184)
       ..finish(184);
     final ended = timeScale(done.data, now);
     expect((ended.start, ended.end), (at(0), at(184)));

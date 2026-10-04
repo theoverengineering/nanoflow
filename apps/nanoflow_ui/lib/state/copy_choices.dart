@@ -7,7 +7,7 @@ import 'copies.dart';
 import 'outcomes.dart';
 
 /// The copies chosen in the copies frames of one session's graph: by the
-/// path to each frame's level, the id of the first step of the copy chosen
+/// path to each frame's level, the id of the first effect of the copy chosen
 /// there. They are forgotten for another session.
 final class CopyChoices {
   Map<String, String> _chosen = const {};
@@ -31,7 +31,7 @@ final class CopyChoices {
       depth: ?_chosen[levelKey(path.take(depth))],
   };
 
-  /// Chooses the copy [copyId] — the id of its first step; all for `null`
+  /// Chooses the copy [copyId] — the id of its first effect; all for `null`
   /// — of the session [sessionId] in the frame at the level [depth] of
   /// [path].
   void choose(String sessionId, List<Opened> path, int depth, String? copyId) {
@@ -56,7 +56,7 @@ final class CopyChoices {
   }
 }
 
-/// What the first step of [copy] gave, to tell the copy by (`copyHint`),
+/// What the first effect of [copy] gave, to tell the copy by (`copyHint`),
 /// as [documents] know it; `null` while it is not known.
 String? hintOf(Copy copy, KnownOutcomes documents) {
   final document = copy.hintDocument;
@@ -68,8 +68,8 @@ String? hintOf(Copy copy, KnownOutcomes documents) {
 }
 
 /// The documents whose values hint at the copies of the frames [shown]
-/// goes down through: the outputs of their first steps.
-List<String> hintDocuments(ShownSteps shown) => [
+/// goes down through: the outputs of their first effects.
+List<String> hintDocuments(ShownEffects shown) => [
   for (final frame in shown.frames)
     for (final copy in frame.copies) ?copy.hintDocument,
 ];

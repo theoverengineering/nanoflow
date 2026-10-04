@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "starts",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -15,19 +15,19 @@
         "nodes": [
           {
             "id": "watch-mail",
-            "kind": "step",
+            "kind": "effect",
             "name": "watch-mail",
             "place": "lib/starts.dart:10"
           },
           {
             "id": "watch-chat",
-            "kind": "step",
+            "kind": "effect",
             "name": "watch-chat",
             "place": "lib/starts.dart:11"
           },
           {
             "id": "nightly",
-            "kind": "step",
+            "kind": "effect",
             "name": "nightly",
             "place": "lib/starts.dart:12"
           },
@@ -39,13 +39,13 @@
           },
           {
             "id": "page",
-            "kind": "step",
+            "kind": "effect",
             "name": "page",
             "place": "lib/starts.dart:14"
           },
           {
             "id": "digest",
-            "kind": "step",
+            "kind": "effect",
             "name": "digest",
             "place": "lib/starts.dart:15"
           }

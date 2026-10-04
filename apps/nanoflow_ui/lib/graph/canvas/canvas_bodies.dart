@@ -6,7 +6,7 @@ import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:nanoflow_model/nanoflow_model.dart'
-    show CallNode, CopiesNode, GraphBody, GraphFunction, GraphNode, StepNode;
+    show CallNode, CopiesNode, GraphBody, GraphFunction, GraphNode, EffectNode;
 
 import '../../layout/layout.dart' as layout;
 import '../../state/body_path.dart';
@@ -40,9 +40,9 @@ typedef ExpandNode = Future<bool> Function(
   Offset position,
 );
 
-/// Opens the step details window on the step node [node] of the body drawn,
+/// Opens the effect details window on the effect node [node] of the body drawn,
 /// or of the frame drawn in place at [path].
-typedef OpenStep = void Function(StepNode node, List<Opened>? path);
+typedef OpenEffect = void Function(EffectNode node, List<Opened>? path);
 
 /// Across from the title of a frame of copies without a session.
 const plainCopiesCount = '×n · in parallel';
@@ -74,7 +74,7 @@ Map<String, layout.ExpandedNode> expandedOf(
 };
 
 /// [body] as it is drawn, in JSON: a call with its function's name and
-/// steps, copies with the steps of the functions a copy calls. Another body
+/// effects, copies with the effects of the functions a copy calls. Another body
 /// drawn the same keeps its layout and the view.
 String bodyKeyOf(GraphBody body, Map<String, GraphFunction> functions) =>
     jsonEncode([
@@ -114,7 +114,7 @@ bool sameExpanded(
 /// [layers]: the body drawn, and in each frame drawn in place the body of
 /// its call or copies, with what [view] shows of the session on them. A
 /// node in a frame works as one on the level drawn — a click, a double
-/// click ([onOpenNode], [onOpenStep]), its `+` ([onExpandNode]) — and its
+/// click ([onOpenNode], [onOpenEffect]), its `+` ([onExpandNode]) — and its
 /// id on the canvas is the path of ids to it, `5/2`.
 ///
 /// A node about to be expanded or collapsed is [anchor]ed, so that it stays
@@ -127,7 +127,7 @@ final class BodyDrawer {
     required this.anchor,
     required this.unanchor,
     this.onOpenNode,
-    this.onOpenStep,
+    this.onOpenEffect,
     this.onExpandNode,
   });
 
@@ -137,11 +137,11 @@ final class BodyDrawer {
   final ValueChanged<String> anchor;
   final VoidCallback unanchor;
   final OpenNode? onOpenNode;
-  final OpenStep? onOpenStep;
+  final OpenEffect? onOpenEffect;
   final ExpandNode? onExpandNode;
 
   /// What is drawn, bottom to top: the frames drawn in place, the ring of
-  /// the selected step's node, the arrows and exits, the tiles. The
+  /// the selected effect's node, the arrows and exits, the tiles. The
   /// painters let clicks through to the frames' buttons.
   final layers = (
     frames: <Widget>[],
@@ -270,11 +270,11 @@ final class BodyDrawer {
 
   /// What a double click on [node] of the body drawn — or of the frame
   /// drawn in place at [path] — does: opens a call or copies, when it opens
-  /// anything; the details of a step.
+  /// anything; the details of an effect.
   ValueChanged<Offset>? _opener(layout.NodeBox node, List<Opened>? path) {
     final graphNode = node.node;
-    if (graphNode is StepNode) {
-      final open = onOpenStep;
+    if (graphNode is EffectNode) {
+      final open = onOpenEffect;
       return open == null ? null : (_) => open(graphNode, path);
     }
     final open = onOpenNode;

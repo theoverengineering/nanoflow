@@ -16,11 +16,11 @@ import 'package:nanoflow_ui/widgets/spinner.dart';
 import '../../support/golden.dart';
 
 void main() {
-  // A step, a condition, a call and copies, between the markers.
+  // An effect, a condition, a call and copies, between the markers.
   final layout = layoutBody(
     const GraphBody(
       nodes: [
-        StepNode(id: 'step', place: 'lib/a.dart:3', name: 'collect'),
+        EffectNode(id: 'effect', place: 'lib/a.dart:3', name: 'collect'),
         ConditionNode(id: 'if', place: 'lib/a.dart:4', label: 'ok'),
         CallNode(
           id: 'call',
@@ -33,8 +33,8 @@ void main() {
           label: 'x in xs',
           body: GraphBody(
             nodes: [
-              StepNode(id: '1', place: null, name: 'a'),
-              StepNode(id: '2', place: null, name: 'b'),
+              EffectNode(id: '1', place: null, name: 'a'),
+              EffectNode(id: '2', place: null, name: 'b'),
             ],
             edges: [],
           ),
@@ -46,8 +46,8 @@ void main() {
         ),
       ],
       edges: [
-        GraphEdge(from: null, to: 'step', label: null),
-        GraphEdge(from: 'step', to: 'if', label: null),
+        GraphEdge(from: null, to: 'effect', label: null),
+        GraphEdge(from: 'effect', to: 'if', label: null),
         GraphEdge(from: 'if', to: 'call', label: 'true'),
         GraphEdge(from: 'if', to: 'copies', label: 'false'),
         GraphEdge(from: 'call', to: null, label: null),
@@ -60,7 +60,7 @@ void main() {
         name: 'f',
         place: null,
         body: GraphBody(
-          nodes: [StepNode(id: '1', place: null, name: 'one')],
+          nodes: [EffectNode(id: '1', place: null, name: 'one')],
           edges: [],
         ),
       ),
@@ -109,17 +109,17 @@ void main() {
           box.localToGlobal(Offset.zero) & box.size,
   ];
 
-  testWidgets('a step: a terminal, its name and place under it', (
+  testWidgets('an effect: a terminal, its name and place under it', (
     tester,
   ) async {
-    await pumpTile(tester, 'step');
+    await pumpTile(tester, 'effect');
     expect(tester.widget<NodeIcon>(find.byType(NodeIcon)).fork, isFalse);
     expect(find.text('collect'), findsOneWidget);
     expect(find.text('a.dart:3'), findsOneWidget);
     expect(stackOf(tester), isEmpty);
     expect(
       tester.getTopLeft(find.text('collect')).dy,
-      greaterThan(tileOf(tester, 'step').bottom),
+      greaterThan(tileOf(tester, 'effect').bottom),
     );
   });
 
@@ -129,7 +129,7 @@ void main() {
     expect(find.text('ok'), findsOneWidget);
   });
 
-  testWidgets('a call: a tile stacked behind it, over its top, the steps of '
+  testWidgets('a call: a tile stacked behind it, over its top, the effects of '
       'its function on it, its name with ()', (tester) async {
     await pumpTile(tester, 'call');
     final tile = tileOf(tester, 'call');
@@ -143,7 +143,7 @@ void main() {
     expect(find.text('f()'), findsOneWidget);
   });
 
-  testWidgets('copies: two tiles stacked behind, the steps of a copy on '
+  testWidgets('copies: two tiles stacked behind, the effects of a copy on '
       'them as on a call, ×n across the top right of the stack, their '
       'label', (tester) async {
     await pumpTile(tester, 'copies');
@@ -151,13 +151,13 @@ void main() {
     final stack = stackOf(tester);
     expect(stack, hasLength(2));
     expect(stack.first.top, lessThan(stack.last.top));
-    final steps = find.text('{ 2 }');
-    expect(steps, findsOneWidget);
+    final effects = find.text('{ 2 }');
+    expect(effects, findsOneWidget);
     expect(
-      tester.widget<Text>(steps).style!.fontSize,
+      tester.widget<Text>(effects).style!.fontSize,
       CanvasText.inside.fontSize,
     );
-    expect(tester.getCenter(steps).dx, moreOrLessEquals(tile.center.dx));
+    expect(tester.getCenter(effects).dx, moreOrLessEquals(tile.center.dx));
     final badge = tester.getRect(
       find.ancestor(of: find.text('×n'), matching: find.byType(Container)),
     );
@@ -176,104 +176,126 @@ void main() {
                 .decoration
             as BoxDecoration;
 
-    testWidgets('a step is framed in the state of its steps, its badge on '
+    testWidgets('an effect is framed in the state of its effects, its badge on '
         'its corner; entered twice, it says 2×', (tester) async {
       await pumpTile(
         tester,
-        'step',
-        marks: const NodeMarks(state: NodeState.visited, steps: 2, running: 0),
+        'effect',
+        marks: const NodeMarks(
+          state: NodeState.visited,
+          effects: 2,
+          running: 0,
+        ),
       );
       expect(
-        tileLook(tester, 'step').border!.top.color,
+        tileLook(tester, 'effect').border!.top.color,
         const Color(0xFF3CC47C),
       );
       expect(find.text('2×'), findsOneWidget);
 
       await pumpTile(
         tester,
-        'step',
+        'effect',
         marks: const NodeMarks(
           state: NodeState.notVisited,
-          steps: 0,
+          effects: 0,
           running: 0,
         ),
       );
       expect(
-        tileLook(tester, 'step').border!.top.color,
+        tileLook(tester, 'effect').border!.top.color,
         const Color(0xFF45464C),
       );
       expect(find.text('2×'), findsNothing);
     });
 
-    testWidgets('a step running turns its sign; one interrupted, its process '
-        'gone (owner spec §6), is framed in a muted grey, a pause on its '
-        'corner that does not turn', (tester) async {
-      await pumpTile(
-        tester,
-        'step',
-        marks: const NodeMarks(state: NodeState.running, steps: 1, running: 1),
-      );
-      expect(find.byType(Spinner), findsOneWidget);
-      expect(
-        tileLook(tester, 'step').border!.top.color,
-        const Color(0xFFF2A93B),
-      );
+    testWidgets(
+      'an effect running turns its sign; one interrupted, its process '
+      'gone (owner spec §6), is framed in a muted grey, a pause on its '
+      'corner that does not turn',
+      (tester) async {
+        await pumpTile(
+          tester,
+          'effect',
+          marks: const NodeMarks(
+            state: NodeState.running,
+            effects: 1,
+            running: 1,
+          ),
+        );
+        expect(find.byType(Spinner), findsOneWidget);
+        expect(
+          tileLook(tester, 'effect').border!.top.color,
+          const Color(0xFFF2A93B),
+        );
 
-      await pumpTile(
-        tester,
-        'step',
-        marks: const NodeMarks(
-          state: NodeState.interrupted,
-          steps: 1,
-          running: 0,
-        ),
-      );
-      expect(find.byType(Spinner), findsNothing);
-      expect(tileLook(tester, 'step').border!.top.color, AppColors.interrupted);
-      expect(tileLook(tester, 'step').color, CanvasColors.tileFill);
-      final badge = tester.widget<StateBadge>(find.byType(StateBadge));
-      expect(badge.mark, BadgeMark.pause);
-      expect(badge.fill, AppColors.interrupted);
-    });
+        await pumpTile(
+          tester,
+          'effect',
+          marks: const NodeMarks(
+            state: NodeState.interrupted,
+            effects: 1,
+            running: 0,
+          ),
+        );
+        expect(find.byType(Spinner), findsNothing);
+        expect(
+          tileLook(tester, 'effect').border!.top.color,
+          AppColors.interrupted,
+        );
+        expect(tileLook(tester, 'effect').color, CanvasColors.tileFill);
+        final badge = tester.widget<StateBadge>(find.byType(StateBadge));
+        expect(badge.mark, BadgeMark.pause);
+        expect(badge.fill, AppColors.interrupted);
+      },
+    );
 
-    testWidgets('in the body of copies, all shown, a step says how many '
+    testWidgets('in the body of copies, all shown, an effect says how many '
         'copies are on it now, instead of 2×', (tester) async {
       await pumpTile(
         tester,
-        'step',
+        'effect',
         allCopies: true,
-        marks: const NodeMarks(state: NodeState.running, steps: 3, running: 2),
+        marks: const NodeMarks(
+          state: NodeState.running,
+          effects: 3,
+          running: 2,
+        ),
       );
       expect(
         find.descendant(
-          of: find.byKey(NodeTile.runningKeyOf('step')),
+          of: find.byKey(NodeTile.runningKeyOf('effect')),
           matching: find.text('2'),
         ),
         findsOneWidget,
       );
       expect(find.text('3×'), findsNothing);
 
-      // A step all the copies there passed: nothing over it
+      // An effect all the copies there passed: nothing over it
       // (docs/design/code-first/copies-frame.html).
       await pumpTile(
         tester,
-        'step',
+        'effect',
         allCopies: true,
-        marks: const NodeMarks(state: NodeState.visited, steps: 3, running: 0),
+        marks: const NodeMarks(
+          state: NodeState.visited,
+          effects: 3,
+          running: 0,
+        ),
       );
-      expect(find.byKey(NodeTile.runningKeyOf('step')), findsNothing);
+      expect(find.byKey(NodeTile.runningKeyOf('effect')), findsNothing);
       expect(find.text('3×'), findsNothing);
     });
 
-    testWidgets('the ring of the selected step\'s node is round its tile', (
+    testWidgets('the ring of the selected effect\'s node is round its tile', (
       tester,
     ) async {
-      final node = layout.nodes['step']!;
+      final node = layout.nodes['effect']!;
       await pumpScreen(
         tester,
-        Stack(children: [NodeTile.ringOf(node, 'step')]),
+        Stack(children: [NodeTile.ringOf(node, 'effect')]),
       );
-      final ring = find.byKey(NodeTile.ringKeyOf('step'));
+      final ring = find.byKey(NodeTile.ringKeyOf('effect'));
       expect(
         tester.getSize(ring),
         node.tile.toRect().inflate(NodeTile.ring).size,
@@ -288,7 +310,7 @@ void main() {
         'keeps the corner: no count over it', (tester) async {
       const marks = NodeMarks(
         state: NodeState.running,
-        steps: 4,
+        effects: 4,
         running: 1,
         copies: 3,
       );
@@ -305,7 +327,7 @@ void main() {
         'copies',
         marks: const NodeMarks(
           state: NodeState.notVisited,
-          steps: 0,
+          effects: 0,
           running: 0,
           copies: 0,
         ),
@@ -325,7 +347,7 @@ void main() {
       find.byTooltip('change.path.isEmpty && change.id.isNotEmpty'),
       findsOneWidget,
     );
-    await pumpTile(tester, 'step');
+    await pumpTile(tester, 'effect');
     expect(find.byType(Tooltip), findsNothing);
   });
 
@@ -357,7 +379,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(at, [centre]);
 
-    await pumpTile(tester, 'step');
+    await pumpTile(tester, 'effect');
     expect(
       find.descendant(
         of: find.byType(NodeTile),

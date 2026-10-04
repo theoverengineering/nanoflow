@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../state/effect_files.dart';
 import '../../state/json_data.dart';
-import '../../state/step_files.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
 import '../../widgets/icons.dart';
@@ -11,7 +11,7 @@ import '../logs/mono_lines.dart';
 import 'parts.dart';
 
 /// How the data of `Output` is shown (docs/ui-spec.md «Окно
-/// деталей шага»: «Данные»).
+/// деталей эффекта»: «Данные»).
 enum DataMode { schema, json }
 
 /// `Schema` | `JSON`: the view shown is filled.
@@ -87,7 +87,7 @@ class DocumentData extends StatefulWidget {
     required this.builder,
   });
 
-  final StepFiles files;
+  final EffectFiles files;
   final String sessionId;
   final String documentId;
   final Widget Function(BuildContext context, LoadedDocument document) builder;

@@ -17,31 +17,31 @@ const _session = Session(
   graph: null,
   inputId: null,
 );
-const _collect = Step(
-  id: 'collect-step',
+const _collect = Effect(
+  id: 'collect-effect',
   sessionId: 'a1b2-session',
   name: 'collect',
   key: 'collect#1@0000000000000000',
   after: null,
   place: 'lib/review.dart:22',
   outputId: null,
-  log: 'step.log',
+  log: 'effect.log',
 );
-const _inspect = Step(
-  id: 'inspect-step',
+const _inspect = Effect(
+  id: 'inspect-effect',
   sessionId: 'a1b2-session',
   name: 'inspect',
   key: 'inspect#1@0000000000000000',
   after: 'collect#1@0000000000000000',
   place: 'lib/review.dart:24',
   outputId: null,
-  log: 'step.log',
+  log: 'effect.log',
 );
 
 SessionStarted _started(num at_) => SessionStarted(time: at(at_), code: null);
 
-StepStarted _stepStarted(String stepId, num at_) =>
-    StepStarted(time: at(at_), stepId: stepId);
+EffectStarted _effectStarted(String effectId, num at_) =>
+    EffectStarted(time: at(at_), effectId: effectId);
 
 EventAdded _event(Event event) =>
     EventAdded(sessionId: _session.id, event: event);
@@ -71,42 +71,42 @@ void main() {
       async.flushMicrotasks();
     }
 
-    test('keeps sessions with their steps, events and documents', () {
+    test('keeps sessions with their effects, events and documents', () {
       run((async) {
         give(async, [
           const SessionAdded(_session),
-          const StepAdded(_collect),
+          const EffectAdded(_collect),
           _event(_started(0)),
-          _event(_stepStarted(_collect.id, 1)),
+          _event(_effectStarted(_collect.id, 1)),
           const DocumentAdded(sessionId: 'a1b2-session', documentId: 'doc'),
         ]);
 
         final session = feed.session('a1b2-session')!;
         expect(session.session, _session);
         expect(session.documents, {'doc'});
-        expect(session.steps, {'collect-step': _collect});
-        expect(session.events, [_started(0), _stepStarted(_collect.id, 1)]);
+        expect(session.effects, {'collect-effect': _collect});
+        expect(session.events, [_started(0), _effectStarted(_collect.id, 1)]);
         expect(session.state.status, SessionStatus.running);
         expect(session.state.startedAt, at(0));
-        expect(session.state.steps.single.stepId, _collect.id);
+        expect(session.state.effects.single.effectId, _collect.id);
         expect(feed.sessions.keys, ['a1b2-session']);
       });
     });
 
-    test('gives the steps in the order of their first step-started', () {
+    test('gives the effects in the order of their first effect-started', () {
       run((async) {
         give(async, [
           const SessionAdded(_session),
-          const StepAdded(_inspect),
-          const StepAdded(_collect),
+          const EffectAdded(_inspect),
+          const EffectAdded(_collect),
           _event(_started(0)),
-          _event(_stepStarted(_collect.id, 1)),
-          _event(_stepStarted(_inspect.id, 2)),
-          _event(_stepStarted(_collect.id, 3)),
+          _event(_effectStarted(_collect.id, 1)),
+          _event(_effectStarted(_inspect.id, 2)),
+          _event(_effectStarted(_collect.id, 3)),
         ]);
         final session = feed.session(_session.id)!;
-        expect(session.steps.keys, [_inspect.id, _collect.id]);
-        expect(session.stepsInOrder, [_collect, _inspect]);
+        expect(session.effects.keys, [_inspect.id, _collect.id]);
+        expect(session.effectsInOrder, [_collect, _inspect]);
       });
     });
 
@@ -126,64 +126,67 @@ void main() {
       });
     });
 
-    test('a step-changed gives the step its outputId', () {
+    test('an effect-changed gives the effect its outputId', () {
       run((async) {
         give(async, [
           const SessionAdded(_session),
-          const StepAdded(_collect),
-          StepChanged(_collect.withOutput('out-doc')),
+          const EffectAdded(_collect),
+          EffectChanged(_collect.withOutput('out-doc')),
         ]);
         expect(
-          feed.session(_session.id)!.steps[_collect.id]!.outputId,
+          feed.session(_session.id)!.effects[_collect.id]!.outputId,
           'out-doc',
         );
       });
     });
 
-    test('gives the state of a step by its id, as the journal read so far '
+    test('gives the state of an effect by its id, as the journal read so far '
         'has it', () {
       run((async) {
         give(async, [
           const SessionAdded(_session),
           _event(_started(0)),
-          _event(_stepStarted(_collect.id, 1)),
+          _event(_effectStarted(_collect.id, 1)),
         ]);
         final session = feed.session(_session.id)!;
-        expect(session.stateOf(_collect.id), same(session.state.steps.single));
+        expect(
+          session.stateOf(_collect.id),
+          same(session.state.effects.single),
+        );
         expect(session.stateOf(_inspect.id), isNull);
 
-        give(async, [_event(_stepStarted(_inspect.id, 2))]);
-        expect(session.stateOf(_inspect.id), same(session.state.steps.last));
+        give(async, [_event(_effectStarted(_inspect.id, 2))]);
+        expect(session.stateOf(_inspect.id), same(session.state.effects.last));
         expect(session.stateOf(_inspect.id)!.startedAt, at(2));
       });
     });
 
-    test('a step-started before its step-added counts at once', () {
+    test('an effect-started before its effect-added counts at once', () {
       run((async) {
         give(async, [
           const SessionAdded(_session),
           _event(_started(0)),
-          _event(_stepStarted(_collect.id, 1)),
+          _event(_effectStarted(_collect.id, 1)),
         ]);
         final session = feed.session(_session.id)!;
-        expect(session.steps, isEmpty);
-        expect(session.stepsInOrder, isEmpty);
-        expect(session.state.steps.single.stepId, _collect.id);
+        expect(session.effects, isEmpty);
+        expect(session.effectsInOrder, isEmpty);
+        expect(session.state.effects.single.effectId, _collect.id);
 
-        give(async, [const StepAdded(_collect)]);
-        expect(session.steps.keys, [_collect.id]);
-        expect(session.stepsInOrder, [_collect]);
+        give(async, [const EffectAdded(_collect)]);
+        expect(session.effects.keys, [_collect.id]);
+        expect(session.effectsInOrder, [_collect]);
       });
     });
 
-    test('a step, event, document or problem given before its session '
+    test('an effect, event, document or problem given before its session '
         'waits for it', () {
       run((async) {
         give(async, [
           _event(_started(0)),
           const DocumentAdded(sessionId: 'a1b2-session', documentId: 'doc'),
-          const StepAdded(_collect),
-          StepChanged(_collect.withOutput('out-doc')),
+          const EffectAdded(_collect),
+          EffectChanged(_collect.withOutput('out-doc')),
           const LogCorrupted(sessionId: 'a1b2-session', line: 2, text: '{'),
         ]);
         expect(feed.sessions, isEmpty);
@@ -191,7 +194,7 @@ void main() {
         give(async, [const SessionAdded(_session)]);
         final session = feed.session(_session.id)!;
         expect(session.documents, {'doc'});
-        expect(session.steps.values.single.outputId, 'out-doc');
+        expect(session.effects.values.single.outputId, 'out-doc');
         expect(session.events, [_started(0)]);
         expect(session.problems, ['line 2 is not an event: {']);
       });
@@ -282,7 +285,7 @@ void main() {
           give(async, [
             const SessionAdded(_session),
             _event(_started(0)),
-            _event(_stepStarted(_collect.id, 1)),
+            _event(_effectStarted(_collect.id, 1)),
           ]);
           final session = feed.session(_session.id)!;
           give(async, [owned(false)]);
@@ -308,7 +311,7 @@ void main() {
           give(async, [
             const SessionAdded(_session),
             _event(_started(0)),
-            _event(_stepStarted(_collect.id, 7)),
+            _event(_effectStarted(_collect.id, 7)),
           ]);
           final session = feed.session(_session.id)!;
           expect(session.timeAt(at(100)), at(100));
@@ -350,13 +353,13 @@ void main() {
           const SessionAdded(_session),
           _event(_started(0)),
           _event(unknown),
-          _event(_stepStarted(_collect.id, 1)),
+          _event(_effectStarted(_collect.id, 1)),
         ]);
         final session = feed.session(_session.id)!;
         expect(session.incomplete, isTrue);
         expect(session.problems.single, contains('session-paused'));
-        expect(session.events, [_started(0), _stepStarted(_collect.id, 1)]);
-        expect(session.state.steps.single.stepId, _collect.id);
+        expect(session.events, [_started(0), _effectStarted(_collect.id, 1)]);
+        expect(session.state.effects.single.effectId, _collect.id);
       });
     });
 
@@ -373,13 +376,13 @@ void main() {
         const dir = '/runs/review-2026-09-21T12-03-11-a1b2-session';
         give(async, [const SessionAdded(_session)]);
         changes
-          ..addError(const FormatException('$dir/steps/x/step.json: id: x'))
+          ..addError(const FormatException('$dir/effects/x/effect.json: id: x'))
           ..addError(
             const FileSystemException('Cannot open file', '$dir/log.jsonl'),
           );
         async.flushMicrotasks();
         expect(feed.session(_session.id)!.problems, [
-          '$dir/steps/x/step.json: id: x',
+          '$dir/effects/x/effect.json: id: x',
           '$dir/log.jsonl: Cannot open file',
         ]);
         expect(feed.problems, isEmpty);
@@ -415,13 +418,13 @@ void main() {
         give(async, [const SessionAdded(_session)]);
         notified = 0;
         for (var i = 0; i < 1000; i++) {
-          changes.add(_event(_stepStarted('step-$i', i)));
+          changes.add(_event(_effectStarted('effect-$i', i)));
         }
         async.flushMicrotasks();
         expect(notified, 0);
         async.elapse(const Duration(milliseconds: 50));
         expect(notified, 1);
-        expect(feed.session(_session.id)!.state.steps, hasLength(1000));
+        expect(feed.session(_session.id)!.state.effects, hasLength(1000));
       });
     });
 
@@ -463,17 +466,17 @@ void main() {
       final dir = await Directory.systemTemp.createTemp('nanoflow_feed_test');
       addTearDown(() => dir.delete(recursive: true));
       final runs = runsDirOf(dir.path);
-      final ids = (session: newId(), step: newId(), document: newId());
+      final ids = (session: newId(), effect: newId(), document: newId());
       final sessionDir = p.join(
         runs,
         sessionDirName('review', t0, ids.session),
       );
-      final stepDir = p.join(
+      final effectDir = p.join(
         sessionDir,
-        stepsDirName,
-        stepDirName(at(1), 'collect', ids.step),
+        effectsDirName,
+        effectDirName(at(1), 'collect', ids.effect),
       );
-      Directory(stepDir).createSync(recursive: true);
+      Directory(effectDir).createSync(recursive: true);
       Directory(p.join(sessionDir, documentsDirName)).createSync();
       final session = Session(
         id: ids.session,
@@ -481,8 +484,8 @@ void main() {
         graph: graphFileJson(),
         inputId: null,
       );
-      final step = Step(
-        id: ids.step,
+      final effect = Effect(
+        id: ids.effect,
         sessionId: ids.session,
         name: 'collect',
         key: 'collect#1@0000000000000000',
@@ -500,12 +503,12 @@ void main() {
           value: 'main',
         ).toJson(),
       );
-      _writeJson(p.join(stepDir, stepFileName), step.toJson());
+      _writeJson(p.join(effectDir, effectFileName), effect.toJson());
       File(p.join(sessionDir, eventsFileName)).writeAsStringSync(
         [
           jsonEncode(SessionStarted(time: t0, code: reviewCode).toJson()),
           'not json',
-          jsonEncode(StepStarted(time: at(1), stepId: ids.step).toJson()),
+          jsonEncode(EffectStarted(time: at(1), effectId: ids.effect).toJson()),
         ].map((line) => '$line\n').join(),
       );
 
@@ -522,22 +525,22 @@ void main() {
       final data = feed.session(ids.session)!;
       expect(data.session, session);
       expect(data.documents, {ids.document});
-      expect(data.steps, {ids.step: step});
-      expect(data.state.steps.single.stepId, ids.step);
+      expect(data.effects, {ids.effect: effect});
+      expect(data.state.effects.single.effectId, ids.effect);
       expect(data.state.codes, [reviewCode]);
       expect(data.problems, ['line 2 is not an event: not json']);
 
-      // A step.json that is not a step marks the session whose directory has
-      // it.
+      // An effect.json that is not an effect marks the session whose directory
+      // has it.
       final broken = p.join(
         sessionDir,
-        stepsDirName,
-        stepDirName(at(9), 'collect', newId()),
+        effectsDirName,
+        effectDirName(at(9), 'collect', newId()),
       );
       Directory(broken).createSync();
-      File(p.join(broken, stepFileName)).writeAsStringSync('{}\n');
+      File(p.join(broken, effectFileName)).writeAsStringSync('{}\n');
       await _until(() => data.problems.length == 2);
-      expect(data.problems.last, startsWith(p.join(broken, stepFileName)));
+      expect(data.problems.last, startsWith(p.join(broken, effectFileName)));
     },
   );
 }

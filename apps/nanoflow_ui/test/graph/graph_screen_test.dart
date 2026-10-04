@@ -11,8 +11,8 @@ import 'package:nanoflow_ui/graph/canvas/tile_marks.dart' show StateBadge;
 import 'package:nanoflow_ui/graph/graph_notes.dart';
 import 'package:nanoflow_ui/graph/graph_screen.dart';
 import 'package:nanoflow_ui/graph/header.dart';
-import 'package:nanoflow_ui/graph/logs/step_bar.dart' show StepIcon;
-import 'package:nanoflow_ui/graph/logs/step_list.dart';
+import 'package:nanoflow_ui/graph/logs/effect_bar.dart' show EffectIcon;
+import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
@@ -167,7 +167,7 @@ void main() {
       expect(names(tester), hasLength(2));
     });
 
-    testWidgets('on a step opens nothing', (tester) async {
+    testWidgets('on an effect opens nothing', (tester) async {
       final model = await pumpGraphScreen(tester);
       await doubleTap(tester, tile('1'));
       await settle(tester);
@@ -224,13 +224,13 @@ void main() {
     Finder inBar(Finder finder) =>
         find.descendant(of: find.byType(SessionBar), matching: finder);
     Finder notify() => find.byKey(NodeTile.keyOf('7'));
-    Finder notifyRow() => find.byKey(StepList.rowKey('a1b2-notify-5'));
+    Finder notifyRow() => find.byKey(EffectList.rowKey('a1b2-notify-5'));
     Finder inside(Finder of, Type type) =>
         find.descendant(of: of, matching: find.byType(type));
     NodeState? notifyState(WidgetTester tester) =>
         tester.widget<NodeTile>(notify()).marks?.state;
     StartOutcome notifyIcon(WidgetTester tester) =>
-        tester.widget<StepIcon>(inside(notifyRow(), StepIcon)).status;
+        tester.widget<EffectIcon>(inside(notifyRow(), EffectIcon)).status;
 
     void expectRunning(WidgetTester tester) {
       expect(inCard(find.text('Running for 12m 26s')), findsOneWidget);
@@ -253,7 +253,7 @@ void main() {
       expect(find.text('following tail'), findsNothing);
     }
 
-    testWidgets('is interrupted on its card, its bar, the node of the step '
+    testWidgets('is interrupted on its card, its bar, the node of the effect '
         'that was running and its row in Logs', (tester) async {
       await pumpReview(
         tester,

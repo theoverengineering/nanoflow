@@ -1,42 +1,42 @@
-/// The `Logs` panel: its title and the rows of the steps list
-/// (docs/ui-spec.md «Logs»; spec §9 «Логи»): a session's steps in the order
-/// of their first `step-started`, a selected copy's alone. Pure: the time is
+/// The `Logs` panel: its title and the rows of the effects list
+/// (docs/ui-spec.md «Logs»; spec §9 «Логи»): a session's effects in the order
+/// of their first `effect-started`, a selected copy's alone. Pure: the time is
 /// passed in.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
+import 'effect_places.dart';
 import 'session_feed.dart';
-import 'step_places.dart';
 import 'texts.dart';
 import 'visits.dart' show StartOutcome, outcomeOf;
 
-/// What a row says of a step that is on no node of the graph.
+/// What a row says of an effect that is on no node of the graph.
 const notOnGraph = 'not on the graph';
 
-/// The title of the `Logs` panel: `8 steps`, `pkg 2 · 3 steps`.
+/// The title of the `Logs` panel: `8 effects`, `pkg 2 · 3 effects`.
 final class LogsHeader {
-  const LogsHeader(this.steps, {this.copy});
+  const LogsHeader(this.effects, {this.copy});
 
-  /// How many steps the list shows.
-  final int steps;
+  /// How many effects the list shows.
+  final int effects;
 
   /// The copy shown, `pkg 2` or `pkg 2 › target 1`; `null` when the list
-  /// shows every copy's steps.
+  /// shows every copy's effects.
   final String? copy;
 
-  String get stepsText => count(steps, 'step');
+  String get effectsText => count(effects, 'effect');
 
-  String get text => copy == null ? stepsText : '$copy · $stepsText';
+  String get text => copy == null ? effectsText : '$copy · $effectsText';
 }
 
-/// A row of the steps list.
+/// A row of the effects list.
 sealed class LogRow {}
 
-/// A step.
-final class StepRow extends LogRow {
-  StepRow._({
-    required this.stepId,
+/// An effect.
+final class EffectRow extends LogRow {
+  EffectRow._({
+    required this.effectId,
     required this.name,
     required this.status,
     required this.detail,
@@ -49,30 +49,30 @@ final class StepRow extends LogRow {
     required this.barEnd,
   });
 
-  final String stepId;
+  final String effectId;
 
-  /// The step's name.
+  /// The effect's name.
   final String name;
 
-  /// The icon: finished, running, failed, or interrupted — the step was
+  /// The icon: finished, running, failed, or interrupted — the effect was
   /// running when the process of its session went.
   final StartOutcome status;
 
-  /// After the name: a failed step's error; [notOnGraph] for a step on no
+  /// After the name: a failed effect's error; [notOnGraph] for an effect on no
   /// node of the graph.
   final String? detail;
 
   /// Whether [detail] is an error.
   final bool failure;
 
-  /// The copies the step is in, but those chosen: `pkg 2`, `pkg 2 ›
+  /// The copies the effect is in, but those chosen: `pkg 2`, `pkg 2 ›
   /// target 1`.
   final String? copy;
 
-  /// The time of the first `step-started`: `14:03:11`.
+  /// The time of the first `effect-started`: `14:03:11`.
   final String started;
 
-  /// To the outcome of the last start, or to now while the step runs;
+  /// To the outcome of the last start, or to now while the effect runs;
   /// `null` once it is interrupted: when it would have ended is not known.
   final Duration? duration;
 
@@ -82,19 +82,19 @@ final class StepRow extends LogRow {
     null => '—',
   };
 
-  /// How many times the step started.
+  /// How many times the effect started.
   final int starts;
 
-  /// `2 starts` for a step started more than once.
+  /// `2 starts` for an effect started more than once.
   String? get startsText => starts > 1 ? '$starts starts' : null;
 
-  /// Where the step's bar begins and ends on the session's time scale, from
-  /// 0 to 1; an interrupted step's runs to the end of the scale, the
+  /// Where the effect's bar begins and ends on the session's time scale, from
+  /// 0 to 1; an interrupted effect's runs to the end of the scale, the
   /// session's last event.
   final double barStart;
   final double barEnd;
 
-  /// A running step's bar is striped.
+  /// A running effect's bar is striped.
   bool get striped => status == StartOutcome.running;
 }
 
@@ -120,7 +120,7 @@ final class EndRow extends LogRow {
       : 'Session finished';
 }
 
-/// The common time scale of a session's step bars: from its start to its
+/// The common time scale of a session's effect bars: from its start to its
 /// end, or to now while it runs — to its last event once its process is
 /// gone.
 final class TimeScale {
@@ -163,54 +163,61 @@ TimeScale timeScale(SessionData session, DateTime now) {
   );
 }
 
-/// The rows of [steps] of [session], in their order; a step in copies
+/// The rows of [effects] of [session], in their order; an effect in copies
 /// named by [copyOf] (`pkg 2`). An [EndRow] follows once the session has
-/// ended, unless [end] is false. [places] tells which steps are not on the
+/// ended, unless [end] is false. [places] tells which effects are not on the
 /// graph.
 List<LogRow> logRows(
   SessionData session, {
-  required Iterable<StepState> steps,
-  required StepPlaces places,
+  required Iterable<EffectState> effects,
+  required EffectPlaces places,
   required DateTime now,
-  String? Function(String stepId)? copyOf,
+  String? Function(String effectId)? copyOf,
   bool end = true,
 }) {
   final scale = timeScale(session, now);
   final state = session.state;
   final ended = state.finishedAt;
   return [
-    for (final step in steps)
-      _stepRow(step, session, places, copyOf?.call(step.stepId), now, scale),
+    for (final effect in effects)
+      _effectRow(
+        effect,
+        session,
+        places,
+        copyOf?.call(effect.effectId),
+        now,
+        scale,
+      ),
     if (end && ended != null) EndRow._(state.status, state.error, ended),
   ];
 }
 
-StepRow _stepRow(
-  StepState step,
+EffectRow _effectRow(
+  EffectState effect,
   SessionData session,
-  StepPlaces places,
+  EffectPlaces places,
   String? copy,
   DateTime now,
   TimeScale scale,
 ) {
-  final record = session.steps[step.stepId];
-  final error = step.status == StepStatus.failed ? step.error : null;
-  final status = outcomeOf(session, step);
-  final end = step.finishedAt ?? session.timeAt(now);
-  return StepRow._(
-    stepId: step.stepId,
+  final record = session.effects[effect.effectId];
+  final error = effect.status == EffectStatus.failed ? effect.error : null;
+  final status = outcomeOf(session, effect);
+  final end = effect.finishedAt ?? session.timeAt(now);
+  return EffectRow._(
+    effectId: effect.effectId,
     name: record?.name ?? '',
     status: status,
     detail:
         error ?? (record == null || places.onGraph(record) ? null : notOnGraph),
     failure: error != null,
     copy: copy,
-    started: clockTime(step.startedAt),
+    started: clockTime(effect.startedAt),
     duration: status == StartOutcome.interrupted
         ? null
-        : end.difference(step.startedAt),
-    starts: step.starts,
-    barStart: scale.fraction(step.startedAt),
+        : end.difference(effect.startedAt),
+    starts: effect.starts,
+    barStart: scale.fraction(effect.startedAt),
     barEnd: scale.fraction(end),
   );
 }

@@ -1,5 +1,5 @@
 // The app opening a graph file with a long history: 200 sessions of 30
-// steps each, written as files the way the workflow library writes them.
+// effects each, written as files the way the workflow library writes them.
 // Needs macOS; not part of tool/ci.sh:
 //
 //   cd apps/nanoflow_ui
@@ -13,7 +13,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart' hide Step;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
@@ -25,9 +25,9 @@ import 'package:nanoflow_ui/start/recent_graphs.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// How many sessions the history has, and steps each.
+/// How many sessions the history has, and effects each.
 const _sessions = 200;
-const _steps = 30;
+const _effects = 30;
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -108,7 +108,7 @@ Future<int> _frame(WidgetTester tester) async {
 }
 
 /// Writes [_sessions] sessions of review to [runsDir], a day apart up to
-/// yesterday, each [_steps] steps — collect, then inspect and fix round
+/// yesterday, each [_effects] effects — collect, then inspect and fix round
 /// and round, then inspect, publish and notify — that finished; returns
 /// the id of the newest session.
 String _writeHistory(String runsDir) {
@@ -123,7 +123,7 @@ String _writeHistory(String runsDir) {
       sessionDirName('review', time, sessionId),
     );
     Directory(p.join(sessionDir, documentsDirName)).createSync(recursive: true);
-    Directory(p.join(sessionDir, stepsDirName)).createSync();
+    Directory(p.join(sessionDir, effectsDirName)).createSync();
     _json(
       p.join(sessionDir, sessionFileName),
       Session(
@@ -147,7 +147,7 @@ String _writeHistory(String runsDir) {
     ];
     final names = [
       'collect',
-      for (var loop = 0; loop < (_steps - 4) ~/ 2; loop++) ...[
+      for (var loop = 0; loop < (_effects - 4) ~/ 2; loop++) ...[
         'inspect',
         'fix',
       ],
@@ -158,27 +158,27 @@ String _writeHistory(String runsDir) {
     String? after;
     final counts = <String, int>{};
     for (final name in names) {
-      final stepId = newId();
+      final effectId = newId();
       final key = '$name#${counts[name] = (counts[name] ?? 0) + 1}@0';
-      final stepDir = p.join(
+      final effectDir = p.join(
         sessionDir,
-        stepsDirName,
-        stepDirName(time, name, stepId),
+        effectsDirName,
+        effectDirName(time, name, effectId),
       );
-      Directory(stepDir).createSync();
-      File(p.join(stepDir, logFileName)).writeAsStringSync(
+      Directory(effectDir).createSync();
+      File(p.join(effectDir, logFileName)).writeAsStringSync(
         [for (var line = 0; line < 20; line++) '$name: line $line\n'].join(),
       );
-      events.add(StepStarted(time: time, stepId: stepId));
+      events.add(EffectStarted(time: time, effectId: effectId));
       time = time.add(const Duration(seconds: 7));
       final output = document({
         'change': 'parseConfig',
         'findings': <String>[],
       });
       _json(
-        p.join(stepDir, stepFileName),
-        Step(
-          id: stepId,
+        p.join(effectDir, effectFileName),
+        Effect(
+          id: effectId,
           sessionId: sessionId,
           name: name,
           key: key,
@@ -188,7 +188,9 @@ String _writeHistory(String runsDir) {
           log: logFileName,
         ).toJson(),
       );
-      events.add(StepFinished(time: time, stepId: stepId, outputId: output));
+      events.add(
+        EffectFinished(time: time, effectId: effectId, outputId: output),
+      );
       after = key;
     }
     events.add(SessionFinished(time: time, outputId: null));
@@ -203,7 +205,7 @@ String _writeHistory(String runsDir) {
 void _json(String path, Object? json) => File(path)
     .writeAsStringSync('${const JsonEncoder.withIndent('  ').convert(json)}\n');
 
-/// The line of each step of [_graph].
+/// The line of each effect of [_graph].
 const _lines = {
   'collect': 2,
   'inspect': 4,
@@ -215,7 +217,7 @@ const _lines = {
 /// A graph file of review: collect, inspect and fix in a loop until
 /// inspect finds nothing, then publish and notify side by side.
 const _graph = <String, Object?>{
-  'format': 1,
+  'format': 2,
   'package': 'review_example',
   'fingerprint': 'sha256:history',
   'sources': {'lib/review.dart': 'sha256:history'},
@@ -229,13 +231,13 @@ const _graph = <String, Object?>{
         'nodes': [
           {
             'id': '1',
-            'kind': 'step',
+            'kind': 'effect',
             'name': 'collect',
             'place': 'lib/review.dart:2',
           },
           {
             'id': '2',
-            'kind': 'step',
+            'kind': 'effect',
             'name': 'inspect',
             'place': 'lib/review.dart:4',
           },
@@ -247,19 +249,19 @@ const _graph = <String, Object?>{
           },
           {
             'id': '4',
-            'kind': 'step',
+            'kind': 'effect',
             'name': 'fix',
             'place': 'lib/review.dart:6',
           },
           {
             'id': '5',
-            'kind': 'step',
+            'kind': 'effect',
             'name': 'publish',
             'place': 'lib/review.dart:8',
           },
           {
             'id': '6',
-            'kind': 'step',
+            'kind': 'effect',
             'name': 'notify',
             'place': 'lib/review.dart:9',
           },

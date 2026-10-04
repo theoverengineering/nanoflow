@@ -9,7 +9,7 @@ import '../widgets/icons.dart';
 /// The copy switcher in the header of a copies frame (decision 11;
 /// docs/design/code-first/copy-switcher.html): `all · 1 ✓ · 2 ● · 3 ●`, the
 /// copies numbered in the order they started, each with how it stands, the
-/// one shown filled; over a number, what the copy's first step gave
+/// one shown filled; over a number, what the copy's first effect gave
 /// (`core:uploaded`), to tell the copies apart without the code.
 ///
 /// More than [chipLimit] copies do not fit as chips: one chip names the copy
@@ -27,7 +27,7 @@ class CopySwitcher extends StatelessWidget {
   /// The frame, its copies and the one shown.
   final CopiesFrame frame;
 
-  /// What the first step of [copy] gave; `null` while it is not known.
+  /// What the first effect of [copy] gave; `null` while it is not known.
   final String? Function(Copy copy) hintOf;
 
   /// Shows the copy of this id; every copy for `null`.

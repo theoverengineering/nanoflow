@@ -59,7 +59,7 @@ Map<String, GraphBody> bodiesOf(GraphFile file) {
 }
 
 /// A body written the short way: `start` names the nodes the entry leads
-/// to; each node is a step (`command`) or a condition (`decide`) whose id,
+/// to; each node is an effect (`command`) or a condition (`decide`) whose id,
 /// name and label are its key; `then` is a node, a list of nodes the flow
 /// goes to side by side, or `[]` for the end of the body; a condition's
 /// `then` is a map from labels to targets, or a target for `true`, and its
@@ -88,7 +88,7 @@ GraphBody bodyOf(Map<String, Object?> json) {
     }
 
     if (node.containsKey('command')) {
-      nodes.add(StepNode(id: name, place: place, name: name));
+      nodes.add(EffectNode(id: name, place: place, name: name));
       edgesTo(node['then'], null);
     } else {
       nodes.add(ConditionNode(id: name, place: place, label: name));

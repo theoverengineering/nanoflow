@@ -3,7 +3,7 @@
 /// inspect it, fix it while inspect finds something, and publish it and
 /// notify about it side by side once inspect finds nothing.
 ///
-/// The steps do their work offline and the same way every run, so that the
+/// The effects do their work offline and the same way every run, so that the
 /// example runs anywhere: the change of a branch is the one file named after
 /// it, inspect checks the file's name with a program through `exec` — as a
 /// reviewer such as `claude -p` would be run — and fix renames the file.
@@ -46,21 +46,21 @@ class Report {
 
 /// Reviews the change of [branch].
 Future<void> review(Flow f, String branch) async {
-  var change = await f.step('collect', () => collect(branch));
+  var change = await f.effect('collect', () => collect(branch));
   if (change.path.isEmpty) {
-    await f.step('discard', () => print('nothing to review'));
+    await f.effect('discard', () => print('nothing to review'));
     return;
   }
   while (true) {
-    final report = await f.step('inspect', () => inspect(change));
+    final report = await f.effect('inspect', () => inspect(change));
     if (report.findings.isEmpty) {
       await Future.wait([
-        f.step('publish', () => print('published ${report.change.path}')),
-        f.step('notify', () => print('${report.change.id}: accepted')),
+        f.effect('publish', () => print('published ${report.change.path}')),
+        f.effect('notify', () => print('${report.change.id}: accepted')),
       ]);
       return;
     }
-    change = await f.step('fix', () => fix(report));
+    change = await f.effect('fix', () => fix(report));
   }
 }
 

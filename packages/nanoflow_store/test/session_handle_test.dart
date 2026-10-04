@@ -13,167 +13,170 @@ import 'support.dart';
 // 10:00:00.482. The next reading is 10:00:01.482.
 
 void main() {
-  group('createStep', () {
-    test('writes steps/<time>-<name>-<id>/step.json and no event', () async {
-      final handle = await newSession();
-      final events = await handle.events();
+  group('createEffect', () {
+    test(
+      'writes effects/<time>-<name>-<id>/effect.json and no event',
+      () async {
+        final handle = await newSession();
+        final events = await handle.events();
 
-      final step = await handle.createStep(
-        name: 'collect',
-        key: 'collect#1@e3b0c44298fc1c14',
-        after: 'inspect#1@9f2c1a7b3d5e8f04',
-        place: 'lib/review.dart:12',
-      );
-
-      expect(isId(step.id), isTrue);
-      expect(
-        step,
-        Step(
-          id: step.id,
-          sessionId: handle.session.id,
+        final effect = await handle.createEffect(
           name: 'collect',
           key: 'collect#1@e3b0c44298fc1c14',
           after: 'inspect#1@9f2c1a7b3d5e8f04',
           place: 'lib/review.dart:12',
-          outputId: null,
-          log: 'step.log',
-        ),
-      );
-      final dir = only(
-        p.join(handle.dir, 'steps'),
-        '2026-10-03T10-00-01-482-collect-$anId',
-      );
-      expect(dir.id, step.id);
-      expect(names(dir.path), ['step.json']);
-      expect(read(p.join(dir.path, 'step.json')), '''
+        );
+
+        expect(isId(effect.id), isTrue);
+        expect(
+          effect,
+          Effect(
+            id: effect.id,
+            sessionId: handle.session.id,
+            name: 'collect',
+            key: 'collect#1@e3b0c44298fc1c14',
+            after: 'inspect#1@9f2c1a7b3d5e8f04',
+            place: 'lib/review.dart:12',
+            outputId: null,
+            log: 'effect.log',
+          ),
+        );
+        final dir = only(
+          p.join(handle.dir, 'effects'),
+          '2026-10-03T10-00-01-482-collect-$anId',
+        );
+        expect(dir.id, effect.id);
+        expect(names(dir.path), ['effect.json']);
+        expect(read(p.join(dir.path, 'effect.json')), '''
 {
-  "id": "${step.id}",
+  "id": "${effect.id}",
   "sessionId": "${handle.session.id}",
   "name": "collect",
   "key": "collect#1@e3b0c44298fc1c14",
   "after": "inspect#1@9f2c1a7b3d5e8f04",
   "place": "lib/review.dart:12",
   "outputId": null,
-  "log": "step.log"
+  "log": "effect.log"
 }
 ''');
-      expect(await handle.steps(), [step]);
-      expect(await handle.events(), events);
-      expect(dotEntries(handle.dir), isEmpty);
-    });
+        expect(await handle.effects(), [effect]);
+        expect(await handle.events(), events);
+        expect(dotEntries(handle.dir), isEmpty);
+      },
+    );
 
     test('writes null after and place', () async {
       final handle = await newSession();
 
-      final step = await handle.createStep(
+      final effect = await handle.createEffect(
         name: 'collect',
         key: 'collect#1@e3b0c44298fc1c14',
         after: null,
         place: null,
       );
 
-      expect(step.after, isNull);
-      expect(step.place, isNull);
-      expect(await handle.steps(), [step]);
+      expect(effect.after, isNull);
+      expect(effect.place, isNull);
+      expect(await handle.effects(), [effect]);
     });
 
     test('makes the name safe in the directory name only', () async {
       final handle = await newSession();
 
-      final step = await newStep(handle, name: 'check a/b');
+      final effect = await newEffect(handle, name: 'check a/b');
 
       only(
-        p.join(handle.dir, 'steps'),
-        '2026-10-03T10-00-01-482-check_a_b-(${step.id})',
+        p.join(handle.dir, 'effects'),
+        '2026-10-03T10-00-01-482-check_a_b-(${effect.id})',
       );
-      expect((await handle.steps()).single.name, 'check a/b');
+      expect((await handle.effects()).single.name, 'check a/b');
     });
 
-    test('steps lists the steps in the order they were created', () async {
+    test('effects lists the effects in the order they were created', () async {
       final handle = await newSession();
 
-      final collect = await newStep(handle, name: 'collect');
-      final verdict = await newStep(handle, name: 'verdict');
-      final fix = await newStep(handle, name: 'fix');
+      final collect = await newEffect(handle, name: 'collect');
+      final verdict = await newEffect(handle, name: 'verdict');
+      final fix = await newEffect(handle, name: 'fix');
 
-      expect(await handle.steps(), [collect, verdict, fix]);
+      expect(await handle.effects(), [collect, verdict, fix]);
     });
 
-    test('names the steps in the order they were created, even within one '
+    test('names the effects in the order they were created, even within one '
         'millisecond', () async {
       final handle = await newSession(clock: () => start);
 
-      final collect = await newStep(handle, name: 'collect');
-      final verdict = await newStep(handle, name: 'verdict');
-      final fix = await newStep(handle, name: 'fix');
+      final collect = await newEffect(handle, name: 'collect');
+      final verdict = await newEffect(handle, name: 'verdict');
+      final fix = await newEffect(handle, name: 'fix');
 
-      final steps = p.join(handle.dir, 'steps');
+      final effects = p.join(handle.dir, 'effects');
       expect(
-        only(steps, '2026-10-03T10-00-00-482-collect-$anId').id,
+        only(effects, '2026-10-03T10-00-00-482-collect-$anId').id,
         collect.id,
       );
       expect(
-        only(steps, '2026-10-03T10-00-00-483-verdict-$anId').id,
+        only(effects, '2026-10-03T10-00-00-483-verdict-$anId').id,
         verdict.id,
       );
-      expect(only(steps, '2026-10-03T10-00-00-484-fix-$anId').id, fix.id);
-      expect(await handle.steps(), [collect, verdict, fix]);
+      expect(only(effects, '2026-10-03T10-00-00-484-fix-$anId').id, fix.id);
+      expect(await handle.effects(), [collect, verdict, fix]);
     });
 
-    test('gives each step its own millisecond when the clock moves by less '
+    test('gives each effect its own millisecond when the clock moves by less '
         'than one', () async {
       final handle = await newSession(
         clock: tickingClock(tick: const Duration(microseconds: 100)),
       );
 
-      final first = await newStep(handle);
-      final second = await newStep(handle);
+      final first = await newEffect(handle);
+      final second = await newEffect(handle);
 
-      final steps = p.join(handle.dir, 'steps');
-      only(steps, '2026-10-03T10-00-00-482-collect-(${first.id})');
-      only(steps, '2026-10-03T10-00-00-483-collect-(${second.id})');
+      final effects = p.join(handle.dir, 'effects');
+      only(effects, '2026-10-03T10-00-00-482-collect-(${first.id})');
+      only(effects, '2026-10-03T10-00-00-483-collect-(${second.id})');
     });
 
-    test('steps leaves out a step that was never finished being '
+    test('effects leaves out an effect that was never finished being '
         'created', () async {
       final handle = await newSession();
-      final steps = [await newStep(handle)];
-      final stepId = newId();
+      final effects = [await newEffect(handle)];
+      final effectId = newId();
       final leftover = await Directory(
-        p.join(handle.dir, 'steps', '.tmp-$stepId'),
+        p.join(handle.dir, 'effects', '.tmp-$effectId'),
       ).create();
-      await File(p.join(leftover.path, 'step.json')).writeAsString(
+      await File(p.join(leftover.path, 'effect.json')).writeAsString(
         jsonEncode(
-          Step(
-            id: stepId,
+          Effect(
+            id: effectId,
             sessionId: handle.session.id,
             name: 'collect',
             key: 'collect#2@e3b0c44298fc1c14',
             after: null,
             place: null,
             outputId: null,
-            log: 'step.log',
+            log: 'effect.log',
           ).toJson(),
         ),
       );
 
-      expect(await handle.steps(), steps);
+      expect(await handle.effects(), effects);
     });
   });
 
   group('appendEvent and events', () {
     test('write each event as one compact line and read them back', () async {
       final handle = await newSession();
-      final step = await newStep(handle);
+      final effect = await newEffect(handle);
       final outputId = newId();
       final appended = <KnownEvent>[
-        StepStarted(
+        EffectStarted(
           time: DateTime.utc(2026, 10, 3, 10, 1, 0, 5),
-          stepId: step.id,
+          effectId: effect.id,
         ),
-        StepFailed(
+        EffectFailed(
           time: DateTime.utc(2026, 10, 3, 10, 2),
-          stepId: step.id,
+          effectId: effect.id,
           error: 'Exception: "no"',
           stack: '#0 main\n',
         ),
@@ -182,10 +185,13 @@ void main() {
           code: code,
           graphId: null,
         ),
-        StepStarted(time: DateTime.utc(2026, 10, 3, 11, 1), stepId: step.id),
-        StepFinished(
+        EffectStarted(
+          time: DateTime.utc(2026, 10, 3, 11, 1),
+          effectId: effect.id,
+        ),
+        EffectFinished(
           time: DateTime.utc(2026, 10, 3, 11, 2),
-          stepId: step.id,
+          effectId: effect.id,
           outputId: outputId,
         ),
         SessionFinished(
@@ -202,31 +208,34 @@ void main() {
         read(journal(handle)),
         '{"time":"2026-10-03T10:00:00.482Z","event":"session-started",'
         '"code":"$code"}\n'
-        '{"time":"2026-10-03T10:01:00.005Z","event":"step-started",'
-        '"stepId":"${step.id}"}\n'
-        '{"time":"2026-10-03T10:02:00.000Z","event":"step-failed",'
-        '"stepId":"${step.id}",'
+        '{"time":"2026-10-03T10:01:00.005Z","event":"effect-started",'
+        '"effectId":"${effect.id}"}\n'
+        '{"time":"2026-10-03T10:02:00.000Z","event":"effect-failed",'
+        '"effectId":"${effect.id}",'
         r'"error":"Exception: \"no\"","stack":"#0 main\n"}'
         '\n'
         '{"time":"2026-10-03T11:00:00.000Z","event":"session-resumed",'
         '"code":"$code","graphId":null}\n'
-        '{"time":"2026-10-03T11:01:00.000Z","event":"step-started",'
-        '"stepId":"${step.id}"}\n'
-        '{"time":"2026-10-03T11:02:00.000Z","event":"step-finished",'
-        '"stepId":"${step.id}","outputId":"$outputId"}\n'
+        '{"time":"2026-10-03T11:01:00.000Z","event":"effect-started",'
+        '"effectId":"${effect.id}"}\n'
+        '{"time":"2026-10-03T11:02:00.000Z","event":"effect-finished",'
+        '"effectId":"${effect.id}","outputId":"$outputId"}\n'
         '{"time":"2026-10-03T11:02:00.001Z","event":"session-finished",'
         '"outputId":"$outputId"}\n',
       );
       expect(await handle.events(), [isA<SessionStarted>(), ...appended]);
     });
 
-    test('appends events it is given at once, as steps side by side give '
+    test('appends events it is given at once, as effects side by side give '
         'them, each on a line of its own in the order given', () async {
       final handle = await newSession();
-      final steps = [for (var i = 0; i < 20; i++) await newStep(handle)];
+      final effects = [for (var i = 0; i < 20; i++) await newEffect(handle)];
       final appended = [
-        for (final step in steps)
-          StepStarted(time: DateTime.utc(2026, 10, 3, 10, 1), stepId: step.id),
+        for (final effect in effects)
+          EffectStarted(
+            time: DateTime.utc(2026, 10, 3, 10, 1),
+            effectId: effect.id,
+          ),
       ];
 
       await Future.wait([
@@ -343,146 +352,164 @@ void main() {
     });
   });
 
-  group('setStepOutput', () {
-    test('rewrites step.json with the output and returns the step', () async {
-      final handle = await newSession();
-      final step = await newStep(handle, after: 'inspect#1@9f2c1a7b3d5e8f04');
-      final outputId = await handle.writeDocument({'id': 'c1'});
+  group('setEffectOutput', () {
+    test(
+      'rewrites effect.json with the output and returns the effect',
+      () async {
+        final handle = await newSession();
+        final effect = await newEffect(
+          handle,
+          after: 'inspect#1@9f2c1a7b3d5e8f04',
+        );
+        final outputId = await handle.writeDocument({'id': 'c1'});
 
-      final finished = await handle.setStepOutput(step, outputId);
+        final finished = await handle.setEffectOutput(effect, outputId);
 
-      expect(finished, step.withOutput(outputId));
-      expect(read(p.join(stepDir(handle, step.id), 'step.json')), '''
+        expect(finished, effect.withOutput(outputId));
+        expect(read(p.join(effectDir(handle, effect.id), 'effect.json')), '''
 {
-  "id": "${step.id}",
+  "id": "${effect.id}",
   "sessionId": "${handle.session.id}",
   "name": "collect",
   "key": "collect#1@e3b0c44298fc1c14",
   "after": "inspect#1@9f2c1a7b3d5e8f04",
   "place": "lib/review.dart:12",
   "outputId": "$outputId",
-  "log": "step.log"
+  "log": "effect.log"
 }
 ''');
-      expect(await handle.steps(), [finished]);
-      expect(dotEntries(handle.dir), isEmpty);
-    });
+        expect(await handle.effects(), [finished]);
+        expect(dotEntries(handle.dir), isEmpty);
+      },
+    );
 
     test(
-      'rewrites the step.json of a step of a session opened again',
+      'rewrites the effect.json of an effect of a session opened again',
       () async {
         final created = await newSession();
-        final step = await newStep(created);
+        final effect = await newEffect(created);
         await created.release();
         final opened = (await FsStore(p.dirname(created.dir))
             .openSession(created.session.id))!;
 
-        final finished = await opened.setStepOutput(step, newId());
+        final finished = await opened.setEffectOutput(effect, newId());
 
-        expect(await opened.steps(), [finished]);
+        expect(await opened.effects(), [finished]);
       },
     );
   });
 
-  group('setStepAfter', () {
-    test('rewrites step.json with the after and returns the step', () async {
-      final handle = await newSession();
-      final step = await newStep(handle, after: 'inspect#1@9f2c1a7b3d5e8f04');
-      final finished = await handle.setStepOutput(step, newId());
+  group('setEffectAfter', () {
+    test(
+      'rewrites effect.json with the after and returns the effect',
+      () async {
+        final handle = await newSession();
+        final effect = await newEffect(
+          handle,
+          after: 'inspect#1@9f2c1a7b3d5e8f04',
+        );
+        final finished = await handle.setEffectOutput(effect, newId());
 
-      final again = await handle.setStepAfter(finished, null);
+        final again = await handle.setEffectAfter(finished, null);
 
-      expect(again, finished.withAfter(null));
-      expect(
-        Step.fromJson(
-          jsonDecode(read(p.join(stepDir(handle, step.id), 'step.json')))
-              as Map<String, Object?>,
-        ),
-        again,
-      );
-      expect(await handle.steps(), [again]);
-      expect(dotEntries(handle.dir), isEmpty);
-    });
+        expect(again, finished.withAfter(null));
+        expect(
+          Effect.fromJson(
+            jsonDecode(
+              read(p.join(effectDir(handle, effect.id), 'effect.json')),
+            ) as Map<String, Object?>,
+          ),
+          again,
+        );
+        expect(await handle.effects(), [again]);
+        expect(dotEntries(handle.dir), isEmpty);
+      },
+    );
   });
 
-  group('a step finishing in the order of D3', () {
-    test('has its output and step-finished before step.json gets the '
+  group('an effect finishing in the order of D3', () {
+    test('has its output and effect-finished before effect.json gets the '
         'outputId', () async {
       final clock = tickingClock();
       final handle = await newSession(clock: clock);
-      final step = await newStep(handle);
-      final stepJson = p.join(stepDir(handle, step.id), 'step.json');
-      await handle.appendEvent(StepStarted(time: clock(), stepId: step.id));
+      final effect = await newEffect(handle);
+      final effectJson = p.join(effectDir(handle, effect.id), 'effect.json');
+      await handle.appendEvent(
+        EffectStarted(time: clock(), effectId: effect.id),
+      );
 
       final outputId = await handle.writeDocument('done');
       expect(await handle.documentValue(outputId), 'done');
-      expect(Step.fromJson(_json(stepJson)).outputId, isNull);
+      expect(Effect.fromJson(_json(effectJson)).outputId, isNull);
 
-      final finished = StepFinished(
+      final finished = EffectFinished(
         time: clock(),
-        stepId: step.id,
+        effectId: effect.id,
         outputId: outputId,
       );
       await handle.appendEvent(finished);
       expect(await handle.events(), [
         SessionStarted(time: start, code: code),
-        StepStarted(
+        EffectStarted(
           time: DateTime.utc(2026, 10, 3, 10, 0, 2, 482),
-          stepId: step.id,
+          effectId: effect.id,
         ),
-        StepFinished(
+        EffectFinished(
           time: DateTime.utc(2026, 10, 3, 10, 0, 3, 482),
-          stepId: step.id,
+          effectId: effect.id,
           outputId: outputId,
         ),
       ]);
-      expect(Step.fromJson(_json(stepJson)).outputId, isNull);
+      expect(Effect.fromJson(_json(effectJson)).outputId, isNull);
 
-      await handle.setStepOutput(step, outputId);
-      expect(Step.fromJson(_json(stepJson)).outputId, outputId);
+      await handle.setEffectOutput(effect, outputId);
+      expect(Effect.fromJson(_json(effectJson)).outputId, outputId);
       expect(
-        p.basename(p.dirname(stepJson)),
-        '2026-10-03T10-00-01-482-collect-${step.id}',
+        p.basename(p.dirname(effectJson)),
+        '2026-10-03T10-00-01-482-collect-${effect.id}',
       );
     });
   });
 
   group('openLog', () {
-    test('appends to step.log of the step, across opens', () async {
+    test('appends to effect.log of the effect, across opens', () async {
       final handle = await newSession();
-      final step = await newStep(handle);
-      final logFile = p.join(stepDir(handle, step.id), 'step.log');
+      final effect = await newEffect(handle);
+      final logFile = p.join(effectDir(handle, effect.id), 'effect.log');
 
-      final first = handle.openLog(step.id);
+      final first = handle.openLog(effect.id);
       first.add(utf8.encode('started\n'));
       first.add(utf8.encode('crashed'));
       await first.close();
-      final second = handle.openLog(step.id);
+      final second = handle.openLog(effect.id);
       second.add(utf8.encode('\nstarted again\n'));
       await second.close();
 
       expect(read(logFile), 'started\ncrashed\nstarted again\n');
     });
 
-    test('of a step of a session opened again writes into its '
+    test('of an effect of a session opened again writes into its '
         'directory', () async {
       final created = await newSession();
-      final step = await newStep(created);
+      final effect = await newEffect(created);
       await created.release();
       final opened = (await FsStore(p.dirname(created.dir))
           .openSession(created.session.id))!;
 
-      final log = opened.openLog(step.id)..add(utf8.encode('again\n'));
+      final log = opened.openLog(effect.id)..add(utf8.encode('again\n'));
       await log.close();
 
-      expect(read(p.join(stepDir(opened, step.id), 'step.log')), 'again\n');
+      expect(
+        read(p.join(effectDir(opened, effect.id), 'effect.log')),
+        'again\n',
+      );
     });
 
     test('flush makes the bytes added so far readable', () async {
       final handle = await newSession();
-      final step = await newStep(handle);
-      final logFile = p.join(stepDir(handle, step.id), 'step.log');
-      final log = handle.openLog(step.id);
+      final effect = await newEffect(handle);
+      final logFile = p.join(effectDir(handle, effect.id), 'effect.log');
+      final log = handle.openLog(effect.id);
       addTearDown(log.close);
 
       log.add(utf8.encode('line 1\n'));
@@ -494,12 +521,12 @@ void main() {
     test('a log it cannot open throws nothing, now or later: failed gives '
         'why', () async {
       final handle = await newSession();
-      final step = await newStep(handle);
+      final effect = await newEffect(handle);
       // A directory where the file should be: it cannot be opened.
-      final logFile = p.join(stepDir(handle, step.id), 'step.log');
+      final logFile = p.join(effectDir(handle, effect.id), 'effect.log');
       Directory(logFile).createSync();
 
-      final log = handle.openLog(step.id);
+      final log = handle.openLog(effect.id);
       // Long enough for the open to have failed with nothing added.
       await Future<void>.delayed(const Duration(milliseconds: 200));
       log.add(utf8.encode('lost\n'));
@@ -515,10 +542,10 @@ void main() {
     test('writes what is added while a write is under way in one write, and '
         'tells how much is not written yet', () async {
       final handle = await newSession();
-      final step = await newStep(handle);
+      final effect = await newEffect(handle);
       final file = _HeldWrites();
       final log = IOOverrides.runZoned(
-        () => handle.openLog(step.id),
+        () => handle.openLog(effect.id),
         createFile: (_) => _OpensTo(file),
       );
 
@@ -547,72 +574,75 @@ void main() {
   group('a file that does not hold its model', () {
     test('is a FormatException that names the file', () async {
       final handle = await newSession();
-      final step = await newStep(handle);
-      final stepJson = p.join(stepDir(handle, step.id), 'step.json');
-      await File(stepJson).writeAsString('{"id": 1}\n');
+      final effect = await newEffect(handle);
+      final effectJson = p.join(effectDir(handle, effect.id), 'effect.json');
+      await File(effectJson).writeAsString('{"id": 1}\n');
 
       await expectLater(
-        handle.steps(),
+        handle.effects(),
         throwsA(
           isA<FormatException>().having(
             (e) => e.message,
             'message',
-            '$stepJson: id: expected a string',
+            '$effectJson: id: expected a string',
           ),
         ),
       );
     });
   });
 
-  group('a step the session does not have', () {
+  group('an effect the session does not have', () {
     test('is an argument error', () async {
       final handle = await newSession();
       final other = await newSession();
-      final foreign = await newStep(other);
+      final foreign = await newEffect(other);
 
       expect(() => handle.openLog(newId()), throwsArgumentError);
       expect(() => handle.openLog(foreign.id), throwsArgumentError);
-      expect(() => handle.setStepOutput(foreign, newId()), throwsArgumentError);
+      expect(
+        () => handle.setEffectOutput(foreign, newId()),
+        throwsArgumentError,
+      );
     });
   });
 
   group('a session whose directory is gone', () {
     // Removed while a process owns it. Building the directories again would
     // leave a session without session.json or a journal.
-    test('createStep and writeDocument fail and make nothing', () async {
+    test('createEffect and writeDocument fail and make nothing', () async {
       final handle = await newSession();
       await Directory(handle.dir).delete(recursive: true);
 
-      await expectLater(newStep(handle), throwsA(isA<FileSystemException>()));
+      await expectLater(newEffect(handle), throwsA(isA<FileSystemException>()));
       await expectLater(
         handle.writeDocument('lost'),
         throwsA(isA<FileSystemException>()),
       );
       await expectLater(
-        handle.appendEvent(StepStarted(time: start, stepId: newId())),
+        handle.appendEvent(EffectStarted(time: start, effectId: newId())),
         throwsA(isA<FileSystemException>()),
       );
       expect(Directory(handle.dir).existsSync(), isFalse);
     });
 
-    test('a step that steps() listed fails as a write into its directory '
-        'does: openLog through failed, setStepOutput with a '
+    test('an effect that effects() listed fails as a write into its directory '
+        'does: openLog through failed, setEffectOutput with a '
         'FileSystemException', () async {
       final created = await newSession();
-      await newStep(created);
+      await newEffect(created);
       await created.release();
       final opened = (await FsStore(p.dirname(created.dir))
           .openSession(created.session.id))!;
       addTearDown(opened.release);
-      final [step] = await opened.steps();
+      final [effect] = await opened.effects();
       await Directory(opened.dir).delete(recursive: true);
 
-      final log = opened.openLog(step.id)..add(utf8.encode('lost\n'));
+      final log = opened.openLog(effect.id)..add(utf8.encode('lost\n'));
       await log.close();
 
       expect(await log.failed, isA<FileSystemException>());
       await expectLater(
-        opened.setStepOutput(step, newId()),
+        opened.setEffectOutput(effect, newId()),
         throwsA(isA<FileSystemException>()),
       );
     });
@@ -629,7 +659,7 @@ void main() {
         File(journal(handle)).deleteSync();
 
         await expectLater(
-          handle.appendEvent(StepStarted(time: start, stepId: newId())),
+          handle.appendEvent(EffectStarted(time: start, effectId: newId())),
           throwsA(
             isA<PathNotFoundException>().having(
               (e) => e.path,
@@ -648,7 +678,7 @@ void main() {
       File(sessionJson).deleteSync();
 
       await expectLater(
-        handle.appendEvent(StepStarted(time: start, stepId: newId())),
+        handle.appendEvent(EffectStarted(time: start, effectId: newId())),
         throwsA(
           isA<PathNotFoundException>().having(
             (e) => e.path,
@@ -659,21 +689,21 @@ void main() {
       );
     });
 
-    test('createStep fails when the steps directory is gone', () async {
+    test('createEffect fails when the effects directory is gone', () async {
       final handle = await newSession();
-      Directory(p.join(handle.dir, 'steps')).deleteSync();
+      Directory(p.join(handle.dir, 'effects')).deleteSync();
 
-      await expectLater(newStep(handle), throwsA(isA<FileSystemException>()));
-      expect(Directory(p.join(handle.dir, 'steps')).existsSync(), isFalse);
+      await expectLater(newEffect(handle), throwsA(isA<FileSystemException>()));
+      expect(Directory(p.join(handle.dir, 'effects')).existsSync(), isFalse);
     });
 
-    test('the log of a step whose directory is gone fails, throwing '
+    test('the log of an effect whose directory is gone fails, throwing '
         'nothing', () async {
       final handle = await newSession();
-      final step = await newStep(handle);
-      Directory(stepDir(handle, step.id)).deleteSync(recursive: true);
+      final effect = await newEffect(handle);
+      Directory(effectDir(handle, effect.id)).deleteSync(recursive: true);
 
-      final log = handle.openLog(step.id);
+      final log = handle.openLog(effect.id);
       log.add(utf8.encode('lost\n'));
       await log.close();
 

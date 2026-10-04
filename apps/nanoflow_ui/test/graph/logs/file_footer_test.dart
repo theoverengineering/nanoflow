@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_ui/graph/logs/effect_details_pane.dart';
+import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/graph/logs/file_footer.dart';
-import 'package:nanoflow_ui/graph/logs/step_details_pane.dart';
-import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 
 import '../../state/support.dart';
@@ -25,8 +25,8 @@ void main() {
   Finder inFooter(Finder finder) =>
       find.descendant(of: footer(), matching: finder);
 
-  Future<void> open(WidgetTester tester, StepTab tab) async {
-    await tester.tap(find.byKey(StepDetailsPane.tabKey(tab)));
+  Future<void> open(WidgetTester tester, EffectTab tab) async {
+    await tester.tap(find.byKey(EffectDetailsPane.tabKey(tab)));
     await tester.pump();
   }
 
@@ -36,13 +36,13 @@ void main() {
 
     final shown = textIn(tester, inFooter(find.byKey(FileFooter.pathKey)));
     expect(shown, startsWith('…'));
-    expect(shown, endsWith('-notify-a1b2-notify-5/step.log'));
+    expect(shown, endsWith('-notify-a1b2-notify-5/effect.log'));
     expect(notifyLogPath, endsWith(shown.substring(1)));
     expect(inFooter(find.byTooltip(notifyLogPath)), findsOneWidget);
 
-    await tester.tap(find.byKey(StepList.rowKey('a1b2-inspect-3')));
+    await tester.tap(find.byKey(EffectList.rowKey('a1b2-inspect-3')));
     await tester.pump();
-    await open(tester, StepTab.output);
+    await open(tester, EffectTab.output);
     expect(
       textIn(tester, inFooter(find.byKey(FileFooter.pathKey))),
       endsWith('-a1b2-session/documents/report-2.json'),
@@ -71,7 +71,7 @@ void main() {
     expect(footer(), findsNothing);
 
     await pumpReview(tester);
-    await open(tester, StepTab.output);
+    await open(tester, EffectTab.output);
     expect(footer(), findsNothing);
   });
 
@@ -90,8 +90,8 @@ void main() {
   });
 
   for (final (button, note) in [
-    ('Finder', 'Could not reveal step.log in Finder'),
-    ('Editor', 'Could not open step.log in an editor'),
+    ('Finder', 'Could not reveal effect.log in Finder'),
+    ('Editor', 'Could not open effect.log in an editor'),
   ]) {
     testWidgets('says when $button fails', (tester) async {
       await pumpReview(tester, shell: shellOpening([], exitCode: 1));
@@ -127,7 +127,7 @@ void main() {
     await tester.tap(inFooter(find.byTooltip('Copy path')));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Could not copy the path of step.log'), findsOneWidget);
+    expect(find.text('Could not copy the path of effect.log'), findsOneWidget);
     expect(inFooter(find.text('Copied')), findsNothing);
   });
 }

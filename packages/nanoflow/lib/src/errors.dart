@@ -1,16 +1,16 @@
 /// A value that a session keeps — the input of a workflow, the result of a
-/// workflow or of a step — does not come back from JSON as the type the code
+/// workflow or of an effect — does not come back from JSON as the type the code
 /// declares: it is not JSON and has no `toJson`, its type is neither a JSON
 /// type nor one with a codec (`Flow.addCodec`), or the codec's `fromJson`
 /// fails.
 ///
-/// For a step that runs it is the step's exception: the step fails with it.
-/// For a step's saved result, whose type has no codec when `Flow.resume`
+/// For an effect that runs it is the effect's exception: the effect fails with
+/// it. For an effect's saved result, whose type has no codec when `Flow.resume`
 /// takes the session on, it ends the session as a [StorageException] does.
 final class CodecException implements Exception {
   const CodecException(this.type, this.reason);
 
-  /// The type of the value, as the workflow or the step declares it.
+  /// The type of the value, as the workflow or the effect declares it.
   final Type type;
 
   /// What went wrong.
@@ -52,7 +52,7 @@ final class WorkflowMismatchException implements Exception {
 
 /// A session could not be written or read.
 ///
-/// A session whose store fails as it runs ends there: no step starts in it
+/// A session whose store fails as it runs ends there: no effect starts in it
 /// any more, nothing more is written to it, and its result is this
 /// exception.
 final class StorageException implements Exception {
@@ -67,7 +67,7 @@ final class StorageException implements Exception {
   String toString() => 'StorageException: $cause';
 }
 
-/// The flow was stopped: no step starts, no program starts with `exec` in
+/// The flow was stopped: no effect starts, no program starts with `exec` in
 /// its sessions, and no session starts or resumes any more.
 final class FlowStoppedException implements Exception {
   const FlowStoppedException();

@@ -114,17 +114,17 @@ List<String> sleeper(String pidFile) => [
   pidFile,
 ];
 
-/// Where [sleepsInStep] and [sleepsBeside] have their program write its pid.
+/// Where [sleepsInEffect] and [sleepsBeside] have their program write its pid.
 late String pidFile;
 
-/// What [exec] threw in [sleepsInStep] and [sleepsBeside], in order.
+/// What [exec] threw in [sleepsInEffect] and [sleepsBeside], in order.
 final execErrors = <Object>[];
 
-/// Opened to let [sleepsBeside] past its step `wait`.
+/// Opened to let [sleepsBeside] past its effect `wait`.
 late Completer<void> gate;
 
-/// A step that runs a program that sleeps for 100 s, then another program.
-Future<String> sleepsInStep(Flow f, String x) => f.step('sleep', () async {
+/// An effect that runs a program that sleeps for 100 s, then another program.
+Future<String> sleepsInEffect(Flow f, String x) => f.effect('sleep', () async {
   for (final arguments in [sleeper(pidFile), <String>[]]) {
     try {
       await exec('/bin/sh', arguments);
@@ -135,11 +135,11 @@ Future<String> sleepsInStep(Flow f, String x) => f.step('sleep', () async {
   return 'woke';
 });
 
-/// A step that runs a program that sleeps for 100 s, and beside it a step
+/// An effect that runs a program that sleeps for 100 s, and beside it an effect
 /// that waits for [gate].
 Future<void> sleepsBeside(Flow f, String x) async {
   await Future.wait([
-    f.step('sleep', () async {
+    f.effect('sleep', () async {
       try {
         return await exec('/bin/sh', sleeper(pidFile));
       } on Exception catch (e) {
@@ -147,22 +147,22 @@ Future<void> sleepsBeside(Flow f, String x) async {
         rethrow;
       }
     }),
-    f.step('wait', () => gate.future),
+    f.effect('wait', () => gate.future),
   ]);
 }
 
-/// A step that runs a program that writes to stderr.
-Future<String> complainsInStep(Flow f, String x) => f.step(
+/// An effect that runs a program that writes to stderr.
+Future<String> complainsInEffect(Flow f, String x) => f.effect(
   'complain',
   () => exec('/bin/sh', ['-c', 'echo to the log >&2; echo out']),
 );
 
-/// Runs a program that writes to stderr, outside the steps.
+/// Runs a program that writes to stderr, outside the effects.
 Future<String> complainsOutside(Flow f, String x) =>
     exec('/bin/sh', ['-c', 'echo to stderr >&2; echo out']);
 
-/// A step that runs a program that writes 3 MB to stderr.
-Future<String> floodsLog(Flow f, String x) => f.step(
+/// An effect that runs a program that writes 3 MB to stderr.
+Future<String> floodsLog(Flow f, String x) => f.effect(
   'flood',
   () => exec('/bin/sh', [
     '-c',
@@ -170,19 +170,19 @@ Future<String> floodsLog(Flow f, String x) => f.step(
   ]),
 );
 
-/// The shell [execsThenSteps] runs its program through.
+/// The shell [execsThenEffects] runs its program through.
 late String shellPath;
 
-/// Runs a program through [shellPath] in the workflow, then a step.
-Future<String> execsThenSteps(Flow f, String x) async {
+/// Runs a program through [shellPath] in the workflow, then an effect.
+Future<String> execsThenEffects(Flow f, String x) async {
   await execIn(shellPath, 'true', []);
-  return f.step('after', () => 'x');
+  return f.effect('after', () => 'x');
 }
 
-/// The keys of the steps of the session [sessionId] in [dir].
+/// The keys of the effects of the session [sessionId] in [dir].
 Future<List<String>> keysOf(String dir, String sessionId) async => [
-  for (final step in await (await openSession(dir, sessionId)).steps())
-    step.key,
+  for (final effect in await (await openSession(dir, sessionId)).effects())
+    effect.key,
 ];
 
 /// Why a test that needs bash is skipped, or `null` when there is one.
@@ -232,7 +232,7 @@ void main() {
     expect(stderr.text, isEmpty);
   }, skip: noBash ?? noPerl);
 
-  test('keeps perl out of the step log and out of the program\'s '
+  test('keeps perl out of the effect log and out of the program\'s '
       'environment under a locale that is not installed', () async {
     // perl warns on stderr about it, unless told not to with PERL_BADLANG,
     // which then must not reach the program.
@@ -448,32 +448,32 @@ void main() {
       execErrors.clear();
     });
 
-    test('writes the stderr of a program run in a step to the step\'s '
+    test('writes the stderr of a program run in an effect to the effect\'s '
         'log', () async {
       final stderr = Captured();
 
       expect(
         await withStderr(
           stderr,
-          () => Flow(directory: dir).run(complainsInStep, 'x'),
+          () => Flow(directory: dir).run(complainsInEffect, 'x'),
         ),
         'out\n',
       );
 
       expect(stderr.text, isEmpty);
       expect(
-        await logOfStep(await onlySession(dir), 'complain'),
+        await logOfEffect(await onlySession(dir), 'complain'),
         'to the log\n',
       );
     });
 
-    test('writes all of a flood of stderr to the step\'s log', () async {
+    test('writes all of a flood of stderr to the effect\'s log', () async {
       expect(await Flow(directory: dir).run(floodsLog, 'x'), 'done\n');
 
-      expect(await logOfStep(await onlySession(dir), 'flood'), 'x' * 3000000);
+      expect(await logOfEffect(await onlySession(dir), 'flood'), 'x' * 3000000);
     });
 
-    test('passes the stderr of a program run outside the steps on to the '
+    test('passes the stderr of a program run outside the effects on to the '
         'process stderr', () async {
       final stderr = Captured();
 
@@ -486,13 +486,13 @@ void main() {
       );
 
       expect(stderr.text, 'to stderr\n');
-      expect(await (await onlySession(dir)).steps(), isEmpty);
+      expect(await (await onlySession(dir)).effects(), isEmpty);
     });
 
     test('flow.stop() ends the group of a program that runs, and exec throws '
         'a FlowStoppedException then, and at once after', () async {
       final flow = Flow(directory: dir);
-      final session = await flow.start(sleepsInStep, 'x');
+      final session = await flow.start(sleepsInEffect, 'x');
       final [sleep] = await pidsIn(pidFile, 1);
 
       flow.stop();
@@ -505,15 +505,15 @@ void main() {
       expect(isRunning(sleep), isFalse);
     });
 
-    test('moves no step key: the first program through a shell, which '
+    test('moves no effect key: the first program through a shell, which '
         'probes the shell, and a later one give the same keys', () async {
       // A path to bash that no test has run a program through before.
       shellPath = '/bin/./bash';
       final flow = Flow(directory: dir);
 
-      final first = await flow.start(execsThenSteps, 'x');
+      final first = await flow.start(execsThenEffects, 'x');
       await first.result;
-      final second = await flow.start(execsThenSteps, 'x');
+      final second = await flow.start(execsThenEffects, 'x');
       await second.result;
 
       final keys = await keysOf(dir, first.id);

@@ -90,7 +90,7 @@ void main() {
           warnings: [
             {
               'place': 'lib/review.dart:40',
-              'message': 'steps in a closure passed on are not drawn',
+              'message': 'effects in a closure passed on are not drawn',
             },
           ],
         ),
@@ -104,7 +104,7 @@ void main() {
     expect(
       inNotes(
         find.text(
-          'lib/review.dart:40  steps in a closure passed on are not drawn',
+          'lib/review.dart:40  effects in a closure passed on are not drawn',
         ),
       ),
       findsOneWidget,

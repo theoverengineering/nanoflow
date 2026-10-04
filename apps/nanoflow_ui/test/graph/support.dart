@@ -48,23 +48,23 @@ Future<GraphModel> pumpGraphScreen(
 }
 
 /// Sessions of release as docs/design/graph.png has them, at [columnNow]:
-/// a1b2 running, f0a5 running with a failed step, 7c3e failed, 4b8d
+/// a1b2 running, f0a5 running with a failed effect, 7c3e failed, 4b8d
 /// finished yesterday.
 GraphModel columnModel() => ownedModel(
   file: releaseFile,
   changes: changesOf([
     Journal('a1b2-session', workflow: 'release')
-      ..step('plan', 1, end: 5)
-      ..step('build', 5),
+      ..effect('plan', 1, end: 5)
+      ..effect('build', 5),
     Journal('f0a5-session', workflow: 'release', startedAt: -2131)
-      ..step('plan', -2130, end: -2120)
-      ..step('build', -2120, end: -2100, failed: true)
-      ..step('build', -2000),
+      ..effect('plan', -2130, end: -2120)
+      ..effect('build', -2120, end: -2100, failed: true)
+      ..effect('build', -2000),
     Journal('7c3e-session', workflow: 'release', startedAt: -4989)
-      ..step('plan', -4988, end: -4700, failed: true)
+      ..effect('plan', -4988, end: -4700, failed: true)
       ..fail(-4989 + 378, 'StateError: plan failed'),
     Journal('4b8d-session', workflow: 'release', startedAt: -67816)
-      ..step('plan', -67815, end: -67700)
+      ..effect('plan', -67815, end: -67700)
       ..finish(-67816 + 184),
   ]),
 );
@@ -85,10 +85,10 @@ Journal reviewSession() {
   final graph = graphFileNamed('review');
   String place(int line) => 'lib/review.dart:$line';
   return Journal('a1b2-session', graph: graph.toJson(), code: graph.fingerprint)
-    ..step('collect', 0, end: 149, output: 'change-1', place: place(49))
-    ..step('inspect', 150, end: 342, output: 'report-1', place: place(55))
-    ..step('fix', 343, end: 369, output: 'change-2', place: place(63))
-    ..step(
+    ..effect('collect', 0, end: 149, output: 'change-1', place: place(49))
+    ..effect('inspect', 150, end: 342, output: 'report-1', place: place(55))
+    ..effect('fix', 343, end: 369, output: 'change-2', place: place(63))
+    ..effect(
       'inspect',
       369,
       end: 611,
@@ -96,12 +96,12 @@ Journal reviewSession() {
       place: place(55),
       restarts: [520],
     )
-    ..step('publish', 612, end: 613, output: 'published', place: place(58))
-    ..step('notify', 612, place: place(59));
+    ..effect('publish', 612, end: 613, output: 'published', place: place(58))
+    ..effect('notify', 612, place: place(59));
 }
 
-/// The ids of the steps of [reviewSession], in order.
-const reviewSteps = [
+/// The ids of the effects of [reviewSession], in order.
+const reviewEffects = [
   'a1b2-collect-0',
   'a1b2-inspect-1',
   'a1b2-fix-2',
@@ -110,7 +110,7 @@ const reviewSteps = [
   'a1b2-notify-5',
 ];
 
-/// The log of the step on `notify` in docs/design/graph.png.
+/// The log of the effect on `notify` in docs/design/graph.png.
 const notifyLog = '''
 loading report for change c4f1a9
 2 findings, 3 subscribers
@@ -126,22 +126,22 @@ final reviewSessionDir = p.join(
   sessionDirName('review', t0, 'a1b2-session'),
 );
 
-/// The directory of the step [stepId] of [reviewSession] named [name],
+/// The directory of the effect [effectId] of [reviewSession] named [name],
 /// started at [startedAt] seconds.
-String reviewStepDir(String name, String stepId, num startedAt) => p.join(
+String reviewEffectDir(String name, String effectId, num startedAt) => p.join(
   reviewSessionDir,
-  stepsDirName,
-  stepDirName(at(startedAt), name, stepId),
+  effectsDirName,
+  effectDirName(at(startedAt), name, effectId),
 );
 
-/// The file of the step on `notify`'s log.
+/// The file of the effect on `notify`'s log.
 final notifyLogPath = p.join(
-  reviewStepDir('notify', 'a1b2-notify-5', 612),
+  reviewEffectDir('notify', 'a1b2-notify-5', 612),
   logFileName,
 );
 
-/// The directory of the second step on `inspect`.
-final inspectStepPath = reviewStepDir('inspect', 'a1b2-inspect-3', 369);
+/// The directory of the second effect on `inspect`.
+final inspectEffectPath = reviewEffectDir('inspect', 'a1b2-inspect-3', 369);
 
 /// The file of the document [id] of [reviewSession].
 String reviewDocumentPath(String id) =>
@@ -162,12 +162,12 @@ const reviewDocuments = <String, Object?>{
   'published': null,
 };
 
-/// The logs and documents of [reviewSession] and their files: the step on
+/// The logs and documents of [reviewSession] and their files: the effect on
 /// `notify` has written [notifyLog] so far.
 FakeFiles reviewFiles() => FakeFiles(
   logs: const {'a1b2-notify-5': notifyLog},
   documents: reviewDocuments,
-  stepPaths: {'a1b2-inspect-3': inspectStepPath},
+  effectPaths: {'a1b2-inspect-3': inspectEffectPath},
   logPaths: {'a1b2-notify-5': notifyLogPath},
   documentPaths: {
     for (final id in reviewDocuments.keys) id: reviewDocumentPath(id),
@@ -192,7 +192,7 @@ Journal copiesSession() {
     code: graph.fingerprint,
   );
   for (final (i, pkg) in ['core', 'tool', 'cli'].indexed) {
-    j.step(
+    j.effect(
       'upload',
       10 + i,
       end: 60 + i * 30,
@@ -203,7 +203,7 @@ Journal copiesSession() {
     );
   }
   for (final (i, pkg) in ['core', 'tool', 'cli'].indexed) {
-    j.step(
+    j.effect(
       'verify',
       61 + i * 30,
       end: pkg == 'tool' ? null : 120 + i * 30,
@@ -214,7 +214,7 @@ Journal copiesSession() {
     );
   }
   for (final pkg in ['core', 'cli']) {
-    j.step(
+    j.effect(
       'tag',
       pkg == 'core' ? 121 : 181,
       end: pkg == 'core' ? 150 : null,
@@ -228,7 +228,7 @@ Journal copiesSession() {
 }
 
 /// The model of the fixture `inline` at [inlineFile] with
-/// [copiesSession], its outputs as the steps gave them. For the screen to
+/// [copiesSession], its outputs as the effects gave them. For the screen to
 /// own.
 GraphModel copiesModel() => ownedModel(
   graph: graphFileNamed('inline'),
@@ -259,7 +259,7 @@ Future<GraphModel> pumpReview(
 );
 
 /// The model of the review example's graph file at [reviewFile] with
-/// [reviewSession], fed [more] after it; the steps' logs and documents are
+/// [reviewSession], fed [more] after it; the effects' logs and documents are
 /// [files], by default [reviewFiles]. For the screen to own.
 GraphModel reviewModel({FakeFiles? files, List<Change> more = const []}) =>
     ownedModel(

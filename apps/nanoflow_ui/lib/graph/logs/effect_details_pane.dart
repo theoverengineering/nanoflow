@@ -2,70 +2,70 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../../platform/shell.dart';
-import '../../state/step_details.dart';
-import '../../state/step_files.dart';
+import '../../state/effect_details.dart';
+import '../../state/effect_files.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
 import 'document_view.dart';
 import 'file_footer.dart';
 import 'log_view.dart';
 
-/// A tab of the step details.
-enum StepTab { output, log }
+/// A tab of the effect details.
+enum EffectTab { output, log }
 
-/// The selected step's details on the right of the `Logs` panel
-/// (docs/ui-spec.md «Logs»: «Детали шага»; spec §9 «Окно шага»): the step's
-/// name, the tabs `Output` and `Log`, and `Open` for the step details
-/// window. A step has no input.
+/// The selected effect's details on the right of the `Logs` panel
+/// (docs/ui-spec.md «Logs»: «Детали эффекта»; spec §9 «Окно эффекта»): the
+/// effect's name, the tabs `Output` and `Log`, and `Open` for the effect
+/// details window. An effect has no input.
 ///
-/// `Output` shows its document as JSON — a failed step's error instead —
-/// `Log` the step's log; the open tab stays as other steps are selected,
-/// `Log` at first. While the log of a running step holds on to its end,
+/// `Output` shows its document as JSON — a failed effect's error instead —
+/// `Log` the effect's log; the open tab stays as other effects are selected,
+/// `Log` at first. While the log of a running effect holds on to its end,
 /// `following tail` says so. With files to point at, the open tab's file is
 /// at the bottom.
-class StepDetailsPane extends StatefulWidget {
-  const StepDetailsPane({
+class EffectDetailsPane extends StatefulWidget {
+  const EffectDetailsPane({
     super.key,
-    required this.step,
+    required this.effect,
     required this.files,
     required this.shell,
     required this.graphFile,
-    this.onOpenStep,
+    this.onOpenEffect,
   });
 
-  final StepDetails step;
-  final StepFiles files;
+  final EffectDetails effect;
+  final EffectFiles files;
   final Shell shell;
 
   /// The graph file: the paths of files are shown from its directory.
   final String graphFile;
 
-  /// Opens the step details window on the step.
-  final ValueChanged<StepDetails>? onOpenStep;
+  /// Opens the effect details window on the effect.
+  final ValueChanged<EffectDetails>? onOpenEffect;
 
-  static Key tabKey(StepTab tab) => ValueKey(('step tab', tab));
-  static const headerKey = ValueKey('step details header');
+  static Key tabKey(EffectTab tab) => ValueKey(('effect tab', tab));
+  static const headerKey = ValueKey('effect details header');
   static const followingKey = ValueKey('following tail');
-  static const openKey = ValueKey('open step');
+  static const openKey = ValueKey('open effect');
 
   @override
-  State<StepDetailsPane> createState() => _StepDetailsPaneState();
+  State<EffectDetailsPane> createState() => _EffectDetailsPaneState();
 }
 
-class _StepDetailsPaneState extends State<StepDetailsPane> {
-  StepTab _tab = StepTab.log;
+class _EffectDetailsPaneState extends State<EffectDetailsPane> {
+  EffectTab _tab = EffectTab.log;
 
   /// Whether the log holds on to its end: anew for each log view, which
   /// opens at the end.
   ValueNotifier<bool> _following = ValueNotifier(true);
 
-  static bool _same(StepDetails a, StepDetails b) =>
-      a.sessionId == b.sessionId && a.stepId == b.stepId;
+  static bool _same(EffectDetails a, EffectDetails b) =>
+      a.sessionId == b.sessionId && a.effectId == b.effectId;
 
   @override
-  void didUpdateWidget(StepDetailsPane old) {
+  void didUpdateWidget(EffectDetailsPane old) {
     super.didUpdateWidget(old);
-    if (!_same(old.step, widget.step)) _followAnew();
+    if (!_same(old.effect, widget.effect)) _followAnew();
   }
 
   /// A new flag for a new log view: one that holds on. Replaced rather than
@@ -77,8 +77,8 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
     _following = ValueNotifier(true);
   }
 
-  void _open(StepTab tab) => setState(() {
-    if (tab == StepTab.log && _tab != StepTab.log) _followAnew();
+  void _open(EffectTab tab) => setState(() {
+    if (tab == EffectTab.log && _tab != EffectTab.log) _followAnew();
     _tab = tab;
   });
 
@@ -90,38 +90,38 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
 
   /// The file of the open tab, when there are files.
   String? get _path {
-    final step = widget.step;
+    final effect = widget.effect;
     final files = widget.files;
     return switch (_tab) {
-      StepTab.log => files.logPath(step.stepId),
-      StepTab.output => switch (step.output.documentId) {
-        final id? => files.documentPath(step.sessionId, id),
+      EffectTab.log => files.logPath(effect.effectId),
+      EffectTab.output => switch (effect.output.documentId) {
+        final id? => files.documentPath(effect.sessionId, id),
         null => null,
       },
     };
   }
 
   Widget _body() {
-    final step = widget.step;
-    if (_tab == StepTab.log) {
+    final effect = widget.effect;
+    if (_tab == EffectTab.log) {
       return LogView(
-        key: ValueKey(('log', step.sessionId, step.stepId)),
+        key: ValueKey(('log', effect.sessionId, effect.effectId)),
         files: widget.files,
-        step: step,
+        effect: effect,
         following: _following,
       );
     }
-    final output = step.output;
+    final output = effect.output;
     final id = output.documentId;
     if (id != null) {
       return DocumentView(
-        key: ValueKey(('document', step.sessionId, id)),
+        key: ValueKey(('document', effect.sessionId, id)),
         files: widget.files,
-        sessionId: step.sessionId,
+        sessionId: effect.sessionId,
         documentId: id,
       );
     }
-    return switch (step.error) {
+    return switch (effect.error) {
       final error? => TabNote('Failed: $error', color: AppColors.dangerText),
       null => TabNote(output.message ?? ''),
     };
@@ -129,17 +129,17 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
 
   @override
   Widget build(BuildContext context) {
-    final step = widget.step;
+    final effect = widget.effect;
     final path = _path;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Header(
-          step: step,
+          effect: effect,
           tab: _tab,
           following: _following,
           onTab: _open,
-          onOpen: () => widget.onOpenStep?.call(step),
+          onOpen: () => widget.onOpenEffect?.call(effect),
         ),
         Expanded(child: _body()),
         if (path != null)
@@ -156,17 +156,17 @@ class _StepDetailsPaneState extends State<StepDetailsPane> {
 /// The node's name, the tabs, `following tail` and `Open`.
 class _Header extends StatelessWidget {
   const _Header({
-    required this.step,
+    required this.effect,
     required this.tab,
     required this.following,
     required this.onTab,
     required this.onOpen,
   });
 
-  final StepDetails step;
-  final StepTab tab;
+  final EffectDetails effect;
+  final EffectTab tab;
   final ValueNotifier<bool> following;
-  final ValueChanged<StepTab> onTab;
+  final ValueChanged<EffectTab> onTab;
   final VoidCallback onOpen;
 
   /// Narrower than this, `following tail` is only its dot.
@@ -175,7 +175,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) => Container(
-      key: StepDetailsPane.headerKey,
+      key: EffectDetailsPane.headerKey,
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
@@ -191,7 +191,7 @@ class _Header extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: Text(
-                      step.name,
+                      effect.name,
                       style: AppText.detailsTitle,
                       maxLines: 1,
                       softWrap: false,
@@ -200,8 +200,8 @@ class _Header extends StatelessWidget {
                   ),
                 ),
                 for (final (which, label) in const [
-                  (StepTab.output, 'Output'),
-                  (StepTab.log, 'Log'),
+                  (EffectTab.output, 'Output'),
+                  (EffectTab.log, 'Log'),
                 ])
                   _Tab(
                     which: which,
@@ -212,7 +212,7 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          if (tab == StepTab.log && step.running)
+          if (tab == EffectTab.log && effect.running)
             ValueListenableBuilder(
               valueListenable: following,
               builder: (context, following, _) => following
@@ -228,9 +228,9 @@ class _Header extends StatelessWidget {
           Clickable(
             onTap: onOpen,
             child: Semantics(
-              label: 'Open step in details view',
+              label: 'Open effect in details view',
               child: Container(
-                key: StepDetailsPane.openKey,
+                key: EffectDetailsPane.openKey,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 4,
@@ -259,7 +259,7 @@ class _Tab extends StatelessWidget {
     required this.onTap,
   });
 
-  final StepTab which;
+  final EffectTab which;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -275,7 +275,7 @@ class _Tab extends StatelessWidget {
     return Clickable(
       onTap: onTap,
       child: Container(
-        key: StepDetailsPane.tabKey(which),
+        key: EffectDetailsPane.tabKey(which),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: selected
             ? BoxDecoration(
@@ -301,7 +301,7 @@ class _FollowingBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final badge = Container(
-      key: StepDetailsPane.followingKey,
+      key: EffectDetailsPane.followingKey,
       padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 9, vertical: 2),
       decoration: BoxDecoration(
         color: AppColors.noteSurface,

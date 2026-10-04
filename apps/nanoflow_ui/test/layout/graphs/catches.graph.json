@@ -1,9 +1,9 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "catches",
-  "fingerprint": "sha256:291e6c6e099165c30724f472718973facddc22404575457c35ed1f10f2b47074",
+  "fingerprint": "sha256:8f7eb35b6d9c4cf724f496270efc63660b26dcf68f385a9e59364965e6cdfe0e",
   "sources": {
-    "lib/catches.dart": "sha256:de5f767964d1c14a73038f2249f5862340a976d0b19c10c9c032e0d91ccfb1cd"
+    "lib/catches.dart": "sha256:36e2e00affcd308653daba3b2eb0b07dea0dbb88ef8ad89b5a128d97d5a7c421"
   },
   "builds": {},
   "workflows": [],
@@ -15,7 +15,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "measure",
             "place": "lib/catches.dart:25"
           },
@@ -27,13 +27,13 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "copy",
             "place": "lib/catches.dart:27"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "verify",
             "place": "lib/catches.dart:32"
           }
@@ -85,19 +85,19 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "scale",
             "place": "lib/catches.dart:76"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "apply",
             "place": "lib/catches.dart:78"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "report",
             "place": "lib/catches.dart:82"
           }
@@ -143,7 +143,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "prepare",
             "place": "lib/catches.dart:49"
           },
@@ -155,19 +155,19 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "ship",
             "place": "lib/catches.dart:51"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "unlock",
             "place": "lib/catches.dart:55"
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "announce",
             "place": "lib/catches.dart:57"
           }
@@ -218,7 +218,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "download",
             "place": "lib/catches.dart:37"
           },
@@ -236,13 +236,13 @@
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "parse",
             "place": "lib/catches.dart:40"
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "store",
             "place": "lib/catches.dart:44"
           }
@@ -305,7 +305,7 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "import",
             "place": "lib/catches.dart:94"
           }
@@ -346,7 +346,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "read",
             "place": "lib/catches.dart:63"
           },
@@ -358,13 +358,13 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "replace",
             "place": "lib/catches.dart:65"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "audit",
             "place": "lib/catches.dart:70"
           }
@@ -410,7 +410,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "check",
             "place": "lib/catches.dart:13"
           },
@@ -422,13 +422,13 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "send",
             "place": "lib/catches.dart:15"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "confirm",
             "place": "lib/catches.dart:20"
           }

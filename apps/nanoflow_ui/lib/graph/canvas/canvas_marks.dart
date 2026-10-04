@@ -2,7 +2,7 @@ import '../../layout/layout.dart';
 import '../../state/session_view.dart';
 
 /// How an arrow, an exit or an input bar is drawn (docs/ui-spec.md «Граф»):
-/// a step records no way it took, so no way is highlighted.
+/// an effect records no way it took, so no way is highlighted.
 enum Tone {
   /// As the graph draws it.
   plain,
@@ -13,11 +13,11 @@ enum Tone {
 }
 
 /// What the selected session puts on the canvas, as the canvas asks for it
-/// (spec §9 «Шаги на графе», «Копии»): the marks of its steps on the nodes
-/// of the level drawn, the nodes of the selected step, how many copies a
+/// (spec §9 «Эффекты на графе», «Копии»): the marks of its effects on the nodes
+/// of the level drawn, the nodes of the selected effect, how many copies a
 /// `copies` node ran. [CanvasMarks.plain] for `Current graph`.
 ///
-/// A step records no way it took, only where it was called: arrows, exits
+/// An effect records no way it took, only where it was called: arrows, exits
 /// and bars are [Tone.plain] — but in the body of one copy, what leads to
 /// or from a node the copy has not reached is [Tone.untaken]
 /// (docs/design/code-first/copy-switcher.html).
@@ -58,8 +58,8 @@ final class CanvasMarks {
 
   final GraphMarks? _marks;
 
-  /// Whether the level drawn is the body of copies, all of them shown: a
-  /// step node says how many copies are on it now.
+  /// Whether the level drawn is the body of copies, all of them shown: an
+  /// effect node says how many copies are on it now.
   final bool allCopies;
 
   /// Whether the level drawn is the body of copies, one copy shown: what
@@ -92,11 +92,11 @@ final class CanvasMarks {
         : Tone.plain;
   }
 
-  /// What the steps put on the node [id]; `null` for `Current graph`, a
+  /// What the effects put on the node [id]; `null` for `Current graph`, a
   /// condition, a marker.
   NodeMarks? node(String id) => _marks?.of(id);
 
-  /// Whether the selected step is on the node [id], or in it: it is ringed.
+  /// Whether the selected effect is on the node [id], or in it: it is ringed.
   bool selected(String id) => _marks?.selected.contains(id) ?? false;
 
   /// The badge over the stack of copies [id]: `×3` copies ran, `×0` none

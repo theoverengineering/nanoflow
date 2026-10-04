@@ -16,14 +16,14 @@ const documentsDirName = 'documents';
 /// per line.
 const eventsFileName = 'log.jsonl';
 
-/// Directory in a session directory with the session's steps.
-const stepsDirName = 'steps';
+/// Directory in a session directory with the session's effects.
+const effectsDirName = 'effects';
 
-/// File in a step directory with the step's fields.
-const stepFileName = 'step.json';
+/// File in an effect directory with the effect's fields.
+const effectFileName = 'effect.json';
 
-/// File in a step directory with what the step printed.
-const logFileName = 'step.log';
+/// File in an effect directory with what the effect printed.
+const logFileName = 'effect.log';
 
 /// File in a session directory whose lock the process that owns the session
 /// holds; its record names that process (see `Owner`). Readers open it by
@@ -60,16 +60,16 @@ String _safe(String name) => name.replaceAll(_nameUnsafe, '_');
 String sessionDirName(String workflow, DateTime createdAt, String id) =>
     '${_safe(workflow)}-${_secondStamp(createdAt)}-$id';
 
-/// Name of a step directory: `2026-10-03T10-00-00-482-collect-<id>`.
+/// Name of an effect directory: `2026-10-03T10-00-00-482-collect-<id>`.
 ///
 /// Characters of [name] outside `[A-Za-z0-9._-]` become `_`, one for each.
-String stepDirName(DateTime startedAt, String name, String id) =>
+String effectDirName(DateTime startedAt, String name, String id) =>
     '${_millisecondStamp(startedAt)}-${_safe(name)}-$id';
 
 /// Name of a document file: `<id>.json`.
 String documentFileName(String id) => '$id.json';
 
-/// The id at the end of a session or step directory name, or `null`.
+/// The id at the end of a session or effect directory name, or `null`.
 ///
 /// The id is the last 36 characters of [name]; they must form a valid id
 /// ([isId]) and be preceded by `-`.

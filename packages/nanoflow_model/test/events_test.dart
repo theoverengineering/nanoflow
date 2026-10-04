@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:test/test.dart';
 
-const String _stepId = '2e9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
+const String _effectId = '2e9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
 const String _outputId = '5f2d8b6a-1c93-4e07-a4b8-9e3c7a1d5b20';
 const String _graphId = '9a4d6c20-7e15-4b83-a0f9-3c2b8d5e7f41';
 const String _code = 'sha256:7d3e9f0c';
@@ -21,9 +21,9 @@ Map<String, Object?> _decode(String text) =>
 String _kind(Event event) => switch (event) {
   SessionStarted() => 'session-started',
   SessionResumed() => 'session-resumed',
-  StepStarted() => 'step-started',
-  StepFinished() => 'step-finished',
-  StepFailed() => 'step-failed',
+  EffectStarted() => 'effect-started',
+  EffectFinished() => 'effect-finished',
+  EffectFailed() => 'effect-failed',
   SessionFinished() => 'session-finished',
   SessionFailed() => 'session-failed',
   UnknownEvent() => 'unknown',
@@ -58,27 +58,27 @@ void main() {
           '"graphId":null}',
     ),
     (
-      StepStarted(time: _time, stepId: _stepId),
-      '{"time":"$_timeText","event":"step-started","stepId":"$_stepId"}',
+      EffectStarted(time: _time, effectId: _effectId),
+      '{"time":"$_timeText","event":"effect-started","effectId":"$_effectId"}',
     ),
     (
-      StepFinished(time: _time, stepId: _stepId, outputId: _outputId),
-      '{"time":"$_timeText","event":"step-finished","stepId":"$_stepId",'
+      EffectFinished(time: _time, effectId: _effectId, outputId: _outputId),
+      '{"time":"$_timeText","event":"effect-finished","effectId":"$_effectId",'
           '"outputId":"$_outputId"}',
     ),
     (
-      StepFinished(time: _time, stepId: _stepId, outputId: null),
-      '{"time":"$_timeText","event":"step-finished","stepId":"$_stepId",'
+      EffectFinished(time: _time, effectId: _effectId, outputId: null),
+      '{"time":"$_timeText","event":"effect-finished","effectId":"$_effectId",'
           '"outputId":null}',
     ),
     (
-      StepFailed(
+      EffectFailed(
         time: _time,
-        stepId: _stepId,
+        effectId: _effectId,
         error: 'Exception: boom',
         stack: _stack,
       ),
-      '{"time":"$_timeText","event":"step-failed","stepId":"$_stepId",'
+      '{"time":"$_timeText","event":"effect-failed","effectId":"$_effectId",'
           '"error":"Exception: boom","stack":${jsonEncode(_stack)}}',
     ),
     (
@@ -119,9 +119,9 @@ void main() {
         {
           'session-started',
           'session-resumed',
-          'step-started',
-          'step-finished',
-          'step-failed',
+          'effect-started',
+          'effect-finished',
+          'effect-failed',
           'session-finished',
           'session-failed',
         },
@@ -132,11 +132,11 @@ void main() {
       final resumed = Event.fromJson(_decode(cases[2].$2)) as SessionResumed;
       expect(resumed.code, _code);
       expect(resumed.graphId, _graphId);
-      final finished = Event.fromJson(_decode(cases[5].$2)) as StepFinished;
-      expect(finished.stepId, _stepId);
+      final finished = Event.fromJson(_decode(cases[5].$2)) as EffectFinished;
+      expect(finished.effectId, _effectId);
       expect(finished.outputId, _outputId);
-      final failed = Event.fromJson(_decode(cases[7].$2)) as StepFailed;
-      expect(failed.stepId, _stepId);
+      final failed = Event.fromJson(_decode(cases[7].$2)) as EffectFailed;
+      expect(failed.effectId, _effectId);
       expect(failed.error, 'Exception: boom');
       expect(failed.stack, _stack);
       final ended = Event.fromJson(_decode(cases[10].$2)) as SessionFailed;
@@ -163,23 +163,32 @@ void main() {
         ),
       );
       expect(
-        StepFinished(time: _time, stepId: _stepId, outputId: null),
-        isNot(StepFinished(time: _time, stepId: _stepId, outputId: _outputId)),
+        EffectFinished(time: _time, effectId: _effectId, outputId: null),
+        isNot(
+          EffectFinished(time: _time, effectId: _effectId, outputId: _outputId),
+        ),
       );
       expect(
-        StepFailed(time: _time, stepId: _stepId, error: 'a', stack: ''),
-        isNot(StepFailed(time: _time, stepId: _stepId, error: 'a', stack: 's')),
+        EffectFailed(time: _time, effectId: _effectId, error: 'a', stack: ''),
+        isNot(
+          EffectFailed(
+            time: _time,
+            effectId: _effectId,
+            error: 'a',
+            stack: 's',
+          ),
+        ),
       );
     });
 
     test('have a readable toString', () {
-      final text = StepFinished(
+      final text = EffectFinished(
         time: _time,
-        stepId: _stepId,
+        effectId: _effectId,
         outputId: _outputId,
       ).toString();
-      expect(text, startsWith('StepFinished('));
-      expect(text, contains(_stepId));
+      expect(text, startsWith('EffectFinished('));
+      expect(text, contains(_effectId));
       expect(text, contains(_timeText));
       expect(text, contains(_outputId));
     });
@@ -187,7 +196,7 @@ void main() {
 
   group('time', () {
     test('is parsed to UTC from the written form', () {
-      final event = Event.fromJson(_decode(cases[4].$2)) as StepStarted;
+      final event = Event.fromJson(_decode(cases[4].$2)) as EffectStarted;
       expect(event.time.isUtc, isTrue);
       expect(event.time, DateTime.utc(2026, 10, 3, 10, 0, 0, 482));
     });
@@ -204,11 +213,11 @@ void main() {
 
     test('is kept in UTC with milliseconds, as it is written', () {
       final local = DateTime.utc(2026, 10, 3, 10, 0, 0, 482, 123).toLocal();
-      final event = StepStarted(time: local, stepId: _stepId);
+      final event = EffectStarted(time: local, effectId: _effectId);
       expect(event.time.isUtc, isTrue);
       expect(event.time.microsecond, 0);
       expect(event.time, _time);
-      expect(event, StepStarted(time: _time, stepId: _stepId));
+      expect(event, EffectStarted(time: _time, effectId: _effectId));
       expect(Event.fromJson(event.toJson()), event);
     });
   });
@@ -238,20 +247,21 @@ void main() {
         // graphId of the wrong type
         '{"time":"$_timeText","event":"session-resumed","code":null,'
             '"graphId":[]}',
-        // stepId missing
-        '{"time":"$_timeText","event":"step-started"}',
-        // stepId null
-        '{"time":"$_timeText","event":"step-started","stepId":null}',
+        // effectId missing
+        '{"time":"$_timeText","event":"effect-started"}',
+        // effectId null
+        '{"time":"$_timeText","event":"effect-started","effectId":null}',
         // outputId missing
-        '{"time":"$_timeText","event":"step-finished","stepId":"$_stepId"}',
+        '{"time":"$_timeText","event":"effect-finished",'
+            '"effectId":"$_effectId"}',
         // outputId of the wrong type
-        '{"time":"$_timeText","event":"step-finished","stepId":"$_stepId",'
-            '"outputId":3}',
+        '{"time":"$_timeText","event":"effect-finished",'
+            '"effectId":"$_effectId","outputId":3}',
         // stack missing
-        '{"time":"$_timeText","event":"step-failed","stepId":"$_stepId",'
+        '{"time":"$_timeText","event":"effect-failed","effectId":"$_effectId",'
             '"error":"boom"}',
         // error null
-        '{"time":"$_timeText","event":"step-failed","stepId":"$_stepId",'
+        '{"time":"$_timeText","event":"effect-failed","effectId":"$_effectId",'
             '"error":null,"stack":""}',
         // outputId missing
         '{"time":"$_timeText","event":"session-finished"}',
@@ -304,7 +314,7 @@ void main() {
 
     test('is what an event of the old run journals gives', () {
       final input = _decode(
-        '{"runId":"$_stepId","time":"$_timeText","event":"run-finished"}',
+        '{"runId":"$_effectId","time":"$_timeText","event":"run-finished"}',
       );
       expect(Event.fromJson(input), isA<UnknownEvent>());
     });

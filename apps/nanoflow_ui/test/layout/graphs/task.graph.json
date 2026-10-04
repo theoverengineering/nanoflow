@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "task",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -21,7 +21,7 @@
           },
           {
             "id": "coder",
-            "kind": "step",
+            "kind": "effect",
             "name": "coder",
             "place": "lib/task.dart:11"
           },
@@ -33,7 +33,7 @@
           },
           {
             "id": "checks",
-            "kind": "step",
+            "kind": "effect",
             "name": "checks",
             "place": "lib/task.dart:13"
           },
@@ -45,7 +45,7 @@
           },
           {
             "id": "reviewer",
-            "kind": "step",
+            "kind": "effect",
             "name": "reviewer",
             "place": "lib/task.dart:15"
           },
@@ -57,7 +57,7 @@
           },
           {
             "id": "human-review",
-            "kind": "step",
+            "kind": "effect",
             "name": "human-review",
             "place": "lib/task.dart:17"
           },
@@ -69,7 +69,7 @@
           },
           {
             "id": "accept",
-            "kind": "step",
+            "kind": "effect",
             "name": "accept",
             "place": "lib/task.dart:19"
           }

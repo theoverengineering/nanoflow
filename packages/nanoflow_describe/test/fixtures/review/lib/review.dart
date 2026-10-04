@@ -1,6 +1,6 @@
 // The review graph from the README, written as an ordinary workflow
 // function: a fork that ends the session, a loop that fixes the change until
-// the inspection finds nothing, and two steps side by side.
+// the inspection finds nothing, and two effects side by side.
 import 'package:nanoflow/nanoflow.dart';
 
 class Change {
@@ -33,21 +33,21 @@ class Report {
 }
 
 Future<void> review(Flow f, String branch) async {
-  var change = await f.step('collect', () => collect(branch));
+  var change = await f.effect('collect', () => collect(branch));
   if (change.path.isEmpty) {
-    await f.step('discard', () => print('nothing to review'));
+    await f.effect('discard', () => print('nothing to review'));
     return;
   }
   while (true) {
-    final report = await f.step('inspect', () => inspect(change));
+    final report = await f.effect('inspect', () => inspect(change));
     if (report.findings.isEmpty) {
       await Future.wait([
-        f.step('publish', () => print('published ${report.change.path}')),
-        f.step('notify', () => print('${report.change.id}: accepted')),
+        f.effect('publish', () => print('published ${report.change.path}')),
+        f.effect('notify', () => print('${report.change.id}: accepted')),
       ]);
       return;
     }
-    change = await f.step('fix', () => fix(report));
+    change = await f.effect('fix', () => fix(report));
   }
 }
 

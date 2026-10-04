@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../../platform/shell.dart';
-import '../../state/step_files.dart';
+import '../../state/effect_files.dart';
 import '../../state/visit_details.dart';
 import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
@@ -11,11 +11,11 @@ import '../../widgets/failure_note.dart';
 import '../../widgets/path_bar.dart';
 import 'parts.dart';
 
-/// The step column of the step details window (docs/ui-spec.md «Окно
-/// деталей шага»; spec §9 «Окно шага»): where in the code the step was
+/// The effect column of the effect details window (docs/ui-spec.md «Окно
+/// деталей эффекта»; spec §9 «Окно эффекта»): where in the code the effect was
 /// called, `lib/review.dart:49`, with a button that copies it; and the
-/// facts of the step: `Started`, `Finished`, every start and how it ended.
-/// The step's directory is at the bottom, with `Reveal in Finder` and a
+/// facts of the effect: `Started`, `Finished`, every start and how it ended.
+/// The effect's directory is at the bottom, with `Reveal in Finder` and a
 /// copy button.
 class NodeColumn extends StatelessWidget {
   const NodeColumn({
@@ -27,17 +27,17 @@ class NodeColumn extends StatelessWidget {
   });
 
   final VisitDetails details;
-  final StepFiles files;
+  final EffectFiles files;
   final Shell shell;
 
   /// The graph file: paths are shown from its directory.
   final String graphFile;
 
-  /// The key of what the column says of the step, above the directory.
+  /// The key of what the column says of the effect, above the directory.
   static const descriptionKey = ValueKey('node description');
 
-  /// The key of the step's directory.
-  static const pathKey = ValueKey('step path');
+  /// The key of the effect's directory.
+  static const pathKey = ValueKey('effect path');
 
   /// The key of the button that copies the place.
   static const copyPlaceKey = ValueKey('copy place');
@@ -47,7 +47,7 @@ class NodeColumn extends StatelessWidget {
     final facts = details.facts;
     final visit = details.visit;
     final place = details.place;
-    final path = visit == null ? null : files.stepPath(visit.stepId);
+    final path = visit == null ? null : files.effectPath(visit.effectId);
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: AppColors.control,
@@ -75,7 +75,7 @@ class NodeColumn extends StatelessWidget {
                     _Place(place: place, shell: shell),
                     if (facts != null) ...[
                       const SizedBox(height: 26),
-                      const SectionLabel('This step'),
+                      const SectionLabel('This effect'),
                       const SizedBox(height: 8),
                       _Facts(facts),
                     ],
@@ -89,7 +89,7 @@ class NodeColumn extends StatelessWidget {
                 root: p.dirname(graphFile),
                 height: 44,
                 padding: 22,
-                style: AppText.stepPath,
+                style: AppText.effectPath,
                 color: AppColors.card,
                 border: AppColors.panelBorder,
                 pathKey: pathKey,
@@ -149,7 +149,7 @@ class _Place extends StatelessWidget {
           Expanded(
             child: SelectionArea(
               child: Text(
-                place ?? 'Not known: the step recorded no place',
+                place ?? 'Not known: the effect recorded no place',
                 style: place == null ? AppText.placeNote : AppText.placeBox,
               ),
             ),
@@ -174,7 +174,7 @@ class _Place extends StatelessWidget {
 class _Facts extends StatelessWidget {
   const _Facts(this.facts);
 
-  final StepFacts facts;
+  final EffectFacts facts;
 
   static const _labelWidth = 110.0;
 

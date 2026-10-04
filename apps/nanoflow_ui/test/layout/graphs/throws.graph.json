@@ -1,9 +1,9 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "throws",
-  "fingerprint": "sha256:84d6db30e4b868be84ae9f2695e8dcd472e74119a7a5005ec5ea1ac552725692",
+  "fingerprint": "sha256:0f7a0322a64c17e377d339340965411b167b0adee280af8c64453aa2a51fa584",
   "sources": {
-    "lib/throws.dart": "sha256:899bd254a3729c568df62a1932cd2f29ca413dfc228d56b9babcbd139da79fc5"
+    "lib/throws.dart": "sha256:bae53a90e2e9977dd43fbe23a40b730b8f5951c83c041a5802cdb613ea3b554d"
   },
   "builds": {},
   "workflows": [],
@@ -15,7 +15,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "acquire",
             "place": "lib/throws.dart:9"
           },
@@ -27,19 +27,19 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "use",
             "place": "lib/throws.dart:11"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "'release-$lock'",
             "place": "lib/throws.dart:13"
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "'release-$lock'",
             "place": "lib/throws.dart:13"
           }
@@ -90,7 +90,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "import",
             "place": "lib/throws.dart:25"
           }
@@ -122,7 +122,7 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "stat",
             "place": "lib/throws.dart:56"
           },
@@ -134,13 +134,13 @@
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "unit",
             "place": "lib/throws.dart:60"
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "record",
             "place": "lib/throws.dart:62"
           }
@@ -186,7 +186,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "fetch",
             "place": "lib/throws.dart:42"
           },
@@ -198,25 +198,25 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "write",
             "place": "lib/throws.dart:44"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "close",
             "place": "lib/throws.dart:46"
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "close",
             "place": "lib/throws.dart:46"
           },
           {
             "id": "6",
-            "kind": "step",
+            "kind": "effect",
             "name": "report",
             "place": "lib/throws.dart:51"
           }
@@ -272,7 +272,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "ping",
             "place": "lib/throws.dart:30"
           },
@@ -284,13 +284,13 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "pull",
             "place": "lib/throws.dart:32"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "log",
             "place": "lib/throws.dart:36"
           }
@@ -333,7 +333,7 @@
   "warnings": [
     {
       "place": "lib/throws.dart:13",
-      "message": "step name is not a string literal"
+      "message": "effect name is not a string literal"
     },
     {
       "place": "lib/throws.dart:33",

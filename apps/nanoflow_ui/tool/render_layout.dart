@@ -250,7 +250,7 @@ String renderSvg(GraphLayout layout, String caption) {
           ..writeln(
             _inside(c, node.inside!, _markerText, size: 12, mono: false),
           );
-      case NodeKind.step ||
+      case NodeKind.effect ||
           NodeKind.condition ||
           NodeKind.call ||
           NodeKind.copies:
@@ -275,7 +275,7 @@ String renderSvg(GraphLayout layout, String caption) {
             '<g transform="translate(${_n(c.x - 14)} ${_n(c.y - 14)})" '
             'fill="none" stroke="$_icon" stroke-width="1.6" '
             'stroke-linecap="round" stroke-linejoin="round">'
-            '${node.kind == NodeKind.condition ? _conditionIcon : _stepIcon}'
+            '${node.kind == NodeKind.condition ? _conditionIcon : _effectIcon}'
             '</g>',
           );
         }
@@ -374,7 +374,7 @@ String _inside(
     'font-family="${mono ? 'Geist Mono, Menlo, monospace' : 'Geist, Helvetica, sans-serif'}" '
     'font-size="${_n(size)}" fill="$colour">${_escape(text)}</text>';
 
-const _stepIcon =
+const _effectIcon =
     '<rect x="3.5" y="5.5" width="21" height="17" rx="3.5"/>'
     '<path d="M9 11l3.2 3L9 17M14.5 17.5h4.5"/>';
 

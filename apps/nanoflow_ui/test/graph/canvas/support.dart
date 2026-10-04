@@ -6,10 +6,10 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/state/effect_files.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/state/outcomes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
-import 'package:nanoflow_ui/state/step_files.dart';
 
 import '../../layout/support.dart' show loadGraphFile;
 import '../../state/support.dart';
@@ -32,7 +32,7 @@ GraphModel modelOf({
   Stream<Change> more = const Stream.empty(),
   Map<String, Object?> documents = const {},
   bool noGraph = false,
-  StepFiles? files,
+  EffectFiles? files,
 }) {
   final model = ownedModel(
     graph: graph,
@@ -49,7 +49,7 @@ GraphModel modelOf({
 
 /// [modelOf] for whoever disposes it: the graph screen disposes its model.
 /// Without [graph], the release fixture of describe; no graph file read at
-/// all when [noGraph]. Steps' logs and documents are [files].
+/// all when [noGraph]. Effects' logs and documents are [files].
 GraphModel ownedModel({
   GraphFile? graph,
   String file = '/nowhere/$graphFileName',
@@ -57,7 +57,7 @@ GraphModel ownedModel({
   Stream<Change> more = const Stream.empty(),
   Map<String, Object?> documents = const {},
   bool noGraph = false,
-  StepFiles? files,
+  EffectFiles? files,
 }) {
   final graphFile = FixedGraphFile(
     noGraph ? null : graph ?? graphFileNamed('release'),
@@ -96,9 +96,9 @@ Future<void> settle(WidgetTester tester) async {
 GraphFile framesGraphFile() {
   final json = graphFileNamed('release').toJson();
   final functions = json['functions']! as Map<String, Object?>;
-  Map<String, Object?> step(String id, String name, int line) => {
+  Map<String, Object?> effect(String id, String name, int line) => {
     'id': id,
-    'kind': 'step',
+    'kind': 'effect',
     'name': name,
     'place': 'lib/publish.dart:$line',
   };
@@ -125,12 +125,12 @@ GraphFile framesGraphFile() {
   functions['lib/publish.dart#upload'] = {
     'name': 'upload',
     'place': 'lib/publish.dart:20',
-    'body': chain([call('1', 'sign', 21), step('2', 'put', 22)]),
+    'body': chain([call('1', 'sign', 21), effect('2', 'put', 22)]),
   };
   functions['lib/publish.dart#sign'] = {
     'name': 'sign',
     'place': 'lib/publish.dart:25',
-    'body': chain([step('1', 'hash', 26), step('2', 'signature', 27)]),
+    'body': chain([effect('1', 'hash', 26), effect('2', 'signature', 27)]),
   };
   return GraphFile.fromJson(json);
 }

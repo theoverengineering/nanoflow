@@ -15,14 +15,14 @@ void main() {
   /// inPlace over core and tool: plan, core's upload done, tool's running.
   Journal journal() =>
       Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
-        ..step('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
-        ..step('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
-        ..step('upload', 3, place: copiesAt(7), key: 'ut', after: 'p');
+        ..effect('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
+        ..effect('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
+        ..effect('upload', 3, place: copiesAt(7), key: 'ut', after: 'p');
 
   CanvasMarks marksOf(
     List<Opened> path, {
     Map<int, String> copies = const {},
-    String? stepId,
+    String? effectId,
   }) {
     final levels = bodyLevels(inPlace, file.functions, path);
     return CanvasMarks.of(
@@ -33,14 +33,14 @@ void main() {
         graphFile: null,
         levels: levels,
         copies: copies,
-        stepId: stepId,
+        effectId: effectId,
       ),
       depth: levels.length - 1,
     );
   }
 
-  test('the marks of the steps on the nodes of the level drawn', () {
-    final marks = marksOf(const [], stepId: 'a1b2-plan-0');
+  test('the marks of the effects on the nodes of the level drawn', () {
+    final marks = marksOf(const [], effectId: 'a1b2-plan-0');
     expect(marks.isPlain, isFalse);
     expect(marks.node('1')!.state, NodeState.visited);
     expect(marks.node('2')!.state, NodeState.running);
@@ -71,7 +71,7 @@ void main() {
     expect(marks.copies('2'), '×0');
   });
 
-  test('in the body of copies, all shown, steps count the copies on them; '
+  test('in the body of copies, all shown, effects count the copies on them; '
       'one copy shown, not', () {
     expect(marksOf(const [Opened('2')]).allCopies, isTrue);
     expect(marksOf(const [Opened('2')]).node('1')!.running, 1);
@@ -82,15 +82,18 @@ void main() {
     );
   });
 
-  test('a step records no way it took: arrows, exits and bars are plain', () {
-    final marks = marksOf(const []);
-    final layout = layoutBody(inPlace.body, functions: file.functions);
-    for (final edge in layout.edges) {
-      expect(marks.edge(edge), Tone.plain);
-    }
-    expect(marks.exit('1'), Tone.plain);
-    expect(marks.bar('2'), Tone.plain);
-  });
+  test(
+    'an effect records no way it took: arrows, exits and bars are plain',
+    () {
+      final marks = marksOf(const []);
+      final layout = layoutBody(inPlace.body, functions: file.functions);
+      for (final edge in layout.edges) {
+        expect(marks.edge(edge), Tone.plain);
+      }
+      expect(marks.exit('1'), Tone.plain);
+      expect(marks.bar('2'), Tone.plain);
+    },
+  );
 
   test('one copy shown: what leads to or from a node it has not reached is '
       'darker (docs/design/code-first/copy-switcher.html)', () {

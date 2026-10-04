@@ -95,14 +95,14 @@ Future<List<KnownEvent>> eventsOf(SessionHandle handle) async => [
   for (final event in await handle.events()) event as KnownEvent,
 ];
 
-/// What the log of the step [name] of the session of [handle] holds; `null`
-/// when the step has no log file.
-Future<String?> logOfStep(SessionHandle handle, String name) async {
-  final step = (await handle.steps()).singleWhere((s) => s.name == name);
-  final dir = Directory(p.join(handle.dir, stepsDirName))
+/// What the log of the effect [name] of the session of [handle] holds; `null`
+/// when the effect has no log file.
+Future<String?> logOfEffect(SessionHandle handle, String name) async {
+  final effect = (await handle.effects()).singleWhere((s) => s.name == name);
+  final dir = Directory(p.join(handle.dir, effectsDirName))
       .listSync()
-      .singleWhere((entity) => p.basename(entity.path).endsWith(step.id));
-  final log = File(p.join(dir.path, step.log));
+      .singleWhere((entity) => p.basename(entity.path).endsWith(effect.id));
+  final log = File(p.join(dir.path, effect.log));
   return log.existsSync() ? log.readAsStringSync() : null;
 }
 
@@ -133,12 +133,12 @@ String placeOfMarker(String marker) {
   return '$file:${matching.single}';
 }
 
-// Step keys without files: the prototype's `Flow` (prototypes/step_keys) on
+// Effect keys without files: the prototype's `Flow` (prototypes/step_keys) on
 // the library's KeyedZone.
 
 late Random random;
 
-/// An ordinary await that is not a step, of a random length.
+/// An ordinary await that is not an effect, of a random length.
 Future<void> pause() =>
     Future.delayed(Duration(milliseconds: random.nextInt(10)));
 
@@ -150,8 +150,8 @@ Future<T> work<T>(T value) async {
 /// What a workflow ended with: wrong when a copy got another's results.
 late String note;
 
-/// Runs workflows in a [KeyedZone] and keeps what their steps return by key;
-/// given a [journal], a step whose key is there returns the saved result
+/// Runs workflows in a [KeyedZone] and keeps what their effects return by key;
+/// given a [journal], an effect whose key is there returns the saved result
 /// without running.
 final class Keyed {
   Keyed({this.journal = const {}});
@@ -162,7 +162,7 @@ final class Keyed {
   /// What this run completed live, by key.
   final record = <String, Object?>{};
 
-  /// The `after` of every step called, by its key.
+  /// The `after` of every effect called, by its key.
   final after = <String, String?>{};
 
   final _zone = KeyedZone();
@@ -170,14 +170,14 @@ final class Keyed {
   Future<void> run(Future<void> Function(Keyed f) workflow) =>
       _zone.run(() => workflow(this));
 
-  Future<T> step<T>(String name, Future<T> Function() body) =>
-      _zone.step(name, (step) {
-        after[step.key] = step.after;
-        if (journal.containsKey(step.key)) {
-          return Future<T>.value(journal[step.key] as T);
+  Future<T> effect<T>(String name, Future<T> Function() body) =>
+      _zone.effect(name, (effect) {
+        after[effect.key] = effect.after;
+        if (journal.containsKey(effect.key)) {
+          return Future<T>.value(journal[effect.key] as T);
         }
-        return step.runBody(body).then((value) {
-          record[step.key] = value;
+        return effect.runBody(body).then((value) {
+          record[effect.key] = value;
           return value;
         });
       });
@@ -185,7 +185,7 @@ final class Keyed {
 
 /// Tests that [workflow] gives the same keys whatever the timing, and that
 /// after a crash at any point every copy gets its own saved results and only
-/// the steps that were not saved run again.
+/// the effects that were not saved run again.
 void checkWorkflow(String title, Future<void> Function(Keyed f) workflow) {
   group(title, () {
     late Keyed first;
@@ -210,7 +210,7 @@ void checkWorkflow(String title, Future<void> Function(Keyed f) workflow) {
     });
 
     test('gives every copy its own saved results after a crash and runs only '
-        'the steps that were not saved', () async {
+        'the effects that were not saved', () async {
       final keys = first.record.keys.toList();
       for (var seed = 2; seed < 22; seed++) {
         random = Random(seed);

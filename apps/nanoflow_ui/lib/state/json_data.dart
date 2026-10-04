@@ -1,5 +1,5 @@
-/// Data as the step details window shows it (docs/ui-spec.md «Окно деталей
-/// шага»: «Данные»): `Schema` — fields with their type and value, nested
+/// Data as the effect details window shows it (docs/ui-spec.md «Окно деталей
+/// эффекта»: «Данные»): `Schema` — fields with their type and value, nested
 /// objects and arrays opened and closed; `JSON` — the text, its parts told
 /// apart for highlighting. Pure.
 library;

@@ -320,14 +320,14 @@ void main() {
     expect(
       describe(layout),
       describe(layoutOf('release')),
-      reason: 'a step does not expand',
+      reason: 'an effect does not expand',
     );
   });
 
   test('a body without a start or an end: the arrows go to the middle of '
       'the frame, and nothing links them in', () {
     const nowhere = GraphBody(
-      nodes: [StepNode(id: 'a', place: null, name: 'a')],
+      nodes: [EffectNode(id: 'a', place: null, name: 'a')],
       edges: [],
     );
     final layout = layoutBody(
@@ -353,7 +353,7 @@ void main() {
     final inner = GraphBody(
       nodes: [
         for (final id in ['n0', 'n1', 'n4'])
-          StepNode(id: id, place: null, name: id),
+          EffectNode(id: id, place: null, name: id),
       ],
       edges: const [
         GraphEdge(from: null, to: 'n0', label: null),

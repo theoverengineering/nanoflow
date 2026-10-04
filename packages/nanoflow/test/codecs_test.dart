@@ -68,38 +68,38 @@ Flow withCodecs(String dir) => Flow(directory: dir)
   ..addCodec(Report.fromJson)
   ..addCodec(Change.fromJson);
 
-/// The names of the step bodies that ran, in order.
+/// The names of the effect bodies that ran, in order.
 final ran = <String>[];
 
-/// What the workflow last run got: its input and what each step gave it.
+/// What the workflow last run got: its input and what each effect gave it.
 final got = <String, Object?>{};
 
-/// The body of the step [name], which gives [value].
+/// The body of the effect [name], which gives [value].
 T body<T>(String name, T value) {
   ran.add(name);
   return value;
 }
 
-/// Calls the step [name], which gives [value] as a [T], and keeps what it
+/// Calls the effect [name], which gives [value] as a [T], and keeps what it
 /// gave in [got].
 Future<void> keep<T>(Flow f, String name, T value) async {
-  got[name] = await f.step<T>(name, () => body(name, value));
+  got[name] = await f.effect<T>(name, () => body(name, value));
 }
 
-/// Opened to let a session past its step `gate`.
+/// Opened to let a session past its effect `gate`.
 var gate = Completer<void>();
 
-/// Completed when a session reaches its step `gate`.
+/// Completed when a session reaches its effect `gate`.
 var atGate = Completer<void>();
 
-/// The step `gate`, which waits until [gate] is opened.
-Future<void> passGate(Flow f) => f.step('gate', () {
+/// The effect `gate`, which waits until [gate] is opened.
+Future<void> passGate(Flow f) => f.effect('gate', () {
   ran.add('gate');
   if (!atGate.isCompleted) atGate.complete();
   return gate.future;
 });
 
-/// Steps that give JSON values of many types, then a gate.
+/// Effects that give JSON values of many types, then a gate.
 Future<List<String>> keepsJson(Flow f, List<String> branches) async {
   got['input'] = branches;
   await keep(f, 'names', ['a', 'b']);
@@ -119,10 +119,10 @@ Future<List<String>> keepsJson(Flow f, List<String> branches) async {
     'a': [1, 'b'],
   });
   await passGate(f);
-  return f.step('result', () => body('result', [...branches, 'done']));
+  return f.effect('result', () => body('result', [...branches, 'done']));
 }
 
-/// Steps that give values of [Report], and lists, maps and nullables of
+/// Effects that give values of [Report], and lists, maps and nullables of
 /// them, then a gate.
 Future<Report> keepsReports(Flow f, Change change) async {
   got['input'] = change;
@@ -133,15 +133,15 @@ Future<Report> keepsReports(Flow f, Change change) async {
   await keep<Report?>(f, 'some', const Report('s', 3));
   await keep<List<Report>?>(f, 'maybeAll', const [Report('m', 4)]);
   await passGate(f);
-  return f.step(
+  return f.effect(
     'result',
     () => body('result', Report('${change.branch}: done', 0)),
   );
 }
 
 /// Runs a session of [workflow] with [input] on the flow [make] gives until
-/// its step `gate`, and stops the flow there; then resumes the session past
-/// the gate on another flow [make] gives, the steps before the gate taken
+/// its effect `gate`, and stops the flow there; then resumes the session past
+/// the gate on another flow [make] gives, the effects before the gate taken
 /// from the journal.
 Future<FlowSession<R>> resumedPastGate<I, R>(
   Flow Function() make,
@@ -161,11 +161,11 @@ Future<FlowSession<R>> resumedPastGate<I, R>(
   return make().resume(workflow, first.id);
 }
 
-/// Calls the step `value`, which gives [value] as a [T]; gives the text of
+/// Calls the effect `value`, which gives [value] as a [T]; gives the text of
 /// the [CodecException] it throws.
 Future<String> codecErrorOf<T>(Flow f, T value) async {
   try {
-    await f.step<T>('value', () => value);
+    await f.effect<T>('value', () => value);
   } on CodecException catch (e) {
     return '$e';
   }
@@ -187,22 +187,22 @@ Future<String> reportAsObject(Flow f, String x) =>
 Future<String> listAsIterable(Flow f, String x) =>
     codecErrorOf<Iterable<String>>(f, ['x']);
 
-/// The step `report`, which gives a [Report], then a gate.
+/// The effect `report`, which gives a [Report], then a gate.
 Future<Report> reportThenGate(Flow f, String x) async {
   await keep(f, 'report', const Report('x', 1));
   await passGate(f);
-  return f.step('result', () => body('result', const Report('x', 0)));
+  return f.effect('result', () => body('result', const Report('x', 0)));
 }
 
 Future<String> describeChange(Flow f, Change change) async => change.branch;
 
 Future<Report> reportResult(Flow f, String x) async => const Report('x', 0);
 
-/// Calls the step `report`, which gives a [Report]; gives the text of the
+/// Calls the effect `report`, which gives a [Report]; gives the text of the
 /// [CodecException] it throws.
 Future<String> takesReport(Flow f, String x) async {
   try {
-    await f.step('report', () => body('report', const Report('x', 1)));
+    await f.effect('report', () => body('report', const Report('x', 1)));
   } on CodecException catch (e) {
     return '$e';
   }
@@ -300,7 +300,7 @@ void main() {
     expect(ran, ['gate', 'result']);
   });
 
-  group('a step whose value does not come back from JSON fails with a '
+  group('an effect whose value does not come back from JSON fails with a '
       'CodecException that names its type, the first time it runs', () {
     for (final (title, workflow, flowOf, error) in [
       (
@@ -351,11 +351,11 @@ void main() {
         final events = await eventsOf(await onlySession(dir));
         expect(events.map((e) => e.name), [
           'session-started',
-          'step-started',
-          'step-failed',
+          'effect-started',
+          'effect-failed',
           'session-finished',
         ]);
-        expect((events[2] as StepFailed).error, caught);
+        expect((events[2] as EffectFailed).error, caught);
       });
     }
   });
@@ -428,7 +428,7 @@ void main() {
     });
   });
 
-  test('a step whose saved result has a type without a codec now neither '
+  test('an effect whose saved result has a type without a codec now neither '
       'runs nor writes: the session ends with the CodecException, and resumes '
       'once the codec is registered', () async {
     final dir = await tempDir();
@@ -465,39 +465,39 @@ void main() {
     final state = replaySession(await eventsOf(await onlySession(dir)));
     expect(state.status, SessionStatus.finished);
     expect(
-      [for (final step in state.steps) step.starts],
+      [for (final effect in state.effects) effect.starts],
       [1, 2, 1],
       reason: 'report, gate and result',
     );
   });
 
-  test('a step whose saved result no longer comes back as its type runs '
+  test('an effect whose saved result no longer comes back as its type runs '
       'again, in its record, and its new result is saved', () async {
     final dir = await tempDir();
-    late Step written;
+    late Effect written;
     final id = await writeSession(
       dir,
       'takesReport',
       'x',
       build: (handle) async {
-        written = await handle.createStep(
+        written = await handle.createEffect(
           name: 'report',
           key: 'report#1@${h('')}',
           after: null,
           place: null,
         );
         await handle.appendEvent(
-          StepStarted(time: systemClock(), stepId: written.id),
+          EffectStarted(time: systemClock(), effectId: written.id),
         );
         final outputId = await handle.writeDocument('not a report');
         await handle.appendEvent(
-          StepFinished(
+          EffectFinished(
             time: systemClock(),
-            stepId: written.id,
+            effectId: written.id,
             outputId: outputId,
           ),
         );
-        await handle.setStepOutput(written, outputId);
+        await handle.setEffectOutput(written, outputId);
       },
     );
 
@@ -509,20 +509,20 @@ void main() {
     final events = await eventsOf(handle);
     expect(events.map((e) => e.name), [
       'session-started',
-      'step-started',
-      'step-finished',
+      'effect-started',
+      'effect-finished',
       'session-resumed',
-      'step-started',
-      'step-finished',
+      'effect-started',
+      'effect-finished',
       'session-finished',
     ]);
-    final [step] = replaySession(events).steps;
-    expect(step.stepId, written.id);
-    expect(step.starts, 2);
-    final [record] = await handle.steps();
+    final [effect] = replaySession(events).effects;
+    expect(effect.effectId, written.id);
+    expect(effect.starts, 2);
+    final [record] = await handle.effects();
     expect(record.id, written.id);
-    expect(record.outputId, step.outputId);
-    expect(await handle.documentValue(step.outputId!), {
+    expect(record.outputId, effect.outputId);
+    expect(await handle.documentValue(effect.outputId!), {
       'title': 'x',
       'issues': 1,
     });

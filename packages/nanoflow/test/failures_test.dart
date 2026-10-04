@@ -16,10 +16,10 @@ final gates = <String, Completer<String>>{};
 /// Completed when the session of each input begins to wait for its gate.
 final waiting = <String, Completer<void>>{};
 
-/// What the steps of each session threw at its workflow, by its input.
+/// What the effects of each session threw at its workflow, by its input.
 final caught = <String, List<Object>>{};
 
-/// The bodies of the steps that ran, as `<input>:<step>`.
+/// The bodies of the effects that ran, as `<input>:<effect>`.
 final ran = <String>[];
 
 /// Gives the session of [who] a gate to wait for.
@@ -29,23 +29,23 @@ void prepare(String who) {
   caught[who] = [];
 }
 
-/// The bodies of the steps of the session of [who] that ran, in order.
+/// The bodies of the effects of the session of [who] that ran, in order.
 List<String> ranIn(String who) => [
-  for (final step in ran)
-    if (step.startsWith('$who:')) step.substring(who.length + 1),
+  for (final effect in ran)
+    if (effect.startsWith('$who:')) effect.substring(who.length + 1),
 ];
 
-String body(String who, String step) {
-  ran.add('$who:$step');
-  return step;
+String body(String who, String effect) {
+  ran.add('$who:$effect');
+  return effect;
 }
 
-/// Waits for its gate in its step `wait`, then calls its step `echo`; keeps
+/// Waits for its gate in its effect `wait`, then calls its effect `echo`; keeps
 /// what each throws.
-Future<String> waitInStep(Flow f, String who) async {
-  await f.step('first', () => body(who, 'first'));
+Future<String> waitInEffect(Flow f, String who) async {
+  await f.effect('first', () => body(who, 'first'));
   try {
-    await f.step('wait', () {
+    await f.effect('wait', () {
       body(who, 'wait');
       waiting[who]!.complete();
       return gates[who]!.future;
@@ -54,48 +54,52 @@ Future<String> waitInStep(Flow f, String who) async {
     caught[who]!.add(e);
   }
   try {
-    return await f.step('echo', () => body(who, 'echo'));
+    return await f.effect('echo', () => body(who, 'echo'));
   } on Exception catch (e) {
     caught[who]!.add(e);
     rethrow;
   }
 }
 
-/// Waits for its gate between its steps `first` and `second`.
+/// Waits for its gate between its effects `first` and `second`.
 Future<String> waitBetween(Flow f, String who) async {
-  await f.step('first', () => body(who, 'first'));
+  await f.effect('first', () => body(who, 'first'));
   waiting[who]!.complete();
   await gates[who]!.future;
-  return f.step('second', () => body(who, 'second'));
+  return f.effect('second', () => body(who, 'second'));
 }
 
 void main() {
   group('a session whose directory is removed', () {
-    test('while a step runs fails that step and every step after it with a '
-        'StorageException, which is its result; nothing is written '
-        'again', () async {
-      final dir = await tempDir();
-      prepare('in step');
-      final session = await Flow(directory: dir).start(waitInStep, 'in step');
-      await waiting['in step']!.future;
+    test(
+      'while an effect runs fails that effect and every effect after it with a '
+      'StorageException, which is its result; nothing is written '
+      'again',
+      () async {
+        final dir = await tempDir();
+        prepare('in effect');
+        final session = await Flow(directory: dir)
+            .start(waitInEffect, 'in effect');
+        await waiting['in effect']!.future;
 
-      Directory(sessionDirOf(dir, session.id)).deleteSync(recursive: true);
-      gates['in step']!.complete('open');
+        Directory(sessionDirOf(dir, session.id)).deleteSync(recursive: true);
+        gates['in effect']!.complete('open');
 
-      await expectLater(session.result, throwsA(isA<StorageException>()));
-      expect(caught['in step'], [
-        isA<StorageException>().having(
-          (e) => e.cause,
-          'cause',
-          isA<FileSystemException>(),
-        ),
-        isA<StorageException>(),
-      ]);
-      expect(ranIn('in step'), ['first', 'wait']);
-      expect(Directory(runsDirOf(dir)).listSync(), isEmpty);
-    });
+        await expectLater(session.result, throwsA(isA<StorageException>()));
+        expect(caught['in effect'], [
+          isA<StorageException>().having(
+            (e) => e.cause,
+            'cause',
+            isA<FileSystemException>(),
+          ),
+          isA<StorageException>(),
+        ]);
+        expect(ranIn('in effect'), ['first', 'wait']);
+        expect(Directory(runsDirOf(dir)).listSync(), isEmpty);
+      },
+    );
 
-    test('between steps fails the next step with a StorageException, which '
+    test('between effects fails the next effect with a StorageException, which '
         'is its result; nothing is written again', () async {
       final dir = await tempDir();
       prepare('between');
@@ -124,7 +128,7 @@ void main() {
       'write would succeed', () async {
     final dir = await tempDir();
     prepare('documents');
-    final session = await Flow(directory: dir).start(waitInStep, 'documents');
+    final session = await Flow(directory: dir).start(waitInEffect, 'documents');
     await waiting['documents']!.future;
     final sessionDir = sessionDirOf(dir, session.id);
 
@@ -187,13 +191,13 @@ void main() {
   });
 
   group('stop', () {
-    test('fails the step that runs and every step after it with a '
+    test('fails the effect that runs and every effect after it with a '
         'FlowStoppedException, which is the result; nothing more is written, '
         'and the session can be resumed', () async {
       final dir = await tempDir();
       final flow = Flow(directory: dir);
       prepare('stopped');
-      final session = await flow.start(waitInStep, 'stopped');
+      final session = await flow.start(waitInEffect, 'stopped');
       await waiting['stopped']!.future;
       final sessionDir = sessionDirOf(dir, session.id);
       final files = filesUnder(sessionDir, withOwner: false);
@@ -211,13 +215,13 @@ void main() {
       expect(await ownerCheck(dir, session.id), 'opened');
 
       waiting['stopped'] = Completer();
-      final again = await Flow(directory: dir).resume(waitInStep, session.id);
+      final again = await Flow(directory: dir).resume(waitInEffect, session.id);
       expect(await again.result, 'echo');
       expect(ranIn('stopped'), ['first', 'wait', 'wait', 'echo']);
       final handle = await openSession(dir, session.id);
       final state = replaySession(await eventsOf(handle));
       expect(state.status, SessionStatus.finished);
-      expect([for (final s in state.steps) s.starts], [1, 2, 1]);
+      expect([for (final s in state.effects) s.starts], [1, 2, 1]);
     });
 
     test('lets no session start or resume', () async {

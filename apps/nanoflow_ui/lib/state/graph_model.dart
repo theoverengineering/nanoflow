@@ -10,6 +10,7 @@ import 'canvas_graph.dart';
 import 'copies.dart';
 import 'copy_choices.dart' as choices show hintOf;
 import 'copy_choices.dart' show CopyChoices, hintDocuments;
+import 'effect_files.dart';
 import 'freshness.dart';
 import 'graph_file_source.dart';
 import 'in_place.dart';
@@ -17,7 +18,6 @@ import 'outcomes.dart';
 import 'selection.dart';
 import 'session_feed.dart';
 import 'session_view.dart';
-import 'step_files.dart';
 import 'visit_details.dart';
 import 'visits.dart' as visits show visitToOpen;
 import 'visits.dart' show Visit;
@@ -53,7 +53,7 @@ class GraphModel extends ChangeNotifier {
     outcomes.addListener(_changed);
     selection
       ..addListener(_selected)
-      ..lastStepOf = _lastShownStep;
+      ..lastEffectOf = _lastShownEffect;
     _documents = feed.documentsAdded.listen(
       (document) => outcomes.documentWritten(document.documentId),
     );
@@ -85,8 +85,8 @@ class GraphModel extends ChangeNotifier {
   final Outcomes outcomes;
   final Selection selection;
 
-  /// The logs and documents of steps, read when the step details show them.
-  final StepFiles files;
+  /// The logs and documents of effects, read when the effect details show them.
+  final EffectFiles files;
 
   late final StreamSubscription<DocumentAdded> _documents;
 
@@ -229,7 +229,7 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// The selected session at [now]; `null` for `Current graph`. Starts
-  /// reading its snapshot, and the outputs of the first steps of the
+  /// reading its snapshot, and the outputs of the first effects of the
   /// copies of its frames drawn: they come as a change.
   SessionView? sessionView(DateTime now) {
     final key = _key(now);
@@ -242,7 +242,7 @@ class GraphModel extends ChangeNotifier {
             now: now,
             documents: outcomes,
             graphFile: graphFile.graph,
-            stepId: selection.stepId,
+            effectId: selection.effectId,
             levels: canvas.ofSession ? canvas.levels : const [],
             places: canvas.ofSession ? canvas.places : null,
             copies: _copies.on(canvas.path),
@@ -250,7 +250,7 @@ class GraphModel extends ChangeNotifier {
             copiesIn: _copies.on,
             follow: _followed(session)?.path,
           );
-    // What the copies' first steps gave tells them apart: read it now.
+    // What the copies' first effects gave tells them apart: read it now.
     if (session != null) {
       final view = _view!;
       outcomes.load(session.id, [
@@ -319,11 +319,11 @@ class GraphModel extends ChangeNotifier {
     if (session != null) selection.showSession(session);
   }
 
-  /// The copies frames of the canvas's levels and the steps they show, of
+  /// The copies frames of the canvas's levels and the effects they show, of
   /// the selected session on its own graph, as [sessionView] has them at
   /// [now] — in the frame drawn in place at [path] when it is given;
   /// `null` for `Current graph`.
-  ShownSteps? _shown(DateTime now, [List<Opened>? path]) =>
+  ShownEffects? _shown(DateTime now, [List<Opened>? path]) =>
       canvas.ofSession ? sessionView(now)?.shownAt(path) : null;
 
   /// The frame drawn in place whose copy `Logs` follow: of those where a
@@ -340,10 +340,10 @@ class GraphModel extends ChangeNotifier {
     return frames.where((frame) => levelKey(frame.path) == key).firstOrNull;
   }
 
-  /// The frames and steps `Logs` show of [session] as they are now, the
+  /// The frames and effects `Logs` show of [session] as they are now, the
   /// copies chosen as they are now: for what changes them before
   /// [sessionView] can tell.
-  ShownSteps? _shownNow(SessionData session) {
+  ShownEffects? _shownNow(SessionData session) {
     final canvas = this.canvas;
     if (!canvas.ofSession) return null;
     final followed = _followed(session);
@@ -355,21 +355,21 @@ class GraphModel extends ChangeNotifier {
     );
   }
 
-  /// The last of the steps of [session] shown, while copies of it are
+  /// The last of the effects of [session] shown, while copies of it are
   /// chosen: the selection follows the copy shown; `null` otherwise.
-  String? _lastShownStep(SessionData session) => _copies.anyFor(session.id)
-      ? _shownNow(session)?.steps.lastOrNull?.stepId
+  String? _lastShownEffect(SessionData session) => _copies.anyFor(session.id)
+      ? _shownNow(session)?.effects.lastOrNull?.effectId
       : null;
 
-  /// Shows the copy [copyId] — the id of its first step — of the copies
-  /// frame at the level [depth] of the canvas, and selects its last step;
+  /// Shows the copy [copyId] — the id of its first effect — of the copies
+  /// frame at the level [depth] of the canvas, and selects its last effect;
   /// every copy for `null` (decision 11).
   void selectCopy(int depth, String? copyId) =>
       selectCopyAt(canvas.path.take(depth).toList(), copyId);
 
   /// Shows the copy [copyId] of the copies frame at [path] — a level
   /// opened, or a frame drawn in place: the same choice for both — and
-  /// selects its last step; every copy for `null` (decision 11).
+  /// selects its last effect; every copy for `null` (decision 11).
   void selectCopyAt(List<Opened> path, String? copyId) {
     final session = selectedSession;
     final canvas = this.canvas;
@@ -382,28 +382,28 @@ class GraphModel extends ChangeNotifier {
       session: session,
       selected: _copies.on(path),
     ).frames.where((f) => f.depth == path.length).firstOrNull;
-    final last = frame?.selected?.steps.lastOrNull;
-    if (last != null) selection.selectStep(session, last.stepId);
+    final last = frame?.selected?.effects.lastOrNull;
+    if (last != null) selection.selectEffect(session, last.effectId);
     _changed();
   }
 
-  /// What the first step of [copy] of the selected session gave, to tell
+  /// What the first effect of [copy] of the selected session gave, to tell
   /// the copy by (`copyHint`); `null` while it is not known: [sessionView]
   /// reads it.
   String? hintOf(Copy copy) => choices.hintOf(copy, outcomes);
 
   /// A click on the node [nodeId] of the body drawn — or of the body of the
-  /// frame drawn in place at [path]: selects the last of the steps shown on
+  /// frame drawn in place at [path]: selects the last of the effects shown on
   /// it or in it; nothing without one.
   void clickNode(String nodeId, {List<Opened>? path}) {
     final session = selectedSession;
     final node = _bodyAt(path)?.node(nodeId);
     final shown = _shown(_now(), path);
     if (session == null || node == null || shown == null) return;
-    final last = shown.steps
-        .where((s) => canvas.places.isIn(session.steps[s.stepId], node))
+    final last = shown.effects
+        .where((s) => canvas.places.isIn(session.effects[s.effectId], node))
         .lastOrNull;
-    if (last != null) selection.selectStep(session, last.stepId);
+    if (last != null) selection.selectEffect(session, last.effectId);
   }
 
   /// The body drawn, or that of the frame drawn in place at [path].
@@ -417,47 +417,48 @@ class GraphModel extends ChangeNotifier {
         .body;
   }
 
-  /// The visit the step details window opens on for a double click on the
-  /// step node [node] — of the frame drawn in place at [path], when given:
-  /// its last step among those shown; `null` when it has none, and for
+  /// The visit the effect details window opens on for a double click on the
+  /// effect node [node] — of the frame drawn in place at [path], when given:
+  /// its last effect among those shown; `null` when it has none, and for
   /// `Current graph`.
-  Visit? visitToOpen(StepNode node, {List<Opened>? path}) {
+  Visit? visitToOpen(EffectNode node, {List<Opened>? path}) {
     final session = selectedSession;
     final shown = _shown(_now(), path);
     if (session == null || shown == null) return null;
-    return visits.visitToOpen(session, shown.steps, canvas.places, node);
+    return visits.visitToOpen(session, shown.effects, canvas.places, node);
   }
 
-  /// Selects the step [stepId] of the selected session, a visit the step
+  /// Selects the effect [effectId] of the selected session, a visit the effect
   /// details window shows, so that the canvas and `Logs` are on it.
-  void showVisit(String stepId) => selectStep(stepId);
+  void showVisit(String effectId) => selectEffect(effectId);
 
-  /// The step details window on the step [stepId] of the selected session,
-  /// among the steps shown, at [now]; on the step node [node] alone without
-  /// a step.
-  VisitDetails detailsOf(StepNode? node, String? stepId, DateTime now) {
+  /// The effect details window on the effect [effectId] of the selected
+  /// session, among the effects shown, at [now]; on the effect node [node]
+  /// alone without an effect.
+  VisitDetails detailsOf(EffectNode? node, String? effectId, DateTime now) {
     final view = canvas.ofSession ? sessionView(now) : null;
-    // The steps `Logs` show, unless the step is not one of them: those of
+    // The effects `Logs` show, unless the effect is not one of them: those of
     // the level drawn.
     final logs = view?.logsShown;
-    final shown = logs != null && logs.steps.any((s) => s.stepId == stepId)
+    final shown =
+        logs != null && logs.effects.any((s) => s.effectId == effectId)
         ? logs
         : view?.shown;
     return visitDetails(
       session: shown == null ? null : selectedSession,
-      steps: shown?.steps ?? const [],
+      effects: shown?.effects ?? const [],
       places: canvas.places,
-      stepId: stepId,
+      effectId: effectId,
       node: node,
       copyOf: view?.copyOf,
       now: now,
     );
   }
 
-  /// Selects the step [stepId] of the selected session.
-  void selectStep(String stepId) {
+  /// Selects the effect [effectId] of the selected session.
+  void selectEffect(String effectId) {
     final session = selectedSession;
-    if (session != null) selection.selectStep(session, stepId);
+    if (session != null) selection.selectEffect(session, effectId);
   }
 
   void _fed() {

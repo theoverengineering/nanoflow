@@ -1,21 +1,21 @@
 /// The copies of a `copies` frame in a session (spec §9 «Копии», decisions
 /// 10 and 11): the body run side by side, once for each item of a list.
 ///
-/// A copy is a chain of the frame's steps by `after`: its first step is one
-/// whose predecessor — the step whose key its record's `after` is — lies
-/// outside the frame (a step at no place the frame holds, or none at all);
-/// every other step of the frame belongs to the copy of its predecessor. A
+/// A copy is a chain of the frame's effects by `after`: its first effect is one
+/// whose predecessor — the effect whose key its record's `after` is — lies
+/// outside the frame (an effect at no place the frame holds, or none at all);
+/// every other effect of the frame belongs to the copy of its predecessor. A
 /// rerun rewrites a record's `after`: the chain follows the record as it is
 /// now. Copies are numbered by when they started. Pure.
 ///
-/// The limit of this: a copy of an outer frame is told by its first step.
-/// One with no step before its inner copies — `Future.wait([for (p in pkgs)
-/// Future.wait([for (t in targets) f.step('build', …)])])` — cannot be told
-/// apart: each step of its inner copies follows a step outside both frames,
-/// and so starts an outer copy of its own. And a frame holds its steps by
-/// place, not by the way they were called: a function with steps called
-/// both inside a frame and outside it is the frame's, and each chain of its
-/// call outside is a copy of the frame too.
+/// The limit of this: a copy of an outer frame is told by its first effect.
+/// One with no effect before its inner copies — `Future.wait([for (p in pkgs)
+/// Future.wait([for (t in targets) f.effect('build', …)])])` — cannot be told
+/// apart: each effect of its inner copies follows an effect outside both
+/// frames, and so starts an outer copy of its own. And a frame holds its
+/// effects by place, not by the way they were called: a function with effects
+/// called both inside a frame and outside it is the frame's, and each chain of
+/// its call outside is a copy of the frame too.
 library;
 
 import 'dart:collection';
@@ -24,88 +24,88 @@ import 'dart:convert';
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'body_path.dart';
+import 'effect_places.dart';
 import 'session_feed.dart';
-import 'step_places.dart';
 
-/// How a copy stands, as its steps tell.
+/// How a copy stands, as its effects tell.
 enum CopyStatus {
-  /// A step of it runs.
+  /// An effect of it runs.
   running,
 
-  /// A step of it was running when the process of its session went.
+  /// An effect of it was running when the process of its session went.
   interrupted,
 
-  /// Its steps have finished.
+  /// Its effects have finished.
   finished,
 
-  /// A step of it failed: the last time it ran, it threw.
+  /// An effect of it failed: the last time it ran, it threw.
   failed,
 }
 
-/// One copy of a frame: its steps, and how it stands.
+/// One copy of a frame: its effects, and how it stands.
 final class Copy {
-  Copy._(this.number, this.first, List<StepState> steps, this.status)
-    : steps = List.unmodifiable(steps),
-      _ids = {for (final step in steps) step.stepId};
+  Copy._(this.number, this.first, List<EffectState> effects, this.status)
+    : effects = List.unmodifiable(effects),
+      _ids = {for (final effect in effects) effect.effectId};
 
   /// From 1, in the order the copies started.
   final int number;
 
-  /// The step that started the copy: its predecessor is outside the frame.
-  final StepState first;
+  /// The effect that started the copy: its predecessor is outside the frame.
+  final EffectState first;
 
-  /// The copy's steps in the order of their first `step-started`.
-  final List<StepState> steps;
+  /// The copy's effects in the order of their first `effect-started`.
+  final List<EffectState> effects;
 
   final CopyStatus status;
 
   final Set<String> _ids;
 
-  /// The copy's id: that of its [first] step.
-  String get id => first.stepId;
+  /// The copy's id: that of its [first] effect.
+  String get id => first.effectId;
 
-  /// The document with the output of the [first] step, which hints at
-  /// which copy it is (`core:uploaded`); `null` until that step finished.
+  /// The document with the output of the [first] effect, which hints at
+  /// which copy it is (`core:uploaded`); `null` until that effect finished.
   String? get hintDocument => first.outputId;
 
-  /// Whether the step [stepId] is one of the copy's.
-  bool contains(String stepId) => _ids.contains(stepId);
+  /// Whether the effect [effectId] is one of the copy's.
+  bool contains(String effectId) => _ids.contains(effectId);
 }
 
-/// The copies of [frame] among [steps] of [session] (by default, all of its
-/// steps): those at the places [places] says the frame holds, in chains by
-/// `after`, numbered by the time of their first `step-started`. A step
+/// The copies of [frame] among [effects] of [session] (by default, all of its
+/// effects): those at the places [places] says the frame holds, in chains by
+/// `after`, numbered by the time of their first `effect-started`. An effect
 /// whose record has not been given is in none.
 List<Copy> copiesOf(
   CopiesNode frame, {
-  required StepPlaces places,
+  required EffectPlaces places,
   required SessionData session,
-  Iterable<StepState>? steps,
+  Iterable<EffectState>? effects,
 }) {
   final held = places.within(frame);
-  bool inside(Step? record) => places.of(record).any(held.contains);
+  bool inside(Effect? record) => places.of(record).any(held.contains);
 
-  // The first step of the copy of each step, by id: every step walked
+  // The first effect of the copy of each effect, by id: every effect walked
   // gets it, so that each chain is walked once.
   final firsts = <String, String>{};
-  String firstOf(Step record) {
+  String firstOf(Effect record) {
     final walked = <String>{};
-    var step = record;
+    var effect = record;
     String first;
     while (true) {
-      final known = firsts[step.id];
+      final known = firsts[effect.id];
       if (known != null) {
         first = known;
         break;
       }
-      walked.add(step.id);
-      final after = step.after;
-      final before = after == null ? null : session.stepWithKey(after);
+      walked.add(effect.id);
+      final after = effect.after;
+      final before = after == null ? null : session.effectWithKey(after);
       if (before == null || !inside(before) || walked.contains(before.id)) {
-        first = step.id;
+        first = effect.id;
         break;
       }
-      step = before;
+      effect = before;
     }
     for (final id in walked) {
       firsts[id] = first;
@@ -113,11 +113,11 @@ List<Copy> copiesOf(
     return first;
   }
 
-  final chains = <String, List<StepState>>{};
-  for (final step in steps ?? session.state.steps) {
-    final record = session.steps[step.stepId];
+  final chains = <String, List<EffectState>>{};
+  for (final effect in effects ?? session.state.effects) {
+    final record = session.effects[effect.effectId];
     if (!inside(record)) continue;
-    (chains[firstOf(record!)] ??= []).add(step);
+    (chains[firstOf(record!)] ??= []).add(effect);
   }
   final started = [
     for (final MapEntry(key: first, value: chain) in chains.entries)
@@ -125,12 +125,12 @@ List<Copy> copiesOf(
         first: session.stateOf(first) ?? chain.first,
         chain: chain,
         at: chain
-            .map((step) => step.startedAt)
+            .map((effect) => effect.startedAt)
             .reduce((a, b) => b.isBefore(a) ? b : a),
       ),
   ];
   // A stable sort: copies that started together keep the order of their
-  // steps.
+  // effects.
   final order = [for (var i = 0; i < started.length; i++) i]
     ..sort((a, b) {
       final byTime = started[a].at.compareTo(started[b].at);
@@ -180,7 +180,7 @@ final class CopiesFrame {
   /// The level the frame's body is: its index among the canvas's levels.
   final int depth;
 
-  /// The copies among the steps shown, each numbered within the copy of
+  /// The copies among the effects shown, each numbered within the copy of
   /// the frame around it.
   final List<Copy> copies;
 
@@ -218,15 +218,15 @@ final class CopiesFrame {
 
 /// The copies of a `copies` node of the level drawn, which is not opened,
 /// or of one inside it — in the body of copies, or of a function a call
-/// calls — each numbered within the copy around it: they name the steps in
+/// calls — each numbered within the copy around it: they name the effects in
 /// them.
 typedef LevelCopies = ({CopiesNode node, List<Copy> copies});
 
 /// What the levels of the canvas show of a session: the copies frames they
-/// go down through, and the steps shown — those of the copy selected in
-/// each frame, all steps when none is.
-final class ShownSteps {
-  ShownSteps._(this.frames, this.levelCopies, this.steps)
+/// go down through, and the effects shown — those of the copy selected in
+/// each frame, all effects when none is.
+final class ShownEffects {
+  ShownEffects._(this.frames, this.levelCopies, this.effects)
     : _paths = _pathsOf(frames, levelCopies);
 
   final List<CopiesFrame> frames;
@@ -235,10 +235,10 @@ final class ShownSteps {
   /// the outer before the inner.
   final List<LevelCopies> levelCopies;
 
-  /// The steps shown, in the order of their first `step-started`.
-  final List<StepState> steps;
+  /// The effects shown, in the order of their first `effect-started`.
+  final List<EffectState> effects;
 
-  /// The names of the copies each step is in, frame by frame, with the
+  /// The names of the copies each effect is in, frame by frame, with the
   /// depth of the frame where it is the copy shown; `null` for any other.
   final Map<String, List<_Part>> _paths;
 
@@ -249,8 +249,8 @@ final class ShownSteps {
     final paths = <String, List<_Part>>{};
     void add(CopiesNode node, Copy copy, int? chosenAt) {
       final name = (name: copyName(node, copy.number), chosenAt: chosenAt);
-      for (final step in copy.steps) {
-        (paths[step.stepId] ??= []).add(name);
+      for (final effect in copy.effects) {
+        (paths[effect.effectId] ??= []).add(name);
       }
     }
 
@@ -280,20 +280,20 @@ final class ShownSteps {
     return names.isEmpty ? null : names.join(' › ');
   }
 
-  /// The copies the step [stepId] is in, those chosen too: `pkg 2 ›
-  /// target 1`; `null` for a step in none.
-  String? copyOf(String stepId) => switch (_paths[stepId]) {
+  /// The copies the effect [effectId] is in, those chosen too: `pkg 2 ›
+  /// target 1`; `null` for an effect in none.
+  String? copyOf(String effectId) => switch (_paths[effectId]) {
     final path? => [for (final part in path) part.name].join(' › '),
     null => null,
   };
 
-  /// What a row of `Logs` says of the copies the step [stepId] is in, but
+  /// What a row of `Logs` says of the copies the effect [effectId] is in, but
   /// those chosen, which the title says — those chosen down to the level
   /// [upTo], when the title is of a level above: `pkg 2 › target 1`;
-  /// `null` for a step in none.
-  String? tagOf(String stepId, {int? upTo}) {
+  /// `null` for an effect in none.
+  String? tagOf(String effectId, {int? upTo}) {
     final names = [
-      for (final part in _paths[stepId] ?? const <_Part>[])
+      for (final part in _paths[effectId] ?? const <_Part>[])
         if (part.chosenAt == null || upTo != null && part.chosenAt! > upTo)
           part.name,
     ];
@@ -301,13 +301,13 @@ final class ShownSteps {
   }
 }
 
-/// The name of a copy a step is in, and the depth of its frame when it is
+/// The name of a copy an effect is in, and the depth of its frame when it is
 /// the copy shown there.
 typedef _Part = ({String name, int? chosenAt});
 
 /// What [levels] show of [session]: each level opened from a `copies` node
 /// is a frame with its copies, the copy [selected] at its depth (by the id
-/// of its first step) shown; the steps of the levels below are that copy's.
+/// of its first effect) shown; the effects of the levels below are that copy's.
 /// A selected copy the frame does not have shows all. The `copies` nodes of
 /// the last level, which is drawn, have their copies too, and so do those
 /// inside them: in the bodies of copies and of the functions calls call,
@@ -316,19 +316,19 @@ typedef _Part = ({String name, int? chosenAt});
 /// Copies in copies are numbered within the copy of the frame around them;
 /// while that frame shows all its copies, none of the inner ones can be
 /// chosen.
-ShownSteps framesOf(
+ShownEffects framesOf(
   List<BodyLevel> levels, {
-  required StepPlaces places,
+  required EffectPlaces places,
   required SessionData session,
   Map<int, String> selected = const {},
 }) {
-  var steps = session.state.steps;
+  var effects = session.state.effects;
   // The copies the next frame's copies are numbered within, with the frame
-  // they are of; none when one copy or no frame holds the steps.
+  // they are of; none when one copy or no frame holds the effects.
   ({CopiesNode node, List<Copy> copies})? around;
   List<Copy> copiesOf0(CopiesNode node) => [
-    for (final group in around?.copies.map((copy) => copy.steps) ?? [steps])
-      ...copiesOf(node, places: places, session: session, steps: group),
+    for (final group in around?.copies.map((copy) => copy.effects) ?? [effects])
+      ...copiesOf(node, places: places, session: session, effects: group),
   ];
 
   final frames = <CopiesFrame>[];
@@ -354,7 +354,7 @@ ShownSteps framesOf(
       ),
     );
     if (copy != null) {
-      steps = copy.steps;
+      effects = copy.effects;
       around = null;
     } else {
       around = (node: node, copies: copies);
@@ -365,31 +365,31 @@ ShownSteps framesOf(
       ? const <LevelCopies>[]
       : _levelCopies(
           body,
-          around?.copies.map((copy) => copy.steps) ?? [steps],
+          around?.copies.map((copy) => copy.effects) ?? [effects],
           places: places,
           session: session,
         );
-  return ShownSteps._(
+  return ShownEffects._(
     List.unmodifiable(frames),
     levelCopies,
-    List.unmodifiable(steps),
+    List.unmodifiable(effects),
   );
 }
 
 /// The copies of the `copies` nodes in [body], the level drawn, and inside
 /// it — in the bodies of copies and of the functions calls call — the outer
-/// before the inner; [groups] are the steps the level shows, by the copy of
+/// before the inner; [groups] are the effects the level shows, by the copy of
 /// the frame it is the body of.
 ///
 /// Each node is there once, however many calls reach it: by place, its
-/// copies gather its steps from every call. A node reached inside copies on
+/// copies gather its effects from every call. A node reached inside copies on
 /// some way to it is numbered within the copy around it there, as copies in
 /// copies are (decision 11: `pkg 1 › target 2`); a node reached only
 /// outside copies, within [groups].
 List<LevelCopies> _levelCopies(
   GraphBody body,
-  Iterable<List<StepState>> groups, {
-  required StepPlaces places,
+  Iterable<List<EffectState>> groups, {
+  required EffectPlaces places,
   required SessionData session,
 }) {
   // Each node reached, with the copies node around it — one around it on
@@ -428,7 +428,7 @@ List<LevelCopies> _levelCopies(
             if (!walked.add((function.id, context))) continue;
             walk(function.body, within, {...entered, function.id});
           }
-        case StepNode() || ConditionNode():
+        case EffectNode() || ConditionNode():
       }
     }
   }
@@ -444,10 +444,10 @@ List<LevelCopies> _levelCopies(
     final outer = around[node];
     final within = outer == null
         ? groups
-        : [for (final copy in copiesAt(outer)) copy.steps];
+        : [for (final copy in copiesAt(outer)) copy.effects];
     final copies = [
       for (final group in within)
-        ...copiesOf(node, places: places, session: session, steps: group),
+        ...copiesOf(node, places: places, session: session, effects: group),
     ];
     levelCopies.add((node: node, copies: copies));
     return copiesOfNode[node] = copies;
@@ -469,25 +469,25 @@ String _progress(List<Copy> copies) {
 /// Where [copy] is: `now verify`, `done`, `failed at verify`,
 /// `interrupted at verify`.
 String _now(Copy copy, SessionData session) {
-  String names(StepStatus status) => {
-    for (final step in copy.steps)
-      if (step.status == status) ?session.steps[step.stepId]?.name,
+  String names(EffectStatus status) => {
+    for (final effect in copy.effects)
+      if (effect.status == status) ?session.effects[effect.effectId]?.name,
   }.join(', ');
   return switch (copy.status) {
-    CopyStatus.running => 'now ${names(StepStatus.running)}',
-    CopyStatus.interrupted => 'interrupted at ${names(StepStatus.running)}',
-    CopyStatus.failed => 'failed at ${names(StepStatus.failed)}',
+    CopyStatus.running => 'now ${names(EffectStatus.running)}',
+    CopyStatus.interrupted => 'interrupted at ${names(EffectStatus.running)}',
+    CopyStatus.failed => 'failed at ${names(EffectStatus.failed)}',
     CopyStatus.finished => 'done',
   };
 }
 
-/// How the copy of [steps] stands; a running one is [interrupted] when the
+/// How the copy of [effects] stands; a running one is [interrupted] when the
 /// process of its session is gone.
-CopyStatus _statusOf(List<StepState> steps, {required bool interrupted}) {
-  if (steps.any((step) => step.status == StepStatus.failed)) {
+CopyStatus _statusOf(List<EffectState> effects, {required bool interrupted}) {
+  if (effects.any((effect) => effect.status == EffectStatus.failed)) {
     return CopyStatus.failed;
   }
-  if (steps.any((step) => step.status == StepStatus.running)) {
+  if (effects.any((effect) => effect.status == EffectStatus.running)) {
     return interrupted ? CopyStatus.interrupted : CopyStatus.running;
   }
   return CopyStatus.finished;
@@ -496,7 +496,7 @@ CopyStatus _statusOf(List<StepState> steps, {required bool interrupted}) {
 /// The most characters of a hint: a longer one is cut, `…` at its end.
 const hintLength = 24;
 
-/// What the output [value] of a copy's first step hints at it: a string as
+/// What the output [value] of a copy's first effect hints at it: a string as
 /// it is, anything else as JSON, on one line, cut to [hintLength]
 /// characters.
 String copyHint(Object? value) {

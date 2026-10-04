@@ -5,9 +5,9 @@ import 'package:nanoflow_ui/state/session_feed.dart';
 
 import 'support.dart';
 
-/// A session [id] started at [startedAt] with one step running.
+/// A session [id] started at [startedAt] with one effect running.
 SessionData _session(String id, num startedAt) =>
-    (Journal(id, startedAt: startedAt)..step('collect', startedAt)).data;
+    (Journal(id, startedAt: startedAt)..effect('collect', startedAt)).data;
 
 void main() {
   late DateTime clock;
@@ -23,17 +23,17 @@ void main() {
   });
 
   (bool, String?, String?) selected() =>
-      (selection.currentGraph, selection.sessionId, selection.stepId);
+      (selection.currentGraph, selection.sessionId, selection.effectId);
 
   /// Session a1b2: collect and inspect finished, notify running.
   Journal a1b2() => Journal('a1b2-session')
-    ..step('collect', 1, end: 149)
-    ..step('inspect', 150, end: 342)
-    ..step('notify', 343);
+    ..effect('collect', 1, end: 149)
+    ..effect('inspect', 150, end: 342)
+    ..effect('notify', 343);
 
   group('on opening the graph', () {
     test('the newest session started before then is selected, on its last '
-        'step', () {
+        'effect', () {
       selection.update([
         _session('olde-session', -60),
         _session('newe-session', 0),
@@ -93,23 +93,23 @@ void main() {
   });
 
   group('new data', () {
-    test('does not reset the selected step', () {
+    test('does not reset the selected effect', () {
       final session = a1b2();
       selection.update([session.data]);
-      selection.selectStep(session.data, 'a1b2-collect-0');
-      session.step('publish', 400);
+      selection.selectEffect(session.data, 'a1b2-collect-0');
+      session.effect('publish', 400);
       selection.update([session.data]);
-      expect(selection.stepId, 'a1b2-collect-0');
+      expect(selection.effectId, 'a1b2-collect-0');
     });
 
-    test('gives a session opened before its steps came its last step once '
+    test('gives a session opened before its effects came its last effect once '
         'they come', () {
       final early = Journal('earl-session');
       selection.showSession(early.data);
-      expect(selection.stepId, isNull);
-      early.step('collect', 1);
+      expect(selection.effectId, isNull);
+      early.effect('collect', 1);
       selection.update([early.data]);
-      expect(selection.stepId, 'earl-collect-0');
+      expect(selection.effectId, 'earl-collect-0');
     });
 
     test('that changes nothing selected is not announced', () {
@@ -122,16 +122,18 @@ void main() {
   });
 
   group('opening a session', () {
-    test('selects its last step by first step-started', () {
+    test('selects its last effect by first effect-started', () {
       final session = a1b2();
-      // A step that runs again keeps its place.
-      session.events.add(StepStarted(time: at(400), stepId: 'a1b2-collect-0'));
+      // An effect that runs again keeps its place.
+      session.events.add(
+        EffectStarted(time: at(400), effectId: 'a1b2-collect-0'),
+      );
       selection.showSession(session.data);
       expect(selected(), (false, 'a1b2-session', 'a1b2-notify-2'));
       expect(notified, 1);
     });
 
-    test('Current graph selects no session or step', () {
+    test('Current graph selects no session or effect', () {
       selection.showSession(a1b2().data);
       selection.showCurrentGraph();
       expect(selected(), (true, null, null));
@@ -139,33 +141,33 @@ void main() {
   });
 
   group('following (ui-spec «Logs»)', () {
-    test('while the last step is selected, the new step is selected as it '
+    test('while the last effect is selected, the new effect is selected as it '
         'starts', () {
       final session = a1b2();
       selection.update([session.data]);
-      expect(selection.stepId, 'a1b2-notify-2');
+      expect(selection.effectId, 'a1b2-notify-2');
       expect(selection.following, isTrue);
 
-      session.step('publish', 700);
+      session.effect('publish', 700);
       selection.update([session.data]);
-      expect(selection.stepId, 'a1b2-publish-3');
+      expect(selection.effectId, 'a1b2-publish-3');
     });
 
-    test('selecting another step stops following; selecting the last one '
+    test('selecting another effect stops following; selecting the last one '
         'again resumes it', () {
       final session = a1b2();
       selection.update([session.data]);
-      selection.selectStep(session.data, 'a1b2-collect-0');
+      selection.selectEffect(session.data, 'a1b2-collect-0');
       expect(selection.following, isFalse);
-      session.step('publish', 700);
+      session.effect('publish', 700);
       selection.update([session.data]);
-      expect(selection.stepId, 'a1b2-collect-0');
+      expect(selection.effectId, 'a1b2-collect-0');
 
-      selection.selectStep(session.data, 'a1b2-publish-3');
+      selection.selectEffect(session.data, 'a1b2-publish-3');
       expect(selection.following, isTrue);
-      session.step('announce', 710);
+      session.effect('announce', 710);
       selection.update([session.data]);
-      expect(selection.stepId, 'a1b2-announce-4');
+      expect(selection.effectId, 'a1b2-announce-4');
     });
   });
 }

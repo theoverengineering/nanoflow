@@ -148,12 +148,14 @@ Future<List<String>> eventNames(SessionHandle session) async => [
   for (final event in await session.events()) event.name,
 ];
 
-/// What the log of [step] of [session] holds; `null` when it has none.
-String? logOf(SessionHandle session, Step step) {
-  final dir = Directory(p.join(session.dir, stepsDirName))
+/// What the log of [effect] of [session] holds; `null` when it has none.
+String? logOf(SessionHandle session, Effect effect) {
+  final dir = Directory(p.join(session.dir, effectsDirName))
       .listSync()
-      .singleWhere((entity) => idOfDirName(p.basename(entity.path)) == step.id);
-  final log = File(p.join(dir.path, step.log));
+      .singleWhere(
+        (entity) => idOfDirName(p.basename(entity.path)) == effect.id,
+      );
+  final log = File(p.join(dir.path, effect.log));
   return log.existsSync() ? log.readAsStringSync() : null;
 }
 

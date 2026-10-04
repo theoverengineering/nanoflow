@@ -13,13 +13,13 @@ import 'support/wait.dart';
 /// The graph file the session keeps a snapshot of: a session stores whatever
 /// map it is given.
 const graph = <String, Object?>{
-  'format': 1,
+  'format': 2,
   'workflows': ['lib/review.dart#review'],
 };
 
 void main() {
   test('what nanoflow_store writes, nanoflow_reader gives as the same '
-      'models: a session with input, a step that finishes with output, one '
+      'models: a session with input, an effect that finishes with output, one '
       'that fails with a log, and the end of the session', () async {
     final dir = Directory.systemTemp.createTempSync('nanoflow_contract_');
     addTearDown(() => dir.deleteSync(recursive: true));
@@ -44,53 +44,53 @@ void main() {
     );
     final reader = feed.reader;
 
-    // The library's order (spec §4.6, D3): the step's record, step-started,
-    // then the output document, step-finished and step.json with outputId —
-    // once the reader has given the step without it.
-    final collect = await session.createStep(
+    // The library's order (spec §4.6, D3): the effect's record, effect-started,
+    // then the output document, effect-finished and effect.json with outputId —
+    // once the reader has given the effect without it.
+    final collect = await session.createEffect(
       name: 'collect',
       key: 'collect#1@e3b0c44298fc1c14',
       after: null,
       place: 'lib/review.dart:12',
     );
     await session.appendEvent(
-      StepStarted(time: systemClock(), stepId: collect.id),
+      EffectStarted(time: systemClock(), effectId: collect.id),
     );
     final collected = {'id': '1', 'path': 'lib/main.dart'};
     final collectedId = await session.writeDocument(collected);
     documents[collectedId] = collected;
-    final collectFinished = StepFinished(
+    final collectFinished = EffectFinished(
       time: systemClock(),
-      stepId: collect.id,
+      effectId: collect.id,
       outputId: collectedId,
     );
     await session.appendEvent(collectFinished);
     await waitFor(
-      'the reader to give step collect and its step-finished',
+      'the reader to give effect collect and its effect-finished',
       () =>
-          feed.changes.contains(StepAdded(collect)) &&
+          feed.changes.contains(EffectAdded(collect)) &&
           feed.changes.contains(
             EventAdded(sessionId: sessionId, event: collectFinished),
           ),
     );
-    final collectDone = await session.setStepOutput(collect, collectedId);
+    final collectDone = await session.setEffectOutput(collect, collectedId);
 
-    final inspect = await session.createStep(
+    final inspect = await session.createEffect(
       name: 'inspect',
       key: 'inspect#1@9f2c1a7b3d5e8f04',
       after: collect.key,
       place: 'lib/review.dart:13',
     );
     await session.appendEvent(
-      StepStarted(time: systemClock(), stepId: inspect.id),
+      EffectStarted(time: systemClock(), effectId: inspect.id),
     );
     final log = session.openLog(inspect.id)
       ..add(utf8.encode('inspecting lib/main.dart\n'));
     await log.close();
     await session.appendEvent(
-      StepFailed(
+      EffectFailed(
         time: systemClock(),
-        stepId: inspect.id,
+        effectId: inspect.id,
         error: 'Exception: no reviewer',
         stack: '#0      inspect (lib/review.dart:30:5)\n',
       ),
@@ -108,10 +108,10 @@ void main() {
       [for (final event in journal) event.name],
       [
         'session-started',
-        'step-started',
-        'step-finished',
-        'step-started',
-        'step-failed',
+        'effect-started',
+        'effect-finished',
+        'effect-started',
+        'effect-failed',
         'session-finished',
       ],
     );
@@ -127,9 +127,9 @@ void main() {
       feed.changes.where((c) => c is! EventAdded && c is! OwnerChanged),
       unorderedEquals([
         SessionAdded(session.session),
-        StepAdded(collect),
-        StepAdded(inspect),
-        StepChanged(collectDone),
+        EffectAdded(collect),
+        EffectAdded(inspect),
+        EffectChanged(collectDone),
         for (final id in documents.keys)
           DocumentAdded(sessionId: sessionId, documentId: id),
       ]),
@@ -143,14 +143,14 @@ void main() {
       for (final event in journal)
         EventAdded(sessionId: sessionId, event: event),
     ]);
-    expect(await session.steps(), [collectDone, inspect]);
+    expect(await session.effects(), [collectDone, inspect]);
 
     final state = replaySession([for (final change in given) change.event]);
     expect(state.status, SessionStatus.finished);
     expect(state.outputId, resultId);
     expect(
-      [for (final step in state.steps) (step.stepId, step.status)],
-      [(collect.id, StepStatus.finished), (inspect.id, StepStatus.failed)],
+      [for (final effect in state.effects) (effect.effectId, effect.status)],
+      [(collect.id, EffectStatus.finished), (inspect.id, EffectStatus.failed)],
     );
 
     for (final MapEntry(key: id, :value) in documents.entries) {
@@ -159,14 +159,14 @@ void main() {
     }
     expect(
       await reader
-          .stepLog(sessionId, inspect.id)
+          .effectLog(sessionId, inspect.id)
           .first
           .timeout(const Duration(seconds: 10)),
       'inspecting lib/main.dart\n',
     );
     expect(
       reader.logPath(inspect.id),
-      p.join(reader.stepPath(inspect.id)!, 'step.log'),
+      p.join(reader.effectPath(inspect.id)!, 'effect.log'),
     );
   });
 }

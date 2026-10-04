@@ -1,10 +1,10 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "recursion",
-  "fingerprint": "sha256:56d52e597f7b07f2cd5c5b0941c8615e91c56edf81d589b5a0c619f2f7510216",
+  "fingerprint": "sha256:1d872cede79d4546718260878ddfcbe2c59ec4938f01b3f8b8ebd251fac0ffae",
   "sources": {
     "bin/main.dart": "sha256:9dea7998b773db12dd9dfcc53d21c17cd55a88031d43fee0f3b83ce042d76fba",
-    "lib/crawl.dart": "sha256:8e5b626472e5da65908ec35da3c1c4f8449e06594252cd9b1470e1b1cda30457"
+    "lib/crawl.dart": "sha256:29375f2762f55131c42a18691229f751698d34a4ea1e0ccf31f7904b3470f5c3"
   },
   "builds": {},
   "workflows": [
@@ -19,7 +19,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "fetch",
             "place": "lib/crawl.dart:23"
           },
@@ -74,7 +74,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "try-deploy",
             "place": "lib/crawl.dart:7"
           },

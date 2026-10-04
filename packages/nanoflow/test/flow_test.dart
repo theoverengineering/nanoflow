@@ -12,21 +12,21 @@ import 'package:test/test.dart';
 import 'support.dart';
 
 Future<String> review(Flow f, String branch) async {
-  final change = await f.step('collect', () => 'change of $branch'); // collect
-  return f.step('inspect', () async => '$change: clean'); // inspect
+  final diff = await f.effect('collect', () => 'change of $branch'); // collect
+  return f.effect('inspect', () async => '$diff: clean'); // inspect
 }
 
 Future<String> flaky(Flow f, String target) async {
   try {
-    await f.step<String>('deploy', () => throw StateError('no\r\ndisk'));
+    await f.effect<String>('deploy', () => throw StateError('no\r\ndisk'));
   } on StateError catch (e) {
-    return f.step('rollback', () => 'rolled back $target: ${e.message}');
+    return f.effect('rollback', () => 'rolled back $target: ${e.message}');
   }
   return 'deployed';
 }
 
 Future<String> broken(Flow f, String branch) async {
-  await f.step('collect', () => 'change of $branch');
+  await f.effect('collect', () => 'change of $branch');
   throw StateError('broken\nworkflow');
 }
 
@@ -34,34 +34,34 @@ Future<String> broken(Flow f, String branch) async {
 final gates = <String, Completer<String>>{};
 
 Future<String> gated(Flow f, String who) async {
-  final opened = await f.step('wait', () => gates[who]!.future);
-  return f.step('echo', () => '$who after $opened');
+  final opened = await f.effect('wait', () => gates[who]!.future);
+  return f.effect('echo', () => '$who after $opened');
 }
 
-/// Starts a step it does not await, which waits for the gate of [who].
-Future<String> leavesStep(Flow f, String who) async {
-  unawaited(f.step('background', () => gates[who]!.future));
+/// Starts an effect it does not await, which waits for the gate of [who].
+Future<String> leavesEffect(Flow f, String who) async {
+  unawaited(f.effect('background', () => gates[who]!.future));
   return 'returned';
 }
 
-/// What the step that each [callsLate] session calls after its workflow
+/// What the effect that each [callsLate] session calls after its workflow
 /// returned gave, or threw, by input.
-final lateSteps = <String, Future<Object?>>{};
+final lateEffects = <String, Future<Object?>>{};
 
-/// Calls a step 10 ms after it returned.
+/// Calls an effect 10 ms after it returned.
 Future<String> callsLate(Flow f, String who) async {
-  lateSteps[who] = Future<Object?>.delayed(
+  lateEffects[who] = Future<Object?>.delayed(
     const Duration(milliseconds: 10),
-    () => f.step('late', () => 'late'),
+    () => f.effect('late', () => 'late'),
   ).then((value) => value, onError: (Object e) => e);
   return 'returned';
 }
 
 Future<String> describeDate(Flow f, DateTime date) async => '$date';
 
-Future<String> datedStep(Flow f, String x) async {
+Future<String> datedEffect(Flow f, String x) async {
   try {
-    await f.step('date', () => DateTime.utc(2026, 10, 3));
+    await f.effect('date', () => DateTime.utc(2026, 10, 3));
   } on CodecException catch (e) {
     return 'failed: $e';
   }
@@ -71,26 +71,26 @@ Future<String> datedStep(Flow f, String x) async {
 Future<DateTime> datedResult(Flow f, String x) async =>
     DateTime.utc(2026, 10, 3);
 
-/// A step awaited later through Future.wait, then copies whose first await is
-/// not a step, with random pauses.
+/// An effect awaited later through Future.wait, then copies whose first await
+/// is not an effect, with random pauses.
 Future<String> release(Flow f, String version) async {
-  final pending = f.step('download', () => work('src-$version'));
+  final pending = f.effect('download', () => work('src-$version'));
   await pause();
   await pause();
   final [source] = await Future.wait([pending]);
   final results = await Future.wait([
     for (final pkg in ['core', 'tool'])
       () async {
-        await pause(); // like http.get outside any step
-        final up = await f.step('upload', () => work('$pkg:$source'));
-        return f.step('verify', () => work('$up:verified'));
+        await pause(); // like http.get outside any effect
+        final up = await f.effect('upload', () => work('$pkg:$source'));
+        return f.effect('verify', () => work('$up:verified'));
       }(),
   ]);
-  return f.step('announce', () => work(results.join(' | ')));
+  return f.effect('announce', () => work(results.join(' | ')));
 }
 
 /// A plain future started early, like an http.get, awaited later — done by
-/// then or not — then copies whose first await is not a step, with random
+/// then or not — then copies whose first await is not an effect, with random
 /// pauses.
 Future<String> fetchLater(Flow f, String version) async {
   final pending = work('src-$version');
@@ -100,16 +100,16 @@ Future<String> fetchLater(Flow f, String version) async {
   final results = await Future.wait([
     for (final pkg in ['core', 'tool'])
       () async {
-        await pause(); // like http.get outside any step
-        final up = await f.step('upload', () => work('$pkg:$source'));
-        return f.step('verify', () => work('$up:verified'));
+        await pause(); // like http.get outside any effect
+        final up = await f.effect('upload', () => work('$pkg:$source'));
+        return f.effect('verify', () => work('$up:verified'));
       }(),
   ]);
-  return f.step('announce', () => work(results.join(' | ')));
+  return f.effect('announce', () => work(results.join(' | ')));
 }
 
 /// Items of a stream that a producer adds after pauses, each handled in
-/// `await for` by copies whose first await is not a step.
+/// `await for` by copies whose first await is not an effect.
 Future<String> streamed(Flow f, String version) async {
   final controller = StreamController<String>();
   unawaited(() async {
@@ -125,31 +125,31 @@ Future<String> streamed(Flow f, String version) async {
     final results = await Future.wait([
       for (final pkg in ['core', 'tool'])
         () async {
-          await pause(); // like http.get outside any step
-          return f.step('upload', () => work('$pkg:$item'));
+          await pause(); // like http.get outside any effect
+          return f.effect('upload', () => work('$pkg:$item'));
         }(),
     ]);
     handled.add(results.join('+'));
   }
-  return f.step('announce', () => work(handled.join(' | ')));
+  return f.effect('announce', () => work(handled.join(' | ')));
 }
 
-/// The step records of the session [sessionId] of [dir].
-Future<List<Step>> stepsOf(String dir, String sessionId) async =>
-    (await openSession(dir, sessionId)).steps();
+/// The effect records of the session [sessionId] of [dir].
+Future<List<Effect>> effectsOf(String dir, String sessionId) async =>
+    (await openSession(dir, sessionId)).effects();
 
-/// A flow other than the one that runs [otherFlowStep].
+/// A flow other than the one that runs [otherFlowEffect].
 late Flow otherFlow;
 
-Future<String> otherFlowStep(Flow f, String x) async =>
-    otherFlow.step('collect', () => x);
+Future<String> otherFlowEffect(Flow f, String x) async =>
+    otherFlow.effect('collect', () => x);
 
 /// A stack trace's text that names this file.
 final namesThisFile = contains('flow_test.dart');
 
 void main() {
   group('run', () {
-    test('writes one session: the input, a record and events for every step '
+    test('writes one session: the input, a record and events for every effect '
         'and the result', () async {
       final dir = await tempDir();
       final flow = Flow(directory: dir);
@@ -164,9 +164,9 @@ void main() {
       expect(await handle.documentValue(session.inputId!), 'main');
       expect(p.basename(handle.dir), startsWith('review-'));
 
-      final steps = await handle.steps();
-      expect([for (final s in steps) s.name], ['collect', 'inspect']);
-      final [collect, inspect] = steps;
+      final effects = await handle.effects();
+      expect([for (final s in effects) s.name], ['collect', 'inspect']);
+      final [collect, inspect] = effects;
       final root = h('');
       expect(collect.key, 'collect#1@$root');
       expect(collect.after, isNull);
@@ -183,30 +183,30 @@ void main() {
       final events = await eventsOf(handle);
       expect(events.map((e) => e.name), [
         'session-started',
-        'step-started',
-        'step-finished',
-        'step-started',
-        'step-finished',
+        'effect-started',
+        'effect-finished',
+        'effect-started',
+        'effect-finished',
         'session-finished',
       ]);
       expect(
         events[1],
-        isA<StepStarted>().having((e) => e.stepId, 'stepId', collect.id),
+        isA<EffectStarted>().having((e) => e.effectId, 'effectId', collect.id),
       );
       expect(
         events[2],
-        isA<StepFinished>()
-            .having((e) => e.stepId, 'stepId', collect.id)
+        isA<EffectFinished>()
+            .having((e) => e.effectId, 'effectId', collect.id)
             .having((e) => e.outputId, 'outputId', collect.outputId),
       );
       expect(
         events[3],
-        isA<StepStarted>().having((e) => e.stepId, 'stepId', inspect.id),
+        isA<EffectStarted>().having((e) => e.effectId, 'effectId', inspect.id),
       );
       expect(
         events[4],
-        isA<StepFinished>()
-            .having((e) => e.stepId, 'stepId', inspect.id)
+        isA<EffectFinished>()
+            .having((e) => e.effectId, 'effectId', inspect.id)
             .having((e) => e.outputId, 'outputId', inspect.outputId),
       );
       final finished = events[5] as SessionFinished;
@@ -223,7 +223,7 @@ void main() {
       File(p.join(dir, 'lib', 'review.dart'))
         ..parent.createSync()
         ..writeAsStringSync('// review\n');
-      const graph = {'format': 1, 'package': 'review_example'};
+      const graph = {'format': 2, 'package': 'review_example'};
       File(p.join(dir, 'nanoflow.graph.json'))
           .writeAsStringSync(jsonEncode(graph));
 
@@ -241,7 +241,7 @@ void main() {
     });
   });
 
-  test('a step that throws fails, and its exception reaches the '
+  test('an effect that throws fails, and its exception reaches the '
       'workflow', () async {
     final dir = await tempDir();
 
@@ -251,26 +251,26 @@ void main() {
     );
 
     final handle = await onlySession(dir);
-    final [deploy, rollback] = await handle.steps();
+    final [deploy, rollback] = await handle.effects();
     expect(deploy.name, 'deploy');
     expect(deploy.outputId, isNull);
     final events = await eventsOf(handle);
     expect(events.map((e) => e.name), [
       'session-started',
-      'step-started',
-      'step-failed',
-      'step-started',
-      'step-finished',
+      'effect-started',
+      'effect-failed',
+      'effect-started',
+      'effect-finished',
       'session-finished',
     ]);
     expect(
       events[2],
-      isA<StepFailed>()
-          .having((e) => e.stepId, 'stepId', deploy.id)
+      isA<EffectFailed>()
+          .having((e) => e.effectId, 'effectId', deploy.id)
           .having((e) => e.error, 'error', 'Bad state: no disk')
           .having((e) => e.stack, 'stack', namesThisFile),
     );
-    // An exception is not a result: the code that caught it took no step's.
+    // An exception is not a result: the code that caught it took no effect's.
     expect(rollback.after, isNull);
   });
 
@@ -295,8 +295,8 @@ void main() {
     final events = await eventsOf(handle);
     expect(events.map((e) => e.name), [
       'session-started',
-      'step-started',
-      'step-finished',
+      'effect-started',
+      'effect-finished',
       'session-failed',
     ]);
     expect(
@@ -321,11 +321,11 @@ void main() {
   });
 
   group('the end of a session', () {
-    test('waits for the steps the workflow did not await: their outcome is '
+    test('waits for the effects the workflow did not await: their outcome is '
         'written before the session\'s', () async {
       final dir = await tempDir();
       gates['left'] = Completer();
-      final session = await Flow(directory: dir).start(leavesStep, 'left');
+      final session = await Flow(directory: dir).start(leavesEffect, 'left');
       var ended = false;
       unawaited(session.result.then((_) => ended = true));
 
@@ -333,7 +333,7 @@ void main() {
       expect(ended, isFalse);
       expect(eventNamesOf(dir, session.id), [
         'session-started',
-        'step-started',
+        'effect-started',
       ]);
 
       gates['left']!.complete('open');
@@ -341,22 +341,22 @@ void main() {
       final handle = await onlySession(dir);
       expect((await eventsOf(handle)).map((e) => e.name), [
         'session-started',
-        'step-started',
-        'step-finished',
+        'effect-started',
+        'effect-finished',
         'session-finished',
       ]);
-      final [background] = await handle.steps();
+      final [background] = await handle.effects();
       expect(await handle.documentValue(background.outputId!), 'open');
     });
 
-    test('lets no step start after it', () async {
+    test('lets no effect start after it', () async {
       final dir = await tempDir();
 
       expect(await Flow(directory: dir).run(callsLate, 'late'), 'returned');
 
-      expect(await lateSteps['late'], isStateError);
+      expect(await lateEffects['late'], isStateError);
       final handle = await onlySession(dir);
-      expect(await handle.steps(), isEmpty);
+      expect(await handle.effects(), isEmpty);
       expect((await eventsOf(handle)).map((e) => e.name), [
         'session-started',
         'session-finished',
@@ -364,7 +364,7 @@ void main() {
     });
   });
 
-  test('two sessions of one flow at once keep their steps apart', () async {
+  test('two sessions of one flow at once keep their effects apart', () async {
     final dir = await tempDir();
     final flow = Flow(directory: dir);
     gates['a'] = Completer();
@@ -380,29 +380,30 @@ void main() {
     expect(a.id, isNot(b.id));
     for (final (session, who, opened) in [(a, 'a', 'A'), (b, 'b', 'B')]) {
       final handle = await openSession(dir, session.id);
-      final steps = await handle.steps();
-      expect([for (final s in steps) s.name], ['wait', 'echo']);
-      expect(await handle.documentValue(steps[0].outputId!), opened);
+      final effects = await handle.effects();
+      expect([for (final s in effects) s.name], ['wait', 'echo']);
+      expect(await handle.documentValue(effects[0].outputId!), opened);
       expect(
-        await handle.documentValue(steps[1].outputId!),
+        await handle.documentValue(effects[1].outputId!),
         '$who after $opened',
       );
-      final ids = {for (final s in steps) s.id};
+      final ids = {for (final s in effects) s.id};
       for (final event in await eventsOf(handle)) {
         if (event
-            case StepStarted(:final stepId) || StepFinished(:final stepId)) {
-          expect(ids, contains(stepId));
+            case EffectStarted(:final effectId) ||
+                EffectFinished(:final effectId)) {
+          expect(ids, contains(effectId));
         }
       }
     }
   });
 
   for (final (title, workflow, count) in [
-    ('a step awaited later through Future.wait', release, 6),
+    ('an effect awaited later through Future.wait', release, 6),
     ('a plain future awaited later', fetchLater, 5),
     ('items of a stream handled by copies', streamed, 9),
   ]) {
-    group('the keys of steps with $title', () {
+    group('the keys of effects with $title', () {
       test('are the same whatever the timing', () async {
         final dir = await tempDir();
         final flow = Flow(directory: dir);
@@ -411,14 +412,14 @@ void main() {
           random = Random(seed);
           final session = await flow.start(workflow, '1.0');
           await session.result;
-          final steps = await stepsOf(dir, session.id);
-          final afters = {for (final s in steps) s.key: s.after};
+          final effects = await effectsOf(dir, session.id);
+          final afters = {for (final s in effects) s.key: s.after};
           expect(afters, hasLength(count));
           expect(afters, expected ??= afters, reason: 'seed $seed');
         }
       });
 
-      test('find the steps a session finished before, which then neither '
+      test('find the effects a session finished before, which then neither '
           'run nor are written again', () async {
         final dir = await tempDir();
         final flow = Flow(directory: dir);
@@ -426,9 +427,9 @@ void main() {
         final first = await flow.start(workflow, '1.0');
         final expected = await first.result;
         final handle = await openSession(dir, first.id);
-        // In the order the steps were created.
+        // In the order the effects were created.
         final results = {
-          for (final s in await handle.steps())
+          for (final s in await handle.effects())
             s.key: (
               after: s.after,
               value: await handle.documentValue(s.outputId!),
@@ -438,7 +439,7 @@ void main() {
         for (var seed = 2; seed < 13; seed++) {
           random = Random(seed);
           final saved = seed == 2
-              // The first step alone; in release the step awaited later,
+              // The first effect alone; in release the effect awaited later,
               // which, saved, is done by the time Future.wait takes it.
               ? {keys.first}
               : (keys.toList()..shuffle(random))
@@ -449,7 +450,7 @@ void main() {
           });
           expect(await again.result, expected, reason: 'seed $seed');
           expect(
-            {for (final s in await stepsOf(dir, again.id)) s.key},
+            {for (final s in await effectsOf(dir, again.id)) s.key},
             keys.toSet().difference(saved),
             reason: 'seed $seed, saved $saved',
           );
@@ -458,17 +459,17 @@ void main() {
     });
   }
 
-  group('f.step', () {
+  group('f.effect', () {
     test('outside a session is a StateError', () async {
       final flow = Flow(directory: await tempDir());
-      expect(() => flow.step('collect', () => 'x'), throwsStateError);
+      expect(() => flow.effect('collect', () => 'x'), throwsStateError);
     });
 
     test('of another flow inside a session is a StateError', () async {
       final dir = await tempDir();
       otherFlow = Flow(directory: dir);
       await expectLater(
-        Flow(directory: dir).run(otherFlowStep, 'x'),
+        Flow(directory: dir).run(otherFlowEffect, 'x'),
         throwsStateError,
       );
     });
@@ -484,24 +485,27 @@ void main() {
       expect(Directory(p.join(dir, 'runs')).existsSync(), isFalse);
     });
 
-    test('as a step result fails the step with a CodecException', () async {
-      final dir = await tempDir();
-      expect(
-        await Flow(directory: dir).run(datedStep, 'x'),
-        startsWith('failed: CodecException: DateTime'),
-      );
-      final handle = await onlySession(dir);
-      final events = await eventsOf(handle);
-      expect(
-        events[2],
-        isA<StepFailed>().having(
-          (e) => e.error,
-          'error',
-          startsWith('CodecException: DateTime'),
-        ),
-      );
-      expect(events.last, isA<SessionFinished>());
-    });
+    test(
+      'as an effect result fails the effect with a CodecException',
+      () async {
+        final dir = await tempDir();
+        expect(
+          await Flow(directory: dir).run(datedEffect, 'x'),
+          startsWith('failed: CodecException: DateTime'),
+        );
+        final handle = await onlySession(dir);
+        final events = await eventsOf(handle);
+        expect(
+          events[2],
+          isA<EffectFailed>().having(
+            (e) => e.error,
+            'error',
+            startsWith('CodecException: DateTime'),
+          ),
+        );
+        expect(events.last, isA<SessionFinished>());
+      },
+    );
 
     test('as the result fails the session with a CodecException', () async {
       final dir = await tempDir();

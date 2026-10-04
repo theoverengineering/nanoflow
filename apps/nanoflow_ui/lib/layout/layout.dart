@@ -44,7 +44,7 @@ export 'layout_graph.dart'
         monospaceMeasure,
         nameLength,
         nodeName,
-        reachableSteps,
+        reachableEffects,
         shortName,
         startMarker;
 export 'nested.dart' show ExpandedNode, FrameRoom;

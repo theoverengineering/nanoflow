@@ -7,7 +7,7 @@ import '../../widgets/spinner.dart';
 import 'canvas_style.dart';
 
 // What a session puts on a node's tile (docs/ui-spec.md «Граф»): its look
-// in the state of its steps, the state's badge, and the badges over it.
+// in the state of its effects, the state's badge, and the badges over it.
 
 /// The badge on the bottom right corner of a tile in [state]: a check
 /// visited, `!` failed, the turning sign running, a pause interrupted; none
@@ -108,7 +108,7 @@ final class TileLook {
     place: Color(0xFFC9A36A),
   );
 
-  /// A step that was running when the process of its session went: framed
+  /// An effect that was running when the process of its session went: framed
   /// muted, as nothing goes on.
   static const interrupted = TileLook(
     fill: CanvasColors.tileFill,
@@ -207,7 +207,7 @@ class _MarkPainter extends CustomPainter {
   bool shouldRepaint(_MarkPainter old) => old.mark != mark;
 }
 
-/// How many copies are on a step now, in the color of running steps
+/// How many copies are on an effect now, in the color of running effects
 /// (docs/design/code-first/copies-frame.html).
 class RunningBadge extends StatelessWidget {
   const RunningBadge(this.copies, {super.key});

@@ -54,13 +54,13 @@ void main() {
     write(json(reviewGraphFile()));
     await source.start();
 
-    write(json(reviewGraphFile(reviewStep: 'gather')));
-    await _until(() => source.graph == reviewGraphFile(reviewStep: 'gather'));
+    write(json(reviewGraphFile(reviewEffect: 'gather')));
+    await _until(() => source.graph == reviewGraphFile(reviewEffect: 'gather'));
     expect(notified, 2);
 
     // Written in place, as an editor may.
-    File(file).writeAsStringSync(json(reviewGraphFile(reviewStep: 'take')));
-    await _until(() => source.graph == reviewGraphFile(reviewStep: 'take'));
+    File(file).writeAsStringSync(json(reviewGraphFile(reviewEffect: 'take')));
+    await _until(() => source.graph == reviewGraphFile(reviewEffect: 'take'));
   });
 
   test(
@@ -69,14 +69,14 @@ void main() {
       write(json(reviewGraphFile()));
       await source.start();
 
-      write('{"format": 1,');
+      write('{"format": 2,');
       await _until(() => source.error != null);
       expect(source.error, contains('Unexpected end of input'));
       expect(source.graph, reviewGraphFile());
 
-      write(json(reviewGraphFile(reviewStep: 'gather')));
+      write(json(reviewGraphFile(reviewEffect: 'gather')));
       await _until(() => source.error == null);
-      expect(source.graph, reviewGraphFile(reviewStep: 'gather'));
+      expect(source.graph, reviewGraphFile(reviewEffect: 'gather'));
     },
   );
 
@@ -100,9 +100,9 @@ void main() {
     await _until(() => source.fileMissing);
     expect(source.graph, reviewGraphFile());
 
-    write(json(reviewGraphFile(reviewStep: 'gather')));
+    write(json(reviewGraphFile(reviewEffect: 'gather')));
     await _until(() => !source.fileMissing);
-    expect(source.graph, reviewGraphFile(reviewStep: 'gather'));
+    expect(source.graph, reviewGraphFile(reviewEffect: 'gather'));
   });
 
   test('a file not there when started is missing', () async {
@@ -131,7 +131,7 @@ void main() {
     );
     await disposed.start();
     disposed.dispose();
-    write(json(reviewGraphFile(reviewStep: 'gather')));
+    write(json(reviewGraphFile(reviewEffect: 'gather')));
     await Future<void>.delayed(const Duration(milliseconds: 200));
     expect(disposed.graph, reviewGraphFile());
   });

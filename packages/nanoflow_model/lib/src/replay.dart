@@ -12,22 +12,22 @@ enum SessionStatus {
   failed,
 }
 
-/// Where a step is, as the events after its last `step-started` tell.
-enum StepStatus {
-  /// No `step-finished` or `step-failed` after the last `step-started`.
+/// Where an effect is, as the events after its last `effect-started` tell.
+enum EffectStatus {
+  /// No `effect-finished` or `effect-failed` after the last `effect-started`.
   running,
 
-  /// A `step-finished` after the last `step-started`.
+  /// An `effect-finished` after the last `effect-started`.
   finished,
 
-  /// A `step-failed` after the last `step-started`.
+  /// An `effect-failed` after the last `effect-started`.
   failed,
 }
 
-/// What replaying a session's journal says about one step.
-final class StepState {
-  const StepState({
-    required this.stepId,
+/// What replaying a session's journal says about one effect.
+final class EffectState {
+  const EffectState({
+    required this.effectId,
     required this.status,
     required this.starts,
     required this.startedAt,
@@ -36,23 +36,23 @@ final class StepState {
     required this.error,
   });
 
-  final String stepId;
+  final String effectId;
 
-  final StepStatus status;
+  final EffectStatus status;
 
-  /// How many times the step ran live: the number of its `step-started`.
+  /// How many times the effect ran live: the number of its `effect-started`.
   final int starts;
 
-  /// The time of the first `step-started`.
+  /// The time of the first `effect-started`.
   final DateTime startedAt;
 
-  /// The time of the outcome of the last start; `null` while the step runs.
+  /// The time of the outcome of the last start; `null` while the effect runs.
   final DateTime? finishedAt;
 
-  /// The `outputId` of `step-finished`; `null` unless the step finished.
+  /// The `outputId` of `effect-finished`; `null` unless the effect finished.
   final String? outputId;
 
-  /// The `error` of `step-failed`; `null` unless the step failed.
+  /// The `error` of `effect-failed`; `null` unless the effect failed.
   final String? error;
 }
 
@@ -62,7 +62,7 @@ final class StepState {
 final class SessionState {
   const SessionState({
     required this.status,
-    required this.steps,
+    required this.effects,
     required this.startedAt,
     required this.finishedAt,
     required this.outputId,
@@ -73,8 +73,8 @@ final class SessionState {
 
   final SessionStatus status;
 
-  /// The steps in the order of their first `step-started`.
-  final List<StepState> steps;
+  /// The effects in the order of their first `effect-started`.
+  final List<EffectState> effects;
 
   /// The time of `session-started`; `null` when the journal has none.
   final DateTime? startedAt;
@@ -102,11 +102,11 @@ final class SessionState {
 /// The state of a session after [events], which are in the order of its
 /// journal.
 ///
-/// Events this version does not know are skipped. An outcome of a step with
-/// no `step-started` changes no step. Replaying never fails.
+/// Events this version does not know are skipped. An outcome of an effect with
+/// no `effect-started` changes no effect. Replaying never fails.
 SessionState replaySession(List<Event> events) {
-  // Insertion order is the order of the first `step-started`.
-  final steps = <String, _Step>{};
+  // Insertion order is the order of the first `effect-started`.
+  final effects = <String, _Effect>{};
   final codes = <String?>[];
   final graphIds = <String>[];
   DateTime? startedAt;
@@ -122,12 +122,12 @@ SessionState replaySession(List<Event> events) {
       case SessionResumed(:final code, :final graphId):
         codes.add(code);
         if (graphId != null) graphIds.add(graphId);
-      case StepStarted(:final stepId, :final time):
-        (steps[stepId] ??= _Step(stepId, time)).start();
-      case StepFinished(:final stepId, :final time, :final outputId):
-        steps[stepId]?.end(StepStatus.finished, time, outputId: outputId);
-      case StepFailed(:final stepId, :final time, :final error):
-        steps[stepId]?.end(StepStatus.failed, time, error: error);
+      case EffectStarted(:final effectId, :final time):
+        (effects[effectId] ??= _Effect(effectId, time)).start();
+      case EffectFinished(:final effectId, :final time, :final outputId):
+        effects[effectId]?.end(EffectStatus.finished, time, outputId: outputId);
+      case EffectFailed(:final effectId, :final time, :final error):
+        effects[effectId]?.end(EffectStatus.failed, time, error: error);
       case SessionFinished() || SessionFailed():
         break;
     }
@@ -150,7 +150,9 @@ SessionState replaySession(List<Event> events) {
   };
   return SessionState(
     status: status,
-    steps: List.unmodifiable([for (final step in steps.values) step.freeze()]),
+    effects: List.unmodifiable([
+      for (final effect in effects.values) effect.freeze(),
+    ]),
     startedAt: startedAt,
     finishedAt: finishedAt,
     outputId: outputId,
@@ -160,14 +162,14 @@ SessionState replaySession(List<Event> events) {
   );
 }
 
-/// A step while its events are being replayed.
-class _Step {
-  _Step(this.stepId, this.startedAt);
+/// An effect while its events are being replayed.
+class _Effect {
+  _Effect(this.effectId, this.startedAt);
 
-  final String stepId;
+  final String effectId;
   final DateTime startedAt;
   int starts = 0;
-  StepStatus status = StepStatus.running;
+  EffectStatus status = EffectStatus.running;
   DateTime? finishedAt;
   String? outputId;
   String? error;
@@ -175,14 +177,14 @@ class _Step {
   /// A new start: the outcome of the start before no longer holds.
   void start() {
     starts++;
-    status = StepStatus.running;
+    status = EffectStatus.running;
     finishedAt = null;
     outputId = null;
     error = null;
   }
 
   void end(
-    StepStatus status,
+    EffectStatus status,
     DateTime time, {
     String? outputId,
     String? error,
@@ -193,8 +195,8 @@ class _Step {
     this.error = error;
   }
 
-  StepState freeze() => StepState(
-    stepId: stepId,
+  EffectState freeze() => EffectState(
+    effectId: effectId,
     status: status,
     starts: starts,
     startedAt: startedAt,

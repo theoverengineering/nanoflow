@@ -12,8 +12,8 @@ void main() {
 
   /// Session a1b2: collect finished, inspect running.
   Journal running() => Journal('a1b2-session')
-    ..step('collect', 1, end: 149, output: 'change')
-    ..step('inspect', 150);
+    ..effect('collect', 1, end: 149, output: 'change')
+    ..effect('inspect', 150);
 
   group('a session (ui-spec «Сессии»)', () {
     test('notes the code it ran on when that is not the code of its graph, '
@@ -67,7 +67,7 @@ void main() {
       SessionData withProblems(int count) => SessionData(
         journal.session,
         events: journal.events,
-        steps: journal.steps,
+        effects: journal.effects,
         problems: [
           for (var line = 1; line <= count; line++)
             'line $line is not an event: {',
@@ -115,7 +115,7 @@ and 2 more''');
 
     test('that ends with session-finished is finished: Finished in 3m 04s', () {
       final session = Journal('a1b2-session')
-        ..step('collect', 1, end: 184)
+        ..effect('collect', 1, end: 184)
         ..finish(184);
       final summary = summarize(session.data, now)!;
       expect(summary.status, SessionStatus.finished);
@@ -191,8 +191,8 @@ and 2 more''');
       }
     });
 
-    test('that is running with failed steps is marked 1 failed', () {
-      final failed = running()..step('notify', 160, end: 161, failed: true);
+    test('that is running with failed effects is marked 1 failed', () {
+      final failed = running()..effect('notify', 160, end: 161, failed: true);
       expect(summarize(failed.data, now)!.failedBadge, '1 failed');
       expect(summarize(running().data, now)!.failedBadge, isNull);
       expect(
@@ -201,27 +201,27 @@ and 2 more''');
       );
     });
 
-    test('a failed step that ran again and finished is not failed', () {
+    test('a failed effect that ran again and finished is not failed', () {
       final session = running()
-        ..step('notify', 160, end: 161, failed: true)
+        ..effect('notify', 160, end: 161, failed: true)
         ..resume(200);
       session.events.add(
-        StepStarted(time: at(201), stepId: session.steps.last.id),
+        EffectStarted(time: at(201), effectId: session.effects.last.id),
       );
       session.events.add(
-        StepFinished(
+        EffectFinished(
           time: at(202),
-          stepId: session.steps.last.id,
+          effectId: session.effects.last.id,
           outputId: null,
         ),
       );
       expect(summarize(session.data, now)!.failedBadge, isNull);
     });
 
-    test('counts its steps: 1 step, 2 steps', () {
-      expect(summarize(running().data, now)!.stepsText, '2 steps');
-      final one = Journal('a1b2-session')..step('collect', 1);
-      expect(summarize(one.data, now)!.stepsText, '1 step');
+    test('counts its effects: 1 effect, 2 effects', () {
+      expect(summarize(running().data, now)!.effectsText, '2 effects');
+      final one = Journal('a1b2-session')..effect('collect', 1);
+      expect(summarize(one.data, now)!.effectsText, '1 effect');
     });
 
     test('shows the local day and time it started: Today · 14:03:11', () {

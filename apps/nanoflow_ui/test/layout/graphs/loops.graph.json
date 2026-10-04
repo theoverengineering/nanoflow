@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "loops",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -15,7 +15,7 @@
         "nodes": [
           {
             "id": "fetch",
-            "kind": "step",
+            "kind": "effect",
             "name": "fetch",
             "place": "lib/loops.dart:10"
           },
@@ -27,7 +27,7 @@
           },
           {
             "id": "build",
-            "kind": "step",
+            "kind": "effect",
             "name": "build",
             "place": "lib/loops.dart:12"
           },
@@ -39,7 +39,7 @@
           },
           {
             "id": "report",
-            "kind": "step",
+            "kind": "effect",
             "name": "report",
             "place": "lib/loops.dart:14"
           }

@@ -6,7 +6,7 @@
 //   cd tests/e2e
 //   dart run tool/record_copies.dart ../../apps/nanoflow_ui/test/state/fixtures/copies
 //
-// Run it again whenever the library changes how it keys steps or what it
+// Run it again whenever the library changes how it keys effects or what it
 // writes for them (decision D1).
 import 'dart:convert';
 import 'dart:io';
@@ -58,15 +58,15 @@ Future<void> main(List<String> args) async {
   stdout.writeln('wrote ${out.path}');
 }
 
-/// A session directory as JSON: the session, its steps' records, its
+/// A session directory as JSON: the session, its effects' records, its
 /// journal's events and its documents' values.
 Map<String, Object?> _session(Directory dir) => {
   'session': _read(p.join(dir.path, sessionFileName)),
-  'steps': [
-    for (final step in _sorted(
-      Directory(p.join(dir.path, stepsDirName)).listSync(),
+  'effects': [
+    for (final effect in _sorted(
+      Directory(p.join(dir.path, effectsDirName)).listSync(),
     ))
-      _read(p.join(step.path, stepFileName)),
+      _read(p.join(effect.path, effectFileName)),
   ],
   'events': [
     for (final line in File(p.join(dir.path, eventsFileName)).readAsLinesSync())

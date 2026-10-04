@@ -7,11 +7,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/state/effect_files.dart';
 import 'package:nanoflow_ui/state/freshness.dart';
 import 'package:nanoflow_ui/state/graph_file_source.dart';
 import 'package:nanoflow_ui/state/outcomes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
-import 'package:nanoflow_ui/state/step_files.dart';
 
 /// The fingerprint of the code [reviewGraphFile] was read from.
 const reviewCode = 'sha256:review-code';
@@ -23,9 +23,9 @@ Map<String, Object?> graphFileJson({
   String fingerprint = reviewCode,
   Map<String, String> builds = const {},
   List<Map<String, Object?>> warnings = const [],
-  String reviewStep = 'collect',
+  String reviewEffect = 'collect',
 }) => {
-  'format': 1,
+  'format': 2,
   'package': 'review_example',
   'fingerprint': fingerprint,
   'sources': {'bin/main.dart': 'sha256:aa11', 'lib/review.dart': 'sha256:9f2c'},
@@ -39,8 +39,8 @@ Map<String, Object?> graphFileJson({
         'nodes': [
           {
             'id': '1',
-            'kind': 'step',
-            'name': reviewStep,
+            'kind': 'effect',
+            'name': reviewEffect,
             'place': 'lib/review.dart:22',
           },
         ],
@@ -57,7 +57,7 @@ Map<String, Object?> graphFileJson({
         'nodes': [
           {
             'id': '1',
-            'kind': 'step',
+            'kind': 'effect',
             'name': 'plan',
             'place': 'lib/release.dart:10',
           },
@@ -77,23 +77,23 @@ GraphFile reviewGraphFile({
   String fingerprint = reviewCode,
   Map<String, String> builds = const {},
   List<Map<String, Object?>> warnings = const [],
-  String reviewStep = 'collect',
+  String reviewEffect = 'collect',
 }) => GraphFile.fromJson(
   graphFileJson(
     fingerprint: fingerprint,
     builds: builds,
     warnings: warnings,
-    reviewStep: reviewStep,
+    reviewEffect: reviewEffect,
   ),
 );
 
-/// What [Journal.step] takes for "after the step before it".
+/// What [Journal.effect] takes for "after the effect before it".
 const _previous = '\u0000previous';
 
-/// A step node of a test graph.
-Map<String, Object?> stepNode(String id, String name, int line) => {
+/// An effect node of a test graph.
+Map<String, Object?> effectNode(String id, String name, int line) => {
   'id': id,
-  'kind': 'step',
+  'kind': 'effect',
   'name': name,
   'place': 'lib/copies.dart:$line',
 };
@@ -114,52 +114,52 @@ Map<String, Object?> chainBody(List<Map<String, Object?>> nodes) => {
 
 /// The graph file describe writes for `lib/copies.dart` of the package
 /// `copies`, whose workflows run copies side by side as the prototype
-/// step_keys does (the line of each step in the comments):
+/// step_keys does (the line of each effect in the comments):
 ///
 /// ```dart
 /// Future<String> inPlace(Flow f, List<String> packages) async {
-///   final plan = await f.step('plan', …);                     // 4
+///   final plan = await f.effect('plan', …);                   // 4
 ///   final results = await Future.wait([                       // 5
 ///     for (final pkg in plan) () async {
-///       final up = await f.step('upload', …);                 // 7
-///       final ok = await f.step('verify', …);                 // 8
-///       return f.step('tag', …);                              // 9
+///       final up = await f.effect('upload', …);               // 7
+///       final ok = await f.effect('verify', …);               // 8
+///       return f.effect('tag', …);                            // 9
 ///     }(),
 ///   ]);
-///   return f.step('announce', …);                             // 12
+///   return f.effect('announce', …);                           // 12
 /// }
 ///
 /// Future<String> viaCall(Flow f, List<String> packages) async {
 ///   final results = await Future.wait([                       // 15
 ///     for (final pkg in packages) publish(f, pkg),
 ///   ]);
-///   return f.step('announce', …);                             // 17
+///   return f.effect('announce', …);                           // 17
 /// }
 ///
 /// Future<String> publish(Flow f, String pkg) async {
-///   final up = await f.step('upload', …);                     // 20
-///   final ok = await f.step('verify', …);                     // 21
-///   return f.step('tag', …);                                  // 22
+///   final up = await f.effect('upload', …);                   // 20
+///   final ok = await f.effect('verify', …);                   // 21
+///   return f.effect('tag', …);                                // 22
 /// }
 ///
 /// Future<String> nested(Flow f, List<String> packages) async {
 ///   final results = await Future.wait([                       // 25
 ///     for (final pkg in packages) () async {
-///       final src = await f.step('fetch', …);                 // 27
+///       final src = await f.effect('fetch', …);               // 27
 ///       final builds = await Future.wait([                    // 28
 ///         for (final target in targets) () async {
-///           final bin = await f.step('build', …);             // 30
-///           return f.step('test', …);                         // 31
+///           final bin = await f.effect('build', …);           // 30
+///           return f.effect('test', …);                       // 31
 ///         }(),
 ///       ]);
-///       return f.step('upload', …);                           // 34
+///       return f.effect('upload', …);                         // 34
 ///     }(),
 ///   ]);
-///   return f.step('announce', …);                             // 37
+///   return f.effect('announce', …);                           // 37
 /// }
 /// ```
 Map<String, Object?> copiesGraphJson() => {
-  'format': 1,
+  'format': 2,
   'package': 'copies',
   'fingerprint': 'sha256:copies-code',
   'sources': {'lib/copies.dart': 'sha256:c0c0'},
@@ -174,19 +174,19 @@ Map<String, Object?> copiesGraphJson() => {
       'name': 'inPlace',
       'place': 'lib/copies.dart:3',
       'body': chainBody([
-        stepNode('1', 'plan', 4),
+        effectNode('1', 'plan', 4),
         {
           'id': '2',
           'kind': 'copies',
           'label': 'pkg in plan',
           'place': 'lib/copies.dart:5',
           'body': chainBody([
-            stepNode('1', 'upload', 7),
-            stepNode('2', 'verify', 8),
-            stepNode('3', 'tag', 9),
+            effectNode('1', 'upload', 7),
+            effectNode('2', 'verify', 8),
+            effectNode('3', 'tag', 9),
           ]),
         },
-        stepNode('3', 'announce', 12),
+        effectNode('3', 'announce', 12),
       ]),
     },
     'lib/copies.dart#nested': {
@@ -199,30 +199,30 @@ Map<String, Object?> copiesGraphJson() => {
           'label': 'pkg in packages',
           'place': 'lib/copies.dart:25',
           'body': chainBody([
-            stepNode('1', 'fetch', 27),
+            effectNode('1', 'fetch', 27),
             {
               'id': '2',
               'kind': 'copies',
               'label': 'target in targets',
               'place': 'lib/copies.dart:28',
               'body': chainBody([
-                stepNode('1', 'build', 30),
-                stepNode('2', 'test', 31),
+                effectNode('1', 'build', 30),
+                effectNode('2', 'test', 31),
               ]),
             },
-            stepNode('3', 'upload', 34),
+            effectNode('3', 'upload', 34),
           ]),
         },
-        stepNode('2', 'announce', 37),
+        effectNode('2', 'announce', 37),
       ]),
     },
     'lib/copies.dart#publish': {
       'name': 'publish',
       'place': 'lib/copies.dart:19',
       'body': chainBody([
-        stepNode('1', 'upload', 20),
-        stepNode('2', 'verify', 21),
-        stepNode('3', 'tag', 22),
+        effectNode('1', 'upload', 20),
+        effectNode('2', 'verify', 21),
+        effectNode('3', 'tag', 22),
       ]),
     },
     'lib/copies.dart#viaCall': {
@@ -243,7 +243,7 @@ Map<String, Object?> copiesGraphJson() => {
             },
           ]),
         },
-        stepNode('2', 'announce', 17),
+        effectNode('2', 'announce', 17),
       ]),
     },
   },
@@ -265,7 +265,7 @@ GraphFile copiesGraphFile() => GraphFile.fromJson(copiesGraphJson());
 /// dart run tool/record_copies.dart ../../apps/nanoflow_ui/test/state/fixtures/copies
 /// ```
 ///
-/// whenever the library changes how it keys steps (decision D1).
+/// whenever the library changes how it keys effects (decision D1).
 ({
   GraphFile graph,
   Map<String, SessionData> sessions,
@@ -282,9 +282,9 @@ recordedCopies() {
     final session = Session.fromJson(json['session']! as Map<String, Object?>);
     sessions[session.workflow] = SessionData(
       session,
-      steps: [
-        for (final step in json['steps']! as List<Object?>)
-          Step.fromJson(step! as Map<String, Object?>),
+      effects: [
+        for (final effect in json['effects']! as List<Object?>)
+          Effect.fromJson(effect! as Map<String, Object?>),
       ],
       events: [
         for (final event in json['events']! as List<Object?>)
@@ -332,17 +332,17 @@ final class Journal {
   final String workflow;
   final Map<String, Object?>? graph;
   final List<Event> events = [];
-  final List<Step> steps = [];
+  final List<Effect> effects = [];
 
   Session get session =>
       Session(id: id, workflow: workflow, graph: graph, inputId: null);
 
-  /// A step [name] at [place] started at [start], again at each of
+  /// An effect [name] at [place] started at [start], again at each of
   /// [restarts], and finished at [end] with [output], or failed then when
   /// [failed]; running without [end]. Its [key] is `<name>#<n>@0…0` by
-  /// default, `n` counting the steps of that name; it comes [after] the
-  /// step of that key, by default the step before it. Returns its id.
-  String step(
+  /// default, `n` counting the effects of that name; it comes [after] the
+  /// effect of that key, by default the effect before it. Returns its id.
+  String effect(
     String name,
     num start, {
     num? end,
@@ -353,36 +353,40 @@ final class Journal {
     String? key,
     String? after = _previous,
   }) {
-    final stepId = '${id.substring(0, 4)}-$name-${steps.length}';
-    final n = steps.where((step) => step.name == name).length + 1;
-    steps.add(
-      Step(
-        id: stepId,
+    final effectId = '${id.substring(0, 4)}-$name-${effects.length}';
+    final n = effects.where((effect) => effect.name == name).length + 1;
+    effects.add(
+      Effect(
+        id: effectId,
         sessionId: id,
         name: name,
         key: key ?? '$name#$n@0000000000000000',
-        after: identical(after, _previous) ? steps.lastOrNull?.key : after,
+        after: identical(after, _previous) ? effects.lastOrNull?.key : after,
         place: place,
         outputId: failed ? null : output,
         log: logFileName,
       ),
     );
     for (final time in [start, ...restarts]) {
-      events.add(StepStarted(time: at(time), stepId: stepId));
+      events.add(EffectStarted(time: at(time), effectId: effectId));
     }
     if (end != null) {
       events.add(
         failed
-            ? StepFailed(
+            ? EffectFailed(
                 time: at(end),
-                stepId: stepId,
+                effectId: effectId,
                 error: 'StateError: $name failed',
                 stack: '#0 main',
               )
-            : StepFinished(time: at(end), stepId: stepId, outputId: output),
+            : EffectFinished(
+                time: at(end),
+                effectId: effectId,
+                outputId: output,
+              ),
       );
     }
-    return stepId;
+    return effectId;
   }
 
   /// The session goes on at [time] by [code], with a new snapshot of the
@@ -412,7 +416,7 @@ final class Journal {
   SessionData get data => SessionData(
     session,
     events: events,
-    steps: steps,
+    effects: effects,
     owner: ownerChanged?.owner,
     alive: ownerChanged?.alive,
   );
@@ -421,7 +425,7 @@ final class Journal {
   /// owner after the events.
   List<Change> get changes => [
     SessionAdded(session),
-    for (final step in steps) StepAdded(step),
+    for (final effect in effects) EffectAdded(effect),
     for (final event in events) EventAdded(sessionId: id, event: event),
     ?ownerChanged,
   ];
@@ -456,28 +460,28 @@ final class _Outcomes implements KnownOutcomes {
   String? problemOf(String documentId) => _failed[documentId];
 }
 
-/// Step logs, documents and their files as a test sets them.
-final class FakeFiles implements StepFiles {
-  /// [logs] and [documents] by step and document id; [logErrors] are what
-  /// following a step's log fails with.
+/// Effect logs, documents and their files as a test sets them.
+final class FakeFiles implements EffectFiles {
+  /// [logs] and [documents] by effect and document id; [logErrors] are what
+  /// following an effect's log fails with.
   FakeFiles({
     Map<String, String> logs = const {},
     Map<String, Object?> documents = const {},
-    Map<String, String> stepPaths = const {},
+    Map<String, String> effectPaths = const {},
     Map<String, String> logPaths = const {},
     Map<String, String> documentPaths = const {},
     Map<String, Object> logErrors = const {},
   }) : logs = {...logs},
        documents = {...documents},
-       stepPaths = {...stepPaths},
+       effectPaths = {...effectPaths},
        logPaths = {...logPaths},
        documentPaths = {...documentPaths},
        logErrors = {...logErrors};
 
-  /// What each step has written to its log so far.
+  /// What each effect has written to its log so far.
   final Map<String, String> logs;
   final Map<String, Object?> documents;
-  final Map<String, String> stepPaths;
+  final Map<String, String> effectPaths;
   final Map<String, String> logPaths;
   final Map<String, String> documentPaths;
   final Map<String, Object> logErrors;
@@ -486,40 +490,40 @@ final class FakeFiles implements StepFiles {
   /// How many times each document was read.
   final Map<String, int> reads = {};
 
-  /// The steps whose logs are being followed now.
+  /// The effects whose logs are being followed now.
   Iterable<String> get followed =>
       _followers.entries.where((e) => e.value.isNotEmpty).map((e) => e.key);
 
-  /// The step [stepId] writes [text] to its log.
-  void append(String stepId, String text) {
-    logs[stepId] = '${logs[stepId] ?? ''}$text';
-    for (final follower in [...?_followers[stepId]]) {
+  /// The effect [effectId] writes [text] to its log.
+  void append(String effectId, String text) {
+    logs[effectId] = '${logs[effectId] ?? ''}$text';
+    for (final follower in [...?_followers[effectId]]) {
       follower.add(text);
     }
   }
 
-  /// Reading the step [stepId]'s log fails once with [error]; reading goes
+  /// Reading the effect [effectId]'s log fails once with [error]; reading goes
   /// on.
-  void fail(String stepId, Object error) {
-    for (final follower in [...?_followers[stepId]]) {
+  void fail(String effectId, Object error) {
+    for (final follower in [...?_followers[effectId]]) {
       follower.addError(error);
     }
   }
 
   @override
-  Stream<String> stepLog(String sessionId, String stepId) {
+  Stream<String> effectLog(String sessionId, String effectId) {
     late final StreamController<String> controller;
     controller = StreamController<String>(
       onListen: () {
-        if (logErrors[stepId] case final error?) {
+        if (logErrors[effectId] case final error?) {
           controller.addError(error);
           return;
         }
-        final text = logs[stepId] ?? '';
+        final text = logs[effectId] ?? '';
         if (text.isNotEmpty) controller.add(text);
-        (_followers[stepId] ??= {}).add(controller);
+        (_followers[effectId] ??= {}).add(controller);
       },
-      onCancel: () => _followers[stepId]?.remove(controller),
+      onCancel: () => _followers[effectId]?.remove(controller),
     );
     return controller.stream;
   }
@@ -537,10 +541,10 @@ final class FakeFiles implements StepFiles {
   }
 
   @override
-  String? stepPath(String stepId) => stepPaths[stepId];
+  String? effectPath(String effectId) => effectPaths[effectId];
 
   @override
-  String? logPath(String stepId) => logPaths[stepId];
+  String? logPath(String effectId) => logPaths[effectId];
 
   @override
   String? documentPath(String sessionId, String documentId) =>

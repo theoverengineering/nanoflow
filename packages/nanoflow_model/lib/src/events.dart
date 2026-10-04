@@ -9,8 +9,8 @@ const DeepCollectionEquality _deep = DeepCollectionEquality();
 ///
 /// Events are only ever appended, and a session's state is what replaying
 /// them gives. Every event of a known kind is a [KnownEvent]: a
-/// [SessionStarted], [SessionResumed], [StepStarted], [StepFinished],
-/// [StepFailed], [SessionFinished] or [SessionFailed]; anything else is an
+/// [SessionStarted], [SessionResumed], [EffectStarted], [EffectFinished],
+/// [EffectFailed], [SessionFinished] or [SessionFailed]; anything else is an
 /// [UnknownEvent], so a switch over an event covers every case.
 sealed class Event {
   const Event();
@@ -116,49 +116,49 @@ final class SessionResumed extends KnownEvent {
   Map<String, Object?> get _own => {'code': code, 'graphId': graphId};
 }
 
-/// A step begins to run live. Written again each time it runs again.
-final class StepStarted extends KnownEvent {
-  StepStarted({required super.time, required this.stepId});
+/// An effect begins to run live. Written again each time it runs again.
+final class EffectStarted extends KnownEvent {
+  EffectStarted({required super.time, required this.effectId});
 
-  final String stepId;
-
-  @override
-  String get name => 'step-started';
+  final String effectId;
 
   @override
-  Map<String, Object?> get _own => {'stepId': stepId};
+  String get name => 'effect-started';
+
+  @override
+  Map<String, Object?> get _own => {'effectId': effectId};
 }
 
-/// A step returned a value. This event, and not `step.json`, records it.
-final class StepFinished extends KnownEvent {
-  StepFinished({
+/// An effect returned a value. This event, and not `effect.json`, records it.
+final class EffectFinished extends KnownEvent {
+  EffectFinished({
     required super.time,
-    required this.stepId,
+    required this.effectId,
     required this.outputId,
   });
 
-  final String stepId;
+  final String effectId;
 
-  /// The document with the value the step returned.
+  /// The document with the value the effect returned.
   final String? outputId;
 
   @override
-  String get name => 'step-finished';
+  String get name => 'effect-finished';
 
   @override
-  Map<String, Object?> get _own => {'stepId': stepId, 'outputId': outputId};
+  Map<String, Object?> get _own => {'effectId': effectId, 'outputId': outputId};
 }
 
-/// A step threw. The exception goes on into the workflow's code.
-final class StepFailed extends KnownEvent {
-  StepFailed({
+/// An effect threw. The exception goes on into the workflow's code.
+final class EffectFailed extends KnownEvent {
+  EffectFailed({
     required super.time,
-    required this.stepId,
+    required this.effectId,
     required this.error,
     required this.stack,
   });
 
-  final String stepId;
+  final String effectId;
 
   /// The exception's text, on one line.
   final String error;
@@ -167,11 +167,11 @@ final class StepFailed extends KnownEvent {
   final String stack;
 
   @override
-  String get name => 'step-failed';
+  String get name => 'effect-failed';
 
   @override
   Map<String, Object?> get _own => {
-    'stepId': stepId,
+    'effectId': effectId,
     'error': error,
     'stack': stack,
   };
@@ -261,18 +261,18 @@ Event? _parse(Map<String, Object?> json) {
       code: readStringOrNull(json, 'code'),
       graphId: readStringOrNull(json, 'graphId'),
     ),
-    'step-started' => StepStarted(
+    'effect-started' => EffectStarted(
       time: readTime(json, 'time'),
-      stepId: readString(json, 'stepId'),
+      effectId: readString(json, 'effectId'),
     ),
-    'step-finished' => StepFinished(
+    'effect-finished' => EffectFinished(
       time: readTime(json, 'time'),
-      stepId: readString(json, 'stepId'),
+      effectId: readString(json, 'effectId'),
       outputId: readStringOrNull(json, 'outputId'),
     ),
-    'step-failed' => StepFailed(
+    'effect-failed' => EffectFailed(
       time: readTime(json, 'time'),
-      stepId: readString(json, 'stepId'),
+      effectId: readString(json, 'effectId'),
       error: readString(json, 'error'),
       stack: readString(json, 'stack'),
     ),

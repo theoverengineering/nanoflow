@@ -20,7 +20,7 @@ import 'tail.dart';
 /// What has ended is not looked at again: nothing is written to a session
 /// after its last event (`session-finished`, `session-failed`). A session is
 /// read once more after the scan that read its last event: that scan may
-/// have listed the session's steps before the last of them was put in place.
+/// have listed the session's effects before the last of them was put in place.
 ///
 /// The owner of a session whose journal goes on is looked at in every scan
 /// before its journal is read, and told by [owners] after it.
@@ -34,20 +34,20 @@ final class Scanner {
   /// The sessions given, by directory.
   final Map<String, _Session> _sessions = {};
 
-  /// The sessions and steps given, by id.
+  /// The sessions and effects given, by id.
   final Map<String, _Session> _sessionsById = {};
-  final Map<String, _Step> _stepsById = {};
+  final Map<String, _Effect> _effectsById = {};
 
   /// Paths whose problem has been given as an error: it is given once.
   final Set<String> _reported = {};
 
   /// Gives to [out] what has appeared since the scan before: for each
-  /// session, newest first, `session-added` (once), then its new steps and a
-  /// `step-changed` for a step whose `step.json` was rewritten — with the
-  /// `outputId` of its `step-finished`, or with another `after` when it runs
-  /// again — its journal's new complete lines, then its new documents, then,
-  /// while its journal goes on, `owner-changed` when its owner or whether it
-  /// is alive has changed (see [Owners]).
+  /// session, newest first, `session-added` (once), then its new effects and an
+  /// `effect-changed` for an effect whose `effect.json` was rewritten — with
+  /// the `outputId` of its `effect-finished`, or with another `after` when it
+  /// runs again — its journal's new complete lines, then its new documents,
+  /// then, while its journal goes on, `owner-changed` when its owner or whether
+  /// it is alive has changed (see [Owners]).
   ///
   /// Newest first: a feed of a long history gives first the sessions that
   /// are likely to be looked at.
@@ -74,11 +74,11 @@ final class Scanner {
 
   String? sessionPath(String sessionId) => _sessionsById[sessionId]?.dir;
 
-  String? stepPath(String stepId) => _stepsById[stepId]?.dir;
+  String? effectPath(String effectId) => _effectsById[effectId]?.dir;
 
-  String? logPath(String stepId) {
-    final step = _stepsById[stepId];
-    return step == null ? null : p.join(step.dir, step.step.log);
+  String? logPath(String effectId) {
+    final effect = _effectsById[effectId];
+    return effect == null ? null : p.join(effect.dir, effect.effect.log);
   }
 
   String? documentPath(String sessionId, String documentId) {
@@ -102,13 +102,17 @@ final class Scanner {
       out.add(SessionAdded(model));
     }
     final sessionId = session.session.id;
-    // Whether its last event was read before this scan listed its steps:
-    // then the listing has every step it has.
+    // Whether its last event was read before this scan listed its effects:
+    // then the listing has every effect it has.
     final lastRead = session.lastRead;
-    final stepsDir = p.join(dir, stepsDirName);
-    final steps = await _attempt(stepsDir, out, () => builtDirs(stepsDir));
-    for (final stepDir in steps ?? const <String>[]) {
-      await _scanStep(session, stepDir, out);
+    final effectsDir = p.join(dir, effectsDirName);
+    final effects = await _attempt(
+      effectsDir,
+      out,
+      () => builtDirs(effectsDir),
+    );
+    for (final effectDir in effects ?? const <String>[]) {
+      await _scanEffect(session, effectDir, out);
     }
     // Looked at before the journal is read, and told after it only while the
     // journal goes on: an owner that has let the session go, or exited, by
@@ -127,12 +131,14 @@ final class Scanner {
     for (final (:number, :bytes) in lines ?? const <Line>[]) {
       final change = _journalChange(sessionId, number, bytes);
       switch (change) {
-        case EventAdded(event: StepStarted(:final stepId)):
-          session.stepStarted(stepId);
-        case EventAdded(event: StepFinished(:final stepId, :final outputId)):
-          session.stepEnded(stepId, outputId);
-        case EventAdded(event: StepFailed(:final stepId)):
-          session.stepEnded(stepId, null);
+        case EventAdded(event: EffectStarted(:final effectId)):
+          session.effectStarted(effectId);
+        case EventAdded(
+          event: EffectFinished(:final effectId, :final outputId),
+        ):
+          session.effectEnded(effectId, outputId);
+        case EventAdded(event: EffectFailed(:final effectId)):
+          session.effectEnded(effectId, null);
         case EventAdded(event: SessionFinished() || SessionFailed()):
           session.lastRead = true;
         default:
@@ -158,40 +164,40 @@ final class Scanner {
     }
     session.ended =
         lastRead &&
-        steps != null &&
-        steps.every(session.steps.containsKey) &&
-        !session.steps.values.any(session.mayChange) &&
+        effects != null &&
+        effects.every(session.effects.containsKey) &&
+        !session.effects.values.any(session.mayChange) &&
         documents != null;
   }
 
-  /// Gives a step that is new, or a step given before whose `step.json` may
-  /// have been rewritten since (see [_Session.mayChange]) when it has been.
-  Future<void> _scanStep(
+  /// Gives an effect that is new, or an effect given before whose `effect.json`
+  /// may have been rewritten since (see [_Session.mayChange]) when it has been.
+  Future<void> _scanEffect(
     _Session session,
     String dir,
     EventSink<Change> out,
   ) async {
-    final known = session.steps[dir];
+    final known = session.effects[dir];
     if (known != null && !session.mayChange(known)) return;
-    final step = await _readModel(
-      p.join(dir, stepFileName),
-      Step.fromJson,
+    final effect = await _readModel(
+      p.join(dir, effectFileName),
+      Effect.fromJson,
       out,
     );
-    if (step == null) return;
-    // The journal is read after the steps: these are the `step-started` read
-    // before this read of `step.json`.
-    final starts = session.startsOf(step.id);
+    if (effect == null) return;
+    // The journal is read after the effects: these are the `effect-started`
+    // read before this read of `effect.json`.
+    final starts = session.startsOf(effect.id);
     if (known == null) {
-      session.steps[dir] = _stepsById[step.id] = _Step(step, dir)
+      session.effects[dir] = _effectsById[effect.id] = _Effect(effect, dir)
         ..startsRead = starts;
-      out.add(StepAdded(step));
+      out.add(EffectAdded(effect));
       return;
     }
     known.startsRead = starts;
-    if (step != known.step) {
-      known.step = step;
-      out.add(StepChanged(step));
+    if (effect != known.effect) {
+      known.effect = effect;
+      out.add(EffectChanged(effect));
     }
   }
 
@@ -320,16 +326,16 @@ final class _Session {
   /// Its journal, read up to the end of the last complete line.
   final Tail journal;
 
-  /// Its steps, by directory.
-  final Map<String, _Step> steps = {};
+  /// Its effects, by directory.
+  final Map<String, _Effect> effects = {};
 
-  /// How many `step-started` of each of its steps have been read, by id.
+  /// How many `effect-started` of each of its effects have been read, by id.
   final Map<String, int> _starts = {};
 
-  /// Ids of its steps whose last event read is `step-started`.
+  /// Ids of its effects whose last event read is `effect-started`.
   final Set<String> _running = {};
 
-  /// The `outputId` of the last `step-finished` read of each of its steps,
+  /// The `outputId` of the last `effect-finished` read of each of its effects,
   /// by id.
   final Map<String, String> _outputs = {};
 
@@ -343,48 +349,48 @@ final class _Session {
   /// more is written to it.
   bool ended = false;
 
-  /// Takes the `step-started` of the step [stepId].
-  void stepStarted(String stepId) {
-    _starts.update(stepId, (n) => n + 1, ifAbsent: () => 1);
-    _running.add(stepId);
+  /// Takes the `effect-started` of the effect [effectId].
+  void effectStarted(String effectId) {
+    _starts.update(effectId, (n) => n + 1, ifAbsent: () => 1);
+    _running.add(effectId);
   }
 
-  /// Takes the `step-finished` with [outputId], or the `step-failed`
-  /// (`null`), of the step [stepId].
-  void stepEnded(String stepId, String? outputId) {
-    _running.remove(stepId);
-    if (outputId != null) _outputs[stepId] = outputId;
+  /// Takes the `effect-finished` with [outputId], or the `effect-failed`
+  /// (`null`), of the effect [effectId].
+  void effectEnded(String effectId, String? outputId) {
+    _running.remove(effectId);
+    if (outputId != null) _outputs[effectId] = outputId;
   }
 
-  /// How many `step-started` of the step [stepId] have been read.
-  int startsOf(String stepId) => _starts[stepId] ?? 0;
+  /// How many `effect-started` of the effect [effectId] have been read.
+  int startsOf(String effectId) => _starts[effectId] ?? 0;
 
-  /// Whether the `step.json` of [given] may have been rewritten since it
+  /// Whether the `effect.json` of [given] may have been rewritten since it
   /// was read, and so is read again (D3):
-  /// - it was given without the `outputId` of its last `step-finished`:
-  ///   `step.json` is rewritten with it after that event is written;
-  /// - it runs again (a `step-started` that is not its first), and
-  ///   `step.json` is rewritten with the `after` of the new call right after
-  ///   that event: read again while that run goes on, and once after a
-  ///   `step-started` read since `step.json` was.
-  bool mayChange(_Step given) {
-    final id = given.step.id;
+  /// - it was given without the `outputId` of its last `effect-finished`:
+  ///   `effect.json` is rewritten with it after that event is written;
+  /// - it runs again (an `effect-started` that is not its first), and
+  ///   `effect.json` is rewritten with the `after` of the new call right after
+  ///   that event: read again while that run goes on, and once after an
+  ///   `effect-started` read since `effect.json` was.
+  bool mayChange(_Effect given) {
+    final id = given.effect.id;
     final output = _outputs[id];
-    if (output != null && given.step.outputId != output) return true;
+    if (output != null && given.effect.outputId != output) return true;
     final starts = startsOf(id);
     return starts > 1 && (starts > given.startsRead || _running.contains(id));
   }
 }
 
-/// A step given, as it was last given.
-final class _Step {
-  _Step(this.step, this.dir);
+/// An effect given, as it was last given.
+final class _Effect {
+  _Effect(this.effect, this.dir);
 
-  Step step;
+  Effect effect;
 
   final String dir;
 
-  /// How many `step-started` of it had been read when its `step.json` was
+  /// How many `effect-started` of it had been read when its `effect.json` was
   /// last read.
   int startsRead = 0;
 }

@@ -1,4 +1,4 @@
-// A workflow program (test/fixtures/held.dart) killed in a step and taken on
+// A workflow program (test/fixtures/held.dart) killed in an effect and taken on
 // by another process; and a second process refused while one owns the
 // session.
 @Timeout(Duration(seconds: 90))
@@ -17,7 +17,7 @@ import 'support/wait.dart';
 /// held.dart, compiled once for the tests of this file.
 late String held;
 
-/// How many times the body of the step [name] ran in the project directory
+/// How many times the body of the effect [name] ran in the project directory
 /// [dir].
 int runsOf(String dir, String name) {
   final file = File(p.join(dir, '$name.runs'));
@@ -25,13 +25,13 @@ int runsOf(String dir, String name) {
 }
 
 /// Starts held.dart in the project directory [dir], and waits until its
-/// step `inspect` runs; gives it and the id of its session.
+/// effect `inspect` runs; gives it and the id of its session.
 Future<({Running program, String sessionId})> startUntilInspect(
   String dir,
 ) async {
   final program = await Running.start(held, [dir, 'change']);
   final sessionId = await program.firstLine();
-  await waitFor('the step inspect to run', () => runsOf(dir, 'inspect') == 1);
+  await waitFor('the effect inspect to run', () => runsOf(dir, 'inspect') == 1);
   return (program: program, sessionId: sessionId);
 }
 
@@ -41,8 +41,8 @@ void main() {
     await compile(p.join('test', 'fixtures', 'held.dart'), held);
   });
 
-  test('killed with SIGKILL in a step, its session is ended by --resume in '
-      'another process: the step that finished is taken from the journal, '
+  test('killed with SIGKILL in an effect, its session is ended by --resume in '
+      'another process: the effect that finished is taken from the journal, '
       'the one that was killed runs again in its record', () async {
     final dir = tempDir();
     final (:program, :sessionId) = await startUntilInspect(dir);
@@ -66,26 +66,26 @@ void main() {
     final session = await sessionIn(dir, sessionId);
     expect(await eventNames(session), [
       'session-started',
-      'step-started',
-      'step-finished',
-      'step-started',
+      'effect-started',
+      'effect-finished',
+      'effect-started',
       'session-resumed',
-      'step-started',
-      'step-finished',
-      'step-started',
-      'step-finished',
+      'effect-started',
+      'effect-finished',
+      'effect-started',
+      'effect-finished',
       'session-finished',
     ]);
-    final steps = await session.steps();
+    final effects = await session.effects();
     expect(
-      [for (final step in steps) step.name],
+      [for (final effect in effects) effect.name],
       ['collect', 'inspect', 'publish'],
     );
     final state = replaySession(await session.events());
     expect(state.status, SessionStatus.finished);
     expect(
-      [for (final step in state.steps) (step.stepId, step.starts)],
-      [(steps[0].id, 1), (steps[1].id, 2), (steps[2].id, 1)],
+      [for (final effect in state.effects) (effect.effectId, effect.starts)],
+      [(effects[0].id, 1), (effects[1].id, 2), (effects[2].id, 1)],
     );
     // The same binary ran both times: the graph is not taken again.
     final code = bytesHash(File(held).readAsBytesSync());

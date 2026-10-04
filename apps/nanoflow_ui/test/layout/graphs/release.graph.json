@@ -1,11 +1,11 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "release",
-  "fingerprint": "sha256:cddef94aaed813868d06f159fd1e89149bd5d17fc3f55845215125f861a4c896",
+  "fingerprint": "sha256:c6d3032a39bf8e3d19406670d862e03afdcb171ca8f9edd8d38446ab19de6df2",
   "sources": {
     "bin/main.dart": "sha256:ed90d1f1acdf4d1dc2ab144c121be75f89b65ca5c887e6f149c88bd316f9b324",
-    "lib/publish.dart": "sha256:2195cf86eae01ca3a6ad25e19cd4436553e73766e3437d82d64c1b7593db8afe",
-    "lib/release.dart": "sha256:2c438ad34a2b857b4586a314661c7e352a2c99e18b499a30d95b7c8c0e867ec9"
+    "lib/publish.dart": "sha256:72b90772e75752998471eb27a1185c2273a7ed76635cee2015f622575a0d640f",
+    "lib/release.dart": "sha256:61b8aafa61286ae82a26af59fba3e6545594abb5ac86d67388920d403c2b9f2a"
   },
   "builds": {},
   "workflows": [
@@ -19,13 +19,13 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "upload",
             "place": "lib/publish.dart:12"
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "verify",
             "place": "lib/publish.dart:13"
           },
@@ -37,7 +37,7 @@
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "rollback",
             "place": "lib/publish.dart:14"
           }
@@ -83,7 +83,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "plan",
             "place": "lib/release.dart:16"
           },
@@ -95,7 +95,7 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "build",
             "place": "lib/release.dart:18"
           },
@@ -121,13 +121,13 @@
           },
           {
             "id": "7",
-            "kind": "step",
+            "kind": "effect",
             "name": "announce",
             "place": "lib/release.dart:23"
           },
           {
             "id": "8",
-            "kind": "step",
+            "kind": "effect",
             "name": "notify-testers",
             "place": "lib/release.dart:26"
           }

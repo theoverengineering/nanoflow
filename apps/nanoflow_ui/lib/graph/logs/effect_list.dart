@@ -8,24 +8,24 @@ import '../../state/texts.dart' show count;
 import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
-import 'step_bar.dart';
+import 'effect_bar.dart';
 
-/// The steps shown on the left of the `Logs` panel (docs/ui-spec.md «Logs»:
-/// «Лента шагов»; spec §9 «Логи»), as the rows of `logRows` give them: each
-/// step's sign, name, a failure's error or `not on the graph`, the copy it
+/// The effects shown on the left of the `Logs` panel (docs/ui-spec.md «Logs»:
+/// «Лента эффектов»; spec §9 «Логи»), as the rows of `logRows` give them: each
+/// effect's sign, name, a failure's error or `not on the graph`, the copy it
 /// is in while every copy is shown, `2 starts`, when it started, how long it
 /// took — a running one's time going on — and its bar on the session's time
 /// scale, striped while it runs. An ended session ends with how it ended.
 ///
-/// The selected step is highlighted, and kept in view as the selection
+/// The selected effect is highlighted, and kept in view as the selection
 /// moves; while the session is followed, so are the rows after it. Scrolled
-/// down, the list says how many steps are above it.
-class StepList extends StatefulWidget {
-  const StepList({
+/// down, the list says how many effects are above it.
+class EffectList extends StatefulWidget {
+  const EffectList({
     super.key,
     required this.rows,
     required this.scale,
-    required this.selectedStepId,
+    required this.selectedEffectId,
     required this.following,
     required this.onSelect,
   });
@@ -35,20 +35,20 @@ class StepList extends StatefulWidget {
   /// The time scale of the rows' bars, for the axis.
   final TimeScale scale;
 
-  final String? selectedStepId;
+  final String? selectedEffectId;
 
-  /// Whether the selection moves on to each new step of the session.
+  /// Whether the selection moves on to each new effect of the session.
   final bool following;
 
-  /// A click on a step's row.
-  final ValueChanged<StepRow> onSelect;
+  /// A click on an effect's row.
+  final ValueChanged<EffectRow> onSelect;
 
-  static Key rowKey(String stepId) => ValueKey(('step row', stepId));
+  static Key rowKey(String effectId) => ValueKey(('effect row', effectId));
   static const endKey = ValueKey('end row');
-  static const earlierKey = ValueKey('earlier steps');
+  static const earlierKey = ValueKey('earlier effects');
 
   @override
-  State<StepList> createState() => _StepListState();
+  State<EffectList> createState() => _EffectListState();
 }
 
 /// The mockups' sizes.
@@ -59,19 +59,19 @@ abstract final class _Sizes {
   static const earlier = 20.0;
   static const padding = 16.0;
   static const gap = 10.0;
-  static const sign = StepIcon.size;
+  static const sign = EffectIcon.size;
   static const started = 58.0;
   static const took = 50.0;
   static const timeline = 150.0;
 
-  /// The least room the step's name keeps before the timeline gives way.
+  /// The least room the effect's name keeps before the timeline gives way.
   static const name = 100.0;
 
   /// Narrower than this, there is no timeline.
   static const leastTimeline = 40.0;
 }
 
-class _StepListState extends State<StepList> {
+class _EffectListState extends State<EffectList> {
   final _scroll = ScrollController();
 
   @override
@@ -81,9 +81,9 @@ class _StepListState extends State<StepList> {
   }
 
   @override
-  void didUpdateWidget(StepList old) {
+  void didUpdateWidget(EffectList old) {
     super.didUpdateWidget(old);
-    if (old.selectedStepId != widget.selectedStepId ||
+    if (old.selectedEffectId != widget.selectedEffectId ||
         widget.following && old.rows.length != widget.rows.length) {
       _keepInView();
     }
@@ -96,8 +96,8 @@ class _StepListState extends State<StepList> {
   }
 
   double _extentOf(LogRow row) => switch (row) {
-    StepRow(:final stepId) =>
-      stepId == widget.selectedStepId ? _Sizes.selected : _Sizes.row,
+    EffectRow(:final effectId) =>
+      effectId == widget.selectedEffectId ? _Sizes.selected : _Sizes.row,
     EndRow() => _Sizes.row,
   };
 
@@ -111,7 +111,7 @@ class _StepListState extends State<StepList> {
     double? end;
     for (final row in rows) {
       final extent = _extentOf(row);
-      if (row is StepRow && row.stepId == widget.selectedStepId) {
+      if (row is EffectRow && row.effectId == widget.selectedEffectId) {
         start = top;
         end = top + extent;
       }
@@ -131,7 +131,7 @@ class _StepListState extends State<StepList> {
     if (offset != position.pixels) _scroll.jumpTo(offset);
   });
 
-  /// How many steps are scrolled away above, or under the note on top.
+  /// How many effects are scrolled away above, or under the note on top.
   int _earlier() {
     if (!_scroll.hasClients || _scroll.offset <= 0) return 0;
     final hidden = _scroll.offset + _Sizes.earlier;
@@ -140,7 +140,7 @@ class _StepListState extends State<StepList> {
     for (final row in widget.rows) {
       top += _extentOf(row);
       if (top > hidden) break;
-      if (row is StepRow) count++;
+      if (row is EffectRow) count++;
     }
     return count;
   }
@@ -174,10 +174,10 @@ class _StepListState extends State<StepList> {
                   itemExtentBuilder: (i, _) =>
                       i < rows.length ? _extentOf(rows[i]) : null,
                   itemBuilder: (context, i) => switch (rows[i]) {
-                    final StepRow row => _StepRowView(
+                    final EffectRow row => _EffectRowView(
                       row,
                       columns: columns,
-                      selected: row.stepId == widget.selectedStepId,
+                      selected: row.effectId == widget.selectedEffectId,
                       onTap: () => widget.onSelect(row),
                     ),
                     final EndRow row => _EndRowView(row, columns: columns),
@@ -211,18 +211,18 @@ class _StepListState extends State<StepList> {
   );
 }
 
-/// The widths of the columns after the step's: the timeline's, `null`
+/// The widths of the columns after the effect's: the timeline's, `null`
 /// without room for it.
 final class _Columns {
   const _Columns({required this.timeline});
 
   final double? timeline;
 
-  /// [sign], [step] (taking the room left), [started], [took] and [bar] in a
+  /// [sign], [effect] (taking the room left), [started], [took] and [bar] in a
   /// row, as the mockup's flex row with its gaps and padding has them.
   Widget row({
     required Widget sign,
-    required Widget step,
+    required Widget effect,
     required Widget started,
     required Widget took,
     Widget? bar,
@@ -237,7 +237,7 @@ final class _Columns {
             width: _Sizes.sign,
             child: Center(child: sign),
           ),
-          Expanded(child: step),
+          Expanded(child: effect),
           SizedBox(width: _Sizes.started, child: started),
           SizedBox(width: _Sizes.took, child: took),
           if (timeline != null) SizedBox(width: timeline, child: bar),
@@ -247,7 +247,7 @@ final class _Columns {
   }
 }
 
-/// `Step`, `Started`, `Took`, and the timeline's axis: `0m 6m 12m`.
+/// `Effect`, `Started`, `Took`, and the timeline's axis: `0m 6m 12m`.
 class _ColumnTitles extends StatelessWidget {
   const _ColumnTitles(this.columns, {required this.axis});
 
@@ -259,7 +259,7 @@ class _ColumnTitles extends StatelessWidget {
     height: _Sizes.header,
     child: columns.row(
       sign: const SizedBox.shrink(),
-      step: Text('Step', style: AppText.columnTitle),
+      effect: Text('Effect', style: AppText.columnTitle),
       started: Text('Started', style: AppText.columnTitle),
       took: Text(
         'Took',
@@ -276,16 +276,16 @@ class _ColumnTitles extends StatelessWidget {
   );
 }
 
-/// A step's row.
-class _StepRowView extends StatelessWidget {
-  const _StepRowView(
+/// An effect's row.
+class _EffectRowView extends StatelessWidget {
+  const _EffectRowView(
     this.row, {
     required this.columns,
     required this.selected,
     required this.onTap,
   });
 
-  final StepRow row;
+  final EffectRow row;
   final _Columns columns;
   final bool selected;
   final VoidCallback onTap;
@@ -296,23 +296,23 @@ class _StepRowView extends StatelessWidget {
     final detail = row.detail;
     final starts = row.startsText;
     final copy = row.copy;
-    final step = Text.rich(
+    final effect = Text.rich(
       TextSpan(
         text: row.name,
         style: selected
-            ? AppText.stepName.copyWith(
+            ? AppText.effectName.copyWith(
                 color: AppColors.selectedText,
                 fontWeight: FontWeight.w600,
               )
-            : AppText.stepName,
+            : AppText.effectName,
         children: [
           if (detail != null) ...[
             const TextSpan(text: ' '),
             TextSpan(
               text: detail,
               style: row.failure
-                  ? AppText.stepDetail.copyWith(color: AppColors.dangerText)
-                  : AppText.stepDetail,
+                  ? AppText.effectDetail.copyWith(color: AppColors.dangerText)
+                  : AppText.effectDetail,
             ),
           ],
         ],
@@ -322,15 +322,15 @@ class _StepRowView extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
     );
     final content = columns.row(
-      sign: StepIcon(row.status),
-      step: Row(
+      sign: EffectIcon(row.status),
+      effect: Row(
         // The width of a space between the name and the note.
         spacing: 3,
         children: [
           Flexible(
             child: detail == null
-                ? step
-                : Tooltip(message: detail, child: step),
+                ? effect
+                : Tooltip(message: detail, child: effect),
           ),
           if (copy != null) _CopyNote(copy),
           if (starts != null) _StartsNote(starts),
@@ -339,25 +339,25 @@ class _StepRowView extends StatelessWidget {
       started: Text(
         row.started,
         style: selected
-            ? AppText.stepTime.copyWith(color: AppColors.accentText)
-            : AppText.stepTime,
+            ? AppText.effectTime.copyWith(color: AppColors.accentText)
+            : AppText.effectTime,
       ),
       took: Text(
         row.took,
         textAlign: TextAlign.right,
         style: running
-            ? AppText.stepTook.copyWith(
+            ? AppText.effectTook.copyWith(
                 color: AppColors.running,
                 fontWeight: FontWeight.w500,
               )
-            : AppText.stepTook,
+            : AppText.effectTook,
       ),
-      bar: StepTrack(row),
+      bar: EffectTrack(row),
     );
     return Clickable(
       onTap: onTap,
       child: Container(
-        key: StepList.rowKey(row.stepId),
+        key: EffectList.rowKey(row.effectId),
         decoration: selected
             ? const BoxDecoration(color: AppColors.accentSurface)
             : null,
@@ -397,7 +397,7 @@ class _StartsNote extends StatelessWidget {
   );
 }
 
-/// `pkg 2`, `pkg 2 › target 1`: the copies a step is in.
+/// `pkg 2`, `pkg 2 › target 1`: the copies an effect is in.
 class _CopyNote extends StatelessWidget {
   const _CopyNote(this.text);
 
@@ -436,35 +436,35 @@ class _EndRowView extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
     );
     return KeyedSubtree(
-      key: StepList.endKey,
+      key: EffectList.endKey,
       child: columns.row(
-        sign: StepIcon(failed ? StartOutcome.failed : StartOutcome.finished),
-        step: failed ? Tooltip(message: row.text, child: text) : text,
-        started: Text(row.atText, style: AppText.stepTime),
+        sign: EffectIcon(failed ? StartOutcome.failed : StartOutcome.finished),
+        effect: failed ? Tooltip(message: row.text, child: text) : text,
+        started: Text(row.atText, style: AppText.effectTime),
         took: const SizedBox.shrink(),
       ),
     );
   }
 }
 
-/// `↑ 8 earlier steps` over the top of the list; a click scrolls up.
+/// `↑ 8 earlier effects` over the top of the list; a click scrolls up.
 class _EarlierNote extends StatelessWidget {
-  const _EarlierNote(this.steps, {required this.onTap});
+  const _EarlierNote(this.effects, {required this.onTap});
 
-  final int steps;
+  final int effects;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) => Clickable(
     onTap: onTap,
     child: Container(
-      key: StepList.earlierKey,
+      key: EffectList.earlierKey,
       height: _Sizes.earlier,
       color: AppColors.panel,
       padding: const EdgeInsets.only(left: 40),
       alignment: Alignment.centerLeft,
       child: Text(
-        '↑ ${count(steps, 'earlier step')}',
+        '↑ ${count(effects, 'earlier effect')}',
         style: AppText.listNote.copyWith(color: AppColors.textFaint),
       ),
     ),

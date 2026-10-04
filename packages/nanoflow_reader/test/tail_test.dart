@@ -13,7 +13,7 @@ void main() {
   late String path;
 
   setUp(() async {
-    path = p.join(await tempDir(), 'step.log');
+    path = p.join(await tempDir(), 'effect.log');
   });
 
   group('read', () {

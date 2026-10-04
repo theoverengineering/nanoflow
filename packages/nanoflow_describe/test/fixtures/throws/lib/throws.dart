@@ -6,11 +6,11 @@ import 'package:nanoflow/nanoflow.dart';
 
 Future<void> cleanUp(Flow f, String lock, bool early) async {
   try {
-    await f.step('acquire', () => print('acquire $lock'));
+    await f.effect('acquire', () => print('acquire $lock'));
     if (early) return;
-    await f.step('use', () => print('use $lock'));
+    await f.effect('use', () => print('use $lock'));
   } finally {
-    await f.step('release-$lock', () => print('release $lock'));
+    await f.effect('release-$lock', () => print('release $lock'));
   }
 }
 
@@ -22,42 +22,42 @@ Future<void> importLines(Flow f, List<String> lines) async {
       throw StateError('bad line $line');
     }
   }
-  await f.step('import', () => print('import ${lines.length} lines'));
+  await f.effect('import', () => print('import ${lines.length} lines'));
 }
 
 Future<void> sync(Flow f, String remote) async {
   try {
-    final reachable = await f.step('ping', () => remote.isNotEmpty);
+    final reachable = await f.effect('ping', () => remote.isNotEmpty);
     if (!reachable) throw StateError('$remote is down');
-    await f.step('pull', () => print('pull $remote'));
+    await f.effect('pull', () => print('pull $remote'));
   } catch (e) {
     print('sync failed: $e');
   }
-  await f.step('log', () => print('synced $remote'));
+  await f.effect('log', () => print('synced $remote'));
 }
 
 Future<void> mirror(Flow f, String source) async {
   try {
     try {
-      final ok = await f.step('fetch', () => source.isNotEmpty);
+      final ok = await f.effect('fetch', () => source.isNotEmpty);
       if (!ok) throw StateError('cannot fetch $source');
-      await f.step('write', () => print('write $source'));
+      await f.effect('write', () => print('write $source'));
     } finally {
-      await f.step('close', () => print('close $source'));
+      await f.effect('close', () => print('close $source'));
     }
   } catch (e) {
     print('mirror failed: $e');
   }
-  await f.step('report', () => print('mirrored $source'));
+  await f.effect('report', () => print('mirrored $source'));
 }
 
 Future<void> measure(Flow f, String kind) async {
   final size = switch (kind) {
-    'disk' => await f.step('stat', () => 100),
+    'disk' => await f.effect('stat', () => 100),
     _ => throw ArgumentError.value(kind, 'kind'),
   };
   final unit = size > 50
-      ? await f.step('unit', () => 'GB')
+      ? await f.effect('unit', () => 'GB')
       : throw StateError('$size is too small');
-  await f.step('record', () => print('$size $unit'));
+  await f.effect('record', () => print('$size $unit'));
 }

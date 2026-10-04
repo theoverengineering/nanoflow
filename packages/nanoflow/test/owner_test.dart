@@ -14,14 +14,14 @@ import 'package:test/test.dart';
 
 import 'support.dart';
 
-/// Completed when the step of the session of each input is running.
+/// Completed when the effect of the session of each input is running.
 final entered = <String, Completer<void>>{};
 
-/// What the step of the session of each input waits for.
+/// What the effect of the session of each input waits for.
 final gates = <String, Completer<void>>{};
 
-/// Makes the session of [who] one whose step waits for its gate, and lets
-/// the step go after the test, whatever the test did.
+/// Makes the session of [who] one whose effect waits for its gate, and lets
+/// the effect go after the test, whatever the test did.
 void hold(String who) {
   final gate = Completer<void>();
   addTearDown(() {
@@ -31,17 +31,17 @@ void hold(String who) {
   gates[who] = gate;
 }
 
-/// Waits in the step `hold` until the gate of [who] opens.
-Future<String> _hold(Flow f, String who) => f.step('hold', () async {
+/// Waits in the effect `hold` until the gate of [who] opens.
+Future<String> _hold(Flow f, String who) => f.effect('hold', () async {
   entered[who]!.complete();
   await gates[who]!.future;
   return 'held $who';
 });
 
-/// A session that waits in its step `hold` until its gate opens.
+/// A session that waits in its effect `hold` until its gate opens.
 Future<String> held(Flow f, String who) => _hold(f, who);
 
-/// A session that fails once its step `hold` has ended.
+/// A session that fails once its effect `hold` has ended.
 Future<String> failsAfterHold(Flow f, String who) async {
   await _hold(f, who);
   throw StateError('no way');
@@ -132,7 +132,7 @@ void main() {
     await entered['store']!.future;
     expect(lockOf(dir, session.id), recordOfThisProcess);
 
-    // The step's result can no longer be written.
+    // The effect's result can no longer be written.
     Directory(p.join(sessionDirOf(dir, session.id), documentsDirName))
         .deleteSync(recursive: true);
     gates['store']!.complete();

@@ -158,7 +158,7 @@ void main() {
     });
   });
 
-  group('the place of a step', () {
+  group('the place of an effect', () {
     const projectDir = '/work/review';
     String? place(List<String> frames, {String? package = 'review_example'}) =>
         placeOf(trace(frames), projectDir: projectDir, package: package);
@@ -166,7 +166,7 @@ void main() {
     test('is the first frame outside dart: and package:nanoflow/', () {
       expect(
         place([
-          'Flow.step (package:nanoflow/src/flow.dart:40:5)',
+          'Flow.effect (package:nanoflow/src/flow.dart:40:5)',
           '_rootRun (dart:async/zone.dart:1525:13)',
           'review (file:///work/review/bin/main.dart:22:31)',
           'main (file:///work/review/bin/main.dart:5:3)',
@@ -224,7 +224,7 @@ void main() {
     test('is null when no frame is outside dart: and package:nanoflow/', () {
       expect(
         place([
-          'Flow.step (package:nanoflow/src/flow.dart:40:5)',
+          'Flow.effect (package:nanoflow/src/flow.dart:40:5)',
           '_rootRun (dart:async/zone.dart:1525:13)',
         ]),
         isNull,
@@ -313,7 +313,7 @@ void main() {
     test('is the file decoded', () async {
       final dir = await tempDir();
       const graph = {
-        'format': 1,
+        'format': 2,
         'package': 'review_example',
         'workflows': ['lib/review.dart#review'],
       };
@@ -326,7 +326,7 @@ void main() {
     });
 
     test('is null when the file cannot be read as a JSON object', () async {
-      for (final text in ['{"format": 1', '[1, 2]']) {
+      for (final text in ['{"format": 2', '[1, 2]']) {
         final dir = await tempDir();
         put(dir, 'nanoflow.graph.json', text);
         expect(await graphSnapshotOf(dir), isNull, reason: text);

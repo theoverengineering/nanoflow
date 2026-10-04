@@ -9,7 +9,7 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 
 import 'batched_notifier.dart';
 
-/// A session as the feed has given it so far: the session, its steps, its
+/// A session as the feed has given it so far: the session, its effects, its
 /// journal, its documents, its owner.
 ///
 /// The feed keeps adding to it; what it gives out are read-only views.
@@ -17,14 +17,14 @@ final class SessionData {
   SessionData(
     this.session, {
     Iterable<Event> events = const [],
-    Iterable<Step> steps = const [],
+    Iterable<Effect> effects = const [],
     Iterable<String> documents = const [],
     Iterable<String> problems = const [],
     this._owner,
     this._alive,
   }) {
     events.forEach(_addEvent);
-    steps.forEach(_addStep);
+    effects.forEach(_addEffect);
     _documents.addAll(documents);
     _problems.addAll(problems);
   }
@@ -34,34 +34,36 @@ final class SessionData {
   String get id => session.id;
 
   final List<KnownEvent> _events = [];
-  final Map<String, Step> _steps = {};
+  final Map<String, Effect> _effects = {};
   final Set<String> _documents = {};
   final List<String> _problems = [];
   Owner? _owner;
   bool? _alive;
   SessionState? _state;
-  Map<String, StepState>? _statesById;
-  List<Step>? _stepsInOrder;
-  Map<String, Step>? _stepsByKey;
+  Map<String, EffectState>? _statesById;
+  List<Effect>? _effectsInOrder;
+  Map<String, Effect>? _effectsByKey;
 
   /// The session's known events in the order of its journal.
   List<KnownEvent> get events => UnmodifiableListView(_events);
 
-  /// The records of the session's steps by id, in the order they were
-  /// given. A step may start before its record is given here: the [state]
-  /// has it from its `step-started`.
-  Map<String, Step> get steps => UnmodifiableMapView(_steps);
+  /// The records of the session's effects by id, in the order they were
+  /// given. An effect may start before its record is given here: the [state]
+  /// has it from its `effect-started`.
+  Map<String, Effect> get effects => UnmodifiableMapView(_effects);
 
-  /// The records of the session's steps in the order of their first
-  /// `step-started`; a step whose record has not been given yet is left out.
-  List<Step> get stepsInOrder => _stepsInOrder ??= List.unmodifiable([
-    for (final step in state.steps) ?_steps[step.stepId],
+  /// The records of the session's effects in the order of their first
+  /// `effect-started`; an effect whose record has not been given yet is
+  /// left out.
+  List<Effect> get effectsInOrder => _effectsInOrder ??= List.unmodifiable([
+    for (final effect in state.effects) ?_effects[effect.effectId],
   ]);
 
-  /// The record of the session's step with [key]; `null` when none has been
-  /// given. A step's `after` is the key of the step it follows.
-  Step? stepWithKey(String key) =>
-      (_stepsByKey ??= {for (final step in _steps.values) step.key: step})[key];
+  /// The record of the session's effect with [key]; `null` when none has been
+  /// given. An effect's `after` is the key of the effect it follows.
+  Effect? effectWithKey(String key) => (_effectsByKey ??= {
+    for (final effect in _effects.values) effect.key: effect,
+  })[key];
 
   /// The ids of the session's documents that have been written in full.
   Set<String> get documents => UnmodifiableSetView(_documents);
@@ -85,7 +87,7 @@ final class SessionData {
 
   /// Whether the process that ran the session is gone though its journal
   /// has not ended (docs/superpowers/specs/2026-10-03-session-owner-design.md
-  /// §6): it shows `Interrupted`, and the step it was running was
+  /// §6): it shows `Interrupted`, and the effect it was running was
   /// interrupted. Resuming the session goes on with it.
   bool get interrupted =>
       _alive == false && state.status == SessionStatus.running;
@@ -99,12 +101,12 @@ final class SessionData {
   /// What replaying the journal says.
   SessionState get state => _state ??= replaySession(_events);
 
-  /// The state of the step [stepId] in [state]; `null` for a step that has
-  /// not started. Looked up once per [state]: the copies of a frame look
-  /// up the first step of each.
-  StepState? stateOf(String stepId) => (_statesById ??= {
-    for (final step in state.steps) step.stepId: step,
-  })[stepId];
+  /// The state of the effect [effectId] in [state]; `null` for an effect that
+  /// has not started. Looked up once per [state]: the copies of a frame look
+  /// up the first effect of each.
+  EffectState? stateOf(String effectId) => (_statesById ??= {
+    for (final effect in state.effects) effect.effectId: effect,
+  })[effectId];
 
   void _addEvent(Event event) {
     switch (event) {
@@ -117,14 +119,14 @@ final class SessionData {
         _events.add(event);
         _state = null;
         _statesById = null;
-        _stepsInOrder = null;
+        _effectsInOrder = null;
     }
   }
 
-  void _addStep(Step step) {
-    _steps[step.id] = step;
-    _stepsInOrder = null;
-    _stepsByKey = null;
+  void _addEffect(Effect effect) {
+    _effects[effect.id] = effect;
+    _effectsInOrder = null;
+    _effectsByKey = null;
   }
 
   void _owned(OwnerChanged change) {
@@ -134,7 +136,7 @@ final class SessionData {
 }
 
 /// Everything a reader's change feed has given for the `runs` directory of
-/// a graph file, indexed: the sessions with their steps, journals,
+/// a graph file, indexed: the sessions with their effects, journals,
 /// documents and owners.
 ///
 /// Changes may come in any order but one: a session's events come in the
@@ -172,7 +174,7 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
   final Map<String, SessionData> _sessions = {};
 
   // What came before the session it belongs to, by the session's id.
-  final Map<String, Map<String, Step>> _waitingSteps = {};
+  final Map<String, Map<String, Effect>> _waitingEffects = {};
   final Map<String, List<Event>> _waitingEvents = {};
   final Map<String, Set<String>> _waitingDocuments = {};
   final Map<String, List<String>> _waitingProblems = {};
@@ -201,19 +203,19 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
         final data = _sessions[session.id] = SessionData(
           session,
           events: _waitingEvents.remove(session.id) ?? const [],
-          steps: _waitingSteps.remove(session.id)?.values ?? const [],
+          effects: _waitingEffects.remove(session.id)?.values ?? const [],
           documents: _waitingDocuments.remove(session.id) ?? const {},
           problems: _waitingProblems.remove(session.id) ?? const [],
           owner: owned?.owner,
           alive: owned?.alive,
         );
         _claimProblems(data);
-      case StepAdded(:final step) || StepChanged(:final step):
-        final session = _sessions[step.sessionId];
+      case EffectAdded(:final effect) || EffectChanged(:final effect):
+        final session = _sessions[effect.sessionId];
         if (session != null) {
-          session._addStep(step);
+          session._addEffect(effect);
         } else {
-          (_waitingSteps[step.sessionId] ??= {})[step.id] = step;
+          (_waitingEffects[effect.sessionId] ??= {})[effect.id] = effect;
         }
       case EventAdded(:final sessionId, :final event):
         final session = _sessions[sessionId];

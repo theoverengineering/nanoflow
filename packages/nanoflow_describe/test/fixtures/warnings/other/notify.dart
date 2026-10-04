@@ -1,7 +1,7 @@
 // Not under lib/ or bin/: outside the package sources, so where it is called
-// its steps are not drawn.
+// its effects are not drawn.
 import 'package:nanoflow/nanoflow.dart';
 
 Future<void> notifyTeam(Flow f, String text) async {
-  await f.step('notify', () => print(text));
+  await f.effect('notify', () => print(text));
 }

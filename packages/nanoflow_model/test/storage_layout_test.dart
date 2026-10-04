@@ -4,8 +4,8 @@ import 'package:test/test.dart';
 // Identifiers for the spec's example `runs` tree.
 const _sessionId = '3f9c2a7e-5b1d-4c8e-9a6f-0d2e4b7c1a35';
 const _documentId = '8e1f4b2a-6c3d-4f7e-b5a9-2d0c7e6f1b48';
-const _stepId = '5a8c1e3f-7b2d-4e9a-a6c4-1f3d8b0e2c59';
-const _otherStepId = '0b6d2f9a-4e8c-4a1b-9d7e-3c5f6a2b8e04';
+const _effectId = '5a8c1e3f-7b2d-4e9a-a6c4-1f3d8b0e2c59';
+const _otherEffectId = '0b6d2f9a-4e8c-4a1b-9d7e-3c5f6a2b8e04';
 
 void main() {
   group('names', () {
@@ -14,9 +14,9 @@ void main() {
       expect(sessionFileName, 'session.json');
       expect(documentsDirName, 'documents');
       expect(eventsFileName, 'log.jsonl');
-      expect(stepsDirName, 'steps');
-      expect(stepFileName, 'step.json');
-      expect(logFileName, 'step.log');
+      expect(effectsDirName, 'effects');
+      expect(effectFileName, 'effect.json');
+      expect(logFileName, 'effect.log');
       expect(ownerLockFileName, '.owner.lock');
     });
   });
@@ -77,49 +77,49 @@ void main() {
     });
   });
 
-  group('stepDirName', () {
+  group('effectDirName', () {
     test('is <time to the millisecond>-<name>-<id>', () {
       expect(
-        stepDirName(
+        effectDirName(
           DateTime.utc(2026, 10, 3, 10, 0, 0, 482),
           'collect',
-          _stepId,
+          _effectId,
         ),
-        '2026-10-03T10-00-00-482-collect-$_stepId',
+        '2026-10-03T10-00-00-482-collect-$_effectId',
       );
       expect(
-        stepDirName(
+        effectDirName(
           DateTime.utc(2026, 10, 3, 10, 5, 40, 117),
           'is-empty',
-          _otherStepId,
+          _otherEffectId,
         ),
-        '2026-10-03T10-05-40-117-is-empty-$_otherStepId',
+        '2026-10-03T10-05-40-117-is-empty-$_otherEffectId',
       );
     });
 
     test('pads the milliseconds to three digits and drops microseconds', () {
       expect(
-        stepDirName(DateTime.utc(2026, 10, 3, 10), 'collect', _stepId),
-        '2026-10-03T10-00-00-000-collect-$_stepId',
+        effectDirName(DateTime.utc(2026, 10, 3, 10), 'collect', _effectId),
+        '2026-10-03T10-00-00-000-collect-$_effectId',
       );
       expect(
-        stepDirName(
+        effectDirName(
           DateTime.utc(2026, 10, 3, 10, 0, 0, 7, 999),
           'collect',
-          _stepId,
+          _effectId,
         ),
-        '2026-10-03T10-00-00-007-collect-$_stepId',
+        '2026-10-03T10-00-00-007-collect-$_effectId',
       );
     });
 
     test('keeps letters, digits, dots, underscores and dashes in the name', () {
       expect(
-        stepDirName(
+        effectDirName(
           DateTime.utc(2026, 10, 3, 10, 0, 0, 482),
-          'Step_1.v2-b',
-          _stepId,
+          'Effect_1.v2-b',
+          _effectId,
         ),
-        '2026-10-03T10-00-00-482-Step_1.v2-b-$_stepId',
+        '2026-10-03T10-00-00-482-Effect_1.v2-b-$_effectId',
       );
     });
 
@@ -127,23 +127,27 @@ void main() {
       final startedAt = DateTime.utc(2026, 10, 3, 10, 0, 0, 482);
 
       expect(
-        stepDirName(startedAt, 'collect data/v2', _stepId),
-        '2026-10-03T10-00-00-482-collect_data_v2-$_stepId',
+        effectDirName(startedAt, 'collect data/v2', _effectId),
+        '2026-10-03T10-00-00-482-collect_data_v2-$_effectId',
       );
       expect(
-        stepDirName(startedAt, r'a\b:c*d', _stepId),
-        '2026-10-03T10-00-00-482-a_b_c_d-$_stepId',
+        effectDirName(startedAt, r'a\b:c*d', _effectId),
+        '2026-10-03T10-00-00-482-a_b_c_d-$_effectId',
       );
       expect(
-        stepDirName(startedAt, 'проверка', _stepId),
-        '2026-10-03T10-00-00-482-________-$_stepId',
+        effectDirName(startedAt, 'проверка', _effectId),
+        '2026-10-03T10-00-00-482-________-$_effectId',
       );
     });
 
     test('replaces a character outside the BMP with one _', () {
       expect(
-        stepDirName(DateTime.utc(2026, 10, 3, 10, 0, 0, 482), 'go🚀', _stepId),
-        '2026-10-03T10-00-00-482-go_-$_stepId',
+        effectDirName(
+          DateTime.utc(2026, 10, 3, 10, 0, 0, 482),
+          'go🚀',
+          _effectId,
+        ),
+        '2026-10-03T10-00-00-482-go_-$_effectId',
       );
     });
 
@@ -151,22 +155,26 @@ void main() {
       final local = DateTime.utc(2026, 10, 3, 10, 0, 0, 482).toLocal();
 
       expect(
-        stepDirName(local, 'collect', _stepId),
-        '2026-10-03T10-00-00-482-collect-$_stepId',
+        effectDirName(local, 'collect', _effectId),
+        '2026-10-03T10-00-00-482-collect-$_effectId',
       );
     });
 
     test('sorts in creation order', () {
       final names = [
-        stepDirName(DateTime.utc(2026, 10, 3, 10, 9, 52, 310), 'b', _stepId),
-        stepDirName(DateTime.utc(2026, 10, 3, 10, 0, 0, 470), 'z', _stepId),
-        stepDirName(DateTime.utc(2026, 10, 3, 10, 0, 0, 95), 'c', _stepId),
+        effectDirName(
+          DateTime.utc(2026, 10, 3, 10, 9, 52, 310),
+          'b',
+          _effectId,
+        ),
+        effectDirName(DateTime.utc(2026, 10, 3, 10, 0, 0, 470), 'z', _effectId),
+        effectDirName(DateTime.utc(2026, 10, 3, 10, 0, 0, 95), 'c', _effectId),
       ]..sort();
 
       expect(names, [
-        '2026-10-03T10-00-00-095-c-$_stepId',
-        '2026-10-03T10-00-00-470-z-$_stepId',
-        '2026-10-03T10-09-52-310-b-$_stepId',
+        '2026-10-03T10-00-00-095-c-$_effectId',
+        '2026-10-03T10-00-00-470-z-$_effectId',
+        '2026-10-03T10-09-52-310-b-$_effectId',
       ]);
     });
   });
@@ -182,11 +190,14 @@ void main() {
       expect(idOfDirName('review-2026-10-03T10-00-00-$_sessionId'), _sessionId);
     });
 
-    test('finds the id of a step directory', () {
-      expect(idOfDirName('2026-10-03T10-00-00-482-collect-$_stepId'), _stepId);
+    test('finds the id of an effect directory', () {
       expect(
-        idOfDirName('2026-10-03T10-05-40-117-is-empty-$_otherStepId'),
-        _otherStepId,
+        idOfDirName('2026-10-03T10-00-00-482-collect-$_effectId'),
+        _effectId,
+      );
+      expect(
+        idOfDirName('2026-10-03T10-05-40-117-is-empty-$_otherEffectId'),
+        _otherEffectId,
       );
     });
 
@@ -195,14 +206,14 @@ void main() {
       final id = newId();
 
       expect(idOfDirName(sessionDirName('review', startedAt, id)), id);
-      expect(idOfDirName(stepDirName(startedAt, 'a b', id)), id);
+      expect(idOfDirName(effectDirName(startedAt, 'a b', id)), id);
     });
 
     test('returns null for names without an id', () {
       for (final name in [
         '',
         'runs',
-        'steps',
+        'effects',
         'documents',
         'session.json',
         'review',
@@ -271,7 +282,7 @@ void main() {
         'review-2026-10-03T10-00-00-$_sessionId\n',
         're\nview-2026-10-03T10-00-00-$_sessionId',
         '.tmp-$_sessionId', // a session being built
-        '2026-10-03T10-00-00-482-collect-$_stepId', // a step directory
+        '2026-10-03T10-00-00-482-collect-$_effectId', // an effect directory
         '$_documentId.json',
       ]) {
         expect(isSessionDirName(name), isFalse, reason: name);

@@ -22,20 +22,20 @@ import 'frame_toggle.dart';
 import 'layout_geometry.dart';
 import 'tile_marks.dart';
 
-/// A node on the canvas (docs/ui-spec.md «Граф», spec §9 «Граф», «Шаги на
+/// A node on the canvas (docs/ui-spec.md «Граф», spec §9 «Граф», «Эффекты на
 /// графе»): the tile of its kind with its name and place under it, a name
-/// cut short whole in a tooltip. A step's tile has a terminal on it, a
-/// condition's a diamond; a call's is a stack of two tiles with the steps
-/// of the function on it (`{ 3 }`), copies' a stack of three with the steps
+/// cut short whole in a tooltip. An effect's tile has a terminal on it, a
+/// condition's a diamond; a call's is a stack of two tiles with the effects
+/// of the function on it (`{ 3 }`), copies' a stack of three with the effects
 /// of a copy on it and how many copies ran across the top right of the
 /// stack (`×3`; `×n` without a session); the start and end markers are
 /// dashed and say so.
 ///
-/// With a session, the tile is framed in the state of the steps on it, its
-/// state's badge on its bottom right corner; a step node entered more than
+/// With a session, the tile is framed in the state of the effects on it, its
+/// state's badge on its bottom right corner; an effect node entered more than
 /// once says so over its top right corner (`2×`) — in the body of copies,
 /// all shown, how many copies are on it now instead. The looks and the
-/// badges are in tile_marks.dart. The ring round the selected step's node
+/// badges are in tile_marks.dart. The ring round the selected effect's node
 /// is not the tile's: the canvas draws it under the arrows ([ringOf]).
 ///
 /// A call or copies that can be expanded in place has `+` in its tile's
@@ -67,10 +67,10 @@ class NodeTile extends StatelessWidget {
   /// The key of the tile itself of the node [id]: what is clicked.
   static Key tileKeyOf(String id) => ValueKey(('tile', id));
 
-  /// The key of the badge that counts the copies on a step.
+  /// The key of the badge that counts the copies on an effect.
   static Key runningKeyOf(String id) => ValueKey(('running', id));
 
-  /// The key of the ring round the node [id], the selected step's.
+  /// The key of the ring round the node [id], the selected effect's.
   static Key ringKeyOf(String id) => ValueKey(('ring', id));
 
   final layout.NodeBox node;
@@ -78,11 +78,11 @@ class NodeTile extends StatelessWidget {
   /// The node's id on the canvas.
   final String id;
 
-  /// What the session's steps put on the node; `null` for `Current graph`,
+  /// What the session's effects put on the node; `null` for `Current graph`,
   /// a condition or a marker: the tile is drawn plain.
   final NodeMarks? marks;
 
-  /// Whether a step node says how many copies are on it now: in the body of
+  /// Whether an effect node says how many copies are on it now: in the body of
   /// copies, all of them shown.
   final bool allCopies;
 
@@ -101,7 +101,7 @@ class NodeTile extends StatelessWidget {
 
   static const _radius = 12.0;
 
-  /// How far the ring round the selected step's node reaches out of its
+  /// How far the ring round the selected effect's node reaches out of its
   /// tile.
   static const ring = 4.0;
 
@@ -118,7 +118,7 @@ class NodeTile extends StatelessWidget {
     return box.localToGlobal(Offset(FrameToggle.size, FrameToggle.size));
   }
 
-  /// The ring round the tile of [node], the selected step's node, [id] on
+  /// The ring round the tile of [node], the selected effect's node, [id] on
   /// the canvas: for the layer under the arrows and exits, so the bar of
   /// the node's input and the half of its exit dot stay over it.
   static Widget ringOf(layout.NodeBox node, String id) => Positioned.fromRect(
@@ -219,13 +219,13 @@ class NodeTile extends StatelessWidget {
     );
   }
 
-  /// Over a step node's top right corner: in the body of copies, all
+  /// Over an effect node's top right corner: in the body of copies, all
   /// shown, how many copies are on it now, if any; else `2×` when it was
   /// entered more than once. Calls and copies have their stacks there.
   Widget? _countBadge() {
     final marks = this.marks;
-    if (marks == null || node.kind != NodeKind.step) return null;
-    // In copies, how many copies are on the step — the steps all of them
+    if (marks == null || node.kind != NodeKind.effect) return null;
+    // In copies, how many copies are on the effect — the effects all of them
     // passed have nothing over them (docs/design/code-first/copies-frame.html).
     if (allCopies) {
       return marks.running > 0
@@ -298,7 +298,7 @@ class NodeTile extends StatelessWidget {
             ),
           ),
         );
-      case NodeKind.step ||
+      case NodeKind.effect ||
           NodeKind.condition ||
           NodeKind.call ||
           NodeKind.copies:

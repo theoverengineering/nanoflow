@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/graph/canvas/copies_frame.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/copy_switcher.dart';
+import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/graph/logs/logs_panel.dart';
-import 'package:nanoflow_ui/graph/logs/step_list.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/copies.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
@@ -44,7 +44,7 @@ void main() {
   }
 
   testWidgets('the copies tile says how many copies ran: ×3; Logs name '
-      'the copy of each step in them', (tester) async {
+      'the copy of each effect in them', (tester) async {
     await pumpGraphScreen(
       tester,
       path: inlineFile,
@@ -59,7 +59,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      textIn(tester, find.byKey(StepList.rowKey('c0c0-verify-4'))),
+      textIn(tester, find.byKey(EffectList.rowKey('c0c0-verify-4'))),
       startsWith('verify pkg 2'),
     );
   });
@@ -72,14 +72,14 @@ void main() {
     expect(find.text('×3 · in parallel'), findsOneWidget);
     expect(textIn(tester, find.byType(CopySwitcher)), 'all 1 2 3');
     expect(textIn(tester, footer()), 'done 1 of 3');
-    // All selected: the steps say how many copies are on them now.
+    // All selected: the effects say how many copies are on them now.
     expect(find.byKey(NodeTile.runningKeyOf('2')), findsOneWidget);
     expect(find.byKey(NodeTile.runningKeyOf('3')), findsOneWidget);
     expect(find.byKey(NodeTile.runningKeyOf('1')), findsNothing);
-    // Logs names the copy of each step.
-    expect(logsTitle(tester), 'Logs 8 steps');
+    // Logs names the copy of each effect.
+    expect(logsTitle(tester), 'Logs 8 effects');
     expect(
-      textIn(tester, find.byKey(StepList.rowKey('c0c0-verify-4'))),
+      textIn(tester, find.byKey(EffectList.rowKey('c0c0-verify-4'))),
       startsWith('verify pkg 2'),
     );
   });
@@ -109,16 +109,16 @@ void main() {
   });
 
   testWidgets('a copy chosen: its path alone, copy 2 · now verify; Logs its '
-      'steps; all goes back', (tester) async {
+      'effects; all goes back', (tester) async {
     final model = await pumpCopies(tester);
 
     await tap(tester, chip(2));
 
     expect(textIn(tester, footer()), 'pkg 2 · now verify');
-    expect(logsTitle(tester), 'Logs pkg 2 · 2 steps');
-    expect(model.selection.stepId, 'c0c0-verify-4');
+    expect(logsTitle(tester), 'Logs pkg 2 · 2 effects');
+    expect(model.selection.effectId, 'c0c0-verify-4');
     final marks = tester.widget<NodeTile>(find.byKey(NodeTile.keyOf('3')));
-    expect(marks.marks!.steps, 0, reason: 'tool has not reached tag');
+    expect(marks.marks!.effects, 0, reason: 'tool has not reached tag');
     expect(find.byKey(NodeTile.runningKeyOf('2')), findsNothing);
     final selected = tester.widget<Container>(
       find.descendant(of: chip(2), matching: find.byType(Container)).first,
@@ -130,7 +130,7 @@ void main() {
 
     await tap(tester, chip(null));
     expect(textIn(tester, footer()), 'done 1 of 3');
-    expect(logsTitle(tester), 'Logs 8 steps');
+    expect(logsTitle(tester), 'Logs 8 effects');
   });
 
   testWidgets('more copies than chips: a list with a search and a filter', (
@@ -144,7 +144,7 @@ void main() {
       code: graph.fingerprint,
     );
     for (var i = 0; i < 20; i++) {
-      session.step(
+      session.effect(
         'upload',
         10 + i,
         end: i.isEven ? 100 : null,
@@ -191,7 +191,7 @@ void main() {
     await tap(tester, find.byKey(CopySwitcher.rowKey(5)));
     expect(textIn(tester, find.byType(CopySwitcher)), 'pkg 5 20 copies');
     expect(textIn(tester, footer()), 'pkg 5 · failed at upload');
-    expect(model.selection.stepId, 'm4ny-upload-4');
+    expect(model.selection.effectId, 'm4ny-upload-4');
   });
 
   testWidgets('in a session whose process is gone, a copy that was running '
@@ -216,7 +216,7 @@ void main() {
     );
     await tap(tester, chip(2));
     expect(textIn(tester, footer()), 'pkg 2 · interrupted at verify');
-    expect(model.selection.stepId, 'c0c0-verify-4');
+    expect(model.selection.effectId, 'c0c0-verify-4');
   });
 
   testWidgets('more copies than chips, their process gone: the list filters '
@@ -229,7 +229,7 @@ void main() {
       code: graph.fingerprint,
     );
     for (var i = 0; i < 20; i++) {
-      many.step(
+      many.effect(
         'upload',
         10 + i,
         end: i.isEven ? 100 : null,
@@ -266,7 +266,7 @@ void main() {
       code: 'sha256:copies-code',
     );
     for (final (i, pkg) in ['core', 'tool'].indexed) {
-      session.step(
+      session.effect(
         'fetch',
         1 + i,
         end: 3,
@@ -275,7 +275,7 @@ void main() {
         after: null,
       );
       for (final target in ['arm', 'x64']) {
-        session.step(
+        session.effect(
           'build',
           4,
           place: copiesAt(30),
@@ -299,7 +299,7 @@ void main() {
     await tap(tester, chip(1));
 
     expect(textIn(tester, footer()), 'pkg 2 › target 1 · now build');
-    expect(logsTitle(tester), 'Logs pkg 2 › target 1 · 1 step');
+    expect(logsTitle(tester), 'Logs pkg 2 › target 1 · 1 effect');
 
     // All the copies of the frame around: none of these can be chosen.
     model.openLevel(1);

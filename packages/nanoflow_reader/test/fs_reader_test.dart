@@ -11,7 +11,7 @@ import 'support.dart';
 
 void main() {
   group('changes', () {
-    test('gives everything on disk: the session, its steps, events and '
+    test('gives everything on disk: the session, its effects, events and '
         'documents', () async {
       final runsDir = await newRunsDir();
       final fixture = SpecSession.write(runsDir);
@@ -41,9 +41,9 @@ void main() {
       await feed.settle();
       final mark = feed.changes.length;
 
-      final failed = StepFailed(
+      final failed = EffectFailed(
         time: at(9),
-        stepId: fixture.publish.id,
+        effectId: fixture.publish.id,
         error: 'Exception: boom',
         stack: '#0 main\n',
       );
@@ -113,18 +113,18 @@ void main() {
         'event': 'human-approved',
         'by': 'anna',
       };
-      final noStep = {
+      final noEffect = {
         'time': '2026-10-03T10:00:21.482Z',
-        'event': 'step-started',
+        'event': 'effect-started',
       };
 
       append(fixture.sessionDir, '${jsonEncode(approved)}\n');
-      append(fixture.sessionDir, '${jsonEncode(noStep)}\n');
+      append(fixture.sessionDir, '${jsonEncode(noEffect)}\n');
       await feed.settle();
 
       expect(feed.since(mark), [
         fixture.added(UnknownEvent(approved)),
-        fixture.added(UnknownEvent(noStep)),
+        fixture.added(UnknownEvent(noEffect)),
       ]);
     });
 
@@ -156,8 +156,8 @@ void main() {
       ]);
     });
 
-    test('gives step-changed once step.json gets the outputId of its '
-        'step-finished', () async {
+    test('gives effect-changed once effect.json gets the outputId of its '
+        'effect-finished', () async {
       final runsDir = await newRunsDir();
       final fixture = SpecSession.write(runsDir);
       final feed = Feed(runsDir);
@@ -168,13 +168,13 @@ void main() {
         sessionId: fixture.session.id,
         value: 'published',
       );
-      final finished = StepFinished(
+      final finished = EffectFinished(
         time: at(9),
-        stepId: fixture.publish.id,
+        effectId: fixture.publish.id,
         outputId: output.id,
       );
 
-      // The order of D3: document, step-finished, step.json.
+      // The order of D3: document, effect-finished, effect.json.
       writeDocument(fixture.sessionDir, output);
       append(fixture.sessionDir, line(finished));
       await feed.settle();
@@ -188,78 +188,85 @@ void main() {
       final changedMark = feed.changes.length;
 
       final published = fixture.publish.withOutput(output.id);
-      rewriteStep(fixture.publishDir, published);
-      await feed.next<StepChanged>();
+      rewriteEffect(fixture.publishDir, published);
+      await feed.next<EffectChanged>();
       await feed.settle();
       await feed.settle();
 
-      expect(feed.since(changedMark), [StepChanged(published)]);
+      expect(feed.since(changedMark), [EffectChanged(published)]);
     });
 
-    test('gives step-changed when a step that runs again in its record gets '
-        'another after, and then its new outputId', () async {
-      final runsDir = await newRunsDir();
-      final session = newSession();
-      final first = Document(id: newId(), sessionId: session.id, value: 1);
-      final collect = newStep(session.id).withOutput(first.id);
-      final sessionDir = writeSession(
-        runsDir,
-        session,
-        events: [
-          SessionStarted(time: at(0), code: 'sha256:a'),
-          StepStarted(time: at(1), stepId: collect.id),
-          StepFinished(time: at(2), stepId: collect.id, outputId: first.id),
-          SessionResumed(time: at(3), code: 'sha256:b', graphId: null),
-        ],
-      );
-      writeDocument(sessionDir, first);
-      final collectDir = writeStep(sessionDir, collect, startedAt: at(1));
-      final feed = Feed(runsDir);
-      await feed.settle();
-      final mark = feed.changes.length;
+    test(
+      'gives effect-changed when an effect that runs again in its record gets '
+      'another after, and then its new outputId',
+      () async {
+        final runsDir = await newRunsDir();
+        final session = newSession();
+        final first = Document(id: newId(), sessionId: session.id, value: 1);
+        final collect = newEffect(session.id).withOutput(first.id);
+        final sessionDir = writeSession(
+          runsDir,
+          session,
+          events: [
+            SessionStarted(time: at(0), code: 'sha256:a'),
+            EffectStarted(time: at(1), effectId: collect.id),
+            EffectFinished(
+              time: at(2),
+              effectId: collect.id,
+              outputId: first.id,
+            ),
+            SessionResumed(time: at(3), code: 'sha256:b', graphId: null),
+          ],
+        );
+        writeDocument(sessionDir, first);
+        final collectDir = writeEffect(sessionDir, collect, startedAt: at(1));
+        final feed = Feed(runsDir);
+        await feed.settle();
+        final mark = feed.changes.length;
 
-      // The order of D3 for a rerun that follows another step: step-started,
-      // then step.json with the new after.
-      final rerun = StepStarted(time: at(4), stepId: collect.id);
-      append(sessionDir, line(rerun));
-      await feed.next<EventAdded>((change) => change.event == rerun);
-      final moved = collect.withAfter('other#1@e3b0c44298fc1c14');
-      rewriteStep(collectDir, moved);
-      await feed.next<StepChanged>();
-      await feed.settle();
-      await feed.settle();
-      expect(feed.since(mark), [
-        EventAdded(sessionId: session.id, event: rerun),
-        StepChanged(moved),
-      ]);
-      final finishedMark = feed.changes.length;
+        // The order of D3 for a rerun that follows another effect:
+        // effect-started, then effect.json with the new after.
+        final rerun = EffectStarted(time: at(4), effectId: collect.id);
+        append(sessionDir, line(rerun));
+        await feed.next<EventAdded>((change) => change.event == rerun);
+        final moved = collect.withAfter('other#1@e3b0c44298fc1c14');
+        rewriteEffect(collectDir, moved);
+        await feed.next<EffectChanged>();
+        await feed.settle();
+        await feed.settle();
+        expect(feed.since(mark), [
+          EventAdded(sessionId: session.id, event: rerun),
+          EffectChanged(moved),
+        ]);
+        final finishedMark = feed.changes.length;
 
-      // Then document, step-finished, step.json with the new outputId.
-      final second = Document(id: newId(), sessionId: session.id, value: 2);
-      final finished = StepFinished(
-        time: at(5),
-        stepId: collect.id,
-        outputId: second.id,
-      );
-      writeDocument(sessionDir, second);
-      append(sessionDir, line(finished));
-      await feed.next<EventAdded>((change) => change.event == finished);
-      final done = moved.withOutput(second.id);
-      rewriteStep(collectDir, done);
-      await feed.next<StepChanged>((change) => change.step == done);
-      await feed.settle();
-      await feed.settle();
-      expect(
-        feed.since(finishedMark),
-        unorderedEquals([
-          EventAdded(sessionId: session.id, event: finished),
-          DocumentAdded(sessionId: session.id, documentId: second.id),
-          StepChanged(done),
-        ]),
-      );
-    });
+        // Then document, effect-finished, effect.json with the new outputId.
+        final second = Document(id: newId(), sessionId: session.id, value: 2);
+        final finished = EffectFinished(
+          time: at(5),
+          effectId: collect.id,
+          outputId: second.id,
+        );
+        writeDocument(sessionDir, second);
+        append(sessionDir, line(finished));
+        await feed.next<EventAdded>((change) => change.event == finished);
+        final done = moved.withOutput(second.id);
+        rewriteEffect(collectDir, done);
+        await feed.next<EffectChanged>((change) => change.effect == done);
+        await feed.settle();
+        await feed.settle();
+        expect(
+          feed.since(finishedMark),
+          unorderedEquals([
+            EventAdded(sessionId: session.id, event: finished),
+            DocumentAdded(sessionId: session.id, documentId: second.id),
+            EffectChanged(done),
+          ]),
+        );
+      },
+    );
 
-    test('gives a session, its steps, events and documents as they '
+    test('gives a session, its effects, events and documents as they '
         'appear', () async {
       final runsDir = await newRunsDir();
       Directory(runsDir).createSync();
@@ -277,17 +284,17 @@ void main() {
         noOwner(session.id),
       ]);
 
-      final step = newStep(session.id);
-      final stepStarted = StepStarted(time: at(1), stepId: step.id);
-      writeStep(sessionDir, step, startedAt: at(1));
-      append(sessionDir, line(stepStarted));
+      final effect = newEffect(session.id);
+      final effectStarted = EffectStarted(time: at(1), effectId: effect.id);
+      writeEffect(sessionDir, effect, startedAt: at(1));
+      append(sessionDir, line(effectStarted));
       await feed.settle();
-      // A step may come before or after the event that starts it.
+      // An effect may come before or after the event that starts it.
       expect(
         feed.since(3),
         unorderedEquals([
-          StepAdded(step),
-          EventAdded(sessionId: session.id, event: stepStarted),
+          EffectAdded(effect),
+          EventAdded(sessionId: session.id, event: effectStarted),
         ]),
       );
 
@@ -307,14 +314,14 @@ void main() {
       final apply = newSession(workflow: 'apply-x');
       final sessionDir = writeSession(runsDir, review);
       writeSession(runsDir, apply, createdAt: at(1));
-      // A session, a step and a document being built.
+      // A session, an effect and a document being built.
       writeJson(
         p.join(building(runsDir), sessionFileName),
         newSession().toJson(),
       );
       writeJson(
-        p.join(building(p.join(sessionDir, stepsDirName)), stepFileName),
-        newStep(review.id).toJson(),
+        p.join(building(p.join(sessionDir, effectsDirName)), effectFileName),
+        newEffect(review.id).toJson(),
       );
       final hidden = Document(id: newId(), sessionId: review.id, value: 1);
       File(p.join(sessionDir, documentsDirName, '.${hidden.id}.json.tmp-1'))
@@ -369,12 +376,12 @@ void main() {
       final runsDir = await newRunsDir();
       final session = newSession();
       final sessionDir = writeSession(runsDir, session);
-      final good = newStep(session.id, name: 'good');
-      writeStep(sessionDir, good, startedAt: at(1));
-      final broken = newStep(session.id, name: 'broken');
+      final good = newEffect(session.id, name: 'good');
+      writeEffect(sessionDir, good, startedAt: at(1));
+      final broken = newEffect(session.id, name: 'broken');
       final brokenFile = p.join(
-        writeStep(sessionDir, broken, startedAt: at(2)),
-        stepFileName,
+        writeEffect(sessionDir, broken, startedAt: at(2)),
+        effectFileName,
       );
       writeJson(brokenFile, {'id': broken.id});
 
@@ -384,7 +391,7 @@ void main() {
 
       expect(feed.changes, [
         SessionAdded(session),
-        StepAdded(good),
+        EffectAdded(good),
         noOwner(session.id),
       ]);
       expect(feed.errors, [
@@ -397,7 +404,7 @@ void main() {
 
       writeJson(brokenFile, broken.toJson());
       await feed.settle();
-      expect(feed.changes.last, StepAdded(broken));
+      expect(feed.changes.last, EffectAdded(broken));
       expect(feed.errors, hasLength(1));
     });
 
@@ -407,12 +414,12 @@ void main() {
         final runsDir = await newRunsDir();
         final session = newSession();
         final sessionDir = writeSession(runsDir, session);
-        final good = newStep(session.id, name: 'good');
-        writeStep(sessionDir, good, startedAt: at(1));
-        final locked = newStep(session.id, name: 'locked');
+        final good = newEffect(session.id, name: 'good');
+        writeEffect(sessionDir, good, startedAt: at(1));
+        final locked = newEffect(session.id, name: 'locked');
         final lockedFile = p.join(
-          writeStep(sessionDir, locked, startedAt: at(2)),
-          stepFileName,
+          writeEffect(sessionDir, locked, startedAt: at(2)),
+          effectFileName,
         );
         Process.runSync('chmod', ['000', lockedFile]);
 
@@ -422,7 +429,7 @@ void main() {
 
         expect(feed.changes, [
           SessionAdded(session),
-          StepAdded(good),
+          EffectAdded(good),
           noOwner(session.id),
         ]);
         expect(feed.errors, [
@@ -431,13 +438,13 @@ void main() {
 
         Process.runSync('chmod', ['644', lockedFile]);
         await feed.settle();
-        expect(feed.changes.last, StepAdded(locked));
+        expect(feed.changes.last, EffectAdded(locked));
         expect(feed.errors, hasLength(1));
       },
       skip: skipAsRoot,
     );
 
-    test('does not scan when a step writes its log', () async {
+    test('does not scan when an effect writes its log', () async {
       final runsDir = await newRunsDir();
       final fixture = SpecSession.write(runsDir);
       final logFile = p.join(fixture.publishDir, logFileName);
@@ -493,30 +500,30 @@ void main() {
         'is written to it after its last event', () async {
       final runsDir = await newRunsDir();
       final session = newSession();
-      final step = newStep(session.id);
+      final effect = newEffect(session.id);
       final sessionDir = writeSession(
         runsDir,
         session,
         events: [
           SessionStarted(time: at(0), code: null),
-          StepStarted(time: at(1), stepId: step.id),
-          StepFinished(time: at(2), stepId: step.id, outputId: null),
+          EffectStarted(time: at(1), effectId: effect.id),
+          EffectFinished(time: at(2), effectId: effect.id, outputId: null),
           SessionFinished(time: at(3), outputId: null),
         ],
       );
       final feed = Feed(runsDir);
       await feed.next<EventAdded>((change) => change.event is SessionFinished);
 
-      // As if the pass that read the last event had listed the steps just
-      // before the step was put in place.
-      writeStep(sessionDir, step, startedAt: at(1));
-      await feed.next<StepAdded>();
+      // As if the pass that read the last event had listed the effects just
+      // before the effect was put in place.
+      writeEffect(sessionDir, effect, startedAt: at(1));
+      await feed.next<EffectAdded>();
       await feed.settle();
       await feed.settle();
       final mark = feed.changes.length;
 
       append(sessionDir, line(SessionFinished(time: at(4), outputId: null)));
-      writeStep(sessionDir, newStep(session.id), startedAt: at(4));
+      writeEffect(sessionDir, newEffect(session.id), startedAt: at(4));
       writeDocument(
         sessionDir,
         Document(id: newId(), sessionId: session.id, value: 1),
@@ -578,7 +585,7 @@ void main() {
         'branch': 'main',
       });
       final log = LogText(
-        reader.stepLog(fixture.session.id, fixture.publish.id),
+        reader.effectLog(fixture.session.id, fixture.publish.id),
       );
       expect(await log.untilLength('publishing\n'), 'publishing\n');
     });
@@ -595,7 +602,7 @@ void main() {
     });
   });
 
-  group('stepLog', () {
+  group('effectLog', () {
     test(
       'gives the text there is, then what is appended, decoding a '
       'character split between writes and bytes that are not UTF-8',
@@ -608,7 +615,7 @@ void main() {
         await feed.settle();
 
         final log = LogText(
-          feed.reader.stepLog(fixture.session.id, fixture.publish.id),
+          feed.reader.effectLog(fixture.session.id, fixture.publish.id),
         );
         expect(await log.untilLength('hello\n'), 'hello\n');
 
@@ -624,15 +631,15 @@ void main() {
       },
     );
 
-    test('gives nothing until step.log appears', () async {
+    test('gives nothing until effect.log appears', () async {
       final runsDir = await newRunsDir();
       final fixture = SpecSession.write(runsDir);
       final feed = Feed(runsDir);
       await feed.settle();
       final log = LogText(
-        feed.reader.stepLog(fixture.session.id, fixture.publish.id),
+        feed.reader.effectLog(fixture.session.id, fixture.publish.id),
       );
-      // Some polls find no step.log; the test holds however many there are.
+      // Some polls find no effect.log; the test holds however many there are.
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
       appendBytes(p.join(fixture.publishDir, logFileName), utf8.encode('up\n'));
@@ -641,17 +648,17 @@ void main() {
       expect(log.chunks, ['up\n']);
     });
 
-    test('gives an error for a step the session does not have', () async {
+    test('gives an error for an effect the session does not have', () async {
       final runsDir = await newRunsDir();
       final fixture = SpecSession.write(runsDir);
       final reader = FsReader(runsDir: runsDir);
 
       await expectLater(
-        reader.stepLog(fixture.session.id, newId()),
+        reader.effectLog(fixture.session.id, newId()),
         emitsInOrder([emitsError(isArgumentError), emitsDone]),
       );
       await expectLater(
-        reader.stepLog(newId(), fixture.publish.id),
+        reader.effectLog(newId(), fixture.publish.id),
         emitsInOrder([emitsError(isArgumentError), emitsDone]),
       );
     });
@@ -670,24 +677,24 @@ void main() {
       final unknown = newId();
 
       expect(reader.sessionPath(sessionId), isNull);
-      expect(reader.stepPath(fixture.publish.id), isNull);
+      expect(reader.effectPath(fixture.publish.id), isNull);
       expect(reader.logPath(fixture.publish.id), isNull);
       expect(reader.documentPath(sessionId, fixture.input.id), isNull);
 
       await Feed.of(reader).settle();
 
       expect(reader.sessionPath(sessionId), fixture.sessionDir);
-      expect(reader.stepPath(fixture.publish.id), fixture.publishDir);
+      expect(reader.effectPath(fixture.publish.id), fixture.publishDir);
       expect(
         reader.logPath(fixture.publish.id),
-        p.join(fixture.publishDir, 'step.log'),
+        p.join(fixture.publishDir, 'effect.log'),
       );
       expect(
         reader.documentPath(sessionId, fixture.input.id),
         p.join(fixture.sessionDir, 'documents', '${fixture.input.id}.json'),
       );
       expect(reader.sessionPath(unknown), isNull);
-      expect(reader.stepPath(unknown), isNull);
+      expect(reader.effectPath(unknown), isNull);
       expect(reader.logPath(unknown), isNull);
       expect(reader.documentPath(sessionId, unknown), isNull);
       expect(reader.documentPath(unknown, fixture.input.id), isNull);
@@ -696,7 +703,7 @@ void main() {
 }
 
 /// A directory `.tmp-<id>` in [parent], like the ones the store builds
-/// sessions and steps in.
+/// sessions and effects in.
 String building(String parent) =>
     (Directory(p.join(parent, '.tmp-${newId()}'))..createSync()).path;
 
@@ -724,16 +731,16 @@ final class SpecSession {
   late final Document collected = _document({'files': 3});
   late final Document snapshot = _document(graph);
 
-  late final Step collect = newStep(
+  late final Effect collect = newEffect(
     session.id,
     name: 'collect',
   ).withOutput(collected.id);
-  late final Step inspect = newStep(
+  late final Effect inspect = newEffect(
     session.id,
     name: 'inspect',
     after: collect.key,
   );
-  late final Step publish = newStep(
+  late final Effect publish = newEffect(
     session.id,
     name: 'publish',
     after: collect.key,
@@ -742,13 +749,18 @@ final class SpecSession {
 
   late final List<Event> events = [
     SessionStarted(time: at(0), code: 'sha256:a'),
-    StepStarted(time: at(1), stepId: collect.id),
-    StepFinished(time: at(2), stepId: collect.id, outputId: collected.id),
-    StepStarted(time: at(3), stepId: inspect.id),
+    EffectStarted(time: at(1), effectId: collect.id),
+    EffectFinished(time: at(2), effectId: collect.id, outputId: collected.id),
+    EffectStarted(time: at(3), effectId: inspect.id),
     SessionResumed(time: at(4), code: 'sha256:b', graphId: snapshot.id),
-    StepStarted(time: at(5), stepId: inspect.id),
-    StepFailed(time: at(6), stepId: inspect.id, error: 'boom', stack: '#0\n'),
-    StepStarted(time: at(7), stepId: publish.id),
+    EffectStarted(time: at(5), effectId: inspect.id),
+    EffectFailed(
+      time: at(6),
+      effectId: inspect.id,
+      error: 'boom',
+      stack: '#0\n',
+    ),
+    EffectStarted(time: at(7), effectId: publish.id),
   ];
 
   /// The change that gives [event] of this session.
@@ -759,7 +771,7 @@ final class SpecSession {
   /// its `.owner.lock` names no owner.
   List<Change> get changes => [
     SessionAdded(session),
-    for (final step in [collect, inspect, publish]) StepAdded(step),
+    for (final effect in [collect, inspect, publish]) EffectAdded(effect),
     for (final event in events) added(event),
     for (final document in [input, collected, snapshot])
       DocumentAdded(sessionId: session.id, documentId: document.id),
@@ -774,8 +786,8 @@ final class SpecSession {
     for (final document in [input, collected, snapshot]) {
       writeDocument(sessionDir, document);
     }
-    writeStep(sessionDir, collect, startedAt: at(1));
-    writeStep(sessionDir, inspect, startedAt: at(3));
-    publishDir = writeStep(sessionDir, publish, startedAt: at(7));
+    writeEffect(sessionDir, collect, startedAt: at(1));
+    writeEffect(sessionDir, inspect, startedAt: at(3));
+    publishDir = writeEffect(sessionDir, publish, startedAt: at(7));
   }
 }

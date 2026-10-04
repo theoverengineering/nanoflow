@@ -2,45 +2,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/copies.dart';
+import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
-import 'package:nanoflow_ui/state/step_places.dart';
 
 import 'support.dart';
 
 // The sessions are those the workflows of `copiesGraphJson` write: the keys
 // and `after`s are as the library gives them (decision D1), shortened. A
-// copy's steps follow one another in it; its first step follows the step
+// copy's effects follow one another in it; its first effect follows the effect
 // before the copies, or none.
 
 final file = copiesGraphFile();
 
-StepPlaces placesOf(String workflow) =>
-    StepPlaces.of(file.functions['lib/copies.dart#$workflow'], file.functions);
+EffectPlaces placesOf(String workflow) => EffectPlaces.of(
+  file.functions['lib/copies.dart#$workflow'],
+  file.functions,
+);
 
 CopiesNode copiesNode(String workflow, [String id = '1']) =>
     file.functions['lib/copies.dart#$workflow']!.body.node(id)! as CopiesNode;
 
-/// The names of each copy's steps, by copy number.
+/// The names of each copy's effects, by copy number.
 Map<int, List<String>> namesOf(List<Copy> copies, SessionData session) => {
   for (final copy in copies)
     copy.number: [
-      for (final step in copy.steps) session.steps[step.stepId]!.name,
+      for (final effect in copy.effects) session.effects[effect.effectId]!.name,
     ],
 };
 
-/// The package of each copy, by number: the name of its first step ends
+/// The package of each copy, by number: the name of its first effect ends
 /// with it (`upload-core`).
 Map<int, String> packagesOf(List<Copy> copies) => {
-  for (final copy in copies) copy.number: copy.first.stepId.split('-')[2],
+  for (final copy in copies) copy.number: copy.first.effectId.split('-')[2],
 };
 
 /// `inPlace` over core, tool and cli: the copies start in that order, and
 /// cli's upload ends first.
 Journal inPlaceJournal() {
   final j = Journal('a1b2-session', workflow: 'inPlace');
-  j.step('plan', 1, end: 2, place: copiesAt(4), key: 'plan#1@r', after: null);
+  j.effect('plan', 1, end: 2, place: copiesAt(4), key: 'plan#1@r', after: null);
   for (final (i, pkg) in ['core', 'tool', 'cli'].indexed) {
-    j.step(
+    j.effect(
       'upload-$pkg',
       3 + i / 1000,
       end: 6 - i,
@@ -51,7 +53,7 @@ Journal inPlaceJournal() {
     );
   }
   for (final (i, pkg) in ['cli', 'tool', 'core'].indexed) {
-    j.step(
+    j.effect(
       'verify-$pkg',
       7 + i,
       end: 10 + i,
@@ -59,7 +61,7 @@ Journal inPlaceJournal() {
       key: 'verify#1@$pkg',
       after: 'upload#${3 - i}@c',
     );
-    j.step(
+    j.effect(
       'tag-$pkg',
       10 + i,
       end: 13 + i,
@@ -68,7 +70,7 @@ Journal inPlaceJournal() {
       after: 'verify#1@$pkg',
     );
   }
-  j.step(
+  j.effect(
     'announce',
     20,
     end: 21,
@@ -80,7 +82,7 @@ Journal inPlaceJournal() {
 }
 
 void main() {
-  test('in place: a copy is a chain of steps in the frame by after; plan and '
+  test('in place: a copy is a chain of effects in the frame by after; plan and '
       'announce are in none', () {
     final session = inPlaceJournal().data;
     final copies = copiesOf(
@@ -100,10 +102,10 @@ void main() {
     );
   });
 
-  test('given to map: the first steps follow no step', () {
+  test('given to map: the first effects follow no effect', () {
     final j = Journal('c3d4-session', workflow: 'inPlace');
     for (final (i, pkg) in ['core', 'tool'].indexed) {
-      j.step(
+      j.effect(
         'upload-$pkg',
         1 + i,
         end: 3,
@@ -113,7 +115,7 @@ void main() {
       );
     }
     for (final (i, pkg) in ['tool', 'core'].indexed) {
-      j.step(
+      j.effect(
         'verify-$pkg',
         4 + i,
         end: 6,
@@ -134,11 +136,11 @@ void main() {
     });
   });
 
-  test('through a call: the steps of the function called in the frame are '
+  test('through a call: the effects of the function called in the frame are '
       'in it', () {
     final j = Journal('e5f6-session', workflow: 'viaCall');
     for (final (i, pkg) in ['core', 'tool'].indexed) {
-      j.step(
+      j.effect(
         'upload-$pkg',
         1 + i,
         end: 3,
@@ -146,7 +148,7 @@ void main() {
         key: 'upload#${i + 1}@r',
         after: null,
       );
-      j.step(
+      j.effect(
         'verify-$pkg',
         4 + i,
         end: 6,
@@ -155,7 +157,7 @@ void main() {
         after: 'upload#${i + 1}@r',
       );
     }
-    j.step(
+    j.effect(
       'announce',
       9,
       end: 10,
@@ -186,7 +188,7 @@ void main() {
       final j = Journal('7c3e-session', workflow: 'nested');
       var t = 1.0;
       for (final (i, pkg) in ['core', 'tool'].indexed) {
-        j.step(
+        j.effect(
           'fetch-$pkg',
           t++,
           end: t,
@@ -197,7 +199,7 @@ void main() {
       }
       for (final (i, pkg) in ['core', 'tool'].indexed) {
         for (final (k, target) in ['arm', 'x64'].indexed) {
-          j.step(
+          j.effect(
             'build-$pkg-$target',
             t++,
             end: t,
@@ -205,7 +207,7 @@ void main() {
             key: 'build#${k + 1}@$pkg',
             after: 'fetch#${i + 1}@r',
           );
-          j.step(
+          j.effect(
             'test-$pkg-$target',
             t++,
             end: t,
@@ -214,7 +216,7 @@ void main() {
             after: 'build#${k + 1}@$pkg',
           );
         }
-        j.step(
+        j.effect(
           'upload-$pkg',
           t++,
           end: t,
@@ -227,7 +229,7 @@ void main() {
     }
 
     test('a copy of the outer frame holds its inner copies; the inner '
-        'frame has a copy for each first step whose predecessor is outside '
+        'frame has a copy for each first effect whose predecessor is outside '
         'it', () {
       final session = nestedJournal().data;
       final places = placesOf('nested');
@@ -258,7 +260,7 @@ void main() {
             inner,
             places: places,
             session: session,
-            steps: copies[1].steps,
+            effects: copies[1].effects,
           ),
           session,
         ),
@@ -276,17 +278,17 @@ void main() {
     });
   });
 
-  test('numbered by the time their first step started, not by their '
+  test('numbered by the time their first effect started, not by their '
       'records', () {
     final j = Journal('a1b2-session', workflow: 'inPlace')
-      ..step(
+      ..effect(
         'upload-late',
         5,
         place: copiesAt(7),
         key: 'upload#1@c',
         after: null,
       )
-      ..step(
+      ..effect(
         'upload-early',
         2,
         place: copiesAt(7),
@@ -301,11 +303,11 @@ void main() {
     expect(packagesOf(copies), {1: 'early', 2: 'late'});
   });
 
-  test('a copy runs while a step of it runs, failed once one failed; '
+  test('a copy runs while an effect of it runs, failed once one failed; '
       'finished otherwise', () {
     final j = Journal('a1b2-session', workflow: 'inPlace');
     for (final (i, pkg) in ['core', 'tool', 'cli'].indexed) {
-      j.step(
+      j.effect(
         'upload-$pkg',
         1 + i,
         end: pkg == 'tool' ? null : 4,
@@ -331,7 +333,7 @@ void main() {
       'interrupted; failed and finished ones stay (owner spec §6)', () {
     final j = Journal('a1b2-session', workflow: 'inPlace');
     for (final (i, pkg) in ['core', 'tool', 'cli'].indexed) {
-      j.step(
+      j.effect(
         'upload-$pkg',
         1 + i,
         end: pkg == 'tool' ? null : 4,
@@ -354,10 +356,10 @@ void main() {
     ]);
   });
 
-  test('a step rerun after another step than before follows its record as '
-      'it is now, whenever that step started', () {
+  test('an effect rerun after another effect than before follows its record as '
+      'it is now, whenever that effect started', () {
     final j = Journal('a1b2-session', workflow: 'inPlace')
-      ..step(
+      ..effect(
         'verify-core',
         3,
         end: 4,
@@ -366,7 +368,7 @@ void main() {
         // The rerun rewrote it: it follows tool's upload now.
         after: 'upload#2@c',
       )
-      ..step(
+      ..effect(
         'upload-core',
         1,
         end: 2,
@@ -374,7 +376,7 @@ void main() {
         key: 'upload#1@c',
         after: null,
       )
-      ..step(
+      ..effect(
         'upload-tool',
         5,
         end: 6,
@@ -399,9 +401,9 @@ void main() {
     );
   });
 
-  test('a step whose predecessor has no record yet starts a copy', () {
+  test('an effect whose predecessor has no record yet starts a copy', () {
     final j = Journal('a1b2-session', workflow: 'inPlace')
-      ..step(
+      ..effect(
         'verify-core',
         1,
         place: copiesAt(8),
@@ -413,10 +415,10 @@ void main() {
       places: placesOf('inPlace'),
       session: j.data,
     );
-    expect(copies.single.first.stepId, startsWith('a1b2-verify'));
+    expect(copies.single.first.effectId, startsWith('a1b2-verify'));
   });
 
-  test("the first step's output hints at the copy", () {
+  test("the first effect's output hints at the copy", () {
     final session = inPlaceJournal().data;
     final copies = copiesOf(
       copiesNode('inPlace', '2'),
@@ -451,7 +453,7 @@ void main() {
     final inPlace = file.functions['lib/copies.dart#inPlace']!;
     final nested = file.functions['lib/copies.dart#nested']!;
 
-    test('none above the workflow body: every step is shown; the steps of '
+    test('none above the workflow body: every effect is shown; the effects of '
         'the copies drawn there are named by their copy', () {
       final j = inPlaceJournal();
       final session = j.data;
@@ -461,13 +463,13 @@ void main() {
         session: session,
       );
       expect(shown.frames, isEmpty);
-      expect(shown.steps, session.state.steps);
+      expect(shown.effects, session.state.effects);
       expect(shown.copy, isNull);
       // core, tool and cli started in that order.
-      expect(shown.tagOf(j.steps[1].id), 'pkg 1');
-      expect(shown.tagOf(j.steps[4].id), 'pkg 3', reason: "cli's verify");
-      expect(shown.tagOf(j.steps.first.id), isNull, reason: 'plan');
-      expect(shown.copyOf(j.steps[4].id), 'pkg 3');
+      expect(shown.tagOf(j.effects[1].id), 'pkg 1');
+      expect(shown.tagOf(j.effects[4].id), 'pkg 3', reason: "cli's verify");
+      expect(shown.tagOf(j.effects.first.id), isNull, reason: 'plan');
+      expect(shown.copyOf(j.effects[4].id), 'pkg 3');
     });
 
     test('a copy is named by the loop variable of its frame, or copy', () {
@@ -481,12 +483,12 @@ void main() {
       expect(copyName(unnamed, 2), 'copy 2');
     });
 
-    test('all copies of a frame: its header, done 2 of 3, every step, each '
+    test('all copies of a frame: its header, done 2 of 3, every effect, each '
         'named by its copy', () {
       final j = inPlaceJournal();
       // cli's tag runs on.
-      final tagCli = j.steps[5].id;
-      j.events.removeWhere((e) => e is StepFinished && e.stepId == tagCli);
+      final tagCli = j.effects[5].id;
+      j.events.removeWhere((e) => e is EffectFinished && e.effectId == tagCli);
       final session = j.data;
       final shown = framesOf(
         bodyLevels(inPlace, file.functions, const [Opened('2')]),
@@ -500,16 +502,16 @@ void main() {
       expect(frame.selected, isNull);
       expect(frame.choosable, isTrue);
       expect(frame.footer, 'done 2 of 3');
-      expect(shown.steps, session.state.steps);
+      expect(shown.effects, session.state.effects);
       expect(shown.copy, isNull);
       expect(shown.tagOf(tagCli), 'pkg 3');
-      expect(shown.tagOf(j.steps.first.id), isNull);
+      expect(shown.tagOf(j.effects.first.id), isNull);
     });
 
-    test('one copy: its steps alone; pkg 2 · now verify', () {
+    test('one copy: its effects alone; pkg 2 · now verify', () {
       final j = Journal('a1b2-session', workflow: 'inPlace');
       for (final (i, pkg) in ['core', 'tool'].indexed) {
-        j.step(
+        j.effect(
           'upload',
           1 + i,
           end: 3,
@@ -518,35 +520,35 @@ void main() {
           after: null,
         );
       }
-      j.step('verify', 4, place: copiesAt(8), key: 'v', after: 'utool');
+      j.effect('verify', 4, place: copiesAt(8), key: 'v', after: 'utool');
       final session = j.data;
       final shown = framesOf(
         bodyLevels(inPlace, file.functions, const [Opened('2')]),
         places: placesOf('inPlace'),
         session: session,
-        selected: {1: j.steps[1].id},
+        selected: {1: j.effects[1].id},
       );
       expect(shown.frames.single.selected!.number, 2);
       expect(shown.frames.single.footer, 'pkg 2 · now verify');
-      expect(shown.steps.map((step) => step.stepId), [
-        j.steps[1].id,
-        j.steps[2].id,
+      expect(shown.effects.map((effect) => effect.effectId), [
+        j.effects[1].id,
+        j.effects[2].id,
       ]);
       expect(shown.copy, 'pkg 2');
       expect(
-        shown.tagOf(j.steps[2].id),
+        shown.tagOf(j.effects[2].id),
         isNull,
         reason: 'the title names the copy chosen',
       );
-      expect(shown.copyOf(j.steps[2].id), 'pkg 2');
-      expect(shown.copyOf(j.steps[0].id), 'pkg 1');
+      expect(shown.copyOf(j.effects[2].id), 'pkg 2');
+      expect(shown.copyOf(j.effects[0].id), 'pkg 1');
     });
 
     test('one copy whose process is gone: pkg 2 · interrupted at verify '
         '(owner spec §6)', () {
       final j = Journal('a1b2-session', workflow: 'inPlace');
       for (final (i, pkg) in ['core', 'tool'].indexed) {
-        j.step(
+        j.effect(
           'upload',
           1 + i,
           end: 3,
@@ -556,22 +558,36 @@ void main() {
         );
       }
       j
-        ..step('verify', 4, place: copiesAt(8), key: 'v', after: 'utool')
+        ..effect('verify', 4, place: copiesAt(8), key: 'v', after: 'utool')
         ..processGone();
       final shown = framesOf(
         bodyLevels(inPlace, file.functions, const [Opened('2')]),
         places: placesOf('inPlace'),
         session: j.data,
-        selected: {1: j.steps[1].id},
+        selected: {1: j.effects[1].id},
       );
       expect(shown.frames.single.footer, 'pkg 2 · interrupted at verify');
     });
 
     test('a copy done says so; one that failed, where', () {
       final j = Journal('a1b2-session', workflow: 'inPlace')
-        ..step('upload', 1, end: 2, place: copiesAt(7), key: 'u1', after: null)
-        ..step('upload', 1, end: 2, place: copiesAt(7), key: 'u2', after: null)
-        ..step(
+        ..effect(
+          'upload',
+          1,
+          end: 2,
+          place: copiesAt(7),
+          key: 'u1',
+          after: null,
+        )
+        ..effect(
+          'upload',
+          1,
+          end: 2,
+          place: copiesAt(7),
+          key: 'u2',
+          after: null,
+        )
+        ..effect(
           'verify',
           3,
           end: 4,
@@ -585,7 +601,7 @@ void main() {
         bodyLevels(inPlace, file.functions, const [Opened('2')]),
         places: placesOf('inPlace'),
         session: session,
-        selected: {1: j.steps[copy].id},
+        selected: {1: j.effects[copy].id},
       ).frames.single.footer;
       expect(footer(0), 'pkg 1 · done');
       expect(footer(1), 'pkg 2 · failed at verify');
@@ -605,7 +621,7 @@ void main() {
         bodyLevels(inPlace, file.functions, const [Opened('2')]),
         places: placesOf('inPlace'),
         session: session,
-        selected: {1: 'nope', 2: session.state.steps[1].stepId},
+        selected: {1: 'nope', 2: session.state.effects[1].effectId},
       );
       expect(shown.frames.single.selected, isNull);
     });
@@ -616,7 +632,7 @@ void main() {
       Journal nestedJournal() {
         final j = Journal('7c3e-session', workflow: 'nested');
         for (final (i, pkg) in ['core', 'tool'].indexed) {
-          j.step(
+          j.effect(
             'fetch',
             1 + i,
             end: 3,
@@ -625,7 +641,7 @@ void main() {
             after: null,
           );
           for (final target in ['arm', 'x64']) {
-            j.step(
+            j.effect(
               'build',
               4 + i,
               end: 6,
@@ -633,7 +649,7 @@ void main() {
               key: 'b$pkg$target',
               after: 'f$pkg',
             );
-            j.step(
+            j.effect(
               'test',
               7 + i,
               place: copiesAt(31),
@@ -647,7 +663,7 @@ void main() {
 
       const path = [Opened('1'), Opened('2')];
       final levels = bodyLevels(nested, file.functions, path);
-      ShownSteps shownOf(Journal j, [Map<int, String> selected = const {}]) =>
+      ShownEffects shownOf(Journal j, [Map<int, String> selected = const {}]) =>
           framesOf(
             levels,
             places: placesOf('nested'),
@@ -658,15 +674,15 @@ void main() {
       test('inner copies are numbered within their outer copy, whether the '
           'outer frame shows one copy or all', () {
         final j = nestedJournal();
-        final buildCoreX64 = j.steps[3].id;
-        final buildToolX64 = j.steps[8].id;
+        final buildCoreX64 = j.effects[3].id;
+        final buildToolX64 = j.effects[8].id;
         final all = shownOf(j);
         expect(all.frames.map((frame) => frame.copies.length), [2, 4]);
         expect(all.frames.last.copies.map((copy) => copy.number), [1, 2, 1, 2]);
         expect(all.copyOf(buildCoreX64), 'pkg 1 › target 2');
         expect(all.copyOf(buildToolX64), 'pkg 2 › target 2');
         expect(all.tagOf(buildToolX64), 'pkg 2 › target 2');
-        final tool = shownOf(j, {1: j.steps[5].id});
+        final tool = shownOf(j, {1: j.effects[5].id});
         expect(tool.frames.map((frame) => frame.copies.length), [2, 2]);
         expect(tool.copyOf(buildToolX64), 'pkg 2 › target 2');
         expect(tool.tagOf(buildToolX64), 'target 2');
@@ -677,7 +693,7 @@ void main() {
       test('while the outer frame shows all, no inner copy can be chosen: '
           'one of the outer is chosen first', () {
         final j = nestedJournal();
-        final all = shownOf(j, {2: j.steps[8].id});
+        final all = shownOf(j, {2: j.effects[8].id});
         final inner = all.frames.last;
         expect(inner.choosable, isFalse);
         expect(inner.chooseFirst, 'choose the outer pkg first');
@@ -687,22 +703,22 @@ void main() {
         expect(all.frames.first.chooseFirst, isNull);
       });
 
-      test('both chosen: the path names both, the steps are the inner '
+      test('both chosen: the path names both, the effects are the inner '
           "copy's", () {
         final j = nestedJournal();
         final session = j.data;
-        final one = shownOf(j, {1: j.steps[5].id, 2: j.steps[8].id});
+        final one = shownOf(j, {1: j.effects[5].id, 2: j.effects[8].id});
         expect(one.frames.last.selected!.number, 2);
         expect(one.copy, 'pkg 2 › target 2');
         expect(one.frames.last.footer, 'pkg 2 › target 2 · now test');
-        expect(one.steps.map((step) => session.steps[step.stepId]!.name), [
-          'build',
-          'test',
-        ]);
-        expect(one.tagOf(j.steps[8].id), isNull);
+        expect(
+          one.effects.map((effect) => session.effects[effect.effectId]!.name),
+          ['build', 'test'],
+        );
+        expect(one.tagOf(j.effects[8].id), isNull);
       });
 
-      test('the outer body drawn names the steps of the inner copies in it '
+      test('the outer body drawn names the effects of the inner copies in it '
           'by both copies', () {
         final j = nestedJournal();
         final outer = framesOf(
@@ -710,13 +726,13 @@ void main() {
           places: placesOf('nested'),
           session: j.data,
         );
-        expect(outer.tagOf(j.steps[0].id), 'pkg 1', reason: 'fetch');
-        expect(outer.tagOf(j.steps[3].id), 'pkg 1 › target 2');
+        expect(outer.tagOf(j.effects[0].id), 'pkg 1', reason: 'fetch');
+        expect(outer.tagOf(j.effects[3].id), 'pkg 1 › target 2');
         expect(outer.levelCopies.single.copies, hasLength(4));
       });
 
       test('the workflow body drawn, the outer copies not opened, names the '
-          'steps of the inner copies by both copies (decision 11)', () {
+          'effects of the inner copies by both copies (decision 11)', () {
         final j = nestedJournal();
         final top = framesOf(
           bodyLevels(nested, file.functions, const []),
@@ -724,14 +740,14 @@ void main() {
           session: j.data,
         );
         expect(top.frames, isEmpty);
-        expect(top.tagOf(j.steps[0].id), 'pkg 1', reason: 'fetch');
-        expect(top.tagOf(j.steps[3].id), 'pkg 1 › target 2');
-        expect(top.tagOf(j.steps[8].id), 'pkg 2 › target 2');
-        expect(top.copyOf(j.steps[8].id), 'pkg 2 › target 2');
+        expect(top.tagOf(j.effects[0].id), 'pkg 1', reason: 'fetch');
+        expect(top.tagOf(j.effects[3].id), 'pkg 1 › target 2');
+        expect(top.tagOf(j.effects[8].id), 'pkg 2 › target 2');
+        expect(top.copyOf(j.effects[8].id), 'pkg 2 › target 2');
       });
     });
 
-    test('the steps of copies in a function a call on the level drawn calls '
+    test('the effects of copies in a function a call on the level drawn calls '
         'are named by their copy', () {
       final caller = GraphFunction(
         id: 'lib/copies.dart#release',
@@ -752,13 +768,13 @@ void main() {
       final j = inPlaceJournal();
       final shown = framesOf(
         bodyLevels(caller, functions, const []),
-        places: StepPlaces.of(caller, functions),
+        places: EffectPlaces.of(caller, functions),
         session: j.data,
       );
       // core, tool and cli started in that order.
-      expect(shown.tagOf(j.steps[1].id), 'pkg 1');
-      expect(shown.tagOf(j.steps[3].id), 'pkg 3');
-      expect(shown.tagOf(j.steps.first.id), isNull, reason: 'plan');
+      expect(shown.tagOf(j.effects[1].id), 'pkg 1');
+      expect(shown.tagOf(j.effects[3].id), 'pkg 3');
+      expect(shown.tagOf(j.effects.first.id), isNull, reason: 'plan');
     });
 
     test('copies in a function two calls on the level drawn call are named '
@@ -789,11 +805,11 @@ void main() {
       final j = inPlaceJournal();
       final shown = framesOf(
         bodyLevels(caller, functions, const []),
-        places: StepPlaces.of(caller, functions),
+        places: EffectPlaces.of(caller, functions),
         session: j.data,
       );
-      expect(shown.tagOf(j.steps[1].id), 'pkg 1');
-      expect(shown.copyOf(j.steps[3].id), 'pkg 3');
+      expect(shown.tagOf(j.effects[1].id), 'pkg 1');
+      expect(shown.copyOf(j.effects[3].id), 'pkg 3');
       expect(shown.levelCopies, hasLength(1));
     });
 
@@ -811,7 +827,7 @@ void main() {
               place: 'lib/d.dart:2',
               label: 's in servers',
               body: GraphBody(
-                nodes: [StepNode(id: '1', place: 'lib/d.dart:3', name: 'up')],
+                nodes: [EffectNode(id: '1', place: 'lib/d.dart:3', name: 'up')],
                 edges: [],
               ),
             ),
@@ -820,7 +836,7 @@ void main() {
         ),
       );
       // `await deploy(f); await Future.wait([for (r in regions) () async {
-      // await f.step('prepare', …); await deploy(f); }()]);`
+      // await f.effect('prepare', …); await deploy(f); }()]);`
       final release = GraphFunction(
         id: 'lib/d.dart#release',
         name: 'release',
@@ -838,7 +854,7 @@ void main() {
               label: 'r in regions',
               body: GraphBody(
                 nodes: [
-                  StepNode(id: '1', place: 'lib/d.dart:9', name: 'prepare'),
+                  EffectNode(id: '1', place: 'lib/d.dart:9', name: 'prepare'),
                   CallNode(
                     id: '2',
                     place: 'lib/d.dart:10',
@@ -855,7 +871,7 @@ void main() {
       final functions = {deploy.id: deploy, release.id: release};
       final j = Journal('d1e2-session', workflow: 'release');
       for (final (i, server) in ['a', 'b'].indexed) {
-        j.step(
+        j.effect(
           'up',
           1 + i,
           end: 3,
@@ -865,7 +881,7 @@ void main() {
         );
       }
       for (final (i, region) in ['eu', 'us'].indexed) {
-        j.step(
+        j.effect(
           'prepare',
           4 + i * 3,
           end: 5 + i * 3,
@@ -874,7 +890,7 @@ void main() {
           after: null,
         );
         for (final (k, server) in ['a', 'b'].indexed) {
-          j.step(
+          j.effect(
             'up',
             5 + i * 3 + k / 10,
             end: 6 + i * 3,
@@ -886,18 +902,18 @@ void main() {
       }
       final shown = framesOf(
         bodyLevels(release, functions, const []),
-        places: StepPlaces.of(release, functions),
+        places: EffectPlaces.of(release, functions),
         session: j.data,
       );
       String? tagOf(String key) =>
-          shown.tagOf(j.steps.singleWhere((s) => s.key == key).id);
+          shown.tagOf(j.effects.singleWhere((s) => s.key == key).id);
 
       // The servers of a region are numbered within it.
       expect(tagOf('peu'), 'r 3');
       expect(tagOf('ueua'), 'r 3 › s 1');
       expect(tagOf('uusb'), 'r 4 › s 2');
-      // By its place a step of the call outside regions is in the regions
-      // frame too: each such step is a copy of it of its own (spec §9).
+      // By its place an effect of the call outside regions is in the regions
+      // frame too: each such effect is a copy of it of its own (spec §9).
       expect(tagOf('ua'), 'r 1 › s 1');
       expect(tagOf('ub'), 'r 2 › s 1');
       expect(shown.levelCopies, hasLength(2));
@@ -906,7 +922,7 @@ void main() {
     test('copies in a workflow that calls itself from inside them keep '
         'their names', () {
       // A parallel crawler: `crawl(f, url)` fetches the page, then
-      // `Future.wait([for (l in links) () async { await f.step('visit', …);
+      // `Future.wait([for (l in links) () async { await f.effect('visit', …);
       // await crawl(f, l); }()])`.
       final crawl = GraphFunction(
         id: 'lib/c.dart#crawl',
@@ -914,14 +930,14 @@ void main() {
         place: 'lib/c.dart:1',
         body: const GraphBody(
           nodes: [
-            StepNode(id: '1', place: 'lib/c.dart:2', name: 'fetch'),
+            EffectNode(id: '1', place: 'lib/c.dart:2', name: 'fetch'),
             CopiesNode(
               id: '2',
               place: 'lib/c.dart:3',
               label: 'l in links',
               body: GraphBody(
                 nodes: [
-                  StepNode(id: '1', place: 'lib/c.dart:4', name: 'visit'),
+                  EffectNode(id: '1', place: 'lib/c.dart:4', name: 'visit'),
                   CallNode(
                     id: '2',
                     place: 'lib/c.dart:5',
@@ -937,9 +953,23 @@ void main() {
       );
       final functions = {crawl.id: crawl};
       final j = Journal('c4d5-session', workflow: 'crawl')
-        ..step('fetch', 1, end: 2, place: 'lib/c.dart:2', key: 'f', after: null)
-        ..step('visit', 3, end: 4, place: 'lib/c.dart:4', key: 'a', after: null)
-        ..step(
+        ..effect(
+          'fetch',
+          1,
+          end: 2,
+          place: 'lib/c.dart:2',
+          key: 'f',
+          after: null,
+        )
+        ..effect(
+          'visit',
+          3,
+          end: 4,
+          place: 'lib/c.dart:4',
+          key: 'a',
+          after: null,
+        )
+        ..effect(
           'visit',
           5,
           end: 6,
@@ -949,7 +979,7 @@ void main() {
         );
       final shown = framesOf(
         bodyLevels(crawl, functions, const []),
-        places: StepPlaces.of(crawl, functions),
+        places: EffectPlaces.of(crawl, functions),
         session: j.data,
       );
 
@@ -957,7 +987,7 @@ void main() {
       // (spec §9): the fetch here, which follows nothing, is a copy of its
       // own.
       expect(
-        [for (final step in j.steps) shown.tagOf(step.id)],
+        [for (final effect in j.effects) shown.tagOf(effect.id)],
         ['l 1', 'l 2', 'l 3'],
       );
       expect(shown.levelCopies.single.copies, hasLength(3));
@@ -968,18 +998,19 @@ void main() {
     final recorded = recordedCopies();
     final functions = recorded.graph.functions;
     GraphFunction function(String name) => functions['lib/copies.dart#$name']!;
-    StepPlaces placesOfRecorded(String name) =>
-        StepPlaces.of(function(name), functions);
+    EffectPlaces placesOfRecorded(String name) =>
+        EffectPlaces.of(function(name), functions);
     CopiesNode frameOf(GraphBody body) =>
         body.nodes.whereType<CopiesNode>().single;
 
-    /// What each step of [copy] of [session] gave.
+    /// What each effect of [copy] of [session] gave.
     List<String> outputsOf(Copy copy) => [
-      for (final step in copy.steps) '${recorded.documents[step.outputId]}',
+      for (final effect in copy.effects)
+        '${recorded.documents[effect.outputId]}',
     ];
 
     for (final workflow in ['inPlace', 'viaMap', 'viaCall']) {
-      test('$workflow: a copy for each package, its steps all its own, '
+      test('$workflow: a copy for each package, its effects all its own, '
           'whatever order they ran in', () {
         final session = recorded.sessions[workflow]!;
         final copies = copiesOf(
@@ -993,7 +1024,10 @@ void main() {
           final package = outputsOf(copy).first.split(':').first;
           packages.add(package);
           expect(
-            [for (final step in copy.steps) session.steps[step.stepId]!.name],
+            [
+              for (final effect in copy.effects)
+                session.effects[effect.effectId]!.name,
+            ],
             ['upload', 'verify', 'tag'],
           );
           expect(outputsOf(copy), everyElement(startsWith('$package:')));
@@ -1002,13 +1036,13 @@ void main() {
         // plan and announce are in none.
         final inCopies = {
           for (final copy in copies)
-            for (final step in copy.steps) step.stepId,
+            for (final effect in copy.effects) effect.effectId,
         };
         expect(
           [
-            for (final step in session.state.steps)
-              if (!inCopies.contains(step.stepId))
-                session.steps[step.stepId]!.name,
+            for (final effect in session.state.effects)
+              if (!inCopies.contains(effect.effectId))
+                session.effects[effect.effectId]!.name,
           ],
           [if (workflow == 'inPlace') 'plan', 'announce'],
         );
@@ -1030,7 +1064,7 @@ void main() {
           inner,
           places: places,
           session: session,
-          steps: copy.steps,
+          effects: copy.effects,
         );
         expect(targets.map((target) => target.number), [1, 2]);
         for (final target in targets) {
@@ -1052,11 +1086,11 @@ void main() {
           session: session,
           selected: {1: copy.id},
         );
-        for (final step in copy.steps) {
+        for (final effect in copy.effects) {
           expect(
-            one.copyOf(step.stepId),
-            all.copyOf(step.stepId),
-            reason: session.steps[step.stepId]!.name,
+            one.copyOf(effect.effectId),
+            all.copyOf(effect.effectId),
+            reason: session.effects[effect.effectId]!.name,
           );
         }
       }

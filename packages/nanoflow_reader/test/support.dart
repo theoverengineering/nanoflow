@@ -21,7 +21,7 @@ DateTime at(int seconds) => start.add(Duration(seconds: seconds));
 /// The graph file a session holds: a session stores whatever map it is
 /// given.
 const graph = <String, Object?>{
-  'format': 1,
+  'format': 2,
   'workflows': ['lib/review.dart#review'],
 };
 
@@ -83,7 +83,7 @@ Session newSession({String workflow = 'review'}) =>
 
 /// Writes [session] to [runsDir], with [events] in its journal; returns its
 /// directory. Without [events], the session has no journal; without
-/// [documents], no `documents` directory, and without [steps], no `steps`
+/// [documents], no `documents` directory, and without [effects], no `effects`
 /// directory.
 String writeSession(
   String runsDir,
@@ -91,14 +91,14 @@ String writeSession(
   DateTime? createdAt,
   List<Event>? events = const [],
   bool documents = true,
-  bool steps = true,
+  bool effects = true,
 }) => buildDir(
   runsDir,
   sessionDirName(session.workflow, createdAt ?? start, session.id),
   (dir) {
     writeJson(p.join(dir, sessionFileName), session.toJson());
     if (documents) Directory(p.join(dir, documentsDirName)).createSync();
-    if (steps) Directory(p.join(dir, stepsDirName)).createSync();
+    if (effects) Directory(p.join(dir, effectsDirName)).createSync();
     if (events != null) {
       File(p.join(dir, eventsFileName))
           .writeAsStringSync(events.map(line).join());
@@ -106,18 +106,21 @@ String writeSession(
   },
 );
 
-/// Writes [step] to the session directory [sessionDir]; returns its
+/// Writes [effect] to the session directory [sessionDir]; returns its
 /// directory.
-String writeStep(String sessionDir, Step step, {required DateTime startedAt}) =>
-    buildDir(
-      p.join(sessionDir, stepsDirName),
-      stepDirName(startedAt, step.name, step.id),
-      (dir) => writeJson(p.join(dir, stepFileName), step.toJson()),
-    );
+String writeEffect(
+  String sessionDir,
+  Effect effect, {
+  required DateTime startedAt,
+}) => buildDir(
+  p.join(sessionDir, effectsDirName),
+  effectDirName(startedAt, effect.name, effect.id),
+  (dir) => writeJson(p.join(dir, effectFileName), effect.toJson()),
+);
 
-/// Rewrites `step.json` in [stepDir] with [step].
-void rewriteStep(String stepDir, Step step) =>
-    writeJson(p.join(stepDir, stepFileName), step.toJson());
+/// Rewrites `effect.json` in [effectDir] with [effect].
+void rewriteEffect(String effectDir, Effect effect) =>
+    writeJson(p.join(effectDir, effectFileName), effect.toJson());
 
 /// Writes [document] to the session directory [sessionDir].
 void writeDocument(String sessionDir, Document document) => writeJson(
@@ -153,9 +156,9 @@ void truncate(String path, int length) {
 OwnerChanged noOwner(String sessionId) =>
     OwnerChanged(sessionId: sessionId, owner: null, alive: false);
 
-/// A step record of the session [sessionId] that has not finished.
-Step newStep(String sessionId, {String name = 'collect', String? after}) =>
-    Step(
+/// An effect record of the session [sessionId] that has not finished.
+Effect newEffect(String sessionId, {String name = 'collect', String? after}) =>
+    Effect(
       id: newId(),
       sessionId: sessionId,
       name: name,
@@ -266,7 +269,7 @@ final class Feed {
       createdAt: DateTime.utc(1970),
       events: null,
       documents: false,
-      steps: false,
+      effects: false,
     );
     await until(() => _markers[marker.id]!);
   }
@@ -287,7 +290,7 @@ final class Feed {
   }
 }
 
-/// Collects the text of a [FsReader.stepLog] stream as it comes.
+/// Collects the text of a [FsReader.effectLog] stream as it comes.
 final class LogText {
   LogText(Stream<String> log) {
     final subscription = log.listen((text) {

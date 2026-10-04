@@ -3,7 +3,7 @@ import 'dart:ui' show PointMode;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show StepNode;
+import 'package:nanoflow_model/nanoflow_model.dart' show EffectNode;
 
 import '../../platform/shell.dart';
 import '../../state/clock.dart';
@@ -17,25 +17,25 @@ import '../../widgets/spinner.dart';
 import 'node_column.dart';
 import 'output_column.dart';
 
-/// The step details window (docs/ui-spec.md «Окно деталей шага»; spec §9
-/// «Окно шага»), over the whole graph screen, the dotted backdrop round it:
-/// the step [stepId] — or, without one, the step node [node] alone.
+/// The effect details window (docs/ui-spec.md «Окно деталей эффекта»; spec §9
+/// «Окно эффекта»), over the whole graph screen, the dotted backdrop round it:
+/// the effect [effectId] — or, without one, the effect node [node] alone.
 ///
-/// The top bar has `Back to canvas`, the step's icon, name and place, the
-/// switcher `Visit 2 of 2` through every visit to its node among the steps
+/// The top bar has `Back to canvas`, the effect's icon, name and place, the
+/// switcher `Visit 2 of 2` through every visit to its node among the effects
 /// shown, the copy it is in, how it went, and close; Esc closes too. Under
-/// it, the column of the step — its place in the code and its facts — and
-/// `Output`. A step has no input. Showing another visit is [onVisit]: the
-/// graph screen selects it. The window stays on its step while the
-/// selection follows a running session's new steps.
-class StepDetailsWindow extends StatefulWidget {
-  const StepDetailsWindow({
+/// it, the column of the effect — its place in the code and its facts — and
+/// `Output`. An effect has no input. Showing another visit is [onVisit]: the
+/// graph screen selects it. The window stays on its effect while the
+/// selection follows a running session's new effects.
+class EffectDetailsWindow extends StatefulWidget {
+  const EffectDetailsWindow({
     super.key,
     required this.model,
     required this.clock,
     required this.shell,
     required this.graphFile,
-    required this.stepId,
+    required this.effectId,
     this.node,
     required this.onVisit,
     required this.onClose,
@@ -48,11 +48,11 @@ class StepDetailsWindow extends StatefulWidget {
   /// The graph file: paths are shown from its directory.
   final String graphFile;
 
-  /// The step shown; `null` for the [node] alone.
-  final String? stepId;
+  /// The effect shown; `null` for the [node] alone.
+  final String? effectId;
 
-  /// The node double clicked: shown alone without a step.
-  final StepNode? node;
+  /// The node double clicked: shown alone without an effect.
+  final EffectNode? node;
 
   final ValueChanged<Visit> onVisit;
   final VoidCallback onClose;
@@ -69,11 +69,11 @@ class StepDetailsWindow extends StatefulWidget {
   static const margin = EdgeInsets.symmetric(horizontal: 40, vertical: 36);
 
   @override
-  State<StepDetailsWindow> createState() => _StepDetailsWindowState();
+  State<EffectDetailsWindow> createState() => _EffectDetailsWindowState();
 }
 
-class _StepDetailsWindowState extends State<StepDetailsWindow> {
-  final _focus = FocusNode(debugLabel: 'step details window');
+class _EffectDetailsWindowState extends State<EffectDetailsWindow> {
+  final _focus = FocusNode(debugLabel: 'effect details window');
 
   @override
   void initState() {
@@ -107,7 +107,7 @@ class _StepDetailsWindowState extends State<StepDetailsWindow> {
     child: CustomPaint(
       painter: const _BackdropPainter(),
       child: Padding(
-        padding: StepDetailsWindow.margin,
+        padding: EffectDetailsWindow.margin,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.panel,
@@ -131,7 +131,7 @@ class _StepDetailsWindowState extends State<StepDetailsWindow> {
                 builder: (context, _) => _window(
                   widget.model.detailsOf(
                     widget.node,
-                    widget.stepId,
+                    widget.effectId,
                     widget.clock.now(),
                   ),
                 ),
@@ -157,13 +157,13 @@ class _StepDetailsWindowState extends State<StepDetailsWindow> {
             // The mockup's node column, 520 of its 1358 inside the border;
             // the output takes the rest, the input's room too.
             final width = constraints.maxWidth;
-            final step = (width * 520 / 1358).clamp(0.0, 520.0);
+            final effect = (width * 520 / 1358).clamp(0.0, 520.0);
             final files = widget.model.files;
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  width: step,
+                  width: effect,
                   child: NodeColumn(
                     details: details,
                     files: files,
@@ -191,8 +191,8 @@ class _StepDetailsWindowState extends State<StepDetailsWindow> {
   );
 }
 
-/// `Back to canvas`, the step, the visit switcher and the copy, how the
-/// step went, close.
+/// `Back to canvas`, the effect, the visit switcher and the copy, how the
+/// effect went, close.
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.details,
@@ -204,7 +204,7 @@ class _TopBar extends StatelessWidget {
   final ValueChanged<Visit> onVisit;
   final VoidCallback onClose;
 
-  /// The widest the step's name and place get before they are cut: a
+  /// The widest the effect's name and place get before they are cut: a
   /// quarter of the bar, and no more than this.
   static const _nameWidth = 320.0;
 
@@ -214,7 +214,7 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    key: StepDetailsWindow.topBarKey,
+    key: EffectDetailsWindow.topBarKey,
     height: 56,
     padding: const EdgeInsets.symmetric(horizontal: 16),
     decoration: const BoxDecoration(
@@ -236,7 +236,7 @@ class _TopBar extends StatelessWidget {
       spacing: 14,
       children: [
         Clickable(
-          key: StepDetailsWindow.backKey,
+          key: EffectDetailsWindow.backKey,
           onTap: onClose,
           child: _Button(
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
@@ -290,14 +290,14 @@ class _TopBar extends StatelessWidget {
           if (details.copy case final copy?)
             Text(
               copy,
-              key: StepDetailsWindow.copyKey,
+              key: EffectDetailsWindow.copyKey,
               style: AppText.windowCopy,
             ),
         ],
         const Spacer(),
         if (result != null) _ResultChip(result),
         Clickable(
-          key: StepDetailsWindow.closeKey,
+          key: EffectDetailsWindow.closeKey,
           onTap: onClose,
           child: const _Button(
             width: 30,
@@ -342,7 +342,7 @@ class _Button extends StatelessWidget {
   );
 }
 
-/// A step's icon in a tile framed in the color of how the step went.
+/// An effect's icon in a tile framed in the color of how the effect went.
 class _NodeBadge extends StatelessWidget {
   const _NodeBadge({required this.status});
 
@@ -414,7 +414,7 @@ class _VisitSwitcher extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 2,
       children: [
-        _arrow(StepDetailsWindow.previousKey, onPrevious, right: false),
+        _arrow(EffectDetailsWindow.previousKey, onPrevious, right: false),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text.rich(
@@ -431,7 +431,7 @@ class _VisitSwitcher extends StatelessWidget {
             style: AppText.visitText,
           ),
         ),
-        _arrow(StepDetailsWindow.nextKey, onNext, right: true),
+        _arrow(EffectDetailsWindow.nextKey, onNext, right: true),
       ],
     ),
   );
@@ -442,7 +442,7 @@ class _VisitSwitcher extends StatelessWidget {
 class _ResultChip extends StatelessWidget {
   const _ResultChip(this.result);
 
-  final StepResult result;
+  final EffectResult result;
 
   @override
   Widget build(BuildContext context) {

@@ -57,7 +57,7 @@ class _LinePainter extends CustomPainter {
       old.icon.strokeWidth != icon.strokeWidth;
 }
 
-/// A check: `passes`, `Copied`, a step that finished. 10 units.
+/// A check: `passes`, `Copied`, an effect that finished. 10 units.
 class CheckIcon extends StatelessWidget {
   const CheckIcon({
     super.key,
@@ -209,9 +209,9 @@ class CloseIcon extends StatelessWidget {
   );
 }
 
-/// Two upright bars, a pause: a step or a copy interrupted — its process
+/// Two upright bars, a pause: an effect or a copy interrupted — its process
 /// stopped, a resume goes on with it. 10 units, as wide as the cross of a
-/// failed step.
+/// failed effect.
 class PauseIcon extends StatelessWidget {
   const PauseIcon({
     super.key,
@@ -273,7 +273,7 @@ class LinkIcon extends StatelessWidget {
   );
 }
 
-/// A step's terminal, or a condition's diamond when [fork]. 28 units.
+/// An effect's terminal, or a condition's diamond when [fork]. 28 units.
 class NodeIcon extends StatelessWidget {
   const NodeIcon({
     super.key,
@@ -290,7 +290,7 @@ class NodeIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _LineIcon(
-    kind: fork ? 'condition' : 'step',
+    kind: fork ? 'condition' : 'effect',
     units: 28,
     size: size,
     color: color,

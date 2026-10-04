@@ -1,5 +1,5 @@
 // What the review graph does not show: a loop over data, an if without
-// else, a switch on an enum and steps inside a called function.
+// else, a switch on an enum and effects inside a called function.
 import 'package:nanoflow/nanoflow.dart';
 
 import 'publish.dart';
@@ -13,17 +13,17 @@ class Plan {
 }
 
 Future<void> release(Flow f, String version) async {
-  final plan = await f.step('plan', () => planOf(version));
+  final plan = await f.effect('plan', () => planOf(version));
   for (final pkg in plan.packages) {
-    await f.step('build', () => print('build ${pkg.name}'));
+    await f.effect('build', () => print('build ${pkg.name}'));
     if (pkg.isPublic) await publish(f, pkg);
   }
   switch (plan.channel) {
     case Channel.stable:
-      await f.step('announce', () => print('released $version'));
+      await f.effect('announce', () => print('released $version'));
     case Channel.beta:
     case Channel.dev:
-      await f.step('notify-testers', () => print('try $version'));
+      await f.effect('notify-testers', () => print('try $version'));
   }
 }
 

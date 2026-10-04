@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 
-// What the columns of the step details window share
+// What the columns of the effect details window share
 // (docs/design/step-details.html).
 
-/// `PLACE IN CODE`, `THIS STEP`, `OUTPUT`.
+/// `PLACE IN CODE`, `THIS EFFECT`, `OUTPUT`.
 class SectionLabel extends StatelessWidget {
   const SectionLabel(this.text, {super.key});
 
@@ -50,7 +50,7 @@ class DataRowBar extends StatelessWidget {
   );
 }
 
-/// What a column says instead of data: `Not yet: the step is still
+/// What a column says instead of data: `Not yet: the effect is still
 /// running`, an error in [color].
 class DataNote extends StatelessWidget {
   const DataNote(this.text, {super.key, this.color});

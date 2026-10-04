@@ -1,10 +1,10 @@
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:test/test.dart';
 
-// _stepB sorts before _stepA, so ordering by id would put it first.
-const String _stepA = 'ee9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
-const String _stepB = '2e9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
-const String _stepC = '9a4d6c20-7e15-4b83-a0f9-3c2b8d5e7f41';
+// _effectB sorts before _effectA, so ordering by id would put it first.
+const String _effectA = 'ee9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
+const String _effectB = '2e9b7a40-d1c8-4f35-9a6e-8b3c5d7f1e92';
+const String _effectC = '9a4d6c20-7e15-4b83-a0f9-3c2b8d5e7f41';
 const String _output = '5f2d8b6a-1c93-4e07-a4b8-9e3c7a1d5b20';
 const String _result = '7b1a9e3c-52d8-4f60-b4a7-1d9c3e5f8a24';
 const String _graphA = '3f9c2a7e-5b1d-4c8e-9a6f-0d2e4b7c1a35';
@@ -23,17 +23,25 @@ SessionResumed _sessionResumed(
   String? graphId,
 }) => SessionResumed(time: _at(second), code: code, graphId: graphId);
 
-StepStarted _stepStarted(int second, String stepId) =>
-    StepStarted(time: _at(second), stepId: stepId);
+EffectStarted _effectStarted(int second, String effectId) =>
+    EffectStarted(time: _at(second), effectId: effectId);
 
-StepFinished _stepFinished(
+EffectFinished _effectFinished(
   int second,
-  String stepId, {
+  String effectId, {
   String? outputId = _output,
-}) => StepFinished(time: _at(second), stepId: stepId, outputId: outputId);
+}) => EffectFinished(time: _at(second), effectId: effectId, outputId: outputId);
 
-StepFailed _stepFailed(int second, String stepId, {String error = 'boom'}) =>
-    StepFailed(time: _at(second), stepId: stepId, error: error, stack: '#0\n');
+EffectFailed _effectFailed(
+  int second,
+  String effectId, {
+  String error = 'boom',
+}) => EffectFailed(
+  time: _at(second),
+  effectId: effectId,
+  error: error,
+  stack: '#0\n',
+);
 
 SessionFinished _sessionFinished(int second, {String? outputId = _result}) =>
     SessionFinished(time: _at(second), outputId: outputId);
@@ -43,11 +51,11 @@ SessionFailed _sessionFailed(int second, {String error = 'StateError: no'}) =>
 
 void main() {
   group('session', () {
-    test('is running with no steps for an empty journal', () {
+    test('is running with no effects for an empty journal', () {
       final state = replaySession(const []);
 
       expect(state.status, SessionStatus.running);
-      expect(state.steps, isEmpty);
+      expect(state.effects, isEmpty);
       expect(state.startedAt, isNull);
       expect(state.finishedAt, isNull);
       expect(state.outputId, isNull);
@@ -60,7 +68,7 @@ void main() {
       final state = replaySession([_sessionStarted(1)]);
 
       expect(state.status, SessionStatus.running);
-      expect(state.steps, isEmpty);
+      expect(state.effects, isEmpty);
       expect(state.startedAt, _at(1));
       expect(state.finishedAt, isNull);
     });
@@ -69,8 +77,8 @@ void main() {
         'outputId', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
-        _stepFinished(3, _stepA),
+        _effectStarted(2, _effectA),
+        _effectFinished(3, _effectA),
         _sessionFinished(4),
       ]);
 
@@ -85,8 +93,8 @@ void main() {
         'error', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
-        _stepFailed(3, _stepA, error: 'Exception: boom'),
+        _effectStarted(2, _effectA),
+        _effectFailed(3, _effectA, error: 'Exception: boom'),
         _sessionFailed(4, error: 'Exception: boom'),
       ]);
 
@@ -96,11 +104,11 @@ void main() {
       expect(state.outputId, isNull);
     });
 
-    test('stays running when a step fails and the workflow goes on', () {
+    test('stays running when an effect fails and the workflow goes on', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
-        _stepFailed(3, _stepA),
+        _effectStarted(2, _effectA),
+        _effectFailed(3, _effectA),
       ]);
 
       expect(state.status, SessionStatus.running);
@@ -112,7 +120,7 @@ void main() {
         'order', () {
       final state = replaySession([
         _sessionStarted(1, code: 'sha256:a'),
-        _stepStarted(2, _stepA),
+        _effectStarted(2, _effectA),
         _sessionResumed(3, code: null),
         _sessionResumed(4, code: 'sha256:b', graphId: _graphA),
       ]);
@@ -140,125 +148,125 @@ void main() {
     });
   });
 
-  group('steps', () {
-    test('take startedAt from step-started and are running until an '
+  group('effects', () {
+    test('take startedAt from effect-started and are running until an '
         'outcome', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
+        _effectStarted(2, _effectA),
       ]);
 
-      final step = state.steps.single;
-      expect(step.stepId, _stepA);
-      expect(step.status, StepStatus.running);
-      expect(step.starts, 1);
-      expect(step.startedAt, _at(2));
-      expect(step.finishedAt, isNull);
-      expect(step.outputId, isNull);
-      expect(step.error, isNull);
+      final effect = state.effects.single;
+      expect(effect.effectId, _effectA);
+      expect(effect.status, EffectStatus.running);
+      expect(effect.starts, 1);
+      expect(effect.startedAt, _at(2));
+      expect(effect.finishedAt, isNull);
+      expect(effect.outputId, isNull);
+      expect(effect.error, isNull);
     });
 
-    test('take finishedAt and outputId from step-finished', () {
+    test('take finishedAt and outputId from effect-finished', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
-        _stepFinished(5, _stepA),
+        _effectStarted(2, _effectA),
+        _effectFinished(5, _effectA),
       ]);
 
-      final step = state.steps.single;
-      expect(step.status, StepStatus.finished);
-      expect(step.startedAt, _at(2));
-      expect(step.finishedAt, _at(5));
-      expect(step.outputId, _output);
-      expect(step.error, isNull);
+      final effect = state.effects.single;
+      expect(effect.status, EffectStatus.finished);
+      expect(effect.startedAt, _at(2));
+      expect(effect.finishedAt, _at(5));
+      expect(effect.outputId, _output);
+      expect(effect.error, isNull);
     });
 
-    test('take finishedAt and error from step-failed', () {
+    test('take finishedAt and error from effect-failed', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
-        _stepFailed(4, _stepA, error: 'Exception: boom'),
+        _effectStarted(2, _effectA),
+        _effectFailed(4, _effectA, error: 'Exception: boom'),
       ]);
 
-      final step = state.steps.single;
-      expect(step.status, StepStatus.failed);
-      expect(step.finishedAt, _at(4));
-      expect(step.outputId, isNull);
-      expect(step.error, 'Exception: boom');
+      final effect = state.effects.single;
+      expect(effect.status, EffectStatus.failed);
+      expect(effect.finishedAt, _at(4));
+      expect(effect.outputId, isNull);
+      expect(effect.error, 'Exception: boom');
     });
 
-    test('count each step-started, and keep the first startedAt', () {
+    test('count each effect-started, and keep the first startedAt', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
+        _effectStarted(2, _effectA),
         _sessionResumed(6),
-        _stepStarted(7, _stepA),
-        _stepFinished(9, _stepA),
+        _effectStarted(7, _effectA),
+        _effectFinished(9, _effectA),
       ]);
 
-      final step = state.steps.single;
-      expect(step.starts, 2);
-      expect(step.startedAt, _at(2));
-      expect(step.finishedAt, _at(9));
-      expect(step.status, StepStatus.finished);
+      final effect = state.effects.single;
+      expect(effect.starts, 2);
+      expect(effect.startedAt, _at(2));
+      expect(effect.finishedAt, _at(9));
+      expect(effect.status, EffectStatus.finished);
     });
 
-    test('are running again when a failed step starts again, without the '
+    test('are running again when a failed effect starts again, without the '
         'outcome of the start before', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
-        _stepFailed(3, _stepA),
+        _effectStarted(2, _effectA),
+        _effectFailed(3, _effectA),
         _sessionFailed(4),
         _sessionResumed(5),
-        _stepStarted(6, _stepA),
+        _effectStarted(6, _effectA),
       ]);
 
-      final step = state.steps.single;
-      expect(step.status, StepStatus.running);
-      expect(step.starts, 2);
-      expect(step.finishedAt, isNull);
-      expect(step.error, isNull);
+      final effect = state.effects.single;
+      expect(effect.status, EffectStatus.running);
+      expect(effect.starts, 2);
+      expect(effect.finishedAt, isNull);
+      expect(effect.error, isNull);
       expect(state.status, SessionStatus.running);
     });
 
-    test('follow their first step-started, not the order of their ids', () {
+    test('follow their first effect-started, not the order of their ids', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
-        _stepStarted(3, _stepB),
-        _stepFinished(4, _stepB),
-        _stepStarted(5, _stepC),
-        _stepFinished(6, _stepA),
-        _stepStarted(7, _stepA),
+        _effectStarted(2, _effectA),
+        _effectStarted(3, _effectB),
+        _effectFinished(4, _effectB),
+        _effectStarted(5, _effectC),
+        _effectFinished(6, _effectA),
+        _effectStarted(7, _effectA),
       ]);
 
       expect(
-        [for (final step in state.steps) step.stepId],
-        [_stepA, _stepB, _stepC],
+        [for (final effect in state.effects) effect.effectId],
+        [_effectA, _effectB, _effectC],
       );
-      expect([for (final step in state.steps) step.starts], [2, 1, 1]);
+      expect([for (final effect in state.effects) effect.starts], [2, 1, 1]);
     });
 
     test('are a list that cannot be changed', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
+        _effectStarted(2, _effectA),
       ]);
 
-      expect(() => state.steps.removeLast(), throwsUnsupportedError);
+      expect(() => state.effects.removeLast(), throwsUnsupportedError);
     });
 
-    test('are left alone by an outcome of a step that never started', () {
+    test('are left alone by an outcome of an effect that never started', () {
       final state = replaySession([
         _sessionStarted(1),
-        _stepStarted(2, _stepA),
-        _stepFinished(3, _stepB),
-        _stepFailed(4, _stepC),
+        _effectStarted(2, _effectA),
+        _effectFinished(3, _effectB),
+        _effectFailed(4, _effectC),
       ]);
 
-      expect([for (final step in state.steps) step.stepId], [_stepA]);
-      expect(state.steps.single.status, StepStatus.running);
+      expect([for (final effect in state.effects) effect.effectId], [_effectA]);
+      expect(state.effects.single.status, EffectStatus.running);
     });
   });
 
@@ -267,7 +275,7 @@ void main() {
       final state = replaySession([
         _sessionStarted(1),
         Event.fromJson({'time': formatTime(_at(2)), 'event': 'session-paused'}),
-        _stepStarted(3, _stepA),
+        _effectStarted(3, _effectA),
         // A known name with a bad or missing field is an unknown event too.
         Event.fromJson({
           'time': 'not a time',
@@ -276,16 +284,16 @@ void main() {
         }),
         Event.fromJson({
           'time': formatTime(_at(5)),
-          'event': 'step-finished',
-          'stepId': _stepA,
+          'event': 'effect-finished',
+          'effectId': _effectA,
         }),
         Event.fromJson({'event': 'something-new'}),
       ]);
 
       expect(state.status, SessionStatus.running);
       expect(state.finishedAt, isNull);
-      expect(state.steps.single.status, StepStatus.running);
-      expect(state.steps.single.starts, 1);
+      expect(state.effects.single.status, EffectStatus.running);
+      expect(state.effects.single.starts, 1);
     });
 
     test('decide the status by the last known one', () {

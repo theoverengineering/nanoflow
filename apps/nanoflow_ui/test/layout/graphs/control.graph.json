@@ -1,9 +1,9 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "control",
-  "fingerprint": "sha256:82179a49bb0784e2d0f5fab9beb759f82c28eeaf6130c62808483c6830ce99e6",
+  "fingerprint": "sha256:a3126fa7dccba58f8ece857cfbd03dc74a99fdf78566a9ed77c4393093fdc3b8",
   "sources": {
-    "lib/backup.dart": "sha256:4dba6514bb60409384695bd590ed329ea948f34af93d409691a91222864af635"
+    "lib/backup.dart": "sha256:d5fd2842f34b6bbbc7d037a6c512f36106c41c52bb7af7cb355381f56244d9c5"
   },
   "builds": {},
   "workflows": [],
@@ -21,13 +21,13 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "page",
             "place": "lib/backup.dart:133"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "log",
             "place": "lib/backup.dart:135"
           }
@@ -74,19 +74,19 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "zip",
             "place": "lib/backup.dart:33"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "tar",
             "place": "lib/backup.dart:35"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "checksum",
             "place": "lib/backup.dart:37"
           }
@@ -137,7 +137,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "lock",
             "place": "lib/backup.dart:107"
           },
@@ -149,25 +149,25 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "work",
             "place": "lib/backup.dart:109"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "unlock",
             "place": "lib/backup.dart:111"
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "unlock",
             "place": "lib/backup.dart:111"
           },
           {
             "id": "6",
-            "kind": "step",
+            "kind": "effect",
             "name": "report",
             "place": "lib/backup.dart:113"
           }
@@ -229,7 +229,7 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "measure",
             "place": "lib/backup.dart:119"
           },
@@ -247,31 +247,31 @@
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "process",
             "place": "lib/backup.dart:122"
           },
           {
             "id": "6",
-            "kind": "step",
+            "kind": "effect",
             "name": "release",
             "place": "lib/backup.dart:124"
           },
           {
             "id": "7",
-            "kind": "step",
+            "kind": "effect",
             "name": "release",
             "place": "lib/backup.dart:124"
           },
           {
             "id": "8",
-            "kind": "step",
+            "kind": "effect",
             "name": "release",
             "place": "lib/backup.dart:124"
           },
           {
             "id": "9",
-            "kind": "step",
+            "kind": "effect",
             "name": "done",
             "place": "lib/backup.dart:127"
           }
@@ -352,19 +352,19 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "measure-disk",
             "place": "lib/backup.dart:147"
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "measure-memory",
             "place": "lib/backup.dart:148"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "plan",
             "place": "lib/backup.dart:150"
           }
@@ -411,7 +411,7 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "summarize",
             "place": "lib/backup.dart:70"
           },
@@ -429,19 +429,19 @@
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "ask",
             "place": "lib/backup.dart:71"
           },
           {
             "id": "6",
             "kind": "fork",
-            "label": "urgent || text.isNotEmpty && await f.step('ask', () => true)",
+            "label": "urgent || text.isNotEmpty && await f.effect('ask', () => true)",
             "place": "lib/backup.dart:71"
           },
           {
             "id": "7",
-            "kind": "step",
+            "kind": "effect",
             "name": "mail",
             "place": "lib/backup.dart:72"
           }
@@ -517,7 +517,7 @@
         "nodes": [
           {
             "id": "1",
-            "kind": "step",
+            "kind": "effect",
             "name": "find",
             "place": "lib/backup.dart:140"
           },
@@ -529,7 +529,7 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "restore",
             "place": "lib/backup.dart:142"
           }
@@ -571,13 +571,13 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "lock",
             "place": "lib/backup.dart:89"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "unlock",
             "place": "lib/backup.dart:91"
           }
@@ -624,7 +624,7 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "schedule",
             "place": "lib/backup.dart:42"
           }
@@ -672,7 +672,7 @@
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "send",
             "place": "lib/backup.dart:63"
           },
@@ -684,7 +684,7 @@
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "close",
             "place": "lib/backup.dart:66"
           }
@@ -751,13 +751,13 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "copy",
             "place": "lib/backup.dart:24"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "upload",
             "place": "lib/backup.dart:26"
           }
@@ -804,19 +804,19 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "stat",
             "place": "lib/backup.dart:99"
           },
           {
             "id": "3",
-            "kind": "step",
+            "kind": "effect",
             "name": "head",
             "place": "lib/backup.dart:100"
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "record",
             "place": "lib/backup.dart:102"
           }
@@ -868,7 +868,7 @@
           },
           {
             "id": "2",
-            "kind": "step",
+            "kind": "effect",
             "name": "is-up",
             "place": "lib/backup.dart:49"
           },
@@ -880,13 +880,13 @@
           },
           {
             "id": "4",
-            "kind": "step",
+            "kind": "effect",
             "name": "ping",
             "place": "lib/backup.dart:55"
           },
           {
             "id": "5",
-            "kind": "step",
+            "kind": "effect",
             "name": "is-busy",
             "place": "lib/backup.dart:56"
           },

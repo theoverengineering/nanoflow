@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../../platform/shell.dart';
-import '../../state/step_details.dart';
-import '../../state/step_files.dart';
+import '../../state/effect_details.dart';
+import '../../state/effect_files.dart';
 import '../../state/visit_details.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
@@ -17,11 +17,11 @@ import 'parts.dart';
 /// A tab of the `Output` column.
 enum OutputTab { output, log }
 
-/// The `Output` column of the step details window (docs/ui-spec.md «Окно
-/// деталей шага»; spec §9 «Окно шага»): the tabs `Output` and `Log`.
-/// `Output` shows the value the step returned, with its size, as `Schema`
-/// or `JSON`; `not yet` while the step runs; the error the step threw, with
-/// its stack, when it failed. `Log` is the step's log as it grows. The file
+/// The `Output` column of the effect details window (docs/ui-spec.md «Окно
+/// деталей эффекта»; spec §9 «Окно эффекта»): the tabs `Output` and `Log`.
+/// `Output` shows the value the effect returned, with its size, as `Schema`
+/// or `JSON`; `not yet` while the effect runs; the error the effect threw, with
+/// its stack, when it failed. `Log` is the effect's log as it grows. The file
 /// of the open tab is at the bottom. Empty for a node alone.
 class OutputColumn extends StatefulWidget {
   const OutputColumn({
@@ -33,7 +33,7 @@ class OutputColumn extends StatefulWidget {
   });
 
   final VisitDetails details;
-  final StepFiles files;
+  final EffectFiles files;
   final Shell shell;
 
   /// The graph file: paths are shown from its directory.
@@ -41,7 +41,7 @@ class OutputColumn extends StatefulWidget {
 
   static Key tabKey(OutputTab tab) => ValueKey(('output tab', tab));
 
-  /// The key of the stack of a failed step.
+  /// The key of the stack of a failed effect.
   static const stackKey = ValueKey('error stack');
 
   @override
@@ -64,17 +64,17 @@ class _OutputColumnState extends State<OutputColumn> {
 
   Widget _column({required bool narrow}) {
     final details = widget.details;
-    final step = details.step;
-    final output = step?.output;
+    final effect = details.effect;
+    final output = effect?.output;
     final documentId = output?.documentId;
     final showsData = _tab == OutputTab.output && documentId != null;
-    final path = step == null
+    final path = effect == null
         ? null
         : _tab == OutputTab.log
-        ? widget.files.logPath(step.stepId)
+        ? widget.files.logPath(effect.effectId)
         : documentId == null
         ? null
-        : widget.files.documentPath(step.sessionId, documentId);
+        : widget.files.documentPath(effect.sessionId, documentId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -82,7 +82,7 @@ class _OutputColumnState extends State<OutputColumn> {
           children: [
             // Narrow, the tabs say it.
             if (!narrow || output == null) const SectionLabel('Output'),
-            if (step != null && output != null)
+            if (effect != null && output != null)
               Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: Row(
@@ -110,15 +110,15 @@ class _OutputColumnState extends State<OutputColumn> {
           ],
         ),
         Expanded(
-          child: step == null || output == null
+          child: effect == null || output == null
               ? const SizedBox.shrink()
               : _tab == OutputTab.log
               ? _LogTab(
-                  key: ValueKey(('log', step.sessionId, step.stepId)),
+                  key: ValueKey(('log', effect.sessionId, effect.effectId)),
                   files: widget.files,
-                  step: step,
+                  effect: effect,
                 )
-              : _output(step, output),
+              : _output(effect, output),
         ),
         if (path != null)
           PathBar(
@@ -140,9 +140,9 @@ class _OutputColumnState extends State<OutputColumn> {
     );
   }
 
-  Widget _output(StepDetails step, StepDocument output) {
-    final error = step.error;
-    if (error != null) return _Failure(error: error, stack: step.stack);
+  Widget _output(EffectDetails effect, EffectDocument output) {
+    final error = effect.error;
+    if (error != null) return _Failure(error: error, stack: effect.stack);
     final documentId = output.documentId;
     if (documentId == null) {
       return Align(
@@ -151,9 +151,9 @@ class _OutputColumnState extends State<OutputColumn> {
       );
     }
     return DocumentData(
-      key: ValueKey(('output', step.sessionId, documentId)),
+      key: ValueKey(('output', effect.sessionId, documentId)),
       files: widget.files,
-      sessionId: step.sessionId,
+      sessionId: effect.sessionId,
       documentId: documentId,
       builder: (context, document) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -179,7 +179,7 @@ class _OutputColumnState extends State<OutputColumn> {
   }
 }
 
-/// The error a failed step threw, and its stack under it, in monospace.
+/// The error a failed effect threw, and its stack under it, in monospace.
 class _Failure extends StatelessWidget {
   const _Failure({required this.error, required this.stack});
 
@@ -239,12 +239,12 @@ class _Tab extends StatelessWidget {
   }
 }
 
-/// The step's log, holding on to its end while it grows.
+/// The effect's log, holding on to its end while it grows.
 class _LogTab extends StatefulWidget {
-  const _LogTab({super.key, required this.files, required this.step});
+  const _LogTab({super.key, required this.files, required this.effect});
 
-  final StepFiles files;
-  final StepDetails step;
+  final EffectFiles files;
+  final EffectDetails effect;
 
   @override
   State<_LogTab> createState() => _LogTabState();
@@ -261,6 +261,9 @@ class _LogTabState extends State<_LogTab> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      LogView(files: widget.files, step: widget.step, following: _following);
+  Widget build(BuildContext context) => LogView(
+    files: widget.files,
+    effect: widget.effect,
+    following: _following,
+  );
 }

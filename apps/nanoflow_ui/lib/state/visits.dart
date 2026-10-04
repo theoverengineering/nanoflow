@@ -1,116 +1,116 @@
-/// The visits to a node in a session, and the starts of a step
-/// (docs/ui-spec.md «Окно деталей шага»: `Visit 2 of 2`, `Starts`). A visit
-/// is a step on the node, found by its place (D13). Pure.
+/// The visits to a node in a session, and the starts of an effect
+/// (docs/ui-spec.md «Окно деталей эффекта»: `Visit 2 of 2`, `Starts`). A visit
+/// is an effect on the node, found by its place (D13). Pure.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
+import 'effect_places.dart';
 import 'session_feed.dart';
-import 'step_places.dart';
 
-/// A visit to a node: one step on it.
+/// A visit to a node: one effect on it.
 final class Visit {
   Visit(this.record, this.state);
 
-  final Step record;
+  final Effect record;
 
-  final StepState state;
+  final EffectState state;
 
-  String get stepId => state.stepId;
+  String get effectId => state.effectId;
 
   String get name => record.name;
 }
 
-/// Those of [steps] of [session] whose records [keep] keeps, as visits in
-/// the order of [steps]; a step whose record is not read yet is left out.
+/// Those of [effects] of [session] whose records [keep] keeps, as visits in
+/// the order of [effects]; an effect whose record is not read yet is left out.
 List<Visit> _visits(
   SessionData session,
-  Iterable<StepState> steps,
-  bool Function(Step record) keep,
+  Iterable<EffectState> effects,
+  bool Function(Effect record) keep,
 ) => [
-  for (final step in steps)
-    if (session.steps[step.stepId] case final record? when keep(record))
-      Visit(record, step),
+  for (final effect in effects)
+    if (session.effects[effect.effectId] case final record? when keep(record))
+      Visit(record, effect),
 ];
 
-/// The visits to the step node [node]: those of [steps] of [session] at its
+/// The visits to the effect node [node]: those of [effects] of [session] at its
 /// place, as [places] finds them.
 List<Visit> visitsTo(
   SessionData session,
-  Iterable<StepState> steps,
-  StepPlaces places,
-  StepNode node,
-) => _visits(session, steps, (record) => places.isIn(record, node));
+  Iterable<EffectState> effects,
+  EffectPlaces places,
+  EffectNode node,
+) => _visits(session, effects, (record) => places.isIn(record, node));
 
-/// The visits like the step [stepId] of [session]: those of [steps] on the
-/// nodes it is on ([places]); for a step on no node, those at its very
-/// place with its name. Just the step, when it is not among [steps].
+/// The visits like the effect [effectId] of [session]: those of [effects] on
+/// the nodes it is on ([places]); for an effect on no node, those at its very
+/// place with its name. Just the effect, when it is not among [effects].
 List<Visit> visitsLike(
   SessionData session,
-  Iterable<StepState> steps,
-  StepPlaces places,
-  String stepId,
+  Iterable<EffectState> effects,
+  EffectPlaces places,
+  String effectId,
 ) {
-  final step = session.steps[stepId];
-  if (step == null) return const [];
-  final at = places.of(step);
+  final effect = session.effects[effectId];
+  if (effect == null) return const [];
+  final at = places.of(effect);
   final visits = _visits(
     session,
-    steps,
+    effects,
     (record) => at.isEmpty
-        ? record.place == step.place && record.name == step.name
+        ? record.place == effect.place && record.name == effect.name
         : places.of(record).any(at.contains),
   );
-  if (visits.any((visit) => visit.stepId == stepId)) return visits;
-  final state = session.state.steps.where((s) => s.stepId == stepId);
-  return [for (final s in state) Visit(step, s)];
+  if (visits.any((visit) => visit.effectId == effectId)) return visits;
+  final state = session.state.effects.where((s) => s.effectId == effectId);
+  return [for (final s in state) Visit(effect, s)];
 }
 
-/// The visit a double click on the step node [node] opens: the last of
-/// [steps] of [session] on it; `null` when none is.
+/// The visit a double click on the effect node [node] opens: the last of
+/// [effects] of [session] on it; `null` when none is.
 Visit? visitToOpen(
   SessionData session,
-  Iterable<StepState> steps,
-  StepPlaces places,
-  StepNode node,
-) => visitsTo(session, steps, places, node).lastOrNull;
+  Iterable<EffectState> effects,
+  EffectPlaces places,
+  EffectNode node,
+) => visitsTo(session, effects, places, node).lastOrNull;
 
-/// How a start of a step ended; how a step stands is how its last start
+/// How a start of an effect ended; how an effect stands is how its last start
 /// did ([outcomeOf]).
 enum StartOutcome {
   /// It goes on: nothing came after it yet.
   running,
 
-  /// `step-finished`.
+  /// `effect-finished`.
   finished,
 
-  /// `step-failed`.
+  /// `effect-failed`.
   failed,
 
-  /// The process running it stopped: another start of the step came first,
-  /// a resume ran the step again; or nothing came after it, and the
+  /// The process running it stopped: another start of the effect came first,
+  /// a resume ran the effect again; or nothing came after it, and the
   /// process of its session is gone (`SessionData.interrupted`).
   interrupted,
 }
 
-/// How [step] of [session] stands: as its journal tells, but interrupted
+/// How [effect] of [session] stands: as its journal tells, but interrupted
 /// while it runs in a session whose process is gone.
-StartOutcome outcomeOf(SessionData session, StepState step) =>
-    switch (step.status) {
-      StepStatus.running when session.interrupted => StartOutcome.interrupted,
-      StepStatus.running => StartOutcome.running,
-      StepStatus.finished => StartOutcome.finished,
-      StepStatus.failed => StartOutcome.failed,
+StartOutcome outcomeOf(SessionData session, EffectState effect) =>
+    switch (effect.status) {
+      EffectStatus.running when session.interrupted => StartOutcome.interrupted,
+      EffectStatus.running => StartOutcome.running,
+      EffectStatus.finished => StartOutcome.finished,
+      EffectStatus.failed => StartOutcome.failed,
     };
 
-/// A start of a step, and how it ended.
-typedef StepStart = ({DateTime at, StartOutcome outcome});
+/// A start of an effect, and how it ended.
+typedef EffectStart = ({DateTime at, StartOutcome outcome});
 
-/// Every start of the step [stepId] of [session], in the order of its
+/// Every start of the effect [effectId] of [session], in the order of its
 /// journal; the last one interrupted when it was running and the process
 /// of the session is gone.
-List<StepStart> startsOf(SessionData session, String stepId) {
-  final starts = <StepStart>[];
+List<EffectStart> startsOf(SessionData session, String effectId) {
+  final starts = <EffectStart>[];
   void end(StartOutcome outcome) {
     final last = starts.lastOrNull;
     if (last != null && last.outcome == StartOutcome.running) {
@@ -120,12 +120,12 @@ List<StepStart> startsOf(SessionData session, String stepId) {
 
   for (final event in session.events) {
     switch (event) {
-      case StepStarted(stepId: final id, :final time) when id == stepId:
+      case EffectStarted(effectId: final id, :final time) when id == effectId:
         end(StartOutcome.interrupted);
         starts.add((at: time, outcome: StartOutcome.running));
-      case StepFinished(stepId: final id) when id == stepId:
+      case EffectFinished(effectId: final id) when id == effectId:
         end(StartOutcome.finished);
-      case StepFailed(stepId: final id) when id == stepId:
+      case EffectFailed(effectId: final id) when id == effectId:
         end(StartOutcome.failed);
       default:
         break;

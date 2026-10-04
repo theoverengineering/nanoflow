@@ -60,9 +60,9 @@ void main() {
       }
     });
 
-    test('names steps and conditions, their places under them', () {
+    test('names effects and conditions, their places under them', () {
       final collect = layout.nodes['1']!;
-      expect(collect.kind, NodeKind.step);
+      expect(collect.kind, NodeKind.effect);
       expect(collect.name, 'collect');
       expect(collect.place, 'review.dart:49');
       expect(collect.inside, isNull);
@@ -97,7 +97,7 @@ void main() {
   });
 
   group('release', () {
-    test('draws a call as a stack named after the function, the steps of '
+    test('draws a call as a stack named after the function, the effects of '
         'its body counted on it', () {
       final layout = layoutOf('release');
       final call = layout.nodes['5']!;
@@ -141,7 +141,7 @@ void main() {
 
   group('inline', () {
     test('draws copies as a stack labelled with what they go over, the '
-        'steps of a copy counted on it', () {
+        'effects of a copy counted on it', () {
       final layout = layoutOf('inline', 'inPlace');
       final copies = layout.nodes['1']!;
       expect(copies.kind, NodeKind.copies);
@@ -155,7 +155,7 @@ void main() {
       ]);
     });
 
-    test('a call in copies counts the steps of the function', () {
+    test('a call in copies counts the effects of the function', () {
       final file = loadGraphFile('inline');
       final copies = functionOf(
         file,
@@ -167,7 +167,7 @@ void main() {
     });
   });
 
-  group('the steps counted on a call or copies', () {
+  group('the effects counted on a call or copies', () {
     test('are those of the bodies below too: of the functions called and '
         'of copies', () {
       // viaCall's copies hold one call of publish: upload, verify, tag.
@@ -176,7 +176,7 @@ void main() {
 
     test('count a function being counted once: a recursive call adds '
         'nothing again', () {
-      // crawl calls visit, which has no step of its own and calls crawl:
+      // crawl calls visit, which has no effect of its own and calls crawl:
       // the fetch of crawl.
       final crawl = layoutOf('recursion', 'crawl');
       expect(crawl.nodes['3']!.name, 'visit()');
@@ -237,7 +237,7 @@ void main() {
       const GraphBody(
         nodes: [
           ConditionNode(id: 'long', place: null, label: label),
-          StepNode(id: 'short', place: null, name: 'collect'),
+          EffectNode(id: 'short', place: null, name: 'collect'),
         ],
         edges: [],
       ),
@@ -267,32 +267,35 @@ void main() {
     expect(layout.nodes['1']!.place, isNull);
   });
 
-  test('a call to implementations with as many steps or not', () {
+  test('a call to implementations with as many effects or not', () {
     final file = loadGraphFile('interfaces');
     final layout = layoutOf('interfaces', 'deploy');
     final call = layout.nodes.values.firstWhere((n) => n.kind == NodeKind.call);
     expect(call.name, 'notify()');
-    // ChatNotifier.notify has one step, MailNotifier.notify two.
+    // ChatNotifier.notify has one effect, MailNotifier.notify two.
     expect(
       [
         for (final id in (call.node! as CallNode).functions)
-          file.functions[id]!.body.nodes.whereType<StepNode>().length,
+          file.functions[id]!.body.nodes.whereType<EffectNode>().length,
       ],
       [1, 2],
     );
     expect(call.inside, '{ 1–2 }');
   });
 
-  test('a body with no steps goes from the start marker to the end marker', () {
-    final layout = layoutBody(
-      const GraphBody(
-        nodes: [],
-        edges: [GraphEdge(from: null, to: null, label: null)],
-      ),
-    );
-    expect(arrows(layout), ['$startMarker-null->$endMarker']);
-    expect(checkLayout(layout), isEmpty);
-  });
+  test(
+    'a body with no effects goes from the start marker to the end marker',
+    () {
+      final layout = layoutBody(
+        const GraphBody(
+          nodes: [],
+          edges: [GraphEdge(from: null, to: null, label: null)],
+        ),
+      );
+      expect(arrows(layout), ['$startMarker-null->$endMarker']);
+      expect(checkLayout(layout), isEmpty);
+    },
+  );
 
   test('a body side by side from its start leaves the start marker by one '
       'capsule', () {

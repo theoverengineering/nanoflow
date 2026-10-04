@@ -95,7 +95,7 @@ class SessionsColumn extends StatelessWidget {
 
 /// A session in the column: the day and time it started and its short id;
 /// its status with the time — `Interrupted`, why in a tooltip, when its
-/// process is gone — `1 failed`, and how many steps it has; `other code` or
+/// process is gone — `1 failed`, and how many effects it has; `other code` or
 /// `not checked` when its code is not its graph's, and `Log read
 /// incompletely` when its journal was, why in a tooltip.
 class _SessionCard extends StatelessWidget {
@@ -134,7 +134,7 @@ class _SessionCard extends StatelessWidget {
     noteMuted: summary.code == CodeCheck.notChecked,
     resumedNote: summary.resumedNote,
     incompleteWhy: summary.incompleteWhy,
-    end: Text(summary.stepsText, style: AppText.sessionSteps),
+    end: Text(summary.effectsText, style: AppText.sessionEffects),
   );
 }
 
@@ -201,11 +201,13 @@ class _Item extends StatelessWidget {
   final Widget? end;
   final Color? bar;
 
-  /// [lead] taking the room [trail] leaves, on a common baseline.
+  /// [lead] taking the room [trail] leaves, on a common baseline. At least 4
+  /// px apart: at the default width, `Running for 47m 57s` and `1 failed`
+  /// stay whole beside `3 effects`.
   static Widget _line(Widget lead, Widget? trail) => Row(
     crossAxisAlignment: CrossAxisAlignment.baseline,
     textBaseline: TextBaseline.alphabetic,
-    spacing: 8,
+    spacing: 4,
     children: [
       Expanded(child: lead),
       ?trail,

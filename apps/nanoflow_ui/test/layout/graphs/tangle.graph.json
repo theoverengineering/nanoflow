@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "package": "tangle",
   "fingerprint": "sha256:0",
   "sources": {},
@@ -21,13 +21,13 @@
           },
           {
             "id": "n1",
-            "kind": "step",
+            "kind": "effect",
             "name": "n1",
             "place": "lib/tangle.dart:11"
           },
           {
             "id": "n2",
-            "kind": "step",
+            "kind": "effect",
             "name": "n2",
             "place": "lib/tangle.dart:12"
           },
@@ -39,19 +39,19 @@
           },
           {
             "id": "n4",
-            "kind": "step",
+            "kind": "effect",
             "name": "n4",
             "place": "lib/tangle.dart:14"
           },
           {
             "id": "n5",
-            "kind": "step",
+            "kind": "effect",
             "name": "n5",
             "place": "lib/tangle.dart:15"
           },
           {
             "id": "n6",
-            "kind": "step",
+            "kind": "effect",
             "name": "n6",
             "place": "lib/tangle.dart:16"
           }

@@ -10,76 +10,76 @@ import 'package:nanoflow/nanoflow.dart';
 
 Future<void> upload(Flow f, String file) async {
   try {
-    final ok = await f.step('check', () => file.isNotEmpty);
+    final ok = await f.effect('check', () => file.isNotEmpty);
     if (!ok) throw StateError('nothing to upload');
-    await f.step('send', () => print('send $file'));
+    await f.effect('send', () => print('send $file'));
   } catch (e) {
     print('upload failed: $e');
     rethrow;
   }
-  await f.step('confirm', () => print('uploaded $file'));
+  await f.effect('confirm', () => print('uploaded $file'));
 }
 
 Future<void> backup(Flow f, String disk) async {
   try {
-    final free = await f.step('measure', () => disk.length);
+    final free = await f.effect('measure', () => disk.length);
     if (free == 0) throw StateError('$disk is full');
-    await f.step('copy', () => print('copy to $disk'));
+    await f.effect('copy', () => print('copy to $disk'));
   } catch (e) {
     print('backup skipped: $e');
     return;
   }
-  await f.step('verify', () => print('verify $disk'));
+  await f.effect('verify', () => print('verify $disk'));
 }
 
 Future<void> fetch(Flow f, String url) async {
   try {
-    final page = await f.step('download', () => url);
+    final page = await f.effect('download', () => url);
     if (page.isEmpty) throw StateError('empty page');
     if (page == 'busy') throw HttpException('try later');
-    await f.step('parse', () => print('parse $page'));
+    await f.effect('parse', () => print('parse $page'));
   } on HttpException catch (e) {
     print('fetch failed: $e');
   }
-  await f.step('store', () => print('store $url'));
+  await f.effect('store', () => print('store $url'));
 }
 
 Future<void> deploy(Flow f, String target) async {
   try {
-    final ready = await f.step('prepare', () => target.isNotEmpty);
+    final ready = await f.effect('prepare', () => target.isNotEmpty);
     if (!ready) throw const FormatException('no target');
-    await f.step('ship', () => print('ship to $target'));
+    await f.effect('ship', () => print('ship to $target'));
   } on Exception catch (e) {
     print('deploy failed: $e');
   } finally {
-    await f.step('unlock', () => print('unlock $target'));
+    await f.effect('unlock', () => print('unlock $target'));
   }
-  await f.step('announce', () => print('deployed $target'));
+  await f.effect('announce', () => print('deployed $target'));
 }
 
 Future<void> rotate(Flow f, String key) async {
   try {
     await () async {
-      final old = await f.step('read', () => key);
+      final old = await f.effect('read', () => key);
       if (old.isEmpty) throw StateError('no key');
-      await f.step('replace', () => print('replace $old'));
+      await f.effect('replace', () => print('replace $old'));
     }();
   } catch (e) {
     print('rotate failed: $e');
   }
-  await f.step('audit', () => print('audit $key'));
+  await f.effect('audit', () => print('audit $key'));
 }
 
 Future<void> convert(Flow f, String unit) async {
   try {
     final factor = unit == 'km'
-        ? await f.step('scale', () => 1000)
+        ? await f.effect('scale', () => 1000)
         : throw ArgumentError.value(unit, 'unit');
-    await f.step('apply', () => print('x$factor'));
+    await f.effect('apply', () => print('x$factor'));
   } on ArgumentError catch (e) {
     print('convert failed: $e');
   }
-  await f.step('report', () => print('converted $unit'));
+  await f.effect('report', () => print('converted $unit'));
 }
 
 Future<void> importAll(Flow f, List<String> names) async {
@@ -91,5 +91,5 @@ Future<void> importAll(Flow f, List<String> names) async {
       rethrow;
     }
   }
-  await f.step('import', () => print('import ${names.length}'));
+  await f.effect('import', () => print('import ${names.length}'));
 }
