@@ -12,6 +12,12 @@
 ///
 /// - from the body's start to the effect when its predecessor is outside
 ///   the level, or there is none — no `after`, or one no record has;
+/// - from the effects a wait joined before the effect, when there are some
+///   on the level, instead of from its predecessor, in one run: after
+///   `await Future.wait([...])` the library keys the next effect after the
+///   effect before the wait, as it keys the effects waited for; so the
+///   effects shown after its predecessor, started before it, that lead to it
+///   on the level were joined before it — they lead to it, not to the end;
 /// - from the predecessor to the effect when both are on the level, unless
 ///   they are in one call or one copies node: then it is inside it;
 /// - but on the body of a function the workflow calls, when no way leads
@@ -19,27 +25,28 @@
 ///   body's end and from the body's start to the effect, a run of its own:
 ///   the code left the body and came into it again, as two calls of the
 ///   function one after the other with no effect between them do — only
-///   when both ways are there, and no effect after the same predecessor
-///   leads to the effect: then it was waited for (`Future.wait`), and the
-///   library keys the effect after a wait after the effect before it;
+///   when both ways are there;
 /// - from the predecessor to the body's end when the effect is outside;
 /// - and, once the session has finished, from each effect on the level that
-///   no effect follows to the body's end — not from a copies node: copies
-///   end, and the effect after their `Future.wait` follows the effect before
-///   them.
+///   no effect follows, nor was joined, to the body's end — not from a
+///   copies node: copies end, and the effect after their `Future.wait`
+///   follows the effect before them.
 ///
 /// An effect not on the graph at all — without a place, or at no node —
 /// makes no transition, to it or from it: where the code went there is not
 /// drawn.
 ///
 /// On the body of a function the workflow calls, the code may have left the
-/// body after the predecessor and come into it again for the effect even
-/// when a way leads from one to the other in it: the edges of both ways, out
-/// and back in, are then ones the code may have taken too — no exit on them
-/// is darker, though they mark nothing.
+/// body and come into it again between any two effects, even when a way
+/// leads from one to the other in it: for each transition, and each effect
+/// and its predecessor, the edges of the ways out of the body from the one
+/// and back into it to the other, when both are there, are ones the code
+/// may have taken too — no exit on them is darker, though they mark
+/// nothing.
 library;
 
 import 'dart:convert';
+import 'dart:math' show max;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
@@ -128,12 +135,28 @@ final class _Asked {
 
 final Expando<_Asked> _asked = Expando('passes asked');
 
-/// One run of the code a transition is part of: the way to the effect [id]
-/// from the body's start, or the way on [after] the effect [id] — through
-/// the body, or, [again], back into it from its start once the code left it.
-/// The transitions from one effect are one run each way: the code after an
-/// effect runs once, and splits only where effects are called side by side.
-typedef _Run = ({String id, bool after, bool again});
+/// Which way of the code about an effect a run is (see [_Run]).
+enum _Leg {
+  /// From the body's start to the effect.
+  into,
+
+  /// On from the effect, through the body.
+  on,
+
+  /// From the body's start again, once the code left the body after the
+  /// effect.
+  again,
+
+  /// To the effect from the effects a wait joined before it.
+  join,
+}
+
+/// One run of the code a transition is part of: [leg] of the way about the
+/// effect [id]. The transitions on from one effect are one run: the code
+/// after an effect runs once, and splits only where effects are called side
+/// by side; so are those back into the body after it, and those from the
+/// effects a wait joined to one effect.
+typedef _Run = ({String id, _Leg leg});
 
 Passes _passesOf(
   _Level level,
@@ -154,25 +177,23 @@ Passes _passesOf(
   final transitions = <({_Run run, List<String?> from, List<String?> to})>[];
   void add(_Run run, List<String?> from, List<String?> to) =>
       transitions.add((run: run, from: from, to: to));
-  // The ways the code may have gone besides the transitions: out of the body
-  // and into it again. They mark nothing.
-  final also = <(List<String?>, List<String?>)>[];
 
+  // On the body of a function the workflow calls, the ways the code may
+  // have gone besides the transitions: out of the body and into it again.
+  // They mark nothing.
   final called = places.isCalled(level.body);
-  // The effects shown by the key of the effect they come after.
-  final byAfter = <String, List<Effect>>{};
-  for (final id in ids) {
-    if (session.effects[id] case Effect(:final after?) && final effect) {
-      (byAfter[after] ??= []).add(effect);
+  final also = <(List<String?>, List<String?>)>[];
+  void outAndIn(List<String?> from, List<String?> to) {
+    if (called &&
+        level.leads(from, const [null]) &&
+        level.leads(const [null], to)) {
+      also
+        ..add((from, const [null]))
+        ..add((const [null], to));
     }
   }
-  // Whether another effect after the same one as [effect] leads to [at],
-  // its nodes: they were waited for, and [effect] came after the wait.
-  bool afterAWait(Effect effect, List<String> at) => [
-    for (final other in byAfter[effect.after] ?? const <Effect>[])
-      if (other.id != effect.id) nodesOf(other),
-  ].any((nodes) => nodes.isNotEmpty && level.leads(nodes, at));
 
+  final (:joins, :joined) = _joinsOf(level, session, ids, nodesOf);
   for (final id in ids) {
     final effect = session.effects[id];
     if (effect == null || !places.onGraph(effect)) continue;
@@ -183,30 +204,31 @@ Passes _passesOf(
     if (before != null && !places.onGraph(before)) continue;
     final at = nodesOf(effect);
     final previous = before == null ? const <String>[] : nodesOf(before);
-    if (previous.isEmpty) {
-      if (at.isNotEmpty) {
-        add((id: effect.id, after: false, again: false), const [null], at);
+    if (joins[id] case final waited?) {
+      for (final from in waited) {
+        add((id: id, leg: _Leg.join), from, at);
       }
+      // The effect before the wait may have ended a call all the same, and
+      // this one begun the next.
+      if (previous.isNotEmpty && !level.inOne(previous, at)) {
+        outAndIn(previous, at);
+      }
+    } else if (previous.isEmpty) {
+      if (at.isNotEmpty) add((id: id, leg: _Leg.into), const [null], at);
     } else if (at.isEmpty) {
-      add((id: before!.id, after: true, again: false), previous, const [null]);
+      add((id: before!.id, leg: _Leg.on), previous, const [null]);
     } else if (!level.inOne(previous, at)) {
-      final on = (id: before!.id, after: true, again: false);
-      // Out of the body and into it again: the next call of its function.
-      final again =
-          called &&
-          level.leads(previous, const [null]) &&
-          level.leads(const [null], at);
-      if (again) {
-        also
-          ..add((previous, const [null]))
-          ..add((const [null], at));
-      }
+      final on = (id: before!.id, leg: _Leg.on);
       if (level.leads(previous, at)) {
         add(on, previous, at);
-      } else if (again && !afterAWait(effect, at)) {
+      } else if (called &&
+          level.leads(previous, const [null]) &&
+          level.leads(const [null], at)) {
+        // Out of the body and into it again: the next call of its function.
         add(on, previous, const [null]);
-        add((id: before.id, after: true, again: true), const [null], at);
+        add((id: before.id, leg: _Leg.again), const [null], at);
       }
+      outAndIn(previous, at);
     }
   }
   if (session.state.status == SessionStatus.finished) {
@@ -215,11 +237,18 @@ Passes _passesOf(
     };
     for (final id in ids) {
       final effect = session.effects[id];
-      if (effect == null || followed.contains(effect.key)) continue;
+      if (effect == null ||
+          followed.contains(effect.key) ||
+          joined.contains(id)) {
+        continue;
+      }
       final at = nodesOf(effect);
       if (at.isEmpty || at.any(level.isCopies)) continue;
-      add((id: effect.id, after: true, again: false), at, const [null]);
+      add((id: id, leg: _Leg.on), at, const [null]);
     }
+  }
+  for (final (run: _, :from, :to) in [...transitions]) {
+    outAndIn(from, to);
   }
 
   final runs = <String, Set<_Run>>{};
@@ -246,6 +275,67 @@ Passes _passesOf(
     for (final (i, edge) in level.body.edges.indexed)
       if (forks.containsKey(edge.from) && !possible.contains(i)) i,
   });
+}
+
+/// The waits the effects [ids] of [session] were joined by, on [level]:
+/// after `await Future.wait([...])` the library keys the next effect after
+/// the effect before the wait, as it keys the effects waited for. So of the
+/// effects shown after one effect of the session, those started before
+/// another that lead to it on the level were joined before it: [joins] has,
+/// by its id, the
+/// nodes of each such — one for each nodes they are on, none for those in
+/// one call or copies node with it, which lead to it inside —, and [joined]
+/// the ids of those joined.
+///
+/// The effects after one effect are looked at by the nodes they are on:
+/// whether some lead to others is asked once for each two of those.
+({Map<String, List<List<String>>> joins, Set<String> joined}) _joinsOf(
+  _Level level,
+  SessionData session,
+  List<String> ids,
+  List<String> Function(Effect effect) nodesOf,
+) {
+  final order = {for (final (i, id) in ids.indexed) id: i};
+  final byAfter = <String, List<Effect>>{};
+  for (final id in ids) {
+    if (session.effects[id] case Effect(:final after?) && final effect
+        when session.effectWithKey(after) != null) {
+      (byAfter[after] ??= []).add(effect);
+    }
+  }
+  final joins = <String, List<List<String>>>{};
+  final joined = <String>{};
+  for (final group in byAfter.values) {
+    if (group.length < 2) continue;
+    // The effects of the group on the level by the nodes they are on, each
+    // in the order they started.
+    final on = <String, ({List<String> nodes, List<String> ids})>{};
+    for (final effect in group) {
+      final at = nodesOf(effect);
+      if (at.isEmpty) continue;
+      (on[at.join('\u0000')] ??= (nodes: at, ids: [])).ids.add(effect.id);
+    }
+    for (final source in on.values) {
+      final first = order[source.ids.first]!;
+      // The last of those [source] leads to: those of it started before
+      // were joined.
+      var last = -1;
+      for (final target in on.values) {
+        if (!level.leads(source.nodes, target.nodes)) continue;
+        last = max(last, order[target.ids.last]!);
+        final inside = level.inOne(source.nodes, target.nodes);
+        for (final id in target.ids) {
+          if (order[id]! <= first) continue;
+          final from = joins[id] ??= [];
+          if (!inside) from.add(source.nodes);
+        }
+      }
+      for (final id in source.ids) {
+        if (order[id]! < last) joined.add(id);
+      }
+    }
+  }
+  return (joins: joins, joined: joined);
 }
 
 /// What every path of a transition goes through: the forks, and the edges by

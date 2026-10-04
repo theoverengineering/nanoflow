@@ -480,6 +480,16 @@ void main() {
 
       expect(s.forksOf(p), {'f': 2});
       expect(s.untakenBy(p), isEmpty);
+
+      // A third call, the same way.
+      j
+        ..effect('x', 7, end: 8, place: flowAt('x'), key: 'x3', after: 'p2')
+        ..effect('y', 7, end: 8, place: flowAt('y'), key: 'y3', after: 'p2')
+        ..effect('p', 9, end: 10, place: flowAt('p'), key: 'p3', after: 'p2');
+      final third = s.passes(j.data);
+
+      expect(s.forksOf(third), {'f': 3});
+      expect(s.untakenBy(third), isEmpty);
     });
 
     // if (c) { await a(); if (k) return; await Future.wait([x(), y()]); }
@@ -500,10 +510,11 @@ void main() {
     Journal waited() {
       final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
         ..effect('a', 1, end: 2, place: flowAt('a'), key: 'a', after: null);
-      for (final name in ['x', 'y', 'e']) {
+      for (final name in ['x', 'y']) {
         j.effect(name, 3, end: 4, place: flowAt(name), key: name, after: 'a');
       }
-      return j..finish(5);
+      j.effect('e', 5, end: 6, place: flowAt('e'), key: 'e', after: 'a');
+      return j..finish(7);
     }
 
     test('an effect after a wait comes after the effect before it, as the '
@@ -581,6 +592,127 @@ void main() {
 
       expect(s.forksOf(p), {'w': 3});
       expect(s.untakenBy(p), isEmpty);
+    });
+
+    test('the effects a wait joined lead to the effect after it, not the '
+        'effect before the wait: await p(); await Future.wait([lint(), '
+        'test()]); if (ok) await deploy();', () {
+      final s = Shape(
+        [
+          effectAt('p'),
+          effectAt('lint'),
+          effectAt('test'),
+          forkAt('ok'),
+          effectAt('deploy'),
+        ],
+        [
+          '>p',
+          'p>lint',
+          'p>test',
+          'lint>ok',
+          'test>ok',
+          'ok>deploy',
+          'ok>',
+          'deploy>',
+        ],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('p', 1, end: 2, place: flowAt('p'), key: 'p', after: null)
+        ..effect('lint', 3, end: 4, place: flowAt('lint'), key: 'l', after: 'p')
+        ..effect('test', 3, end: 4, place: flowAt('test'), key: 't', after: 'p')
+        ..effect('deploy', 5, end: 6, place: flowAt('deploy'), after: 'p')
+        ..finish(7);
+      final p = s.passes(j.data);
+
+      // Once, by the two joined; lint and test go nowhere after it.
+      expect(s.forksOf(p), {'ok': 1});
+      expect(s.takenBy(p), {
+        '>p',
+        'p>lint',
+        'p>test',
+        'lint>ok',
+        'test>ok',
+        'ok>deploy',
+        'deploy>',
+      });
+      expect(s.untakenBy(p), {'ok>'});
+    });
+
+    group('calls that begin with a wait: for (env in envs) await '
+        'deploy(env), deploy { await Future.wait(hosts.map(push)); if '
+        '(notify) await notify(); }', () {
+      final deploy = graphFunction(
+        'deploy',
+        [
+          copiesNode(
+            'c',
+            GraphBody(
+              nodes: [effectAt('push')],
+              edges: [_edge('>push'), _edge('push>')],
+            ),
+          ),
+          forkAt('n'),
+          effectAt('notify'),
+        ],
+        ['>c', 'c>n', 'n>notify', 'n>', 'notify>'],
+      );
+      final s = Shape.of(deploy.body, places: calledInALoop(deploy));
+
+      /// The calls, each pushing to [hosts] and notifying or not as
+      /// [notifies] says; the session finished. A call's effects come after
+      /// the last effect before the call, as the library keys them.
+      Journal deploys(List<bool> notifies, {int hosts = 2}) {
+        final j = Journal('a1b2-session', workflow: 'flow', snapshot: false);
+        String? last;
+        var t = 1;
+        for (final (call, notify) in notifies.indexed) {
+          for (var h = 0; h < hosts; h++) {
+            j.effect(
+              'push',
+              t,
+              end: t + 0.5,
+              place: flowAt('push'),
+              key: 'push $call $h',
+              after: last,
+            );
+          }
+          t++;
+          if (notify) {
+            j.effect(
+              'notify',
+              t,
+              end: t + 0.5,
+              place: flowAt('notify'),
+              key: 'notify $call',
+              after: last,
+            );
+            last = 'notify $call';
+            t++;
+          }
+        }
+        return j..finish(t);
+      }
+
+      test('every call notifies: n passed by each', () {
+        final p = s.passes(deploys([true, true, true]).data);
+
+        expect(s.forksOf(p), {'n': 3});
+      });
+
+      test('the second does not: n passed by the other two, and its false '
+          'exit, which the second took, is not darker', () {
+        final p = s.passes(deploys([true, false, true]).data);
+
+        expect(s.forksOf(p)['n'], greaterThanOrEqualTo(2));
+        expect(s.untakenBy(p), isNot(contains('n>')));
+      });
+
+      test('a thousand hosts in each call: the effects after one effect are '
+          'looked at by their nodes, not each against each', () {
+        final p = s.passes(deploys([true, true, true], hosts: 1000).data);
+
+        expect(s.forksOf(p), {'n': 3});
+      });
     });
 
     test('for (pkg in pkgs) await publish(f, pkg): core goes on, tool rolls '
