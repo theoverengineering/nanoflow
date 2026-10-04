@@ -767,7 +767,9 @@ void main() {
         const GraphNote(
           '2 effects not on the graph',
           lines: ['gather  lib/review.dart:30', 'loose  no place'],
-          text: notOnGraphDetail,
+          text:
+              'They match no effect on the graph: the code may differ from '
+              'the one it was read from.',
         ),
       ]);
     });

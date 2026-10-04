@@ -109,7 +109,7 @@ final class SessionSummary {
   /// session; `null` for any other.
   String? get statusWhy => interrupted ? interruptedWhy : null;
 
-  /// `1 failed` next to the status of a running session with failed effects:
+  /// `1 failed` under the status of a running session with failed effects:
   /// the workflow caught what they threw, or has not yet.
   String? get failedBadge =>
       status == SessionStatus.running && failedEffects > 0

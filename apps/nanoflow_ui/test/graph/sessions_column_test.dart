@@ -148,7 +148,7 @@ void main() {
   });
 
   testWidgets('a session that ran on other code says so, and its status '
-      'stays whole beside 1 failed at the default width', (tester) async {
+      'stays whole at the default width', (tester) async {
     await pumpGraphScreen(
       tester,
       model: ownedModel(
@@ -182,6 +182,51 @@ void main() {
     }
     expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
     expect(inCard('f0a5-session', find.text('3 effects')), findsOneWidget);
+  });
+
+  testWidgets('1 failed goes first on the line under the status, so the '
+      'status and the count stay whole at the default width', (tester) async {
+    // The longest a running session's status and count get in its first
+    // hour, `Running for 59m 59s` and `99 effects`, with `1 failed` between
+    // them take 225 px with no gaps at all; a card has 224 px inside the
+    // default 272 px column. No gap makes them fit on one line: `1 failed`
+    // goes on the line of the notes, before `other code`.
+    final journal = Journal(
+      'f0a5-session',
+      workflow: 'release',
+      startedAt: -2853,
+      code: 'sha256:other',
+    )..effect('build', -2852, end: -2851, failed: true);
+    for (var i = 1; i < 99; i++) {
+      journal.effect('build', -2851 + i, end: -2851 + i);
+    }
+    await pumpGraphScreen(
+      tester,
+      model: ownedModel(file: releaseFile, changes: changesOf([journal])),
+      now: () => columnNow,
+    );
+
+    final status = inCard('f0a5-session', find.text('Running for 59m 59s'));
+    final count = inCard('f0a5-session', find.text('99 effects'));
+    final failed = inCard('f0a5-session', find.text('1 failed'));
+    final note = inCard('f0a5-session', find.text('other code'));
+    expect(
+      tester.renderObject<RenderParagraph>(status).didExceedMaxLines,
+      isFalse,
+    );
+    expect(
+      tester.getRect(count).right,
+      lessThan(tester.getRect(card('f0a5-session')).right),
+    );
+    expect(
+      tester.getRect(failed).top,
+      greaterThanOrEqualTo(tester.getRect(status).bottom),
+    );
+    expect(
+      tester.getCenter(failed).dy,
+      moreOrLessEquals(tester.getCenter(note).dy, epsilon: 1),
+    );
+    expect(tester.getRect(failed).right, lessThan(tester.getRect(note).left));
   });
 
   testWidgets('a session resumed on changed code says so on its card', (
@@ -221,7 +266,7 @@ void main() {
       workflow: 'release',
       startedAt: -2131,
       code: 'sha256:other',
-    )..effect('plan', -2130, end: -2120, failed: true);
+    )..effect('plan', -2130, end: -2120);
     await pumpGraphScreen(
       tester,
       model: ownedModel(
@@ -274,7 +319,6 @@ void main() {
       inCard('f0a5-session', find.text('Running for 47m 57s')),
     );
     expect(status.didExceedMaxLines, isFalse);
-    expect(inCard('f0a5-session', find.text('1 failed')), findsOneWidget);
     expect(
       inCard('c3d4-session', find.text(logReadIncompletely)),
       findsNothing,

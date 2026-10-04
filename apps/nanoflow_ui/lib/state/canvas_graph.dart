@@ -121,7 +121,7 @@ const notOnGraphLines = 5;
 
 /// Said under the effects not on the graph.
 const notOnGraphDetail =
-    'They ran at no effect of the graph: the code may differ from the one it '
+    'They match no effect on the graph: the code may differ from the one it '
     'was read from.';
 
 /// The chosen workflow [workflow] is not in the graph file [fileName]: its

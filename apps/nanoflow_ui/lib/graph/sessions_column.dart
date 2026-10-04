@@ -95,8 +95,8 @@ class SessionsColumn extends StatelessWidget {
 
 /// A session in the column: the day and time it started and its short id;
 /// its status with the time — `Interrupted`, why in a tooltip, when its
-/// process is gone — `1 failed`, and how many effects it has; `other code` or
-/// `not checked` when its code is not its graph's, and `Log read
+/// process is gone — and how many effects it has; `1 failed`, `other code`
+/// or `not checked` when its code is not its graph's, and `Log read
 /// incompletely` when its journal was, why in a tooltip.
 class _SessionCard extends StatelessWidget {
   const _SessionCard({
@@ -158,7 +158,7 @@ class _CurrentGraphItem extends StatelessWidget {
 
 /// A card of the column, a status [bar] on its left edge, the accent when
 /// [selected]: the [title] and the [id] on its first line; the [status],
-/// [statusWhy] in its tooltip, a red [badge] and the [end] on its second;
+/// [statusWhy] in its tooltip, and the [end] on its second; a red [badge],
 /// an amber [note] — muted when [noteMuted] — the amber [resumedNote] and
 /// the `Log read incompletely` mark, [incompleteWhy] in its tooltip, on a
 /// line of their own, so that the status keeps its room; a mark goes under
@@ -201,13 +201,11 @@ class _Item extends StatelessWidget {
   final Widget? end;
   final Color? bar;
 
-  /// [lead] taking the room [trail] leaves, on a common baseline. At least 4
-  /// px apart: at the default width, `Running for 47m 57s` and `1 failed`
-  /// stay whole beside `3 effects`.
+  /// [lead] taking the room [trail] leaves, on a common baseline.
   static Widget _line(Widget lead, Widget? trail) => Row(
     crossAxisAlignment: CrossAxisAlignment.baseline,
     textBaseline: TextBaseline.alphabetic,
-    spacing: 4,
+    spacing: 8,
     children: [
       Expanded(child: lead),
       ?trail,
@@ -252,33 +250,22 @@ class _Item extends StatelessWidget {
               spacing: 4,
               children: [
                 _line(_text(title, AppText.sessionTitle), id),
-                _line(
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    spacing: 8,
-                    children: [
-                      Flexible(
-                        child: switch (statusWhy) {
-                          final why? => Tooltip(
-                            message: why,
-                            child: _text(status, statusStyle),
-                          ),
-                          null => _text(status, statusStyle),
-                        },
-                      ),
-                      if (badge case final text?) _DangerBadge(text),
-                    ],
+                _line(switch (statusWhy) {
+                  final why? => Tooltip(
+                    message: why,
+                    child: _text(status, statusStyle),
                   ),
-                  end,
-                ),
-                if (note != null ||
+                  null => _text(status, statusStyle),
+                }, end),
+                if (badge != null ||
+                    note != null ||
                     resumedNote != null ||
                     incompleteWhy != null)
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
                     children: [
+                      if (badge case final text?) _DangerBadge(text),
                       if (note case final text?)
                         _NoteBadge(text, muted: noteMuted),
                       if (resumedNote case final text?)
