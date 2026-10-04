@@ -198,6 +198,20 @@ void main() {
       expect(places.ownerOf(const GraphBody(nodes: [], edges: [])), isNull);
     });
 
+    test('a called body: that of a function the workflow calls, not the '
+        'workflow\'s own nor that of copies', () {
+      final places = effectPlacesOf('viaCall');
+      final viaCall = file.functions['lib/copies.dart#viaCall']!;
+      final copies = viaCall.body.node('1')! as CopiesNode;
+      expect(
+        places.isCalled(file.functions['lib/copies.dart#publish']!.body),
+        isTrue,
+      );
+      expect(places.isCalled(viaCall.body), isFalse);
+      expect(places.isCalled(copies.body), isFalse);
+      expect(places.isCalled(const GraphBody(nodes: [], edges: [])), isFalse);
+    });
+
     test('a function calling itself holds its effects once', () {
       final recursive = GraphFunction(
         id: 'lib/r.dart#crawl',

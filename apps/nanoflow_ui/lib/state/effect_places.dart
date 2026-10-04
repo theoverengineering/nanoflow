@@ -20,7 +20,7 @@ bool isPlaceOf(String effectPlace, String nodePlace) =>
 
 /// The effect nodes of a workflow's graph, and which of them an effect is on.
 final class EffectPlaces {
-  EffectPlaces._(this._functions, this.nodes);
+  EffectPlaces._(this._workflow, this._functions, this.nodes);
 
   /// The effect nodes of [workflow] and of all it reaches in [functions]: the
   /// bodies of its copies, the functions it calls, and so on; none without
@@ -29,11 +29,14 @@ final class EffectPlaces {
     GraphFunction? workflow,
     Map<String, GraphFunction> functions,
   ) {
-    final places = EffectPlaces._(functions, const {});
-    return EffectPlaces._(functions, {
+    final places = EffectPlaces._(workflow?.id, functions, const {});
+    return EffectPlaces._(workflow?.id, functions, {
       if (workflow != null) ...places._inBody(workflow.body, {workflow.id}),
     });
   }
+
+  /// The id of the workflow; `null` without one.
+  final String? _workflow;
 
   final Map<String, GraphFunction> _functions;
 
@@ -79,6 +82,16 @@ final class EffectPlaces {
   /// The id of the function whose body [body] is, or holds as the body of
   /// copies; `null` for a body of no function of the graph.
   String? ownerOf(GraphBody body) => _owners[body];
+
+  /// Whether [body] is that of a function the workflow calls: the code comes
+  /// into it at each call, and may leave it and come into it again with no
+  /// effect between. Not the workflow's own — drawn once whether it runs or
+  /// calls itself —, nor that of copies, which run once.
+  bool isCalled(GraphBody body) => switch (ownerOf(body)) {
+    final owner? =>
+      owner != _workflow && identical(_functions[owner]?.body, body),
+    null => false,
+  };
 
   /// The function of each body of the graph, by the body.
   late final Map<GraphBody, String> _owners = () {

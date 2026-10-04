@@ -482,6 +482,107 @@ void main() {
       expect(s.untakenBy(p), isEmpty);
     });
 
+    // if (c) { await a(); if (k) return; await Future.wait([x(), y()]); }
+    // await e(); — x, y and e all after a, as the library keys the effect
+    // after a wait.
+    final waits = graphFunction(
+      'waits',
+      [
+        forkAt('c'),
+        effectAt('a'),
+        forkAt('k'),
+        effectAt('x'),
+        effectAt('y'),
+        effectAt('e'),
+      ],
+      ['>c', 'c>a', 'c>e', 'a>k', 'k>', 'k>x', 'k>y', 'x>e', 'y>e', 'e>'],
+    );
+    Journal waited() {
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('a', 1, end: 2, place: flowAt('a'), key: 'a', after: null);
+      for (final name in ['x', 'y', 'e']) {
+        j.effect(name, 3, end: 4, place: flowAt(name), key: name, after: 'a');
+      }
+      return j..finish(5);
+    }
+
+    test('an effect after a wait comes after the effect before it, as the '
+        'next call\'s first would: not split when an effect waited for '
+        'leads to it', () {
+      final s = Shape.of(waits.body, places: calledInALoop(waits));
+      final p = s.passes(waited().data);
+
+      expect(s.forksOf(p), {'c': 1, 'k': 1});
+      // The next call may have begun at e all the same: the ways out of the
+      // body after a and into it to e are not darker.
+      expect(s.untakenBy(p), isEmpty);
+    });
+
+    test('the workflow\'s body is not split: run once, the wait marks what it '
+        'did before the split existed', () {
+      final s = Shape.of(
+        waits.body,
+        places: EffectPlaces.of(waits, {waits.id: waits}),
+      );
+      final p = s.passes(waited().data);
+
+      expect(s.forksOf(p), {'c': 1, 'k': 1});
+      expect(s.untakenBy(p), {'c>e', 'k>'});
+    });
+
+    test(
+      'nor is a stale workflow\'s: x then y on `if (c) y; x; if (e) w;`',
+      () {
+        final s = Shape(
+          [
+            forkAt('c'),
+            effectAt('y'),
+            effectAt('x'),
+            forkAt('e'),
+            effectAt('w'),
+          ],
+          ['>c', 'c>y', 'c>x', 'y>x', 'x>e', 'e>w', 'e>', 'w>'],
+        );
+        final p = s.passes(ran(['x', 'y']).data);
+
+        expect(s.forksOf(p), {'c': 1});
+        expect(s.untakenBy(p), {'c>y'});
+      },
+    );
+
+    test('a way through the body is there, and the code may have left it and '
+        'come into it again: publish(pkg) { if (needsBuild) build(); if '
+        '(isPublic) upload(); }, pkg 1 built and not public, pkg 2 uploaded '
+        'unbuilt — no false exit darker', () {
+      final publish = graphFunction(
+        'publish',
+        [forkAt('b'), effectAt('build'), forkAt('p'), effectAt('upload')],
+        ['>b', 'b>build', 'b>p', 'build>p', 'p>upload', 'p>', 'upload>'],
+      );
+      final s = Shape.of(publish.body, places: calledInALoop(publish));
+      final p = s.passes(ran(['build', 'upload'], finished: true).data);
+
+      // What the way through the body passed and took: one run.
+      expect(s.forksOf(p), {'b': 1, 'p': 1});
+      expect(s.takenBy(p), {'>b', 'b>build', 'build>p', 'p>upload', 'upload>'});
+      expect(s.untakenBy(p), isEmpty);
+    });
+
+    test('a loop a running session is still in: an earlier call left it by '
+        'done, which is not darker', () {
+      // helper: while (w) e;
+      final helper = graphFunction(
+        'helper',
+        [forkAt('w'), effectAt('e')],
+        ['>w', 'w>e', 'e>w', 'w>'],
+      );
+      final s = Shape.of(helper.body, places: calledInALoop(helper));
+      final p = s.passes(ran(['e', 'e', 'e']).data);
+
+      expect(s.forksOf(p), {'w': 3});
+      expect(s.untakenBy(p), isEmpty);
+    });
+
     test('for (pkg in pkgs) await publish(f, pkg): core goes on, tool rolls '
         'back — !ok passed by both, neither exit darker', () {
       final publish = loadGraphFile('release')

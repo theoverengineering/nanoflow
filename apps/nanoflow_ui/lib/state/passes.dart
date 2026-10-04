@@ -14,11 +14,14 @@
 ///   the level, or there is none — no `after`, or one no record has;
 /// - from the predecessor to the effect when both are on the level, unless
 ///   they are in one call or one copies node: then it is inside it;
-/// - but when no way leads from the predecessor to the effect in the body,
-///   from the predecessor to the body's end and from the body's start to the
-///   effect, a run of its own: the code left the body and came into it
-///   again, as two calls of the level's function one after the other with
-///   no effect between them do — only when both ways are there;
+/// - but on the body of a function the workflow calls, when no way leads
+///   from the predecessor to the effect in it, from the predecessor to the
+///   body's end and from the body's start to the effect, a run of its own:
+///   the code left the body and came into it again, as two calls of the
+///   function one after the other with no effect between them do — only
+///   when both ways are there, and no effect after the same predecessor
+///   leads to the effect: then it was waited for (`Future.wait`), and the
+///   library keys the effect after a wait after the effect before it;
 /// - from the predecessor to the body's end when the effect is outside;
 /// - and, once the session has finished, from each effect on the level that
 ///   no effect follows to the body's end — not from a copies node: copies
@@ -28,6 +31,12 @@
 /// An effect not on the graph at all — without a place, or at no node —
 /// makes no transition, to it or from it: where the code went there is not
 /// drawn.
+///
+/// On the body of a function the workflow calls, the code may have left the
+/// body after the predecessor and come into it again for the effect even
+/// when a way leads from one to the other in it: the edges of both ways, out
+/// and back in, are then ones the code may have taken too — no exit on them
+/// is darker, though they mark nothing.
 library;
 
 import 'dart:convert';
@@ -145,6 +154,25 @@ Passes _passesOf(
   final transitions = <({_Run run, List<String?> from, List<String?> to})>[];
   void add(_Run run, List<String?> from, List<String?> to) =>
       transitions.add((run: run, from: from, to: to));
+  // The ways the code may have gone besides the transitions: out of the body
+  // and into it again. They mark nothing.
+  final also = <(List<String?>, List<String?>)>[];
+
+  final called = places.isCalled(level.body);
+  // The effects shown by the key of the effect they come after.
+  final byAfter = <String, List<Effect>>{};
+  for (final id in ids) {
+    if (session.effects[id] case Effect(:final after?) && final effect) {
+      (byAfter[after] ??= []).add(effect);
+    }
+  }
+  // Whether another effect after the same one as [effect] leads to [at],
+  // its nodes: they were waited for, and [effect] came after the wait.
+  bool afterAWait(Effect effect, List<String> at) => [
+    for (final other in byAfter[effect.after] ?? const <Effect>[])
+      if (other.id != effect.id) nodesOf(other),
+  ].any((nodes) => nodes.isNotEmpty && level.leads(nodes, at));
+
   for (final id in ids) {
     final effect = session.effects[id];
     if (effect == null || !places.onGraph(effect)) continue;
@@ -163,11 +191,19 @@ Passes _passesOf(
       add((id: before!.id, after: true, again: false), previous, const [null]);
     } else if (!level.inOne(previous, at)) {
       final on = (id: before!.id, after: true, again: false);
+      // Out of the body and into it again: the next call of its function.
+      final again =
+          called &&
+          level.leads(previous, const [null]) &&
+          level.leads(const [null], at);
+      if (again) {
+        also
+          ..add((previous, const [null]))
+          ..add((const [null], at));
+      }
       if (level.leads(previous, at)) {
         add(on, previous, at);
-      } else if (level.leads(previous, const [null]) &&
-          level.leads(const [null], at)) {
-        // Out of the body and into it again: the next call.
+      } else if (again && !afterAWait(effect, at)) {
         add(on, previous, const [null]);
         add((id: before.id, after: true, again: true), const [null], at);
       }
@@ -189,8 +225,10 @@ Passes _passesOf(
   final runs = <String, Set<_Run>>{};
   final taken = <int>{};
   // The edges some transition may have taken, those of transitions that
-  // mark nothing too.
-  final possible = <int>{};
+  // mark nothing too, and those of the ways out and back in.
+  final possible = {
+    for (final (from, to) in also) ...level.between(from, to).corridor,
+  };
   for (final (:run, :from, :to) in transitions) {
     final (:way, :corridor) = level.between(from, to);
     possible.addAll(corridor);
