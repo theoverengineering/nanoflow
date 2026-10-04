@@ -287,6 +287,37 @@ void main() {
       expect(find.text('3×'), findsNothing);
     });
 
+    testWidgets('a fork the code went through looks as a visited effect: '
+        'framed green, a check on its corner; gone through twice, it says '
+        '2×', (tester) async {
+      const passed = NodeMarks(
+        state: NodeState.visited,
+        effects: 2,
+        running: 0,
+      );
+      await pumpTile(tester, 'if', marks: passed);
+      expect(tileLook(tester, 'if').border!.top.color, const Color(0xFF3CC47C));
+      expect(tileLook(tester, 'if').border!.top.width, 2);
+      expect(
+        tester.widget<StateBadge>(find.byType(StateBadge)).mark,
+        BadgeMark.check,
+      );
+      expect(tester.widget<NodeIcon>(find.byType(NodeIcon)).fork, isTrue);
+      expect(find.text('2×'), findsOneWidget);
+
+      // In the body of copies, all shown: no count over it.
+      await pumpTile(tester, 'if', marks: passed, allCopies: true);
+      expect(tileLook(tester, 'if').border!.top.color, const Color(0xFF3CC47C));
+      expect(find.byType(StateBadge), findsOneWidget);
+      expect(find.text('2×'), findsNothing);
+      expect(find.byKey(NodeTile.runningKeyOf('if')), findsNothing);
+
+      // No marks: plain, as with no session.
+      await pumpTile(tester, 'if');
+      expect(tileLook(tester, 'if').border!.top.color, CanvasColors.tileBorder);
+      expect(find.byType(StateBadge), findsNothing);
+    });
+
     testWidgets('the ring of the selected effect\'s node is round its tile', (
       tester,
     ) async {

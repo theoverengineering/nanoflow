@@ -199,6 +199,7 @@ final class EdgePath {
     required this.from,
     required this.exitIndex,
     required this.listIndex,
+    required this.edgeIndex,
     required this.to,
     required this.kind,
     required this.points,
@@ -214,6 +215,10 @@ final class EdgePath {
 
   /// The arrow's index among the arrows of its exit.
   final int listIndex;
+
+  /// The index of the edge it draws in the body's edges (`GraphBody.edges`),
+  /// those the layout left out counted: what a session's passes name it by.
+  final int edgeIndex;
 
   /// The id of the node the arrow enters.
   final String to;

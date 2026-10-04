@@ -168,6 +168,7 @@ GraphLayout route(
         from: edge.from.id,
         exitIndex: edge.exit.index,
         listIndex: edge.listIndex,
+        edgeIndex: edge.edgeIndex,
         to: edge.to.id,
         kind: edge.kind,
         points: points,

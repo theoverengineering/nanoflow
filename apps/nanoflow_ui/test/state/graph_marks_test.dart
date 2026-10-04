@@ -261,7 +261,7 @@ void main() {
     );
     expect(marks.of('2')!.state, NodeState.visited);
     expect(marks.of('3')!.state, NodeState.visited);
-    expect(marks.of('1'), isNull, reason: 'a condition runs no effect');
+    expect(marks.of('1'), isNull, reason: 'no way leads through the fork');
     expect(marks.selected, {'2', '3'});
     expect(marks.nodesOf(j.effects.single.id), ['2', '3']);
   });
@@ -281,6 +281,66 @@ void main() {
     expect(marksOf(tag).selected, {'2'});
     expect(marksOf(plan).selected, {'1'});
     expect(marksOf(plan).nodesOf(tag), ['2']);
+  });
+
+  group('forks, over the session the real library wrote for review '
+      '(recordedReview)', () {
+    // collect, inspect, fix, inspect, then publish and notify; 2 is
+    // `change.path.isEmpty`, 5 `report.findings.isEmpty`.
+    final recorded = recordedReview();
+    final review = recorded.graph.functions['lib/review.dart#review']!;
+    final places = EffectPlaces.of(review, recorded.graph.functions);
+    final session = recorded.sessions['review']!;
+
+    test('a fork the code went through is visited, as many times as runs '
+        'went through it', () {
+      final marks = GraphMarks.of(
+        review.body,
+        places: places,
+        session: session,
+      );
+      final findings = marks.of('5')!;
+      expect(findings.state, NodeState.visited);
+      expect(findings.effects, 2);
+      expect(findings.running, 0);
+      expect(findings.copies, isNull);
+      expect(findings.visitsText, '2×');
+      final change = marks.of('2')!;
+      expect(change.state, NodeState.visited);
+      expect(change.effects, 1);
+      expect(change.running, 0);
+      expect(change.visitsText, isNull);
+    });
+
+    test('the passes are those of the effects the marks are of', () {
+      final collected = GraphMarks.of(
+        review.body,
+        places: places,
+        session: session,
+        effects: session.state.effects.take(1),
+      );
+      expect(collected.of('2'), isNull);
+      expect(collected.passes.of('2'), 0);
+      final inspected = GraphMarks.of(
+        review.body,
+        places: places,
+        session: session,
+        effects: session.state.effects.take(2),
+      );
+      expect(inspected.of('2')!.effects, 1);
+      expect(inspected.passes.of('2'), 1);
+      expect(inspected.of('5'), isNull);
+    });
+
+    test('a fork no way went through has no marks, as with no session: '
+        'drawn plain', () {
+      final j = Journal('a1b2-session', snapshot: false)
+        ..effect('collect', 1, place: 'lib/review.dart:49');
+      final marks = GraphMarks.of(review.body, places: places, session: j.data);
+      expect(marks.of('1')!.state, NodeState.running);
+      expect(marks.of('2'), isNull);
+      expect(marks.of('5'), isNull);
+    });
   });
 
   test('an effect at no node of the body is on none of it', () {

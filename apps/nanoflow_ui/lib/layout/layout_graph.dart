@@ -370,7 +370,7 @@ final class GExit {
 
 /// One arrow: from an exit (and a place in its list) to a node.
 final class GEdge {
-  GEdge._(this.exit, this.listIndex, this.to, this.index);
+  GEdge._(this.exit, this.listIndex, this.to, this.index, this.edgeIndex);
 
   final GExit exit;
 
@@ -381,6 +381,10 @@ final class GEdge {
 
   /// The arrow's position among all arrows in the layout's order.
   final int index;
+
+  /// The index of the edge it draws in the body's edges, those left out
+  /// counted.
+  final int edgeIndex;
 
   GNode get from => exit.node;
 
@@ -457,7 +461,7 @@ final class LayoutGraph {
     final edges = <GEdge>[];
     var ends = 0;
     GNode? end;
-    for (final edge in body.edges) {
+    for (final (i, edge) in body.edges.indexed) {
       final from = byId[edge.from];
       if (from == null) continue;
       final to = edge.to != null
@@ -471,7 +475,7 @@ final class LayoutGraph {
         exit = GExit._(from, from.exits.length, edge.label);
         from.exits.add(exit);
       }
-      final arrow = GEdge._(exit, exit.edges.length, to, edges.length);
+      final arrow = GEdge._(exit, exit.edges.length, to, edges.length, i);
       exit.edges.add(arrow);
       to.inEdges.add(arrow);
       edges.add(arrow);

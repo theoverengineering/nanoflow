@@ -66,7 +66,7 @@ final class TileLook {
     NodeState.failed => failed,
   };
 
-  /// `Current graph`, a condition, a marker: no state.
+  /// `Current graph`, a fork the code did not go through, a marker: no state.
   static const plain = TileLook(
     fill: CanvasColors.tileFill,
     border: CanvasColors.tileBorder,

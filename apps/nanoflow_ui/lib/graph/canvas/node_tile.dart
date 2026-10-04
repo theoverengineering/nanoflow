@@ -34,7 +34,9 @@ import 'tile_marks.dart';
 /// With a session, the tile is framed in the state of the effects on it, its
 /// state's badge on its bottom right corner; an effect node entered more than
 /// once says so over its top right corner (`2×`) — in the body of copies,
-/// all shown, how many copies are on it now instead. The looks and the
+/// all shown, how many copies are on it now instead. A fork the code went
+/// through looks as a visited effect, `2×` over it as over one, none in the
+/// body of copies, all shown; one it did not is plain. The looks and the
 /// badges are in tile_marks.dart. The ring round the selected effect's node
 /// is not the tile's: the canvas draws it under the arrows ([ringOf]).
 ///
@@ -79,11 +81,12 @@ class NodeTile extends StatelessWidget {
   final String id;
 
   /// What the session's effects put on the node; `null` for `Current graph`,
-  /// a condition or a marker: the tile is drawn plain.
+  /// a fork the code did not go through or a marker: the tile is drawn
+  /// plain.
   final NodeMarks? marks;
 
-  /// Whether an effect node says how many copies are on it now: in the body of
-  /// copies, all of them shown.
+  /// Whether an effect node says how many copies are on it now, and a fork
+  /// nothing: in the body of copies, all of them shown.
   final bool allCopies;
 
   /// The badge over the stack of copies: `×3`, `×0` muted, `×n`.
@@ -221,12 +224,18 @@ class NodeTile extends StatelessWidget {
 
   /// Over an effect node's top right corner: in the body of copies, all
   /// shown, how many copies are on it now, if any; else `2×` when it was
-  /// entered more than once. Calls and copies have their stacks there.
+  /// entered more than once. Over a fork's, `2×` when the code went through
+  /// it more than once, but not in the body of copies, all shown. Calls and
+  /// copies have their stacks there.
   Widget? _countBadge() {
     final marks = this.marks;
-    if (marks == null || node.kind != NodeKind.effect) return null;
+    if (marks == null ||
+        (node.kind != NodeKind.effect && node.kind != NodeKind.condition)) {
+      return null;
+    }
     // In copies, how many copies are on the effect — the effects all of them
-    // passed have nothing over them (docs/design/code-first/copies-frame.html).
+    // passed have nothing over them (docs/design/code-first/copies-frame.html),
+    // nor do forks, where nothing runs.
     if (allCopies) {
       return marks.running > 0
           ? RunningBadge(marks.running, key: runningKeyOf(id))

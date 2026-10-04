@@ -2,24 +2,28 @@ import '../../layout/layout.dart';
 import '../../state/session_view.dart';
 
 /// How an arrow, an exit or an input bar is drawn (docs/ui-spec.md «Граф»):
-/// an effect records no way it took, so no way is highlighted.
+/// no way is highlighted, only what the code did not take is darker.
 enum Tone {
   /// As the graph draws it.
   plain,
 
-  /// In the body of one copy, it leads to or from a node the copy has not
+  /// An arrow out of a passed fork that no way of the code could have taken;
+  /// in the body of one copy, what leads to or from a node the copy has not
   /// reached: darker.
   untaken,
 }
 
 /// What the selected session puts on the canvas, as the canvas asks for it
-/// (spec §9 «Эффекты на графе», «Копии»): the marks of its effects on the nodes
-/// of the level drawn, the nodes of the selected effect, how many copies a
-/// `copies` node ran. [CanvasMarks.plain] for `Current graph`.
+/// (spec §9 «Эффекты на графе», «Развилки», «Копии»): the marks of its
+/// effects on the nodes of the level drawn and of the forks their code went
+/// through, the nodes of the selected effect, how many copies a `copies` node
+/// ran. [CanvasMarks.plain] for `Current graph`.
 ///
-/// An effect records no way it took, only where it was called: arrows, exits
-/// and bars are [Tone.plain] — but in the body of one copy, what leads to
-/// or from a node the copy has not reached is [Tone.untaken]
+/// The way the code took is not highlighted: arrows, exits and bars are
+/// [Tone.plain] — but an arrow out of a passed fork that no way of the code
+/// could have taken is [Tone.untaken], except in the body of copies, all of
+/// them shown (decision 11); and in the body of one copy, what leads to or
+/// from a node the copy has not reached is too
 /// (docs/design/code-first/copy-switcher.html).
 final class CanvasMarks {
   const CanvasMarks._(
@@ -59,7 +63,8 @@ final class CanvasMarks {
   final GraphMarks? _marks;
 
   /// Whether the level drawn is the body of copies, all of them shown: an
-  /// effect node says how many copies are on it now.
+  /// effect node says how many copies are on it now, and no arrow is darker
+  /// for the forks the copies went through.
   final bool allCopies;
 
   /// Whether the level drawn is the body of copies, one copy shown: what
@@ -76,9 +81,16 @@ final class CanvasMarks {
   /// The tone of the exits of [node].
   Tone exit(String node) => _unreached(node) ? Tone.untaken : Tone.plain;
 
+  /// Whether [edge] leaves a passed fork where no way of the code could have
+  /// gone, outside the body of copies, all of them shown.
+  bool _notTaken(EdgePath edge) =>
+      !allCopies && (_marks?.passes.untaken(edge.edgeIndex) ?? false);
+
   /// The tone of [edge].
   Tone edge(EdgePath edge) =>
-      _unreached(edge.from) || _unreached(edge.to) ? Tone.untaken : Tone.plain;
+      _unreached(edge.from) || _unreached(edge.to) || _notTaken(edge)
+      ? Tone.untaken
+      : Tone.plain;
 
   /// The tone of the input bar of [node].
   Tone bar(String node) => _unreached(node) ? Tone.untaken : Tone.plain;
@@ -93,7 +105,7 @@ final class CanvasMarks {
   }
 
   /// What the effects put on the node [id]; `null` for `Current graph`, a
-  /// condition, a marker.
+  /// fork the code did not go through, a marker.
   NodeMarks? node(String id) => _marks?.of(id);
 
   /// Whether the selected effect is on the node [id], or in it: it is ringed.

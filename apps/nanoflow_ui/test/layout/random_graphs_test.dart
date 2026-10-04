@@ -104,6 +104,21 @@ void main() {
     expect(layout.exits.single.node, startMarker);
   });
 
+  test('an arrow knows the edge it draws by its index in the body, the '
+      'edges left out counted', () {
+    final layout = layoutBody(
+      const GraphBody(
+        nodes: [EffectNode(id: 'a', place: null, name: 'a')],
+        edges: [
+          GraphEdge(from: 'missing', to: 'a', label: null),
+          GraphEdge(from: null, to: 'a', label: null),
+          GraphEdge(from: 'a', to: null, label: null),
+        ],
+      ),
+    );
+    expect([for (final edge in layout.edges) edge.edgeIndex], [1, 2]);
+  });
+
   test('of two nodes with one id the first is laid out', () {
     final layout = layoutBody(
       const GraphBody(

@@ -1,14 +1,15 @@
 /// What a session's effects put on the level of the graph the canvas draws
-/// (docs/ui-spec.md «Граф»; spec §9 «Эффекты на графе», «Копии»): the state of
-/// each node, how many effects were on it and how many run there now, how
-/// many copies a `copies` node ran, and the nodes of the selected effect.
-/// Pure.
+/// (docs/ui-spec.md «Граф»; spec §9 «Эффекты на графе», «Развилки», «Копии»):
+/// the state of each node, how many effects were on it and how many run there
+/// now, the forks their code went through and how many times, how many
+/// copies a `copies` node ran, and the nodes of the selected effect. Pure.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'copies.dart';
 import 'effect_places.dart';
+import 'passes.dart';
 import 'session_feed.dart';
 import 'texts.dart' show timesText;
 import 'visits.dart' show StartOutcome, outcomeOf;
@@ -35,7 +36,8 @@ enum NodeState {
 }
 
 /// What the effects put on one node: on an effect node those at its place; on a
-/// call those in its functions; on copies those in their body.
+/// call those in its functions; on copies those in their body; on a fork the
+/// runs of their code that went through it.
 final class NodeMarks {
   const NodeMarks({
     required this.state,
@@ -46,7 +48,8 @@ final class NodeMarks {
 
   final NodeState state;
 
-  /// How many effects were on the node, or in it.
+  /// How many effects were on the node, or in it; on a fork, how many runs
+  /// of the code went through it.
   final int effects;
 
   /// How many of them run now: on an effect node in copies, how many copies
@@ -62,12 +65,16 @@ final class NodeMarks {
 
 /// What effects of a session put on the nodes of one body.
 final class GraphMarks {
-  GraphMarks._(this._marks, this._nodesOf, this.selected);
+  GraphMarks._(this._marks, this._nodesOf, this.selected, this.passes);
 
   /// The marks [effects] of [session] (by default, all of them) put on the
   /// nodes of [body], found by their places with [places]; with the nodes
-  /// of the effect [selectedEffectId] selected. Conditions run no effects: they
-  /// have no marks.
+  /// of the effect [selectedEffectId] selected.
+  ///
+  /// A fork runs no effects: it is visited when the code of those effects
+  /// went through it ([passes]), as many times as runs did, and has no
+  /// marks otherwise — drawn plain, as with no session: that no way is
+  /// found through it does not tell the code did not go there.
   factory GraphMarks.of(
     GraphBody body, {
     required EffectPlaces places,
@@ -96,8 +103,21 @@ final class GraphMarks {
         on[id]!.add(effect);
       }
     }
+    final passes = Passes.of(
+      body,
+      places: places,
+      session: session,
+      effects: scope,
+    );
     return GraphMarks._(
       {
+        for (final node in body.nodes)
+          if (node is ConditionNode && passes.of(node.id) > 0)
+            node.id: NodeMarks(
+              state: NodeState.visited,
+              effects: passes.of(node.id),
+              running: 0,
+            ),
         for (final node in nodes)
           node.id: _marksOf(
             session,
@@ -114,6 +134,7 @@ final class GraphMarks {
       },
       nodesOf,
       selectedEffectId == null ? const {} : {...nodesOf(selectedEffectId)},
+      passes,
     );
   }
 
@@ -123,8 +144,12 @@ final class GraphMarks {
   /// The nodes the selected effect is on or in: ringed.
   final Set<String> selected;
 
-  /// The marks of the node [id]; `null` for a condition, a marker, or a
-  /// node the body does not have.
+  /// The forks the effects went through on the body, and the edges they
+  /// took or could not have taken.
+  final Passes passes;
+
+  /// The marks of the node [id]; `null` for a fork the code did not go
+  /// through, a marker, or a node the body does not have.
   NodeMarks? of(String id) => _marks[id];
 
   /// The nodes of the body the effect [effectId] is on or in, in the body's

@@ -396,6 +396,53 @@ void main() {
       expect(view.revealPathOf(j.effects[2].id), ['5', '2']);
     });
 
+    test('a call in place has the forks of what it shows: the code left '
+        'publish() by !ok false; the level drawn has its own', () {
+      final release = loadGraphFile('release');
+      const publish = Opened('5', functionId: 'lib/publish.dart#publish');
+      final j =
+          Journal('r1r1-session', workflow: 'release', graph: release.toJson())
+            ..effect('plan', 1, end: 2, place: 'lib/release.dart:16')
+            ..effect('build', 3, end: 4, place: 'lib/release.dart:18')
+            ..effect('upload', 5, end: 6, place: 'lib/publish.dart:12')
+            ..effect('verify', 7, end: 8, place: 'lib/publish.dart:13')
+            ..effect('announce', 9, place: 'lib/release.dart:23');
+      final levels = bodyLevels(
+        release.workflowNamed('release')!,
+        release.functions,
+        const [],
+      );
+      final view = SessionView.of(
+        j.data,
+        now: now,
+        documents: noDocuments,
+        graphFile: null,
+        levels: levels,
+        frames: inPlaceFrames(
+          levels,
+          release.functions,
+          Expansions()..expand(const [], publish),
+        ),
+      );
+      final scope = view.scopeOf(const [publish])!;
+      // publish: upload → verify → (!ok ? rollback : end).
+      final body = scope.frame.level.body;
+      expect(scope.marks.of('3')!.state, NodeState.visited);
+      expect(scope.marks.of('3')!.effects, 1);
+      expect(
+        scope.marks.passes.untaken(
+          body.edges.indexWhere((e) => e.from == '3' && e.to == '4'),
+        ),
+        isTrue,
+      );
+      // release: plan → (for pkg ? build → (isPublic ? publish() → loop :
+      // loop) : switch → announce | notify-testers).
+      expect(view.marks!.of('2')!.effects, 2);
+      expect(view.marks!.of('4')!.effects, 1);
+      expect(view.marks!.of('6')!.effects, 1);
+      expect(view.marks!.passes.of('3'), 0);
+    });
+
     group('copies in copies', () {
       const pkg = Opened('1');
       const target = Opened('2');

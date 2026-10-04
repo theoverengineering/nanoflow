@@ -79,25 +79,45 @@ final reviewFile =
 
 /// Session a1b2 of the review example as docs/design/graph.png has it, on
 /// the example's code: collect, inspect, fix, inspect again — started twice
-/// — then publish done and notify running since 14:13:23; at [columnNow] it
-/// has run for 12m 26s.
-Journal reviewSession() {
+/// — then publish done and notify running since 14:13:23, both after the
+/// second inspect, as the library keys effects called side by side; at
+/// [columnNow] it has run for 12m 26s. Once [finished], notify is done at
+/// 14:14:51 and the session a second later.
+Journal reviewSession({bool finished = false}) {
   final graph = graphFileNamed('review');
   String place(int line) => 'lib/review.dart:$line';
-  return Journal('a1b2-session', graph: graph.toJson(), code: graph.fingerprint)
-    ..effect('collect', 0, end: 149, output: 'change-1', place: place(49))
-    ..effect('inspect', 150, end: 342, output: 'report-1', place: place(55))
-    ..effect('fix', 343, end: 369, output: 'change-2', place: place(63))
+  final j =
+      Journal('a1b2-session', graph: graph.toJson(), code: graph.fingerprint)
+        ..effect('collect', 0, end: 149, output: 'change-1', place: place(49))
+        ..effect('inspect', 150, end: 342, output: 'report-1', place: place(55))
+        ..effect('fix', 343, end: 369, output: 'change-2', place: place(63))
+        ..effect(
+          'inspect',
+          369,
+          end: 611,
+          output: 'report-2',
+          place: place(55),
+          restarts: [520],
+        );
+  final inspected = j.effects.last.key;
+  j
     ..effect(
-      'inspect',
-      369,
-      end: 611,
-      output: 'report-2',
-      place: place(55),
-      restarts: [520],
+      'publish',
+      612,
+      end: 613,
+      output: 'published',
+      place: place(58),
+      after: inspected,
     )
-    ..effect('publish', 612, end: 613, output: 'published', place: place(58))
-    ..effect('notify', 612, place: place(59));
+    ..effect(
+      'notify',
+      612,
+      end: finished ? 700 : null,
+      place: place(59),
+      after: inspected,
+    );
+  if (finished) j.finish(701);
+  return j;
 }
 
 /// The ids of the effects of [reviewSession], in order.
@@ -259,13 +279,20 @@ Future<GraphModel> pumpReview(
 );
 
 /// The model of the review example's graph file at [reviewFile] with
-/// [reviewSession], fed [more] after it; the effects' logs and documents are
-/// [files], by default [reviewFiles]. For the screen to own.
-GraphModel reviewModel({FakeFiles? files, List<Change> more = const []}) =>
-    ownedModel(
-      graph: graphFileNamed('review'),
-      file: reviewFile,
-      changes: [...reviewSession().changes, ...more],
-      documents: reviewDocuments,
-      files: files ?? reviewFiles(),
-    );
+/// [reviewSession], [finished] or not, fed [more] after it; the effects'
+/// logs and documents are [files], by default [reviewFiles]. For the screen
+/// to own.
+GraphModel reviewModel({
+  FakeFiles? files,
+  List<Change> more = const [],
+  bool finished = false,
+}) => ownedModel(
+  graph: graphFileNamed('review'),
+  file: reviewFile,
+  changes: [
+    ...reviewSession(finished: finished).changes,
+    ...more,
+  ],
+  documents: reviewDocuments,
+  files: files ?? reviewFiles(),
+);

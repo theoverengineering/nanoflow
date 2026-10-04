@@ -66,6 +66,13 @@ void main() {
     await expectGolden(tester, 'graph_review');
   });
 
+  testWidgets('a finished session on its graph: the forks it went through '
+      'look visited, the loop\'s twice, the way to discard it could not '
+      'have taken darker (effects design §5.3)', (tester) async {
+    await pumpReview(tester, model: reviewModel(finished: true));
+    await expectGolden(tester, 'graph_review_passes');
+  });
+
   testWidgets('a session whose process is gone: Interrupted on its card and '
       'bar, the effect that was running interrupted on its node and in Logs '
       '(owner spec §6)', (tester) async {

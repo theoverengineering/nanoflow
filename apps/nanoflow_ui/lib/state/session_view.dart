@@ -112,7 +112,8 @@ typedef LogsView = ({LogsHeader header, List<LogRow> rows, TimeScale scale});
 
 /// What a session shows in a frame drawn in place (decision 6): what its
 /// body would show opened — the copies frames down to it and the effects
-/// shown, those of the copies chosen in them — and their marks on its body.
+/// shown, those of the copies chosen in them — and their marks on its body,
+/// the forks their code went through there among them.
 final class FrameScope {
   FrameScope._(this.frame, this.shown, this.marks);
 
@@ -121,7 +122,8 @@ final class FrameScope {
   /// The copies frames down to the frame's body, and the effects shown in it.
   final ShownEffects shown;
 
-  /// What the effects shown put on the frame's body.
+  /// What the effects shown put on the frame's body: their own passes, as on
+  /// that body opened, not the level's.
   final GraphMarks marks;
 
   /// The frame's own copies, the one chosen, how they stand; `null` for a

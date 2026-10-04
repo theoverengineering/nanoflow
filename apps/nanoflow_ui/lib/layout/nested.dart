@@ -255,6 +255,7 @@ GraphLayout shiftLayout(GraphLayout layout, Point by) {
           from: e.from,
           exitIndex: e.exitIndex,
           listIndex: e.listIndex,
+          edgeIndex: e.edgeIndex,
           to: e.to,
           kind: e.kind,
           points: [for (final p in e.points) p + by],

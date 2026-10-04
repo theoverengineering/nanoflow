@@ -74,6 +74,9 @@ void main() {
           {for (final edge in body.edges) (edge.from, edge.label)}.length,
         );
         expect(layout.edges.length, body.edges.length);
+        expect([
+          for (final edge in layout.edges) edge.edgeIndex,
+        ], List.generate(body.edges.length, (i) => i));
       });
     });
   }
