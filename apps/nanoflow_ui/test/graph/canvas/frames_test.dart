@@ -1,18 +1,26 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
+import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
 import 'package:nanoflow_ui/graph/canvas/copies_frame.dart';
+import 'package:nanoflow_ui/graph/canvas/edges_painter.dart';
+import 'package:nanoflow_ui/graph/canvas/exit_labels.dart';
 import 'package:nanoflow_ui/graph/canvas/frame_toggle.dart';
 import 'package:nanoflow_ui/graph/canvas/function_frame.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
+import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/copy_switcher.dart';
 import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/graph/logs/logs_panel.dart';
+import 'package:nanoflow_ui/layout/layout.dart' as layout;
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 
+import '../../layout/support.dart' show bodyOf, functionOf, loadGraphFile;
 import '../../state/support.dart';
 import '../../support/golden.dart';
 import '../logs/support.dart';
@@ -98,6 +106,118 @@ void main() {
     expect(find.byType(FunctionFrameView), findsNothing);
     expect(tile('5'), findsOneWidget);
     expect(tile('5/1'), findsNothing);
+  });
+
+  testWidgets('the end of a function in place is a bar on the frame\'s right '
+      'side, outlined as a tile\'s bar: the arrows that end the body point '
+      'at it, the frame has no exit dot; a tile keeps its dot', (tester) async {
+    await pumpCanvas(tester, modelOf());
+    await tap(tester, expand('5'));
+
+    /// The paint of a painter of type [T] that [which] picks: the level's,
+    /// or the body's in the frame.
+    CustomPaint painting<T extends CustomPainter>(bool Function(T) which) =>
+        tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .firstWhere(
+              (paint) => paint.painter is T && which(paint.painter! as T),
+            );
+    bool level(layout.GraphLayout graph) => graph.nodes['5']?.frame != null;
+    bool body(layout.GraphLayout graph) =>
+        graph.nodes[layout.endMarker]?.port ?? false;
+    RenderObject render(CustomPaint paint) =>
+        tester.renderObject(find.byWidget(paint));
+
+    final lines = painting<EdgesPainter>((p) => level(p.graph));
+    final graph = (lines.painter! as EdgesPainter).graph;
+    final inner = graph.nodes['5']!.frame!.inner;
+    final bar = inner.nodes[layout.endMarker]!.bar!.rect.toRect();
+    expect(
+      render(lines),
+      paints
+        ..something(
+          (method, args) =>
+              method == #drawRRect &&
+              args[0] ==
+                  RRect.fromRectAndRadius(
+                    bar.inflate(1),
+                    const Radius.circular(3),
+                  ) &&
+              (args[1] as Paint).color.toARGB32() ==
+                  CanvasColors.background.toARGB32(),
+        )
+        ..rrect(
+          rrect: RRect.fromRectAndRadius(bar, const Radius.circular(2)),
+          color: CanvasColors.plain,
+        ),
+    );
+    final ends = inner.edges.where((e) => e.to == layout.endMarker);
+    expect(ends, hasLength(2));
+    for (final edge in ends) {
+      final head = edge.tip.toOffset() - const Offset(3, 0);
+      expect(
+        render(painting<EdgesPainter>((p) => body(p.graph))),
+        paints..something(
+          (method, args) =>
+              method == #drawPath && (args[0] as Path).contains(head),
+        ),
+        reason: 'the head of the arrow from ${edge.from}',
+      );
+    }
+
+    final exits = render(painting<ExitsPainter>((p) => level(p.graph)));
+    Offset anchorOf(String id) =>
+        graph.exits.singleWhere((x) => x.node == id).anchor.toOffset();
+    final out = anchorOf('5');
+    expect(
+      exits,
+      paints
+        ..everything((method, args) => method != #drawCircle || args[0] != out),
+    );
+    final plan = anchorOf('1');
+    expect(
+      exits,
+      paints
+        ..something((method, args) => method == #drawCircle && args[0] == plan)
+        ..circle(
+          x: plan.dx,
+          y: plan.dy,
+          radius: 4.5,
+          color: CanvasColors.plain,
+        ),
+    );
+  });
+
+  testWidgets('a frame whose body has no end has no bar there: its arrow '
+      'out leaves an exit dot, as a tile\'s does', (tester) async {
+    final release = loadGraphFile('release');
+    final graph = layout.layoutBody(
+      functionOf(release, 'release').body,
+      functions: release.functions,
+      expanded: {
+        '5': layout.ExpandedNode(
+          bodyOf({
+            'start': 'a',
+            'nodes': {
+              'a': {'command': true},
+            },
+          }),
+        ),
+      },
+    );
+    expect(graph.nodes['5']!.frame!.endBar, isNull);
+    await tester.pumpWidget(
+      CustomPaint(painter: ExitsPainter(graph, CanvasMarks.plain)),
+    );
+    final out = graph.exits.singleWhere((x) => x.node == '5').anchor;
+    expect(
+      tester.renderObject(find.byType(CustomPaint)),
+      paints
+        ..something(
+          (method, args) => method == #drawCircle && args[0] == out.toOffset(),
+        )
+        ..circle(x: out.x, y: out.y, radius: 4.5, color: CanvasColors.plain),
+    );
   });
 
   testWidgets('a frame in a frame: copies, and the call in them, at any '

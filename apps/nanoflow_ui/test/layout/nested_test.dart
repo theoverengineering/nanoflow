@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/layout/layout.dart';
 import 'package:test/test.dart';
@@ -174,6 +176,115 @@ void main() {
     test('is the same every time', () {
       expect(describe(releaseWithPublish()), describe(layout));
     });
+
+    test('the end of the body is a bar on the frame\'s right side, as a '
+        'tile\'s input bar: the false way of !ok and rollback point at it '
+        'each at its own height, and the way out leaves its middle', () {
+      _expectEndBar(layout, '5', ways: 2);
+      expect(checkLayout(layout), isEmpty);
+    });
+  });
+
+  group('the end of a body in a frame', () {
+    /// A body with three ways to its end: a fork's way straight there, and
+    /// one through each of two effects.
+    final threeWays = bodyOf({
+      'start': 'pick',
+      'nodes': {
+        'pick': {
+          'decide': true,
+          'then': {'a': 'a', 'b': 'b', 'none': <Object?>[]},
+        },
+        'a': {'command': true, 'then': <Object?>[]},
+        'b': {'command': true, 'then': <Object?>[]},
+      },
+    });
+
+    /// release with its call of publish() drawn in place as [body], in a
+    /// frame keeping [room].
+    GraphLayout releaseWith(
+      GraphBody body, [
+      FrameRoom room = const FrameRoom(),
+    ]) => layoutBody(
+      functionOf(release, 'release').body,
+      functions: release.functions,
+      expanded: {'5': ExpandedNode(body, room: room)},
+    );
+
+    test('three ways: three arrows at their own heights round the bar\'s '
+        'middle, the bar past the outer ones as a tile\'s', () {
+      final layout = releaseWith(threeWays);
+      _expectEndBar(layout, '5', ways: 3);
+      expect(checkLayout(layout), isEmpty);
+    });
+
+    test('one way: the bar is as long as a tile\'s with one input', () {
+      final layout = releaseWith(
+        bodyOf({
+          'start': 'a',
+          'nodes': {
+            'a': {'command': true, 'then': <Object?>[]},
+          },
+        }),
+      );
+      _expectEndBar(layout, '5', ways: 1);
+      final end = layout.nodes['5']!.frame!.inner.nodes[endMarker]!.bar!;
+      // plan, the first node of release, has one arrow in.
+      final plan = layout.nodes['1']!.bar!;
+      expect(plan.inputs, hasLength(1));
+      expect(end.rect.height, closeTo(plan.rect.height, 1e-9));
+      expect(checkLayout(layout), isEmpty);
+    });
+
+    test('a frame wider than its body: the arrows to the end run on to its '
+        'right side, where the bar is', () {
+      final layout = releaseWith(threeWays, const FrameRoom(width: 1200));
+      final call = layout.nodes['5']!;
+      expect(call.tile.width, closeTo(1200, 1e-9));
+      _expectEndBar(layout, '5', ways: 3);
+      final frame = call.frame!;
+      expect(frame.exit!.a, frame.exit!.b, reason: 'nothing to link');
+      expect(frame.inner.bounds.right, closeTo(call.tile.right, 1e-9));
+      expect(checkLayout(layout), isEmpty);
+    });
+
+    test('a name under the node before the end reaching past it: the arrow '
+        'to the end runs on to the frame\'s side, where the bar is', () {
+      const name = 'notify-every-subscriber-of-it';
+      final layout = releaseWith(
+        bodyOf({
+          'start': 'x',
+          'nodes': {
+            'x': {'command': true, 'then': name},
+            name: {'command': true, 'then': <Object?>[]},
+          },
+        }),
+      );
+      final frame = layout.nodes['5']!.frame!;
+      final o = layout.options;
+      final last = frame.inner.nodes[name]!;
+      expect(
+        last.nameRect.right,
+        greaterThan(
+          last.tile.right +
+              o.minInputStraight +
+              o.arrowLength +
+              o.arrowGap +
+              o.barWidth / 2,
+        ),
+        reason: 'the name reaches past where a straight arrow ends',
+      );
+      _expectEndBar(layout, '5', ways: 1);
+      expect(frame.exit!.a, frame.exit!.b, reason: 'nothing to link');
+      expect(checkLayout(layout), isEmpty);
+    });
+
+    test('copies drawn in place end at a bar too, and the call in them', () {
+      final layout = copiesWithCall();
+      _expectEndBar(layout, '1', ways: 1);
+      _expectEndBar(layout.nodes['1']!.frame!.inner, '1', ways: 1);
+      expect(checkLayout(layout), isEmpty);
+    });
   });
 
   test('step 9 finds a frame whose body or links are off their places', () {
@@ -297,12 +408,12 @@ void main() {
     expect(call.tile.width, closeTo(1200, 1e-9));
     expect(body.top - call.tile.top, 70);
     expect(call.tile.bottom - body.bottom, 30);
-    // A body narrower than the frame starts at its left side; a link goes
-    // on from its end to the right side.
+    // A body narrower than the frame starts at its left side; the arrows to
+    // its end run on to the right side.
     expect(body.left, call.tile.left);
     final end = frame.inner.nodes[endMarker]!.tile;
-    expect(frame.exit!.a, Point(end.right, end.center.y));
-    expect(frame.exit!.b, Point(call.tile.right, end.center.y));
+    expect(end.right, call.tile.right);
+    expect(frame.exit!.a, frame.exit!.b, reason: 'nothing to link');
     expect(call.marks.top, call.tile.top - 12);
     expect(checkLayout(layout), isEmpty);
   });
@@ -410,6 +521,46 @@ void main() {
       }
     }
   });
+}
+
+/// Expects the end of the body in the frame of the node [id] of [layout] to
+/// be a bar as a tile's input bar, the [ways] arrows that end the body
+/// pointing at it: its width's middle on the frame's right side, its middle
+/// level with the frame's exit, where the arrows out leave; the arrows at
+/// their own heights a port gap apart round its middle, each an arrow gap
+/// and a head before it; the bar past the outer ones as far as a tile's.
+void _expectEndBar(GraphLayout layout, String id, {required int ways}) {
+  final o = layout.options;
+  final call = layout.nodes[id]!;
+  final frame = call.frame!;
+  final bar = frame.inner.nodes[endMarker]!.bar!;
+  final rect = bar.rect;
+  expect((rect.left + rect.right) / 2, closeTo(call.tile.right, 1e-9));
+  expect(rect.width, closeTo(o.barWidth, 1e-9));
+  final middle = (rect.top + rect.bottom) / 2;
+  expect(middle, closeTo(frame.exit!.b.y, 1e-9));
+  for (final out in layout.exits.where((x) => x.node == id)) {
+    expect(out.anchor, Point(call.tile.right, middle));
+  }
+  final ends = frame.inner.edges.where((e) => e.to == endMarker).toList();
+  expect(ends, hasLength(ways));
+  final heights = [for (final e in ends) e.tip.y]..sort();
+  expect(bar.inputs, heights);
+  for (var i = 1; i < heights.length; i++) {
+    expect(heights[i] - heights[i - 1], closeTo(o.portGap, 1e-9));
+  }
+  expect((heights.first + heights.last) / 2, closeTo(middle, 1e-9));
+  for (final edge in ends) {
+    expect(edge.tip.x, closeTo(rect.left - o.arrowGap, 1e-9));
+    expect(edge.tip.x - edge.points.last.x, closeTo(o.arrowLength, 1e-9));
+    expect(edge.points.last.y, edge.tip.y);
+  }
+  // Half a port gap past the outer arrows, never shorter than the least
+  // bar: as a tile's bar with as many inputs.
+  expect(
+    rect.height,
+    closeTo(math.max(o.minBar, heights.last - heights.first + o.portGap), 1e-9),
+  );
 }
 
 /// Whether [inner] lies in [outer].

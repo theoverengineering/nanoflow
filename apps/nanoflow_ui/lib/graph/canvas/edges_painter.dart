@@ -8,14 +8,16 @@ import 'layout_geometry.dart';
 /// Paints the arrows of a layout and the input bars they point at
 /// (docs/ui-spec.md «Граф»): rounded corners, one arrowhead size, dashed
 /// back arrows, in the tones the marks give them, the lighter over the
-/// darker — an arrow into a frame drawn in place, or to the end of the body
-/// in one, runs on to the frame's side without a head, the arrows on the
-/// other side go on from there
+/// darker — an arrow into a frame drawn in place runs on to the frame's
+/// side without a head, the arrows of its body go on from there
 /// (docs/design/code-first/function-frames.html); and in each frame drawn in
-/// place, the links from its sides to the start and the end of its body
-/// where they are off its sides, in the tones of its bar and exit.
-/// Under the exits and the tiles: a tile covers the half of its bar on its
-/// side, as in the mockups. Clicks go through it.
+/// place, the bar of the end of its body on its right side, in the tone of
+/// its exit — the arrows that end the body point at it, as at a tile's bar,
+/// and the arrows out of the frame leave its middle —, and the links from
+/// its sides to the start and the end of its body where they are off its
+/// sides, in the tones of its bar and exit. Under the exits and the tiles:
+/// a tile covers the half of its bar on its side, as in the mockups. Clicks
+/// go through it.
 class EdgesPainter extends CustomPainter {
   EdgesPainter(this.graph, this.marks);
 
@@ -40,25 +42,15 @@ class EdgesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final node in graph.nodes.values) {
-      final bar = node.bar;
-      // The bar of a frame's end is its side: the frame's exit is there.
-      if (bar == null || node.port) continue;
-      final tone = marks.bar(node.id);
-      final rect = bar.rect.toRect();
-      // Outlined in the canvas's colour, as an exit dot is: the bar stands
-      // out of the ring round the selected effect's node, under the arrows.
-      canvas
-        ..drawRRect(
-          RRect.fromRectAndRadius(
-            rect.inflate(_barOutline),
-            const Radius.circular(_barRadius + _barOutline),
-          ),
-          Paint()..color = CanvasColors.background,
-        )
-        ..drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(_barRadius)),
-          Paint()..color = CanvasColors.line(tone),
-        );
+      // The bar of the end of a body in a frame is the frame's exit: it is
+      // drawn with the frame, in the tone of the frame's exit.
+      if (node.port) continue;
+      if (node.bar case final bar?) {
+        _paintBar(canvas, bar.rect.toRect(), marks.bar(node.id));
+      }
+      if (node.frame?.endBar case final bar?) {
+        _paintBar(canvas, bar.rect.toRect(), marks.exit(node.id));
+      }
     }
     for (final node in graph.nodes.values) {
       final frame = node.frame;
@@ -86,6 +78,22 @@ class EdgesPainter extends CustomPainter {
     }
   }
 
+  /// The bar [rect], outlined in the canvas's colour, as an exit dot is: it
+  /// stands out of the ring round the selected effect's node, under the
+  /// arrows.
+  void _paintBar(Canvas canvas, Rect rect, Tone tone) => canvas
+    ..drawRRect(
+      RRect.fromRectAndRadius(
+        rect.inflate(_barOutline),
+        const Radius.circular(_barRadius + _barOutline),
+      ),
+      Paint()..color = CanvasColors.background,
+    )
+    ..drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(_barRadius)),
+      Paint()..color = CanvasColors.line(tone),
+    );
+
   void _paintEdge(Canvas canvas, layout.EdgePath edge, Tone tone) {
     var path = Path()..moveTo(edge.points.first.x, edge.points.first.y);
     for (final piece in edge.pieces) {
@@ -100,17 +108,12 @@ class EdgesPainter extends CustomPainter {
           );
       }
     }
-    // An arrow into a frame drawn in place, or to the end of the body in
-    // one, goes on through the frame's side: it runs on to the side, and
-    // the arrow after it has the head.
+    // An arrow into a frame drawn in place goes on through the frame's
+    // side: it runs on to the side, and the arrow of the body after it has
+    // the head.
     final into = graph.nodes[edge.to];
-    final through = into != null && (into.port || into.frame != null);
-    if (through) {
-      path.lineTo(
-        into.port ? into.tile.left : into.bar!.rect.left,
-        edge.points.last.y,
-      );
-    }
+    final through = into?.frame != null;
+    if (through) path.lineTo(into!.bar!.rect.left, edge.points.last.y);
     if (edge.isDashed) path = _dashed(path);
     canvas.drawPath(
       path,

@@ -72,8 +72,8 @@ final class ExpandedNode {
 
 /// The body of an expanded node laid out, and the frame round it: a node of
 /// the layout around as big as the frame. Arrows into the node come to the
-/// frame's left side level with the body's start, and leave its right side
-/// level with the body's end.
+/// frame's left side level with the body's start, and leave the bar of the
+/// body's end on its right side from the bar's middle.
 final class FramedBody {
   FramedBody._({
     required this.inner,
@@ -85,21 +85,22 @@ final class FramedBody {
     required this.exit,
   });
 
-  /// [inner], the layout of the body of [node] — its start first and its
+  /// [laid], the layout of the body of [node] — its start first and its
   /// end last, ports — in a frame with [room] round it: its start on the
   /// frame's left side, its end on the right side, and the room's sides
   /// only where the body has none of them; tall and wide enough besides for
   /// the input bar and the exits on its sides, off its corners. A frame
-  /// wider than its body has the room to spare right of it.
+  /// wider than its body has the room to spare right of it — but for the
+  /// arrows to the body's end, which run on to the end on the side.
   factory FramedBody.of(
     GNode node,
-    GraphLayout inner,
+    GraphLayout laid,
     FrameRoom room,
     LayoutOptions options,
   ) {
-    final body = inner.bounds;
-    final entry = inner.nodes[startMarker]?.tile.center.y;
-    final exit = inner.nodes[endMarker]?.tile.center.y;
+    final body = laid.bounds;
+    final entry = laid.nodes[startMarker]?.tile.center.y;
+    final exit = laid.nodes[endMarker]?.tile.center.y;
     final r = options.tileRadius;
     final inputs = node.inEdges.isEmpty
         ? 0.0
@@ -129,15 +130,23 @@ final class FramedBody {
     // A frame taller than its body and rooms has the room to spare under
     // the body.
     final height = math.max(least, top + body.height + bottom);
+    final at = Point(
+      entry == null && exit != null ? width - right - body.width : left,
+      top,
+    );
+    // The end is on the frame's right side, where its bar is: when the
+    // frame is wider than the body, or the name or place under a node
+    // before the end reaches past it, the arrows to the end run on straight
+    // to the side.
+    final end = laid.nodes[endMarker]?.tile.left;
+    final side = width - at.x;
+    final inner = end != null && side - end > 1e-6 ? _endAt(laid, side) : laid;
     return FramedBody._(
       inner: inner,
       room: room,
       width: width,
       height: height,
-      innerAt: Point(
-        entry == null && exit != null ? width - right - body.width : left,
-        top,
-      ),
+      innerAt: at,
       entry: entry == null ? null : top + entry,
       exit: exit == null ? null : top + exit,
     );
@@ -196,45 +205,92 @@ final class FramedBody {
   }
 }
 
-/// [layout] moved by [by]: everything it draws, the frames in it too.
-GraphLayout shiftLayout(GraphLayout layout, Point by) {
+/// [inner], the layout of a body with an end, with the end moved right to
+/// [x] and the arrows to it running on straight as far.
+GraphLayout _endAt(GraphLayout inner, double x) {
+  final by = x - inner.nodes[endMarker]!.tile.left;
+  final b = inner.bounds;
+  return GraphLayout(
+    nodes: {
+      for (final MapEntry(key: id, value: n) in inner.nodes.entries)
+        id: id == endMarker ? _shiftNode(n, Point(by, 0)) : n,
+    },
+    exits: inner.exits,
+    edges: [
+      for (final e in inner.edges)
+        e.to == endMarker ? _runOn(e, by, inner.options) : e,
+    ],
+    bounds: Rect.fromLTRB(b.left, b.top, math.max(b.right, x), b.bottom),
+    options: inner.options,
+  );
+}
+
+/// [edge] with its last, straight piece [by] longer, and its head as far
+/// further on.
+EdgePath _runOn(EdgePath edge, double by, LayoutOptions options) {
+  final shift = Point(by, 0);
+  final points = [
+    ...edge.points.take(edge.points.length - 1),
+    edge.points.last + shift,
+  ];
+  return EdgePath(
+    from: edge.from,
+    exitIndex: edge.exitIndex,
+    listIndex: edge.listIndex,
+    edgeIndex: edge.edgeIndex,
+    to: edge.to,
+    kind: edge.kind,
+    points: points,
+    tip: edge.tip + shift,
+    pieces: roundCorners(points, options.cornerRadius),
+  );
+}
+
+/// [n] moved by [by]: its tile, texts, marks and bar, and its frame.
+NodeBox _shiftNode(NodeBox n, Point by) {
   Rect rect(Rect r) => r.shift(by);
   Segment? segment(Segment? s) =>
       s == null ? null : Segment(s.a + by, s.b + by);
+  return NodeBox(
+    id: n.id,
+    kind: n.kind,
+    node: n.node,
+    name: n.name,
+    fullName: n.fullName,
+    place: n.place,
+    inside: n.inside,
+    layer: n.layer,
+    tile: rect(n.tile),
+    nameRect: rect(n.nameRect),
+    placeRect: rect(n.placeRect),
+    marks: rect(n.marks),
+    status: rect(n.status),
+    bar: switch (n.bar) {
+      final bar? => InputBar(
+        rect: rect(bar.rect),
+        inputs: [for (final y in bar.inputs) y + by.y],
+      ),
+      null => null,
+    },
+    frame: switch (n.frame) {
+      final frame? => FrameBox(
+        inner: shiftLayout(frame.inner, by),
+        entry: segment(frame.entry),
+        exit: segment(frame.exit),
+      ),
+      null => null,
+    },
+    port: n.port,
+  );
+}
+
+/// [layout] moved by [by]: everything it draws, the frames in it too.
+GraphLayout shiftLayout(GraphLayout layout, Point by) {
+  Rect rect(Rect r) => r.shift(by);
   return GraphLayout(
     nodes: {
       for (final MapEntry(key: id, value: n) in layout.nodes.entries)
-        id: NodeBox(
-          id: n.id,
-          kind: n.kind,
-          node: n.node,
-          name: n.name,
-          fullName: n.fullName,
-          place: n.place,
-          inside: n.inside,
-          layer: n.layer,
-          tile: rect(n.tile),
-          nameRect: rect(n.nameRect),
-          placeRect: rect(n.placeRect),
-          marks: rect(n.marks),
-          status: rect(n.status),
-          bar: switch (n.bar) {
-            final bar? => InputBar(
-              rect: rect(bar.rect),
-              inputs: [for (final y in bar.inputs) y + by.y],
-            ),
-            null => null,
-          },
-          frame: switch (n.frame) {
-            final frame? => FrameBox(
-              inner: shiftLayout(frame.inner, by),
-              entry: segment(frame.entry),
-              exit: segment(frame.exit),
-            ),
-            null => null,
-          },
-          port: n.port,
-        ),
+        id: _shiftNode(n, by),
     },
     exits: [
       for (final x in layout.exits)

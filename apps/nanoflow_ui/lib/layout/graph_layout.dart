@@ -100,8 +100,9 @@ final class NodeBox {
   final InputBar? bar;
 
   /// Whether this is the start or the end of a body in a frame: a point on
-  /// the frame's side, [tile] without width; neither it, its exit nor its
-  /// bar is drawn — the frame's bar and exit are there.
+  /// the frame's side, [tile] without width. Neither it nor its exits are
+  /// drawn — the start's arrows leave the frame's side, where the frame's
+  /// bar is; the end's bar is drawn with the frame ([FrameBox.endBar]).
   final bool port;
 
   /// The body of a call or copies expanded in place, [tile] its frame;
@@ -115,9 +116,12 @@ final class NodeBox {
 ///
 /// Arrows into the node point at the bar on the frame's left side, level
 /// with the body's start, and those of the body go on from there; the
-/// body's arrows to its end come to the frame's right side, where arrows
-/// out of the node leave. The start and end are ports on the sides; a link
-/// runs straight to a side they are off — a title wider than the body.
+/// body's arrows to its end point at its bar on the frame's right side, as
+/// at a tile's, and arrows out of the node leave the bar's middle. The
+/// start and end are ports on the sides. The end is always on its side, the
+/// arrows to it running on as far as need be; a link runs straight from
+/// the left side to a start off it — the name or place under a node after
+/// the start reaching further left.
 final class FrameBox {
   FrameBox({required this.inner, required this.entry, required this.exit});
 
@@ -130,9 +134,13 @@ final class FrameBox {
   /// on the side; `null` when the body has no start.
   final Segment? entry;
 
-  /// From the body's end to the frame's right side, none long when it is on
-  /// the side; `null` when the body has no end.
+  /// From the body's end to the frame's right side, none long: the end is
+  /// on the side; `null` when the body has no end.
   final Segment? exit;
+
+  /// The bar of the body's end, its width's middle on the frame's right
+  /// side; `null` when the body has no end.
+  InputBar? get endBar => inner.nodes[endMarker]?.bar;
 }
 
 /// The bar on a tile's left side that arrows point at.

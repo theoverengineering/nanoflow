@@ -437,9 +437,11 @@ final class NodeFrame {
 /// The tile of an expanded node is its frame: no name or place under it,
 /// no state badge, the input bar and the exits level with its body's start
 /// and end, and over it only what is drawn with the frame. A port has no
-/// width and no marks; nothing of its exits is drawn, and its bar is the
-/// frame's side: arrows leave it straight, and come to it no further than
-/// their heads.
+/// width and no marks, and nothing of its exits is drawn: arrows leave the
+/// start straight from the frame's side. The end's bar is on the frame's
+/// side as a tile's is on the tile's, the arrows pointing at it from a gap
+/// and a head before it; the room it keeps ends at the side, past which
+/// the frame's exit is.
 NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   final o = options;
   final framed = node.framed;
