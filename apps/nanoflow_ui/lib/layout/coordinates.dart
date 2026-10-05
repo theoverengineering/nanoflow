@@ -304,12 +304,25 @@ bool placeLayers(
 ///
 /// Tries, in turn, the height of the arrow's exit, of its input, of its first
 /// and last pass points, and its highest and lowest pass points.
-void straightenPasses(
+///
+/// With [early], an arrow going forward into a node with several inputs
+/// tries its input's height before its exit's: one running at its exit's
+/// height would turn just before the node, in the way of those beside it.
+/// And an arrow going forward that cannot run at its input's height all the
+/// way takes it right past the last pass point that has no room there: the
+/// pass points after it stand at the input's height, and those before it at
+/// one height if they fit — the exit's, their first or last, their lowest
+/// or highest. So it turns to its input past what stands in its way, not
+/// just before its node, and never turns more: the pass points after the
+/// obstacle all take the height it ends at. Returns whether that moved a
+/// pass point anywhere but to one height for the whole arrow.
+bool straightenPasses(
   LayoutGraph graph,
   List<List<Item>> layers,
   Map<GNode, Ports> ports,
-  LayoutOptions options,
-) {
+  LayoutOptions options, {
+  bool early = false,
+}) {
   bool fits(Item item, double y) {
     final layer = layers[item.layer];
     final i = item.order;
@@ -325,37 +338,101 @@ void straightenPasses(
   }
 
   // A straightened arrow can make room for another: a few rounds.
+  var moved = false;
   for (var round = 0; round < 3; round++) {
     for (final edge in graph.edges) {
-      _straighten(edge, ports, fits);
+      if (_straighten(edge, ports, fits, early: early)) moved = true;
     }
   }
+  return moved;
 }
 
-void _straighten(
-  GEdge edge,
-  Map<GNode, Ports> ports,
+/// Puts [passes] at the first of [heights] where they all fit; whether that
+/// moved one.
+bool _putAt(
+  List<Item> passes,
+  List<double> heights,
   bool Function(Item, double) fits,
 ) {
+  for (final y in heights) {
+    if (passes.every((pass) => fits(pass, y))) {
+      var moved = false;
+      for (final pass in passes) {
+        if ((pass.y - y).abs() > 1e-9) moved = true;
+        pass.y = y;
+      }
+      return moved;
+    }
+  }
+  return false;
+}
+
+/// [straightenPasses] for one arrow; whether that moved a pass point when
+/// [early] put some at the input's height ahead of the rest.
+bool _straighten(
+  GEdge edge,
+  Map<GNode, Ports> ports,
+  bool Function(Item, double) fits, {
+  required bool early,
+}) {
   final passes = [for (final seg in edge.segs.skip(1)) seg.from];
-  if (passes.isEmpty) return;
-  final heights = [for (final pass in passes) pass.y];
-  final candidates = [
+  if (passes.isEmpty) return false;
+  List<double> heightsOf(List<Item> items) => [
+    for (final item in items) item.y,
+  ];
+  final heights = heightsOf(passes);
+  final input = inY(edge.segs.last, ports);
+  var straight = false;
+  // Into a node with several inputs, an arrow takes its input's height
+  // before its exit's, so as not to stand in the way of those beside it.
+  final inputFirst =
+      early && edge.kind == EdgeKind.forward && edge.to.inEdges.length > 1;
+  for (final y in [
+    if (inputFirst) input,
     outY(edge.segs.first, ports),
-    inY(edge.segs.last, ports),
+    if (!inputFirst) input,
     heights.first,
     heights.last,
     heights.reduce(math.min),
     heights.reduce(math.max),
-  ];
-  for (final y in candidates) {
+  ]) {
     if (passes.every((pass) => fits(pass, y))) {
       for (final pass in passes) {
         pass.y = y;
       }
-      return;
+      straight = true;
+      break;
     }
   }
+  if (!early || edge.kind != EdgeKind.forward) return false;
+  // An arrow straight at its input's height is done; one straight at its
+  // exit's or a band's turns to its input just before its node, and one
+  // with no one height steps wherever its pass points stand.
+  if (straight && (passes.last.y - input).abs() < 1e-9) return false;
+  var k = passes.length;
+  while (k > 0 && fits(passes[k - 1], input)) {
+    k--;
+  }
+  // Room all the way: the arrow stays at the height it took; none at the
+  // last pass point: nothing to take early.
+  if (k == passes.length || k == 0) return false;
+  var moved = false;
+  for (final pass in passes.skip(k)) {
+    if ((pass.y - input).abs() > 1e-9) moved = true;
+    pass.y = input;
+  }
+  final before = passes.sublist(0, k);
+  final placed = heightsOf(before);
+  if (_putAt(before, [
+    outY(edge.segs.first, ports),
+    placed.first,
+    placed.last,
+    placed.reduce(math.min),
+    placed.reduce(math.max),
+  ], fits)) {
+    moved = true;
+  }
+  return moved;
 }
 
 /// Where [item] wants its y: its input level with the exit of the arrow from
@@ -388,12 +465,15 @@ double? _wantedY(Item item, Map<GNode, Ports> ports) {
 /// points stand there or can, each as far from its neighbours as
 /// [minDistance] keeps them, the pass points of the other arrows that move
 /// standing where they would. A long arrow whose pass points all have room
-/// level with its exit stays there ([straightenPasses] tries that height
-/// first): it comes in level only if its exit is. The
-/// pass points of arrows to one node are a lane gap apart in the corridor,
-/// as their inputs are a port gap apart on the bar: a bundle of them that
-/// the nodes beside it push up or down comes in level all together, or
-/// each a jog off.
+/// level with its exit is counted as staying there, as [straightenPasses]
+/// keeps it but in the layouts `_worse` in layout.dart weighs — there, into
+/// a node with several inputs, it tries its input's height first —: the
+/// count may fall short, never over. Counting such arrows in level too,
+/// measured, moved a tenth more nested levels, traded turns for arrows
+/// turning twice, and lost the pinned `work()` view. The pass points of
+/// arrows to one node are a lane gap apart in the corridor, as their inputs
+/// are a port gap apart on the bar: a bundle of them that the nodes beside
+/// it push up or down comes in level all together, or each a jog off.
 ({int count, Map<GEdge, double> moves}) _levelAt(
   Item item,
   double y,

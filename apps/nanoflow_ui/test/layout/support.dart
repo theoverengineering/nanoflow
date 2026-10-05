@@ -252,38 +252,21 @@ List<({double x, double from, double to})> turnsOf(EdgePath edge) {
   return (turns: turns, twice: twice);
 }
 
-/// The arrows into the end of [body] that turned before and turn once more
-/// in the gap just before the end: a jog before the bar, as
-/// `from#exit jog` and its height.
-List<String> jogsBeforeEnd(GraphLayout body) {
-  if (body.nodes[endMarker] == null) return const [];
-  final gap = body.nodes.values
-      .where((node) => node.id != endMarker)
-      .map((node) => node.tile.right)
-      .fold(double.negativeInfinity, math.max);
-  return [
-    for (final edge in body.edges)
-      if (edge.to == endMarker)
-        if (turnsOf(edge) case final turns
-            when turns.length > 1 && turns.last.x >= gap - 1e-6)
-          '${edge.from}#${edge.exitIndex} jog '
-              '${(turns.last.to - turns.last.from).toStringAsFixed(1)}',
-  ];
-}
-
-/// The arrows into the end of [body] that jog just before it after turning
-/// before, grouped by the height of the jog, where a group outnumbers the
-/// arrows that come in level — without a turn in the gap before the end —,
-/// which hold the end where it is: standing that height off, the end would
-/// take more arrows in level than it turns.
-List<String> unheldJogs(GraphLayout body) {
-  if (body.nodes[endMarker] == null) return const [];
-  final gap = body.nodes.values
-      .where((node) => node.id != endMarker)
-      .map((node) => node.tile.right)
-      .fold(double.negativeInfinity, math.max);
+/// The arrows into the end of [body], a body laid out in a frame, by how
+/// they come in: [level], without a turn in the gap just before the end;
+/// and [jogs], those that turned before and turn once more in that gap — a
+/// jog before the bar —, grouped by the height of that jog. Empty without
+/// an end.
+({List<String> level, Map<String, List<String>> jogs}) arrowsIntoEnd(
+  GraphLayout body,
+) {
   final level = <String>[];
   final jogs = <String, List<String>>{};
+  if (body.nodes[endMarker] == null) return (level: level, jogs: jogs);
+  final gap = body.nodes.values
+      .where((node) => node.id != endMarker)
+      .map((node) => node.tile.right)
+      .fold(double.negativeInfinity, math.max);
   for (final edge in body.edges) {
     if (edge.to != endMarker) continue;
     final name = '${edge.from}#${edge.exitIndex}';
@@ -295,44 +278,29 @@ List<String> unheldJogs(GraphLayout body) {
       jogs.putIfAbsent(jog, () => []).add(name);
     }
   }
-  return [
-    for (final MapEntry(key: jog, value: arrows) in jogs.entries)
-      if (arrows.length > level.length)
-        '${arrows.join(', ')} jog $jog, held only by ${level.join(', ')}',
-  ];
+  return (level: level, jogs: jogs);
 }
 
-/// [body], a body laid out in a frame, if its end could stand higher or
-/// lower and bring more arrows in level: arrows into the end that turned
-/// before and then jog by one height in the gap before it, a group of two
-/// or more for each height, outnumbering the arrows that come in without
-/// turning in that gap. The end is alone in its layer and nothing goes on
-/// from it in the body: standing by that height off, it would take each
-/// arrow of the group in level from its turn before, and turn the others.
-List<String> endJogs(GraphLayout body) {
-  final end = body.nodes[endMarker];
-  if (end == null) return const [];
-  final gap = body.nodes.values
-      .where((node) => node.id != endMarker)
-      .map((node) => node.tile.right)
-      .fold(double.negativeInfinity, math.max);
-  var straight = 0;
-  final jogs = <String, List<String>>{};
-  for (final edge in body.edges) {
-    if (edge.to != endMarker) continue;
-    final turns = turnsOf(edge);
-    if (turns.isEmpty || turns.last.x < gap - 1e-6) {
-      straight++;
-    } else if (turns.length > 1) {
-      final jog = (turns.last.to - turns.last.from).toStringAsFixed(1);
-      jogs.putIfAbsent(jog, () => []).add('${edge.from}#${edge.exitIndex}');
-    }
-  }
+/// Every arrow of [arrowsIntoEnd] that jogs just before the end, as
+/// `from#exit jog` and its height.
+List<String> jogsBeforeEnd(GraphLayout body) => [
+  for (final MapEntry(key: jog, value: arrows) in arrowsIntoEnd(
+    body,
+  ).jogs.entries)
+    for (final arrow in arrows) '$arrow jog $jog',
+];
+
+/// The groups of [arrowsIntoEnd], of at least [least] arrows, that
+/// outnumber the arrows coming in level, which hold the end where it is:
+/// the end — alone in its layer, nothing going on from it in the body —
+/// standing that group's jog off would take more arrows in level than it
+/// turns.
+List<String> unheldJogs(GraphLayout body, {int least = 1}) {
+  final (:level, :jogs) = arrowsIntoEnd(body);
   return [
     for (final MapEntry(key: jog, value: arrows) in jogs.entries)
-      if (arrows.length > 1 && arrows.length > straight)
-        '${arrows.join(', ')} jog $jog before the end, '
-            '$straight in without a turn there',
+      if (arrows.length >= least && arrows.length > level.length)
+        '${arrows.join(', ')} jog $jog, held only by ${level.join(', ')}',
   ];
 }
 

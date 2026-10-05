@@ -793,7 +793,7 @@ void main() {
       ('specify', specify),
       ('judgeSpec', judgeSpec),
     ]) {
-      expect(endJogs(body), isEmpty, reason: name);
+      expect(unheldJogs(body), isEmpty, reason: name);
       for (final edge in body.edges.where((e) => e.to == endMarker)) {
         expect(
           turnsOf(edge).length,
@@ -802,9 +802,8 @@ void main() {
         );
       }
     }
-    // The tightest trade the guard has to let through: lead grows 70.5 px
-    // (681.5 to 752) for 7 turns and 9 arrows no longer turning twice in
-    // specify and judgeSpec, 2.8 px a turn against the 40 allowed.
+    // The tightest trade the guard has to let through, with a wide margin:
+    // docs/graph-layout.md §6 «Узел с несколькими входами» has its numbers.
     final before = _asBefore(lay);
     final now = deepTurns(layout);
     final was = deepTurns(before);
@@ -815,7 +814,7 @@ void main() {
     expect(grows / saved, lessThan(layout.options.tile / 2 / 10));
   });
 
-  for (final function in ['write', 'writeCut', 'decide']) {
+  for (final function in ['write', 'writeCut', 'decide', 'work', 'review']) {
     test('$function() of chain-later drawn in place: no arrow that turned '
         'before turns again just before its end', () {
       final drawn = inPlace(
@@ -828,23 +827,95 @@ void main() {
     });
   }
 
+  test('write() of chain-later drawn in place: every arrow into its end '
+      'turns once, to its input\'s height, past what stands in its way', () {
+    final drawn = inPlace(
+      functionOf(chainLater, 'write').body,
+      functions: chainLater.functions,
+    );
+    final body = drawn.nodes['c']!.frame!.inner;
+    final arrows = body.edges.where((e) => e.to == endMarker).toList();
+    expect(arrows, hasLength(5));
+    for (final edge in arrows) {
+      expect(
+        turnsOf(edge).length,
+        lessThanOrEqualTo(1),
+        reason: '${edge.from}#${edge.exitIndex}: ${edge.points}',
+      );
+    }
+  });
+
+  test('work() drawn in place in carry() in task (chain-later): the arrow from '
+      'the first !answer.goesOn turns down to its input right past the second '
+      'and runs straight into the bar; move\'s turns twice at most', () {
+    final task = layoutBody(
+      functionOf(chainLater, 'task').body,
+      functions: chainLater.functions,
+      expanded: {
+        '1': ExpandedNode(
+          functionOf(chainLater, 'carry').body,
+          expanded: {'5': ExpandedNode(functionOf(chainLater, 'work').body)},
+        ),
+      },
+    );
+    expect(checkLayout(task), isEmpty);
+    final work = task.nodes['1']!.frame!.inner.nodes['5']!.frame!.inner;
+    EdgePath into(String from) =>
+        work.edges.singleWhere((e) => e.from == from && e.to == endMarker);
+    final turns = turnsOf(into('4'));
+    final second = work.nodes['8']!;
+    final after = work.nodes.values
+        .where((n) => n.layer == second.layer + 1)
+        .map((n) => n.tile.left)
+        .reduce(math.min);
+    expect(turns.last.x, greaterThan(second.tile.right), reason: '$turns');
+    expect(turns.last.x, lessThan(after), reason: '$turns');
+    expect(turnsOf(into('24')).length, lessThanOrEqualTo(2));
+  });
+
+  test('finish() of chain-later, drawn in place and in lead: the way out of '
+      'while (notGathered != null) keeps its two turns, no third one for '
+      'the end standing level with report', () {
+    final inPlaceBody = inPlace(
+      functionOf(chainLater, 'finish').body,
+      functions: chainLater.functions,
+    ).nodes['c']!.frame!.inner;
+    final lead = layoutBody(
+      functionOf(chainLater, 'lead').body,
+      functions: chainLater.functions,
+      expanded: {'11': ExpandedNode(functionOf(chainLater, 'finish').body)},
+    );
+    final inLead = lead.nodes['11']!.frame!.inner;
+    for (final body in [inPlaceBody, inLead]) {
+      final arrow = body.edges.singleWhere(
+        (e) => e.from == '17' && e.exitIndex == 1 && e.to == endMarker,
+      );
+      expect(
+        turnsOf(arrow).length,
+        lessThanOrEqualTo(2),
+        reason: '${arrow.points}',
+      );
+    }
+  });
+
   test('every function of the test graphs drawn in place: the end of its '
       'body stands where no more of its arrows would come in level — no '
       'arrows jogging into it by one height outnumber those coming in '
       'level, which hold it', () {
     var ends = 0;
     final fallbacks = levelInputFallbacks;
+    final snaps = endSnapFallbacks;
     for (final name in graphNames()) {
       final file = loadGraphFile(name);
       for (final MapEntry(key: id, value: body) in bodiesOf(file).entries) {
         final drawn = inPlace(body, functions: file.functions);
         final inner = drawn.nodes['c']!.frame!.inner;
         if (inner.nodes[endMarker] != null) ends++;
-        expect(endJogs(inner), isEmpty, reason: '$name $id');
         expect(unheldJogs(inner), isEmpty, reason: '$name $id');
       }
     }
     expect(ends, greaterThan(60));
+    expect(endSnapFallbacks - snaps, 0);
     expect(
       levelInputFallbacks - fallbacks,
       0,
@@ -1124,8 +1195,8 @@ void main() {
     test('random body $seed nested: it grows taller for nodes standing where '
         'more arrows come in level only by half a tile for each turn saved, '
         'counted twice for an arrow turning twice no more', () {
-      // Without the guard, seed 603 grows 1394 px to save two turns, and
-      // 870 grows 438.5 px to save a turn and an arrow turning twice.
+      // Each would grow far for a turn or two without the guard:
+      // docs/graph-layout.md §6 «Узел с несколькими входами» has their numbers.
       final layout = _randomNested(seed);
       final before = _asBefore(() => _randomNested(seed));
       expect(before.bounds.height, closeTo(base, 1));
@@ -1147,6 +1218,7 @@ void main() {
     var ends = 0;
     var asBefore = 0;
     final fallbacks = levelInputFallbacks;
+    final snaps = endSnapFallbacks;
     void visit(GraphLayout level, GraphLayout before, String where) {
       for (final node in level.nodes.values) {
         final inner = node.frame?.inner;
@@ -1155,8 +1227,9 @@ void main() {
         if (inner.nodes[endMarker] != null) ends++;
         // Each group, its jog and the arrows without one too, as the layout
         // as before has it where the guards kept the body's heights.
-        final jogs = endJogs(inner);
-        if (jogs.isNotEmpty && endJogs(old).toSet().containsAll(jogs)) {
+        final jogs = unheldJogs(inner, least: 2);
+        if (jogs.isNotEmpty &&
+            unheldJogs(old, least: 2).toSet().containsAll(jogs)) {
           asBefore++;
         } else {
           expect(jogs, isEmpty, reason: '$where ${node.id}');
@@ -1173,23 +1246,27 @@ void main() {
     expect(ends, greaterThan(500));
     expect(
       asBefore,
-      lessThanOrEqualTo(2),
+      0,
       reason:
-          'only where standing the end where more arrows come in level '
-          'turned more there or round it, or grew it taller than the turns '
-          'it saved pay for, does a body keep the jogs before its end it '
-          'had: 87 › n1 and 128 › n0 › n5',
+          'with the arrows taking their input\'s height right past what '
+          'stands in their way, no body keeps a group of jogs before its '
+          'end, not even where the guards kept its heights as before',
+    );
+    expect(
+      endSnapFallbacks - snaps,
+      0,
+      reason: 'no end snapped to its arrows here is worse for it',
     );
     expect(
       levelInputFallbacks - fallbacks,
-      lessThanOrEqualTo(46),
+      lessThanOrEqualTo(53),
       reason:
           'nodes stand where most of their arrows come in level only where '
           'the level — and round a frame whose body changed, the level '
           'round it — crosses no more, breaks no more rules, has no more '
-          'turns or arrows turning twice and grows no more than half a tile '
-          'for each turn saved; of these random levels 46 keep the heights '
-          'of before, 14 without that last check',
+          'turns, arrows turning twice or staircases, and grows no more '
+          'than half a tile for each turn saved; of these random levels 53 '
+          'keep the heights of before',
     );
   });
 }

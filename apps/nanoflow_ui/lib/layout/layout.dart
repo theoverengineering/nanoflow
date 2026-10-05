@@ -79,6 +79,21 @@ GraphLayout layoutBody(
 /// if it is no worse than the level as before; else the level stays as
 /// before, the frames in it too.
 ///
+/// How a level comes to its heights, after the order of its nodes:
+/// 1. [_finish] lays it out with every node level with the arrow from the
+///    longest path, and with early turns where a layer is wider than a node.
+/// 2. It lays it out again with nodes where most arrows come in level,
+///    counted by `placeLayers` before the arrows are straightened and
+///    routed, and with arrows taking their input's height early
+///    (`straightenPasses`); kept if not [_worse].
+/// 3. [_snap] moves a body's end to the arrows arriving at it, read from
+///    the routed layout ([_snapShifts]); kept if not [_worse], up to twice.
+/// 4. Here, a level whose frames changed is weighed against the level as
+///    before, round the frames as they were.
+/// A level so takes at most one build for its order's best, one for its
+/// early turns, one for its heights and two for its end — besides its
+/// loops' tries and [_untangle] —, and five more round changed frames.
+///
 /// [endBarHalf] is the least half length of the bar of the end of a body
 /// in a frame ([GNode.leastBarHalf]).
 ({GraphLayout base, GraphLayout chosen}) _layout(
@@ -134,7 +149,7 @@ GraphLayout layoutBody(
   final before = _laid(g, options);
   final base = before.kept;
   if (inners.values.every((inner) => identical(inner.base, inner.chosen))) {
-    return (base: base, chosen: before.levelled ?? base);
+    return (base: base, chosen: before.improved ?? base);
   }
   // The frames that changed are laid out in the order chosen round them as
   // they were: the level keeps its order, and only what their new sizes
@@ -142,52 +157,67 @@ GraphLayout layoutBody(
   final again = graph();
   frame(again, (id) => inners[id]!.chosen);
   final after = _laid(again, options, order: before.order);
-  for (final layout in [?after.levelled, after.kept]) {
-    if (!_worse(layout, base)) return (base: base, chosen: layout);
+  final was = _counts(base);
+  for (final layout in [?after.improved, after.kept]) {
+    if (!_worse(_counts(layout), was)) return (base: base, chosen: layout);
   }
   levelInputFallbacks++;
   return (base: base, chosen: base);
 }
 
-/// Whether [layout], with nodes standing where most of their arrows come in
-/// level, is worse than [was], the layout it would replace: it crosses
-/// more, breaks a rule of step 9 more often, has more turns or more arrows
-/// turning twice, or is taller by more than what it saves pays for
-/// ([_paidFor]).
-bool _worse(GraphLayout layout, GraphLayout was) {
-  final now = _turns(layout);
-  final before = _turns(was);
-  return checkLevel(layout).length > checkLevel(was).length ||
-      countCrossings(layout) > countCrossings(was) ||
-      now.turns > before.turns ||
-      now.twice > before.twice ||
-      !_paidFor(layout, was);
-}
+/// What [_worse] weighs of a layout: its own problems and crossings, its
+/// arrows' turns, those of the bodies in its frames too, and its height.
+typedef _Counts = ({
+  int broken,
+  int crossings,
+  ({int turns, int twice, int thrice}) own,
+  ({int turns, int twice}) deep,
+  double height,
+  double tile,
+});
 
-/// Whether [layout] is no taller than [was] by more than half a tile for
-/// each turn it saves, an arrow it saves turning twice counted as two more:
-/// over the level and the bodies in its frames, since a level round a frame
-/// whose body changed grows for what that body saves. A node far down to
-/// stand level with an exit saves a turn or two for a level much taller:
-/// random body 603 would grow 1394 px for 2 turns, 232 px a turn, and 870
-/// 438.5 px for 146 px a turn. The user's graph, where the jogs before the
-/// end were seen, needs at most 2.8 px a turn: `lead` round `specify()` and
-/// `judgeSpec()` grows 70.5 px for 7 turns and 9 arrows no longer turning
-/// twice in them. That leaves the user's graph a margin of 14 times, and
-/// stops 603 and 870 by 5.8 and 3.7 times. Over random levels half the
-/// growths cost under 8 px a turn, and 95 % under 43.
-bool _paidFor(GraphLayout layout, GraphLayout was) {
-  final grows = layout.bounds.height - was.bounds.height;
+/// [_Counts] of [layout].
+_Counts _counts(GraphLayout layout) => (
+  broken: checkLevel(layout).length,
+  crossings: countCrossings(layout),
+  own: _turns(layout),
+  deep: _deepTurns(layout),
+  height: layout.bounds.height,
+  tile: layout.options.tile,
+);
+
+/// Whether a layout with nodes standing where most of their arrows come in
+/// level, counted [now], is worse than the layout it would replace, counted
+/// [was]: it crosses more, breaks a rule of step 9 more often, has more
+/// turns, more arrows turning twice or more arrows turning three times or
+/// more — a staircase —, or is taller by more than what it saves pays for
+/// ([_paidFor]).
+bool _worse(_Counts now, _Counts was) =>
+    now.broken > was.broken ||
+    now.crossings > was.crossings ||
+    now.own.turns > was.own.turns ||
+    now.own.twice > was.own.twice ||
+    now.own.thrice > was.own.thrice ||
+    !_paidFor(now, was);
+
+/// Whether a layout counted [now] is no taller than the one counted [was]
+/// by more than half a tile for each turn it saves, an arrow it saves
+/// turning twice counted as two more: over the level and the bodies in its
+/// frames, since a level round a frame whose body changed grows for what
+/// that body saves. A node far down to stand level with an exit saves a
+/// turn or two for a level much taller; docs/graph-layout.md §6 has the
+/// cases that set half a tile.
+bool _paidFor(_Counts now, _Counts was) {
+  final grows = now.height - was.height;
   if (grows <= 1e-6) return true;
-  final now = _deepTurns(layout);
-  final before = _deepTurns(was);
-  final saved = before.turns - now.turns + 2 * (before.twice - now.twice);
-  return grows <= layout.options.tile / 2 * saved + 1e-6;
+  final saved =
+      was.deep.turns - now.deep.turns + 2 * (was.deep.twice - now.deep.twice);
+  return grows <= now.tile / 2 * saved + 1e-6;
 }
 
 /// [_turns] of [layout] and of the bodies in its frames.
 ({int turns, int twice}) _deepTurns(GraphLayout layout) {
-  var (:turns, :twice) = _turns(layout);
+  var (:turns, :twice, thrice: _) = _turns(layout);
   for (final node in layout.nodes.values) {
     final inner = node.frame?.inner;
     if (inner == null) continue;
@@ -204,7 +234,7 @@ bool _paidFor(GraphLayout layout, GraphLayout was) {
 /// and the order of the layers and the nodes whose loops go under them.
 /// With [order], that of another layout of the same body, the layers keep
 /// it, and the loops their sides.
-({GraphLayout kept, GraphLayout? levelled, _Order order}) _laid(
+({GraphLayout kept, GraphLayout? improved, _Order order}) _laid(
   LayoutGraph g,
   LayoutOptions options, {
   _Order? order,
@@ -225,12 +255,12 @@ bool _paidFor(GraphLayout layout, GraphLayout was) {
       }
     }
     final layout = _build(g, layers, options, below, turnEarly: false);
-    final (:kept, :levelled) = _finish(g, layers, options, below, (
+    final (:kept, :improved) = _finish(g, layers, options, below, (
       layout: layout,
       broken: checkLevel(layout).length,
       crossings: countCrossings(layout),
     ));
-    return (kept: kept, levelled: levelled, order: order);
+    return (kept: kept, improved: improved, order: order);
   }
   orderLayers(g, layers, options);
   // The loops' sides and the order of the nodes are chosen with every turn
@@ -259,7 +289,7 @@ bool _paidFor(GraphLayout layout, GraphLayout was) {
       below.remove(node);
     }
   }
-  final (:kept, :levelled) = _finish(
+  final (:kept, :improved) = _finish(
     g,
     layers,
     options,
@@ -268,7 +298,7 @@ bool _paidFor(GraphLayout layout, GraphLayout was) {
   );
   return (
     kept: kept,
-    levelled: levelled,
+    improved: improved,
     order: (
       layers: [
         for (final layer in layers) [for (final item in layer) _key(item)],
@@ -304,7 +334,7 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
 /// it was chosen with. The order of the nodes is chosen without either, so
 /// that they do not steer it: arrows shorter by them would make [_untangle]
 /// keep other swaps of as many crossings.
-({GraphLayout kept, GraphLayout? levelled}) _finish(
+({GraphLayout kept, GraphLayout? improved}) _finish(
   LayoutGraph g,
   List<List<Item>> layers,
   LayoutOptions options,
@@ -327,19 +357,17 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
       kept = early;
     }
   }
-  final level = levelInputsEnabled
-      ? _levelled(
-          g,
-          layers,
-          options,
-          below,
-          turnEarly: !identical(kept, best.layout),
-        )
-      : null;
-  if (!levelInputsEnabled) return (kept: kept, levelled: null);
+  if (!levelInputsEnabled) return (kept: kept, improved: null);
+  final level = _levelled(
+    g,
+    layers,
+    options,
+    below,
+    turnEarly: !identical(kept, best.layout),
+  );
   var chosen = kept;
   if (level != null) {
-    if (_worse(level, kept)) {
+    if (_worse(_counts(level), _counts(kept))) {
       levelInputFallbacks++;
     } else {
       chosen = level;
@@ -354,7 +382,7 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
     turnEarly: !identical(kept, best.layout),
     levelInputs: !identical(chosen, kept),
   );
-  return (kept: kept, levelled: identical(snapped, kept) ? null : snapped);
+  return (kept: kept, improved: identical(snapped, kept) ? null : snapped);
 }
 
 /// The most rounds of [_snap]: an end moved, the arrows into it may run
@@ -382,6 +410,7 @@ GraphLayout _snap(
   required bool levelInputs,
 }) {
   var current = layout;
+  var counts = _counts(layout);
   var shifts = <GNode, double>{};
   for (var round = 0; round < _snapRounds; round++) {
     final more = _snapShifts(g, current);
@@ -399,11 +428,13 @@ GraphLayout _snap(
       levelInputs: levelInputs,
       shifts: all,
     )!;
-    if (_worse(snapped, current)) {
+    final now = _counts(snapped);
+    if (_worse(now, counts)) {
       endSnapFallbacks++;
       break;
     }
     current = snapped;
+    counts = now;
     shifts = all;
   }
   return current;
@@ -461,11 +492,12 @@ Map<GNode, double> _snapShifts(LayoutGraph g, GraphLayout layout) {
 @visibleForTesting
 int endSnapFallbacks = 0;
 
-/// How many times arrows of [layout] going forward change height, and how
-/// many of them change height twice or more.
-({int turns, int twice}) _turns(GraphLayout layout) {
+/// How many times arrows of [layout] going forward change height, how many
+/// of them change height twice or more, and how many three times or more.
+({int turns, int twice, int thrice}) _turns(GraphLayout layout) {
   var turns = 0;
   var twice = 0;
+  var thrice = 0;
   for (final edge in layout.edges) {
     if (edge.kind != EdgeKind.forward) continue;
     final points = edge.points;
@@ -478,8 +510,9 @@ int endSnapFallbacks = 0;
     }
     turns += count;
     if (count > 1) twice++;
+    if (count > 2) thrice++;
   }
-  return (turns: turns, twice: twice);
+  return (turns: turns, twice: twice, thrice: thrice);
 }
 
 /// Whether nodes stand where most of their arrows come in level (step 6);
@@ -598,9 +631,11 @@ GraphLayout? _levelled(
   onlyIfLevelled: true,
 );
 
-/// [_build] with [levelInputs] and [shifts] as for `placeLayers`; `null`
-/// when [onlyIfLevelled] and standing nodes where most of their arrows
-/// come in level places nothing otherwise.
+/// [_build] with [levelInputs] and [shifts] as for `placeLayers`, and
+/// with those arrows taking their input's height early
+/// (`straightenPasses`); `null` when [onlyIfLevelled] and neither places
+/// anything otherwise. Only the layouts [_worse] weighs take the heights
+/// early: the order and the loops' sides are chosen without them.
 GraphLayout? _buildWith(
   LayoutGraph g,
   List<List<Item>> layers,
@@ -621,8 +656,15 @@ GraphLayout? _buildWith(
     levelInputs: levelInputs,
     shifts: shifts,
   );
-  if (onlyIfLevelled && !levelled) return null;
-  straightenPasses(g, layers, ports, options);
+  final early = levelInputs || shifts.isNotEmpty;
+  final straightened = straightenPasses(
+    g,
+    layers,
+    ports,
+    options,
+    early: early,
+  );
+  if (onlyIfLevelled && !levelled && !straightened) return null;
   final frames = {
     for (final node in g.nodes)
       node: frameOf(node, ports[node]!, node.item.y, options),
