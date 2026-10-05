@@ -11,7 +11,8 @@ import 'nested.dart';
 ///
 /// - Arrows run only horizontally, vertically or at 45°.
 /// - Parallel pieces of different arrows are at least a lane gap apart.
-/// - No arrow passes through a tile or a node's name or place.
+/// - No arrow passes through a tile or a node's name or place, and no turn
+///   through an exit's dot, capsule or label.
 /// - An arrow leaves its exit going right, straight for at least its label,
 ///   and enters its input going right, straight for at least the least input
 ///   straight.
@@ -104,6 +105,23 @@ List<String> checkLayout(GraphLayout layout) {
           if (s.entersInterior(rect)) {
             problems.add('${_name(edge)}: piece $s passes through ${node.id}');
           }
+        }
+      }
+    }
+    // Turns past exits: through no dot, capsule or label. Nothing of a
+    // port's exits is drawn.
+    for (final exit in layout.exits) {
+      if (layout.nodes[exit.node]!.port) continue;
+      final at = '${exit.node}#${exit.index}';
+      for (final s in segments) {
+        if (s.isHorizontal) continue;
+        if (s.entersInterior(exit.handle)) {
+          problems.add('${_name(edge)}: piece $s passes through the exit $at');
+        }
+        if (exit.labelRect case final label? when s.entersInterior(label)) {
+          problems.add(
+            '${_name(edge)}: piece $s passes through the label of $at',
+          );
         }
       }
     }

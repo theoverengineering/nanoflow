@@ -57,6 +57,43 @@ void main() {
     );
   });
 
+  test('an arrow turning through the dot or the label of an exit', () {
+    // fix's arrow back to inspect going up past an exit at x, over the
+    // top and down to its turn into inspect.
+    final edge = edgeOf(good, '8', 0);
+    final [from, out, down, _, up, into] = edge.points;
+    final over = good.nodes['4']!.tile.top - 30;
+    List<String> problemsUpAt(double x) => checkLayout(
+      withPoints('8', 0, [
+        from,
+        out,
+        down,
+        Point(x, down.y),
+        Point(x, over),
+        Point(up.x, over),
+        up,
+        into,
+      ]),
+    );
+
+    // Past change.path.isEmpty's name, through its labels.
+    final labels = problemsUpAt(
+      (good.nodes['2']!.nameRect.right +
+              exitOf(good, '2', 0).labelRect!.right) /
+          2,
+    );
+    expect(labels, contains(contains('passes through the label of 2#0')));
+    expect(labels, contains(contains('passes through the label of 2#1')));
+    expect(labels, isNot(contains(contains('passes through 2'))));
+    // Past the texts under inspect, through its dot.
+    final dots = problemsUpAt(
+      (good.nodes['4']!.placeRect.right + exitOf(good, '4', 0).handle.right) /
+          2,
+    );
+    expect(dots, contains(contains('passes through the exit 4#0')));
+    expect(dots, isNot(contains(contains('passes through 4'))));
+  });
+
   test('pieces that are not horizontal, vertical or at 45°', () {
     final edge = edgeOf(good, '2', 0);
     final points = [

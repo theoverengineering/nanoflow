@@ -1,3 +1,5 @@
+import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/layout/lanes.dart' show clearance;
 import 'package:nanoflow_ui/layout/layout.dart';
 import 'package:test/test.dart';
 
@@ -164,5 +166,106 @@ void main() {
       lanes['checks-result->coder#1']!,
       greaterThan(lanes['coder-status->coder#1']!),
     );
+  });
+
+  group('a layer as wide as a frame in it', () {
+    // g() drawn in place: four steps in a row, a frame much wider than a
+    // tile.
+    final wide = {
+      'f': ExpandedNode(
+        GraphBody(
+          nodes: [
+            for (var i = 0; i < 4; i++)
+              EffectNode(id: 'g$i', place: 'lib/a.dart:${i + 20}', name: 'g$i'),
+          ],
+          edges: [
+            for (var i = 0; i <= 4; i++)
+              GraphEdge(
+                from: i == 0 ? null : 'g${i - 1}',
+                to: i == 4 ? null : 'g$i',
+                label: null,
+              ),
+          ],
+        ),
+      ),
+    };
+    const check = ConditionNode(id: 's', place: 'lib/a.dart:2', label: 'check');
+    const call = CallNode(
+      id: 'f',
+      place: 'lib/a.dart:3',
+      functions: ['lib/a.dart#g'],
+    );
+    const done = EffectNode(id: 't', place: 'lib/a.dart:5', name: 'done');
+
+    test('the way back of a tile under the frame goes down next to the '
+        'tile, though a long arrow turns up at the layer\'s side before it '
+        'in the lanes\' order', () {
+      final layout = layoutBody(
+        const GraphBody(
+          nodes: [
+            check,
+            call,
+            EffectNode(id: 'n', place: 'lib/a.dart:4', name: 'retry'),
+            done,
+          ],
+          edges: [
+            GraphEdge(from: null, to: 's', label: null),
+            GraphEdge(from: 's', to: 'f', label: 'ok'),
+            GraphEdge(from: 's', to: 'n', label: 'again'),
+            GraphEdge(from: 's', to: 't', label: 'skip'),
+            GraphEdge(from: 'f', to: 't', label: null),
+            GraphEdge(from: 'n', to: 's', label: null),
+            GraphEdge(from: 't', to: null, label: null),
+          ],
+        ),
+        expanded: wide,
+      );
+      expect(checkLayout(layout), isEmpty);
+      expect(countCrossings(layout), 0);
+      final frame = layout.nodes['f']!.tile;
+      expect(layout.nodes['n']!.tile.top, greaterThan(frame.bottom));
+      final (back, _, _) = verticals(edgeOf(layout, 'n', 0)).first;
+      expect(back, closeTo(turnDownBeside(layout, 'n', 0), 1e-9));
+      // The long arrow from check to done comes up past the frame: right
+      // of it, a clearance off its side.
+      final (up, top, _) = verticals(edgeOf(layout, 's', 2)).last;
+      expect(top, lessThan(frame.bottom));
+      expect(up - frame.right, greaterThanOrEqualTo(clearance));
+    });
+
+    test('a tile\'s way on into a node at the frame\'s height turns right of '
+        'the frame, a clearance off its side, as it passes the frame\'s '
+        'heights; its way back next to the tile', () {
+      final layout = layoutBody(
+        const GraphBody(
+          nodes: [
+            check,
+            call,
+            ConditionNode(id: 'n', place: 'lib/a.dart:4', label: 'retry?'),
+            done,
+          ],
+          edges: [
+            GraphEdge(from: null, to: 's', label: null),
+            GraphEdge(from: 's', to: 'n', label: 'again'),
+            GraphEdge(from: 's', to: 'f', label: 'ok'),
+            GraphEdge(from: 'n', to: 's', label: 'true'),
+            GraphEdge(from: 'n', to: 't', label: 'false'),
+            GraphEdge(from: 'f', to: 't', label: null),
+            GraphEdge(from: 't', to: null, label: null),
+          ],
+        ),
+        expanded: wide,
+      );
+      expect(checkLayout(layout), isEmpty);
+      expect(countCrossings(layout), 0);
+      final frame = layout.nodes['f']!.tile;
+      expect(layout.nodes['n']!.tile.top, greaterThan(frame.bottom));
+      expect(layout.nodes['t']!.tile.top, lessThan(frame.bottom));
+      final (on, top, _) = verticals(edgeOf(layout, 'n', 1)).single;
+      expect(top, lessThan(frame.bottom));
+      expect(on - frame.right, greaterThanOrEqualTo(clearance));
+      final (back, _, _) = verticals(edgeOf(layout, 'n', 0)).first;
+      expect(back, closeTo(turnDownBeside(layout, 'n', 0), 1e-9));
+    });
   });
 }

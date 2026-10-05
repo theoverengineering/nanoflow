@@ -54,6 +54,19 @@ void main() {
     expanded: {'1': ExpandedNode(functionOf(taskCarry, 'carry').body)},
   );
 
+  /// [taskWithCarry] with work() drawn in place in carry() too: the layer of
+  /// work(), review() and decide() is as wide as work()'s frame.
+  GraphLayout taskWithWork() => layoutBody(
+    functionOf(taskCarry, 'task').body,
+    functions: taskCarry.functions,
+    expanded: {
+      '1': ExpandedNode(
+        functionOf(taskCarry, 'carry').body,
+        expanded: {'3': ExpandedNode(functionOf(taskCarry, 'work').body)},
+      ),
+    },
+  );
+
   /// A fork before g() drawn in place, whose ways back leave under its way
   /// in: check's `ok` goes into g(), a fork of three effects, and its
   /// `retry` and `start over…` back to prepare.
@@ -579,6 +592,53 @@ void main() {
     });
   });
 
+  group('work() drawn in place in carry() too, review() and decide() under '
+      'its frame in one layer', () {
+    late GraphLayout layout;
+    late GraphLayout carry;
+    setUpAll(() {
+      layout = taskWithWork();
+      carry = layout.nodes['1']!.frame!.inner;
+    });
+
+    test('keeps every rule of step 9, in the frames too', () {
+      expect(checkLayout(layout), isEmpty);
+    });
+
+    test('crosses no more than with work() a tile', () {
+      expect(
+        countCrossings(carry),
+        lessThanOrEqualTo(
+          countCrossings(taskWithCarry().nodes['1']!.frame!.inner),
+        ),
+      );
+    });
+
+    test('the back arrows of review() and decide() go down next to their '
+        'tiles, a clearance past their labels and the texts under them, '
+        'decide()\'s inside review()\'s; work()\'s next to its frame', () {
+      (double, double) down(String id) {
+        final (x, _, lane) = verticals(
+          carry.edges.singleWhere(
+            (e) => e.from == id && e.kind == EdgeKind.back,
+          ),
+        ).first;
+        return (x, lane);
+      }
+
+      final frame = carry.nodes['3']!.tile;
+      expect(carry.nodes['4']!.tile.right, lessThan(frame.right - 1000));
+      final (decide, decideLane) = down('5');
+      final (review, reviewLane) = down('4');
+      final (work, workLane) = down('3');
+      expect(decide, closeTo(turnDownBeside(carry, '5', 0), 1e-9));
+      expect(review, closeTo(decide + layout.options.laneGap, 1e-9));
+      expect(work, closeTo(turnDownBeside(carry, '3', 0), 1e-9));
+      expect(decideLane, lessThan(reviewLane));
+      expect(reviewLane, lessThan(workLane));
+    });
+  });
+
   group('two levels nested', () {
     for (final (name, lay, outer, inner) in [
       ('a call in copies', copiesWithCall, '1', '1'),
@@ -714,10 +774,27 @@ void main() {
     // Copies drawn in place with an arrow of their level passing the
     // outlines stacked behind them, down their right side.
     var passedStacked = 0;
+    // Arrows out of a node narrower than its layer turning before the
+    // layer's right side.
+    var turnedEarly = 0;
     // At every depth: no arrow of a level touches a frame in it but those
     // into it and out of it, and none comes nearer than a clearance to the
     // outlines stacked behind copies.
     void visit(GraphLayout level, String where) {
+      final layerRight = <int, double>{};
+      for (final node in level.nodes.values) {
+        layerRight[node.layer] = math.max(
+          layerRight[node.layer] ?? node.tile.right,
+          node.tile.right,
+        );
+      }
+      for (final edge in level.edges) {
+        final turns = verticals(edge);
+        final from = level.nodes[edge.from]!;
+        if (turns.isNotEmpty && turns.first.$1 < layerRight[from.layer]!) {
+          turnedEarly++;
+        }
+      }
       for (final node in level.nodes.values) {
         final inner = node.frame?.inner;
         if (inner == null) continue;
@@ -805,6 +882,11 @@ void main() {
       passedStacked,
       greaterThan(0),
       reason: 'arrows passing the outlines behind copies are tried',
+    );
+    expect(
+      turnedEarly,
+      greaterThan(0),
+      reason: 'turns next to a node narrower than its layer are tried',
     );
   });
 }

@@ -108,6 +108,11 @@ const double clearance = 8;
 /// the end of a body in a frame, which is on the frame's right side, its
 /// lanes keep clear of the frame's outline too.
 ///
+/// With [turnEarly], an arrow out of a node narrower than its layer turns
+/// next to its node, before the layer's right side, where nothing of the
+/// layer is at the heights it passes and the turns before it in the lanes'
+/// order let it; without, every turn is past its layer's right side.
+///
 /// [frames] are the nodes' frames with tiles at x = 0; [depth] is the y of
 /// every back arrow's lane under the graph.
 Lanes assignLanes(
@@ -115,12 +120,13 @@ Lanes assignLanes(
   Map<GNode, Ports> ports,
   Map<GNode, NodeFrame> frames,
   Map<GEdge, double> depth,
-  LayoutOptions options,
-) {
+  LayoutOptions options, {
+  required bool turnEarly,
+}) {
   final lanes = Lanes._(List<double>.filled(layers.length, 0));
   // A layer is as wide as its widest node: a frame is wider than a tile,
   // a port has no width. Its nodes stand at its left; an arrow out of a
-  // narrower one runs on to the layer's right side before it turns. A layer
+  // narrower one may turn next to it, before the layer's right side. A layer
   // only arrows pass is as wide as a tile.
   final widths = [
     for (final layer in layers)
@@ -153,6 +159,12 @@ Lanes assignLanes(
       for (final node in leftNodes)
         for (final rect in frames[node]!.obstacles) rect.shift(Point(leftX, 0)),
     ];
+    // The left layer's tiles and frames: a turn next to a node narrower than
+    // the layer keeps clear of every one whose heights it passes, as of a
+    // mark.
+    final leftTiles = [
+      for (final node in leftNodes) frames[node]!.tile.shift(Point(leftX, 0)),
+    ];
     final rightObstacles = [
       for (final node in rightNodes) ...frames[node]!.obstacles,
     ];
@@ -170,9 +182,10 @@ Lanes assignLanes(
 
     final turns = <Turn>[];
     void setRoom(Turn turn, {required double reach}) {
-      // Left: past the own label and every mark the turn's heights pass.
+      // Left: past the own label and every mark and node the turn's heights
+      // pass.
       var least = reach;
-      for (final rect in leftObstacles) {
+      for (final rect in [...leftObstacles, ...leftTiles]) {
         if (_spans(turn, rect)) {
           least = math.max(least, rect.right + clearance);
         }
@@ -209,10 +222,23 @@ Lanes assignLanes(
       turn._roomDiagonal = roomDiagonal;
     }
 
-    // From the layer's right side: an exit of a node narrower than the
-    // layer is left of it.
-    double reachOf(GEdge edge) =>
-        leftEdge + frames[edge.from]!.exits[edge.exit]!.reach;
+    // Past the exit's label, or where one would start: of an arrow out of
+    // a node narrower than the layer, next to its node when it may turn
+    // early, else past the layer's right side.
+    double reachOf(GEdge edge) {
+      final exit = frames[edge.from]!.exits[edge.exit]!;
+      return (turnEarly ? leftX + exit.x : leftEdge) + exit.reach;
+    }
+
+    // The turns of arrows out of nodes narrower than the layer, when they
+    // may turn early: they may go before turns ahead of them in the lanes'
+    // order (_placeTurns).
+    final early = <Turn>{};
+    void leaves(Turn turn, GNode node) {
+      if (turnEarly && frames[node]!.tile.right < widths[gap]) {
+        early.add(turn);
+      }
+    }
 
     // Pieces that keep their height still need room for their label, the
     // straight piece and the arrowhead.
@@ -232,6 +258,7 @@ Lanes assignLanes(
             setRoom(turn, reach: start);
             turns.add(turn);
             lanes.forward[seg] = turn;
+            if (item.node case final node?) leaves(turn, node);
           } else {
             needed = math.max(needed, start + finish);
           }
@@ -250,6 +277,7 @@ Lanes assignLanes(
               setRoom(turn, reach: reachOf(edge));
               turns.add(turn);
               lanes.backOut[edge] = turn;
+              leaves(turn, node);
             } else if (edge.kind == EdgeKind.loop) {
               final turn = Turn._(TurnKind.loopOut, edge, [
                 (y + port.exitAt[edge]!, true),
@@ -258,6 +286,7 @@ Lanes assignLanes(
               setRoom(turn, reach: reachOf(edge));
               turns.add(turn);
               lanes.loopOut[edge] = turn;
+              leaves(turn, node);
             }
           }
         }
@@ -295,7 +324,11 @@ Lanes assignLanes(
       }
     }
 
-    final ordered = _orderTurns(turns, options.laneGap);
+    final ordered = _placeTurns(
+      _orderTurns(turns, options.laneGap),
+      options.laneGap,
+      early,
+    );
     double width() {
       var next = needed;
       for (final turn in ordered) {
@@ -304,7 +337,6 @@ Lanes assignLanes(
       return next;
     }
 
-    _placeTurns(ordered, options.laneGap);
     _slant(ordered, width(), options);
     final next = width();
 
@@ -492,19 +524,71 @@ void _slant(List<Turn> order, double width, LayoutOptions options) {
 /// A piece going off right of a turn at nearly the height of a piece coming
 /// in left of an earlier turn would seem to go on from it: such turns keep
 /// three lane gaps apart, so that the break between the pieces shows.
-void _placeTurns(List<Turn> order, double laneGap) {
-  for (var i = 0; i < order.length; i++) {
-    final turn = order[i];
-    var x = i == 0
+///
+/// A turn of [early] — of an arrow out of a node narrower than its layer,
+/// whose least x may be inside the layer — may go before turns ahead of it
+/// in [order]: it goes next when it fits left of the turn that would, with
+/// the lane gaps every turn still to come needs from it; of several, the
+/// leftmost. It passes only turns whose order with it does not change what
+/// crosses, and moves no turn right. Returns the turns left to right.
+List<Turn> _placeTurns(List<Turn> order, double laneGap, Set<Turn> early) {
+  // leftOf[t]: the turns whose order with t changes what crosses: they stay
+  // left of t, as in [order].
+  final leftOf = <Turn, List<Turn>>{};
+  if (early.isNotEmpty) {
+    for (var i = 0; i < order.length; i++) {
+      for (var j = i + 1; j < order.length; j++) {
+        final a = order[i];
+        final b = order[j];
+        if (_cost(a, b, laneGap) != _cost(b, a, laneGap)) {
+          (leftOf[b] ??= []).add(a);
+        }
+      }
+    }
+  }
+  final placed = <Turn>[];
+  final done = <Turn>{};
+  // Where [turn] goes right of the turns placed.
+  double xOf(Turn turn) {
+    var x = placed.isEmpty
         ? turn.least
-        : math.max(turn.least, order[i - 1].end + laneGap);
-    for (var j = 0; j < i; j++) {
-      if (_continues(order[j], turn, laneGap)) {
-        x = math.max(x, order[j].end + 3 * laneGap);
+        : math.max(turn.least, placed.last.end + laneGap);
+    for (final before in placed) {
+      if (_continues(before, turn, laneGap)) {
+        x = math.max(x, before.end + 3 * laneGap);
+      }
+    }
+    return x;
+  }
+
+  final pending = [...order];
+  while (pending.isNotEmpty) {
+    var turn = pending.first;
+    final next = xOf(turn);
+    var x = next;
+    for (final other in pending.skip(1)) {
+      if (!early.contains(other) ||
+          !(leftOf[other] ?? const []).every(done.contains)) {
+        continue;
+      }
+      final at = xOf(other);
+      // Room for every turn still to come right of it: three lane gaps to
+      // one whose piece would seem to go on from it.
+      final keep =
+          pending.any((t) => t != other && _continues(other, t, laneGap))
+          ? 3 * laneGap
+          : laneGap;
+      if (at + keep <= next + 1e-9 && at < x) {
+        turn = other;
+        x = at;
       }
     }
     turn.x = x;
+    pending.remove(turn);
+    placed.add(turn);
+    done.add(turn);
   }
+  return placed;
 }
 
 /// Whether a piece going off right of [b] is nearly level with a piece

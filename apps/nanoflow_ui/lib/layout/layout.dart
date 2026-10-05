@@ -103,8 +103,12 @@ GraphLayout _layout(
   assignLayers(g);
   final layers = buildLayers(g);
   orderLayers(g, layers, options);
+  // The loops' sides and the order of the nodes are chosen with every turn
+  // past its layer's right side, as if no node were narrower than its
+  // layer; arrows out of narrower nodes turn next to them only in the
+  // layout of the order chosen (_turnEarly).
   final below = <GNode>{};
-  var layout = _build(g, layers, options, below);
+  var layout = _build(g, layers, options, below, turnEarly: false);
   // A loop goes under its tile when over it it would cross other arrows.
   for (final node in g.nodes) {
     final loops = [
@@ -116,14 +120,45 @@ GraphLayout _layout(
     final over = _loopCrossings(layout, node.id);
     if (over == 0) continue;
     below.add(node);
-    final under = _build(g, layers, options, below);
+    final under = _build(g, layers, options, below, turnEarly: false);
     if (_loopCrossings(under, node.id) < over) {
       layout = under;
     } else {
       below.remove(node);
     }
   }
-  return _untangle(g, layers, options, below, layout);
+  return _turnEarly(
+    g,
+    layers,
+    options,
+    below,
+    _untangle(g, layers, options, below, layout),
+  );
+}
+
+/// [layout], laid out for the order [layers] have with every turn past its
+/// layer's right side, laid out again with the arrows out of nodes narrower
+/// than their layer turning next to them (step 7) — unless that crosses
+/// more or breaks a rule of step 9 more often; on a tie, the turns next to
+/// the nodes.
+///
+/// It should never cross more: a turn goes before turns ahead of it in its
+/// gap only past turns whose order with it does not change what crosses.
+/// The order of the nodes is chosen without these turns, so that they do
+/// not steer it either: arrows shorter by them would make [_untangle] keep
+/// other swaps of as many crossings.
+GraphLayout _turnEarly(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  LayoutOptions options,
+  Set<GNode> below,
+  GraphLayout layout,
+) {
+  final early = _build(g, layers, options, below, turnEarly: true);
+  final worse =
+      checkLayout(early).length > checkLayout(layout).length ||
+      countCrossings(early) > countCrossings(layout);
+  return worse ? layout : early;
 }
 
 /// The most rounds of [_untangle].
@@ -152,7 +187,7 @@ GraphLayout _untangle(
     for (final layer in layers) {
       for (var i = 0; i + 1 < layer.length; i++) {
         _swap(layer, i);
-        final candidate = _build(g, layers, options, below);
+        final candidate = _build(g, layers, options, below, turnEarly: false);
         final problems = checkLayout(candidate).length;
         final count = countCrossings(candidate);
         final length = _length(candidate);
@@ -189,13 +224,14 @@ double _length(GraphLayout layout) {
 }
 
 /// Steps 5 to 8 for the current order of [layers]: ports, heights, lanes
-/// and the layers' x, arrows.
+/// and the layers' x, arrows; [turnEarly] as for [assignLanes].
 GraphLayout _build(
   LayoutGraph g,
   List<List<Item>> layers,
   LayoutOptions options,
-  Set<GNode> below,
-) {
+  Set<GNode> below, {
+  required bool turnEarly,
+}) {
   final levels = <GEdge, int>{};
   final ports = assignPorts(g, options, below: below, backLevels: levels);
   placeLayers(g, layers, ports, options);
@@ -215,7 +251,14 @@ GraphLayout _build(
     for (final MapEntry(key: edge, value: level) in levels.entries)
       edge: bottom + options.backLaneOffset + (level - 1) * options.backLaneGap,
   };
-  final lanes = assignLanes(layers, ports, frames, depth, options);
+  final lanes = assignLanes(
+    layers,
+    ports,
+    frames,
+    depth,
+    options,
+    turnEarly: turnEarly,
+  );
   return route(g, ports, frames, lanes, depth, options);
 }
 

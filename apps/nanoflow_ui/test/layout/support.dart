@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/layout/lanes.dart' show clearance;
 import 'package:nanoflow_ui/layout/layout.dart';
 
 /// The graph files in `test/layout/graphs/`, by name without
@@ -174,6 +176,20 @@ EdgePath edgeOf(GraphLayout layout, String from, int exit, [int list = 0]) =>
 /// The exit [index] of node [node].
 ExitBox exitOf(GraphLayout layout, String node, int index) =>
     layout.exits.firstWhere((e) => e.node == node && e.index == index);
+
+/// The least x of a turn down from exit [exit] of the node [node] of
+/// [layout]: a clearance past the exit's label, or where one would start,
+/// and past the name and place under the tile, which the turn passes; and
+/// a corner.
+double turnDownBeside(GraphLayout layout, String node, int exit) {
+  final box = layout.nodes[node]!;
+  final marks = [
+    box.tile.right + exitOf(layout, node, exit).reach,
+    box.nameRect.right,
+    box.placeRect.right,
+  ].reduce(math.max);
+  return marks + clearance + layout.options.cornerRadius;
+}
 
 /// The vertical pieces of [edge] as (x, top, bottom).
 List<(double, double, double)> verticals(EdgePath edge) => [
