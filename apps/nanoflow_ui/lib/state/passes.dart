@@ -48,9 +48,9 @@
 ///   there;
 /// - from the predecessor to the body's end when E is outside the level;
 /// - and, once the session has finished, from each effect on the level that
-///   no effect on the graph follows, and that was not joined before one, to
-///   the body's end.
-///
+///   no effect on the graph follows, and that was not joined before one — or
+///   only before effects that started in its own millisecond, as ends side
+///   by side in one wait are —, to the body's end.
 /// What lies on every simple path of a transition through forks, calls and
 /// copies was passed, and its edges taken. On the body of a function the
 /// workflow calls, of a transition between two effects that could also have
@@ -62,10 +62,14 @@
 /// those through an effect not on the graph — from an end it follows, or to
 /// an effect that follows it —, where the code went is not drawn; those from
 /// a copies node to the end, as the ends of copies are not always told apart
-/// from copies that went on; and those to an effect whose ends were all
-/// passed, as they may have been passed by effects beside it — two calls of a
-/// function one after the other leave the journal `Future.wait([x(),
-/// helper()])` leaves when helper's first effect comes after x ended.
+/// from copies that went on, and from an end joined only before effects that
+/// started in its millisecond, as it may have run beside them; those to an
+/// effect whose ends were all passed, as they may have been passed by
+/// effects beside it — two calls of a function one after the other leave the
+/// journal `Future.wait([x(), helper()])` leaves when helper's first effect
+/// comes after x ended —; and those to an effect whose ends are all in one
+/// call or copies node with it, as effects side by side there that end in
+/// the millisecond they start join each other so.
 ///
 /// **Runs.** The transitions of one run of the code are one pass of the
 /// forks on them: those from one predecessor; those from the body's start
@@ -80,34 +84,56 @@
 ///
 /// **The ways the code may have gone** mark nothing, but no exit on them is
 /// darker ([_mayHaveGone]): the walks of every transition, marking or not; on
-/// the body of a function the workflow calls, out of the body and into it
-/// again between the two ends of each transition, and between each effect
-/// and its predecessor; while the session has not finished — it runs, failed
-/// or was cut off —, from each effect that has finished, that no effect on
-/// the graph follows and that was not joined before one, to anywhere: the
-/// code may have gone on from it before it stopped — from one that runs, it
-/// has not —, and on the body of a function the workflow calls from the
-/// body's start too, since a call may have begun; and the other branches of
-/// a `Future.wait` beside an edge of a fork on any of them.
+/// the body of a function the workflow calls, out of the body and into it again
+/// between the two ends of each transition, and between each effect and its
+/// predecessor; while the session has not finished — it runs, failed or was cut
+/// off —, from each effect that has finished, that no effect on the graph
+/// follows and that was not joined before one (but for effects that started in
+/// its millisecond), to anywhere: the code may have gone on from it before it
+/// stopped — from one that runs, it has not —, and on the body of a function
+/// the workflow calls from the body's start too, since a call may have begun;
+/// and the other branches of a `Future.wait` beside an edge of a fork on any of
+/// them.
 ///
 /// **Darker exits.** An exit of a passed fork on none of those ways. On the
 /// body of a function the workflow calls, only when no effect node of it
 /// holds more than one of the effects shown: otherwise the function may have
 /// run more than once, and the ends of an earlier call can read as joined
-/// before an effect of the next, the way out of the body that call took
-/// lost. This gate is needed, not enough: calls whose waits ran on different
-/// effect nodes leave each node one effect — two calls one after the other,
-/// or side by side, of `if (c) await Future.wait([x(), y()]); else await
-/// Future.wait([u(), v()]); if (k) await z();` darken `k>` that the first
-/// took.
+/// before an effect of a later one, the way out of the body that call took
+/// lost. The gate is needed, not enough (below).
 ///
-/// **Limits.** The journal does not tell a wait from effects side by side
-/// that end before another starts: an effect that finished before another,
-/// below the same, started, though the code did not wait for it, and that
-/// leads to it on the level — round a loop, or into a call node of a
-/// function called again after the wait — reads as joined before it, and the
-/// way between them is marked. A transition with more than [_maxPaths]
-/// simple paths marks nothing.
+/// **Limits** — what the journal does not tell, and the marks it leaves
+/// wrong:
+///
+/// - *Effects side by side read as a wait*: false taken edges and false
+///   passes, no darker exit. An effect that finished before another below
+///   the same started — earlier, or in the same millisecond, as fast effects
+///   do — though the code did not wait for it, and that leads to it on the
+///   level, reads as joined before it: round a loop; into a call node of a
+///   function called again after the wait; or from a call node of a
+///   function drawn more than once, where the effect is on each. The
+///   library's `await Future.wait([e0(), e1()]); if (mode == 'deep') { await
+///   quickSub(); if (mode.length > 3) await g(); } await
+///   Future.wait([quickSub(), e4()]);`, quickSub one fast effect, mode
+///   `flat`, can show `mode.length > 3` passed: the wait's quickSub, ended in
+///   the millisecond e4 started, reads as the deep branch's, joined before
+///   e4.
+/// - *The ends of an earlier call*, on the body of a function run more than
+///   once, read as joined before an effect of a later call: false taken
+///   edges; rarely a false pass — `helper` above with a slow `sub` in place
+///   of quickSub, called twice with mode `flat`, shows `mode.length > 3`
+///   passed —; and darker exits an earlier call took, where its waits or
+///   closures ran on different effect nodes, each holding one effect: two
+///   calls, one after the other or side by side, of `if (c) await
+///   Future.wait([x(), y()]); else await Future.wait([u(), v()]); if (k)
+///   await z();` darken `k>`, which the first took, as `await (() async { if
+///   (!first) { await e4(); await e5(); } else { await e6(); } })(); if
+///   (!first) await e7();`, first true then false, darkens the way out the
+///   first took.
+/// - *Counts* (see «Runs»): they can be lower or higher than how many times
+///   the condition was evaluated.
+/// - *Paths*: a transition with more than [_maxPaths] simple paths marks
+///   nothing.
 library;
 
 import 'dart:collection';
@@ -259,7 +285,7 @@ Passes _passesOf(
   final workflow = places.isWorkflow(level.body);
   final finished = session.state.status == SessionStatus.finished;
 
-  final (:joins, :joined, :passed) = _joinsOf(
+  final (:joins, :joined, :joinedBeside, :passed) = _joinsOf(
     level,
     session,
     tree,
@@ -278,14 +304,20 @@ Passes _passesOf(
     final at = nodesOf(effect);
     final (:before, :passedOver) = tree.before(effect);
     final previous = before == null ? const <String>[] : nodesOf(before);
+    final join = joins[effect.id];
     // Where the code came from is not drawn, or not told: from the
-    // predecessor, or from the start, the code may have come.
-    final unsure = passedOver || passed.contains(effect.id);
+    // predecessor, or from the start, the code may have come. So too when
+    // the ends before the effect are all in one call or copies node with
+    // it: ends side by side in one millisecond join each other so.
+    final unsure =
+        passedOver ||
+        passed.contains(effect.id) ||
+        (join != null && join.from.isEmpty);
     _Run? sure(_Run run) => unsure ? null : run;
-    if (joins[effect.id] case (:final key, :final from)) {
-      final join = reached[effect.id] = (by: key, leg: _Leg.join, end: false);
+    if (join case (:final key, :final from) when from.isNotEmpty) {
+      final run = reached[effect.id] = (by: key, leg: _Leg.join, end: false);
       for (final (:nodes, :drawn) in from) {
-        ways.add((from: nodes, to: at, run: drawn ? sure(join) : null));
+        ways.add((from: nodes, to: at, run: drawn ? sure(run) : null));
       }
       // The effect before the wait may have ended a call all the same, and
       // this one begun the next.
@@ -330,6 +362,9 @@ Passes _passesOf(
     if (!tree.isLast(effect) || joined.contains(effect.id)) continue;
     final at = nodesOf(effect);
     if (at.isEmpty) continue;
+    // Joined only before effects that started in its millisecond, it may
+    // have run beside them and been an end all the same.
+    final beside = joinedBeside.contains(effect.id);
     if (!finished) {
       // From one that runs, the code has gone nowhere yet.
       if (session.stateOf(effect.id)?.finishedAt != null) open.add(at);
@@ -341,7 +376,8 @@ Passes _passesOf(
           final after? => (by: after, leg: _Leg.on, end: false),
           null => (by: effect.id, leg: _Leg.into, end: false),
         };
-    final sure = !at.any(level.isCopies) && !tree.isFollowedOffGraph(effect);
+    final sure =
+        !beside && !at.any(level.isCopies) && !tree.isFollowedOffGraph(effect);
     ways.add((
       from: at,
       to: const [null],
@@ -406,8 +442,8 @@ Passes _passesOf(
 /// The edges the code may have gone along on [level], by their index in
 /// `body.edges`: on these, no exit of a passed fork is darker. They are
 ///
-/// - those on some walk of each of the [ways] — the transitions and the ways
-///   through effects not on the graph;
+/// - those on some walk of each of the [ways] — the transitions, and the
+///   ways that mark nothing;
 /// - on the body of a function the workflow calls ([called]), those of the
 ///   ways out of the body from one end of each of the [ways], and of each of
 ///   the [pairs] of an effect and its predecessor, and back into it to the
@@ -415,7 +451,8 @@ Passes _passesOf(
 ///   into it again between any two effects;
 /// - unless the session [finished], those of the ways from each of the
 ///   [open] effects — those that have finished, that no effect on the graph
-///   follows and that were not joined before one — to any node, and on the
+///   follows and that were not joined before one, but for effects that
+///   started in their millisecond — to any node, and on the
 ///   body of a function the workflow calls from the body's start to any
 ///   node: where the code went from there before it stopped, or after a
 ///   call began, the journal does not tell;
@@ -638,7 +675,13 @@ typedef _Join = ({String key, List<({List<String> nodes, bool drawn})> from});
 /// effect is asked once for each nodes of the ends and of the effects, and
 /// how many of them below what an effect is below had finished by a time is
 /// counted among those that had, in the order of the walk of the [tree].
-({Map<String, _Join> joins, Set<String> joined, Set<String> passed}) _joinsOf(
+({
+  Map<String, _Join> joins,
+  Set<String> joined,
+  Set<String> joinedBeside,
+  Set<String> passed,
+})
+_joinsOf(
   _Level level,
   SessionData session,
   _Tree tree,
@@ -666,9 +709,10 @@ typedef _Join = ({String key, List<({List<String> nodes, bool drawn})> from});
   }
   final joins = <String, _Join>{};
   final joined = <String>{};
+  final beside = <String>{};
   final passed = <String>{};
   if (finishing.isEmpty) {
-    return (joins: joins, joined: joined, passed: passed);
+    return (joins: joins, joined: joined, joinedBeside: beside, passed: passed);
   }
   for (final of in ends.values) {
     of.walked.sort();
@@ -721,7 +765,15 @@ typedef _Join = ({String key, List<({List<String> nodes, bool drawn})> from});
       if (!level.inOne(of.nodes, at)) {
         joinedFrom.add((nodes: of.nodes, drawn: !of.passedOver));
       }
-      joined.addAll(of.join(walks));
+      for (final id in of.join(walks)) {
+        // An end that started in the millisecond the effect did may have run
+        // beside it.
+        if (session.stateOf(id)?.startedAt == started) {
+          beside.add(id);
+        } else {
+          joined.add(id);
+        }
+      }
       if (finished != null) {
         (passing[finished] ??= []).addAll([
           for (final walk in walks) (started: started, of: of, walk: walk),
@@ -737,7 +789,12 @@ typedef _Join = ({String key, List<({List<String> nodes, bool drawn})> from});
       passed.add(effect.id);
     }
   }
-  return (joins: joins, joined: joined, passed: passed);
+  return (
+    joins: joins,
+    joined: joined,
+    joinedBeside: beside.difference(joined),
+    passed: passed,
+  );
 }
 
 /// The ends of a level on the same nodes of it, and whether effects not on
@@ -760,9 +817,6 @@ final class _Ends {
   /// Those that had finished by now and were not passed, by their place in
   /// [walked], with their ids.
   final SplayTreeMap<int, String> _left = SplayTreeMap();
-
-  /// The walks of those joined before an effect.
-  final Set<int> _joined = {};
 
   /// The end [id], come to on the walk at [walk], had finished by now.
   void finish(int walk, String id) {
@@ -795,12 +849,10 @@ final class _Ends {
       if (walk != besides) walk,
   ];
 
-  /// The ids of those at [walks] not joined before an effect till now.
-  Iterable<String> join(List<int> walks) sync* {
-    for (final walk in walks) {
-      if (_joined.add(walk)) yield _left[walk]!;
-    }
-  }
+  /// The ids of those at [walks].
+  Iterable<String> join(List<int> walks) => [
+    for (final walk in walks) _left[walk]!,
+  ];
 
   /// The one at [walk] was passed.
   void pass(int walk) => _left.remove(walk);

@@ -1694,6 +1694,105 @@ void main() {
       expect(s.untakenBy(p), {'c>z'});
     });
 
+    group('effects side by side that end in the millisecond they start', () {
+      // helper { await Future.wait([x(), y()]); }, x and y each ending in the
+      // millisecond both started: either reads as joined before the other.
+      final helper = graphFunction(
+        'helper',
+        [effectAt('x'), effectAt('y')],
+        ['>x', '>y', 'x>', 'y>'],
+      );
+
+      /// x and y, after [after], starting and ending at [time].
+      void beside(Journal j, num time, String after, String round) {
+        for (final name in ['x', 'y']) {
+          j.effect(
+            name,
+            time,
+            end: time,
+            place: flowAt(name),
+            key: '$name$round',
+            after: after,
+          );
+        }
+      }
+
+      test('the way into the call they are in is one the code may have gone: '
+          'while (w) await p(); await helper(); — w>h, by which the code '
+          'went, is not darker', () {
+        final s = Shape(
+          [forkAt('w'), effectAt('p'), callAt('h', helper)],
+          ['>w', 'w>p', 'p>w', 'w>h', 'h>'],
+          called: [helper],
+        );
+        final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+          ..effect('p', 1, end: 2, place: flowAt('p'), key: 'p1', after: null)
+          ..effect('p', 3, end: 4, place: flowAt('p'), key: 'p2', after: 'p1');
+        beside(j, 5, 'p2', '');
+        j.finish(6);
+        final p = s.passes(j.data);
+
+        expect(s.forksOf(p), contains('w'));
+        expect(s.untakenBy(p), isNot(contains('w>h')));
+      });
+
+      test('they may be the last effects all the same: await p(); while (w) '
+          'await helper(); — the second round side by side, then out by w>, '
+          'which is not darker', () {
+        final s = Shape(
+          [effectAt('p'), forkAt('w'), callAt('h', helper)],
+          ['>p', 'p>w', 'w>h', 'h>w', 'w>'],
+          called: [helper],
+        );
+        final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+          ..effect('p', 1, end: 2, place: flowAt('p'), key: 'p', after: null)
+          ..effect('x', 3, end: 4, place: flowAt('x'), key: 'x1', after: 'p')
+          ..effect('y', 3, end: 4, place: flowAt('y'), key: 'y1', after: 'p');
+        beside(j, 5, 'p', '2');
+        j.finish(6);
+        final p = s.passes(j.data);
+
+        expect(s.forksOf(p), contains('w'));
+        expect(s.untakenBy(p), isNot(contains('w>')));
+      });
+    });
+
+    test('every end before an effect passed by an effect beside it: the way '
+        'from before them marks nothing — if (c) await (() async { await a(); '
+        '})(); await helper(); await Future.wait([helper(), x()]); — helper { '
+        "await retry(() => f.effect('h')); await y(); }, c true", () {
+      final helper = graphFunction('helper', [effectAt('y')], ['>y', 'y>']);
+      final s = Shape(
+        [
+          forkAt('c'),
+          effectAt('a'),
+          callAt('h1', helper),
+          callAt('h2', helper),
+          effectAt('x'),
+        ],
+        ['>c', 'c>a', 'c>h1', 'a>h1', 'h1>h2', 'h1>x', 'h2>', 'x>'],
+        called: [helper],
+      );
+      // All after nothing, as the library keys them: the closure and the
+      // calls hand nothing on. The first y ends before x, which ends before
+      // the second y starts, h not on the graph keeping it back.
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('a', 1, end: 2, place: flowAt('a'), key: 'a', after: null)
+        ..effect('h', 3, end: 4, key: 'h1', after: null)
+        ..effect('y', 5, end: 6, place: flowAt('y'), key: 'y1', after: null)
+        ..effect('h', 7, end: 8, key: 'h2', after: null)
+        ..effect('x', 7, end: 8, place: flowAt('x'), key: 'x', after: null)
+        ..effect('y', 9, end: 10, place: flowAt('y'), key: 'y2', after: null)
+        ..finish(11);
+      final p = s.passes(j.data);
+
+      // The second y may have come from the start: by c>h1, which the code
+      // did not take, it did not.
+      expect(s.takenBy(p), isNot(contains('c>h1')));
+      expect(s.forksOf(p), {'c': 1});
+      expect(s.takenBy(p), containsAll(['>c', 'c>a', 'a>h1', 'h1>x']));
+    });
+
     test('the other branches of a wait go with the one taken: await p(); if '
         '(c) await Future.wait([x(), helper()]); — helper ran no effect; '
         'c>helper is not darker', () {
