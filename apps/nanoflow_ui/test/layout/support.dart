@@ -252,6 +252,56 @@ List<({double x, double from, double to})> turnsOf(EdgePath edge) {
   return (turns: turns, twice: twice);
 }
 
+/// The arrows into the end of [body] that turned before and turn once more
+/// in the gap just before the end: a jog before the bar, as
+/// `from#exit jog` and its height.
+List<String> jogsBeforeEnd(GraphLayout body) {
+  if (body.nodes[endMarker] == null) return const [];
+  final gap = body.nodes.values
+      .where((node) => node.id != endMarker)
+      .map((node) => node.tile.right)
+      .fold(double.negativeInfinity, math.max);
+  return [
+    for (final edge in body.edges)
+      if (edge.to == endMarker)
+        if (turnsOf(edge) case final turns
+            when turns.length > 1 && turns.last.x >= gap - 1e-6)
+          '${edge.from}#${edge.exitIndex} jog '
+              '${(turns.last.to - turns.last.from).toStringAsFixed(1)}',
+  ];
+}
+
+/// The arrows into the end of [body] that jog just before it after turning
+/// before, grouped by the height of the jog, where a group outnumbers the
+/// arrows that come in level — without a turn in the gap before the end —,
+/// which hold the end where it is: standing that height off, the end would
+/// take more arrows in level than it turns.
+List<String> unheldJogs(GraphLayout body) {
+  if (body.nodes[endMarker] == null) return const [];
+  final gap = body.nodes.values
+      .where((node) => node.id != endMarker)
+      .map((node) => node.tile.right)
+      .fold(double.negativeInfinity, math.max);
+  final level = <String>[];
+  final jogs = <String, List<String>>{};
+  for (final edge in body.edges) {
+    if (edge.to != endMarker) continue;
+    final name = '${edge.from}#${edge.exitIndex}';
+    final turns = turnsOf(edge);
+    if (turns.isEmpty || turns.last.x < gap - 1e-6) {
+      level.add(name);
+    } else if (turns.length > 1) {
+      final jog = (turns.last.to - turns.last.from).toStringAsFixed(1);
+      jogs.putIfAbsent(jog, () => []).add(name);
+    }
+  }
+  return [
+    for (final MapEntry(key: jog, value: arrows) in jogs.entries)
+      if (arrows.length > level.length)
+        '${arrows.join(', ')} jog $jog, held only by ${level.join(', ')}',
+  ];
+}
+
 /// [body], a body laid out in a frame, if its end could stand higher or
 /// lower and bring more arrows in level: arrows into the end that turned
 /// before and then jog by one height in the gap before it, a group of two

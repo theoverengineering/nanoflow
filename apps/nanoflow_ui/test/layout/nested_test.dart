@@ -815,31 +815,23 @@ void main() {
     expect(grows / saved, lessThan(layout.options.tile / 2 / 10));
   });
 
+  for (final function in ['write', 'writeCut', 'decide']) {
+    test('$function() of chain-later drawn in place: no arrow that turned '
+        'before turns again just before its end', () {
+      final drawn = inPlace(
+        functionOf(chainLater, function).body,
+        functions: chainLater.functions,
+      );
+      expect(checkLayout(drawn), isEmpty);
+      final body = drawn.nodes['c']!.frame!.inner;
+      expect(jogsBeforeEnd(body), isEmpty);
+    });
+  }
+
   test('every function of the test graphs drawn in place: the end of its '
-      'body stands where no more of its arrows would come in level, but in '
-      'three functions of chain-later the rule does not reach', () {
-    // In write(), writeCut() and decide() of chain-later, arrows into the
-    // end climb past a node in the middle of the body to a band over the
-    // last nodes, and run along it to drop just before the end: write()'s
-    // from its second !answer.goesOn under `missing == null`, the two after
-    // it stepping round it; writeCut()'s two from the top; decide()'s three
-    // past `refused != null`. An arrow counts as level only if all its pass
-    // points can stand level with its input, so the climb keeps each of
-    // them from counting. Counting the pass points from the climb on would
-    // take write()'s in, but would also move judgeSpec()'s and specify()'s
-    // ends elsewhere: these stay a known limit.
-    const known = {
-      'chain-later lib/chain.dart#write': [
-        '4#0, 8#0, 12#0, 15#0 jog 45.5 before the end, 1 in without a turn '
-            'there',
-      ],
-      'chain-later lib/chain.dart#writeCut': [
-        '4#0, 12#1 jog 197.5 before the end, 1 in without a turn there',
-      ],
-      'chain-later lib/task_graph.dart#decide': [
-        '2#3, 8#0, 9#0 jog 45.5 before the end, 1 in without a turn there',
-      ],
-    };
+      'body stands where no more of its arrows would come in level — no '
+      'arrows jogging into it by one height outnumber those coming in '
+      'level, which hold it', () {
     var ends = 0;
     final fallbacks = levelInputFallbacks;
     for (final name in graphNames()) {
@@ -848,11 +840,8 @@ void main() {
         final drawn = inPlace(body, functions: file.functions);
         final inner = drawn.nodes['c']!.frame!.inner;
         if (inner.nodes[endMarker] != null) ends++;
-        expect(
-          endJogs(inner),
-          known['$name $id'] ?? isEmpty,
-          reason: '$name $id',
-        );
+        expect(endJogs(inner), isEmpty, reason: '$name $id');
+        expect(unheldJogs(inner), isEmpty, reason: '$name $id');
       }
     }
     expect(ends, greaterThan(60));

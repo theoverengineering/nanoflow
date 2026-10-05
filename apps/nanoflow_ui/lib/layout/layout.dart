@@ -5,6 +5,8 @@
 /// `docs/ui-spec.md` «Граф».
 library;
 
+import 'dart:math' as math;
+
 import 'package:meta/meta.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 
@@ -334,13 +336,130 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
           turnEarly: !identical(kept, best.layout),
         )
       : null;
-  if (level == null) return (kept: kept, levelled: null);
-  if (_worse(level, kept)) {
-    levelInputFallbacks++;
-    return (kept: kept, levelled: null);
+  if (!levelInputsEnabled) return (kept: kept, levelled: null);
+  var chosen = kept;
+  if (level != null) {
+    if (_worse(level, kept)) {
+      levelInputFallbacks++;
+    } else {
+      chosen = level;
+    }
   }
-  return (kept: kept, levelled: level);
+  final snapped = _snap(
+    g,
+    layers,
+    options,
+    below,
+    chosen,
+    turnEarly: !identical(kept, best.layout),
+    levelInputs: !identical(chosen, kept),
+  );
+  return (kept: kept, levelled: identical(snapped, kept) ? null : snapped);
 }
+
+/// The most rounds of [_snap]: an end moved, the arrows into it may run
+/// along other heights.
+const int _snapRounds = 2;
+
+/// [layout] with the end of the body snapped to the arrows arriving at it
+/// ([_snapShifts]), laid out again as [layout] was otherwise — unless that
+/// is worse than [layout] ([_worse]); again for what then arrives, up to
+/// [_snapRounds] times.
+///
+/// The end's height is chosen where its arrows are placed in the layers
+/// before it, before they are straightened and routed: an arrow that has
+/// to climb past a node in the middle of the body, and so does not count
+/// as level there, runs along a band over the last nodes after all, the
+/// arrows next to it a lane gap apart, as the inputs are on the bar. Read
+/// from where they run, the end can stand level with all of them.
+GraphLayout _snap(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  LayoutOptions options,
+  Set<GNode> below,
+  GraphLayout layout, {
+  required bool turnEarly,
+  required bool levelInputs,
+}) {
+  var current = layout;
+  var shifts = <GNode, double>{};
+  for (var round = 0; round < _snapRounds; round++) {
+    final more = _snapShifts(g, current);
+    if (more.isEmpty) break;
+    final all = {...shifts};
+    for (final MapEntry(key: node, value: shift) in more.entries) {
+      all[node] = (all[node] ?? 0) + shift;
+    }
+    final snapped = _buildWith(
+      g,
+      layers,
+      options,
+      below,
+      turnEarly: turnEarly,
+      levelInputs: levelInputs,
+      shifts: all,
+    )!;
+    if (_worse(snapped, current)) {
+      endSnapFallbacks++;
+      break;
+    }
+    current = snapped;
+    shifts = all;
+  }
+  return current;
+}
+
+/// How far each end of [g] with several arrows in should move to take the
+/// most of them in level, by [layout]: each arrow whose last turn is in the
+/// gap just before the end would come in level if the end stood its last
+/// run's height off; the others are level already. The height most arrows
+/// would come in level at wins, on a tie the smallest move; none when that
+/// is no move.
+Map<GNode, double> _snapShifts(LayoutGraph g, GraphLayout layout) {
+  final shifts = <GNode, double>{};
+  for (final node in g.nodes) {
+    if (node.kind != NodeKind.end || node.inEdges.length < 2) continue;
+    final end = layout.nodes[node.id]!;
+    final gap = layout.nodes.values
+        .where((other) => other.layer < end.layer)
+        .map((other) => other.tile.right)
+        .fold(double.negativeInfinity, math.max);
+    final counts = <int, int>{};
+    for (final edge in layout.edges) {
+      if (edge.to != node.id || edge.kind != EdgeKind.forward) continue;
+      final points = edge.points;
+      final input = points.last.y;
+      // The last turn: back past the straight piece into the input, then
+      // over every piece that changes height.
+      var i = points.length - 1;
+      while (i > 0 && (points[i].y - points[i - 1].y).abs() < 1e-6) {
+        i--;
+      }
+      while (i > 0 && (points[i].y - points[i - 1].y).abs() >= 1e-6) {
+        i--;
+      }
+      final turnsInGap = i < points.length - 1 && points[i].x >= gap - 1e-6;
+      final run = turnsInGap ? points[i].y : input;
+      final key = ((run - input) * 1000).round();
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    int? best;
+    for (final MapEntry(key: key, value: count) in counts.entries) {
+      if (best == null ||
+          count > counts[best]! ||
+          count == counts[best]! && key.abs() < best.abs()) {
+        best = key;
+      }
+    }
+    if (best != null && best != 0) shifts[node] = best / 1000;
+  }
+  return shifts;
+}
+
+/// How many times [_snap] kept a body's end where it was because snapping
+/// it to its arrows was worse ([_worse]).
+@visibleForTesting
+int endSnapFallbacks = 0;
 
 /// How many times arrows of [layout] going forward change height, and how
 /// many of them change height twice or more.
@@ -476,8 +595,12 @@ GraphLayout? _levelled(
   below,
   turnEarly: turnEarly,
   levelInputs: true,
+  onlyIfLevelled: true,
 );
 
+/// [_build] with [levelInputs] and [shifts] as for `placeLayers`; `null`
+/// when [onlyIfLevelled] and standing nodes where most of their arrows
+/// come in level places nothing otherwise.
 GraphLayout? _buildWith(
   LayoutGraph g,
   List<List<Item>> layers,
@@ -485,6 +608,8 @@ GraphLayout? _buildWith(
   Set<GNode> below, {
   required bool turnEarly,
   bool levelInputs = false,
+  bool onlyIfLevelled = false,
+  Map<GNode, double> shifts = const {},
 }) {
   final levels = <GEdge, int>{};
   final ports = assignPorts(g, options, below: below, backLevels: levels);
@@ -494,8 +619,9 @@ GraphLayout? _buildWith(
     ports,
     options,
     levelInputs: levelInputs,
+    shifts: shifts,
   );
-  if (levelInputs && !levelled) return null;
+  if (onlyIfLevelled && !levelled) return null;
   straightenPasses(g, layers, ports, options);
   final frames = {
     for (final node in g.nodes)

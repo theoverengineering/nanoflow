@@ -168,12 +168,17 @@ double smallestJog(LayoutOptions options) =>
 /// into it from their turn before the corridor instead of jogging just
 /// before it. Returns whether that placed anything otherwise than without
 /// [levelInputs].
+///
+/// A node of [shifts] stands that much lower than it would — higher when
+/// negative —, at the free place nearest to it: the end of a body snapped
+/// to the arrows arriving at it (`_snap` in layout.dart).
 bool placeLayers(
   LayoutGraph graph,
   List<List<Item>> layers,
   Map<GNode, Ports> ports,
   LayoutOptions options, {
   bool levelInputs = false,
+  Map<GNode, double> shifts = const {},
 }) {
   var levelled = false;
   final (:before, :after) = _pathLengths(graph);
@@ -266,6 +271,10 @@ bool placeLayers(
           }
         }
         if ((y - longest).abs() > 1e-9) levelled = true;
+      }
+      final shift = node == null ? null : shifts[node];
+      if (shift != null) y = placeAt(y + shift);
+      if (levelInputs && node != null && item.ins.length > 1) {
         final moves = _levelAt(item, y, layers, ports, options).moves;
         for (final MapEntry(key: edge, value: level) in moves.entries) {
           for (final seg in edge.segs.skip(1)) {
