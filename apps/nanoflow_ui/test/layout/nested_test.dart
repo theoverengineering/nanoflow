@@ -13,6 +13,7 @@ void main() {
   final inline = loadGraphFile('inline');
   final recursion = loadGraphFile('recursion');
   final taskCarry = loadGraphFile('task-carry');
+  final chain = loadGraphFile('chain');
 
   /// release with its call of publish() expanded in place.
   GraphLayout releaseWithPublish() => layoutBody(
@@ -63,6 +64,28 @@ void main() {
       '1': ExpandedNode(
         functionOf(taskCarry, 'carry').body,
         expanded: {'3': ExpandedNode(functionOf(taskCarry, 'work').body)},
+      ),
+    },
+  );
+
+  /// lead with its call of judgeSpec() drawn in place (chain.graph.json,
+  /// lib/chain.dart:242): judgeSpec's ways out — its returns from the
+  /// `switch (decision.choice)`, the `while (refused != null)` loop, the
+  /// `!answer.goesOn` forks — come to the end of its body from far back.
+  GraphLayout leadWithJudgeSpec() => layoutBody(
+    functionOf(chain, 'lead').body,
+    functions: chain.functions,
+    expanded: {'6': ExpandedNode(functionOf(chain, 'judgeSpec').body)},
+  );
+
+  /// chain with its call of lead() drawn in place, and judgeSpec() in that.
+  GraphLayout chainWithJudgeSpec() => layoutBody(
+    functionOf(chain, 'chain').body,
+    functions: chain.functions,
+    expanded: {
+      '1': ExpandedNode(
+        functionOf(chain, 'lead').body,
+        expanded: {'6': ExpandedNode(functionOf(chain, 'judgeSpec').body)},
       ),
     },
   );
@@ -639,6 +662,90 @@ void main() {
     });
   });
 
+  group('judgeSpec() drawn in place in lead, its ways to its end coming from '
+      'far back', () {
+    for (final (view, lay, path) in [
+      ('in lead', leadWithJudgeSpec, ['6']),
+      ('in lead in chain', chainWithJudgeSpec, ['1', '6']),
+    ]) {
+      late GraphLayout layout;
+      late GraphLayout body;
+      setUpAll(() {
+        layout = lay();
+        body = layout;
+        for (final id in path) {
+          body = body.nodes[id]!.frame!.inner;
+        }
+      });
+
+      test('$view: keeps every rule of step 9, in the frames too', () {
+        expect(checkLayout(layout), isEmpty);
+      });
+
+      test('$view: every arrow to the end turns to its input\'s height '
+          'where it first changes height and runs straight into the bar; '
+          'the ways out of !answer.goesOn after ask: refused and of rounds '
+          '>= maxRounds first go under the node at their exit\'s height in '
+          'the layer after', () {
+        final bar = body.nodes[endMarker]!.bar!;
+        final arrows = body.edges.where((e) => e.to == endMarker).toList();
+        expect(arrows, hasLength(8));
+        // The node standing level with the arrow's exit in the next layer,
+        // which its first turn goes under.
+        const around = {'4': '7', '17': '18'};
+        for (final edge in arrows) {
+          final name = '${edge.from}#${edge.exitIndex}';
+          final turns = turnsOf(edge);
+          expect(turns.last.to, edge.points.last.y, reason: name);
+          expect(bar.inputs, contains(edge.points.last.y), reason: name);
+          final obstacle = around[edge.from];
+          if (obstacle == null) {
+            expect(turns, hasLength(1), reason: '$name: ${edge.points}');
+            continue;
+          }
+          expect(turns, hasLength(2), reason: '$name: ${edge.points}');
+          final from = body.nodes[edge.from]!;
+          final node = body.nodes[obstacle]!;
+          final exit = edge.points.first.y;
+          expect(node.layer, from.layer + 1, reason: name);
+          expect(
+            node.tile.top < exit && exit < node.tile.bottom,
+            isTrue,
+            reason: '$name: $obstacle stands at its exit\'s height',
+          );
+          expect(
+            turns.first.to,
+            greaterThan(node.placeRect.bottom),
+            reason: '$name: goes under $obstacle',
+          );
+        }
+      });
+    }
+  });
+
+  test('every function of the test graphs drawn in place: the end of its '
+      'body stands where no more of its arrows would come in level', () {
+    var ends = 0;
+    final fallbacks = levelInputFallbacks;
+    for (final name in graphNames()) {
+      final file = loadGraphFile(name);
+      for (final MapEntry(key: id, value: body) in bodiesOf(file).entries) {
+        final drawn = inPlace(body, functions: file.functions);
+        final inner = drawn.nodes['c']!.frame!.inner;
+        if (inner.nodes[endMarker] != null) ends++;
+        expect(endJogs(inner), isEmpty, reason: '$name $id');
+      }
+    }
+    expect(ends, greaterThan(60));
+    expect(
+      levelInputFallbacks - fallbacks,
+      0,
+      reason:
+          'no level of the test graphs crosses more with its nodes where '
+          'most arrows come in level',
+    );
+  });
+
   group('two levels nested', () {
     for (final (name, lay, outer, inner) in [
       ('a call in copies', copiesWithCall, '1', '1'),
@@ -841,34 +948,7 @@ void main() {
 
     final fallbacks = earlyTurnFallbacks;
     for (var seed = 0; seed < 150; seed++) {
-      final body = randomBody(seed);
-      Map<String, ExpandedNode> expand(GraphBody body, int salt, int depth) => {
-        for (final (i, node) in body.nodes.indexed)
-          if ((node is CallNode || node is CopiesNode) &&
-              (seed + salt + i) % 3 != 0 &&
-              depth < 2)
-            node.id: () {
-              final inner = randomBody(seed * 31 + salt + i + 1);
-              // Often wider than the body: its end goes on to the side.
-              final width = (seed + salt + i) % 4 * 200.0;
-              return ExpandedNode(
-                inner,
-                // Copies keep the canvas's room, with the outlines stacked
-                // behind them.
-                room: node is CopiesNode
-                    ? FrameRoom(
-                        top: 42,
-                        side: 24,
-                        bottom: 30,
-                        width: width,
-                        above: 12,
-                      )
-                    : FrameRoom(width: width),
-                expanded: expand(inner, salt + i + 7, depth + 1),
-              );
-            }(),
-      };
-      final layout = layoutBody(body, expanded: expand(body, 0, 0));
+      final layout = _randomNested(seed);
       expect(
         checkLayout(layout).where((p) => !p.contains('loop crosses')),
         isEmpty,
@@ -902,6 +982,69 @@ void main() {
           'with it does not change what crosses',
     );
   });
+
+  test('random bodies in frames, nested: the end of each body stands where '
+      'no more of its arrows would come in level — where no two arrows that '
+      'turned before jog by one height into it while fewer come in without '
+      'turning before it', () {
+    var ends = 0;
+    final fallbacks = levelInputFallbacks;
+    void visit(GraphLayout level, String where) {
+      for (final node in level.nodes.values) {
+        final inner = node.frame?.inner;
+        if (inner == null) continue;
+        if (inner.nodes[endMarker] != null) ends++;
+        expect(endJogs(inner), isEmpty, reason: '$where ${node.id}');
+        visit(inner, '$where ${node.id} ›');
+      }
+    }
+
+    for (var seed = 0; seed < 150; seed++) {
+      visit(_randomNested(seed), 'seed $seed:');
+    }
+    expect(ends, greaterThan(500));
+    expect(
+      levelInputFallbacks - fallbacks,
+      lessThanOrEqualTo(4),
+      reason:
+          'only a few random levels cross more with their nodes where most '
+          'arrows come in level than with the heights their order was '
+          'chosen with, and keep those',
+    );
+  });
+}
+
+/// The layout of random body [seed] with random nodes expanded, nested two
+/// deep, in frames of random widths.
+GraphLayout _randomNested(int seed) {
+  Map<String, ExpandedNode> expand(GraphBody body, int salt, int depth) => {
+    for (final (i, node) in body.nodes.indexed)
+      if ((node is CallNode || node is CopiesNode) &&
+          (seed + salt + i) % 3 != 0 &&
+          depth < 2)
+        node.id: () {
+          final inner = randomBody(seed * 31 + salt + i + 1);
+          // Often wider than the body: its end goes on to the side.
+          final width = (seed + salt + i) % 4 * 200.0;
+          return ExpandedNode(
+            inner,
+            // Copies keep the canvas's room, with the outlines stacked
+            // behind them.
+            room: node is CopiesNode
+                ? FrameRoom(
+                    top: 42,
+                    side: 24,
+                    bottom: 30,
+                    width: width,
+                    above: 12,
+                  )
+                : FrameRoom(width: width),
+            expanded: expand(inner, salt + i + 7, depth + 1),
+          );
+        }(),
+  };
+  final body = randomBody(seed);
+  return layoutBody(body, expanded: expand(body, 0, 0));
 }
 
 /// Expects the end of the body in the frame of the node [id] of [layout] to

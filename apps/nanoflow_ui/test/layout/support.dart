@@ -206,3 +206,85 @@ List<(double, double, double)> verticals(EdgePath edge) => [
             : edge.points[i].y,
       ),
 ];
+
+/// Where [edge] changes height, left to right: each turn from one
+/// horizontal piece to the next — a vertical or a slant — as the x it
+/// starts at and the heights it goes from and to.
+List<({double x, double from, double to})> turnsOf(EdgePath edge) {
+  final points = edge.points;
+  final turns = <({double x, double from, double to})>[];
+  int? start;
+  for (var i = 1; i <= points.length; i++) {
+    final flat =
+        i == points.length || (points[i].y - points[i - 1].y).abs() < 1e-6;
+    if (!flat) {
+      start ??= i - 1;
+    } else if (start != null) {
+      turns.add((
+        x: points[start].x,
+        from: points[start].y,
+        to: points[i - 1].y,
+      ));
+      start = null;
+    }
+  }
+  return turns;
+}
+
+/// [body], a body laid out in a frame, if its end could stand higher or
+/// lower and bring more arrows in level: arrows into the end that turned
+/// before and then jog by one height in the gap before it, a group of two
+/// or more for each height, outnumbering the arrows that come in without
+/// turning in that gap. The end is alone in its layer and nothing goes on
+/// from it in the body: standing by that height off, it would take each
+/// arrow of the group in level from its turn before, and turn the others.
+List<String> endJogs(GraphLayout body) {
+  final end = body.nodes[endMarker];
+  if (end == null) return const [];
+  final gap = body.nodes.values
+      .where((node) => node.id != endMarker)
+      .map((node) => node.tile.right)
+      .fold(double.negativeInfinity, math.max);
+  var straight = 0;
+  final jogs = <String, List<String>>{};
+  for (final edge in body.edges) {
+    if (edge.to != endMarker) continue;
+    final turns = turnsOf(edge);
+    if (turns.isEmpty || turns.last.x < gap - 1e-6) {
+      straight++;
+    } else if (turns.length > 1) {
+      final jog = (turns.last.to - turns.last.from).toStringAsFixed(1);
+      jogs.putIfAbsent(jog, () => []).add('${edge.from}#${edge.exitIndex}');
+    }
+  }
+  return [
+    for (final MapEntry(key: jog, value: arrows) in jogs.entries)
+      if (arrows.length > 1 && arrows.length > straight)
+        '${arrows.join(', ')} jog $jog before the end, '
+            '$straight in without a turn there',
+  ];
+}
+
+/// [body] drawn in place: the layout of a body whose one call, from its
+/// start to its end, is expanded as [body], its calls named from
+/// [functions].
+GraphLayout inPlace(
+  GraphBody body, {
+  Map<String, GraphFunction> functions = const {},
+}) => layoutBody(
+  const GraphBody(
+    nodes: [
+      CallNode(
+        id: 'c',
+        place: 'lib/flow.dart:1',
+        functions: ['lib/flow.dart#f'],
+      ),
+    ],
+    edges: [
+      GraphEdge(from: null, to: 'c', label: null),
+      GraphEdge(from: 'c', to: null, label: null),
+    ],
+  ),
+  functions: functions,
+  expanded: {'c': ExpandedNode(body)},
+);

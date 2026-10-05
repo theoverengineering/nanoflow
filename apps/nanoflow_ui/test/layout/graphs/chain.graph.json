@@ -1,0 +1,3033 @@
+{
+  "format": 2,
+  "package": "scheduleme_workflow",
+  "fingerprint": "sha256:14795fb05781f36a82702646b8133a08e14cd33a88deda8bc36b532a754fa0c6",
+  "sources": {
+    "bin/chain.dart": "sha256:e69316e97e8e56f2533fd849a8c0373563f1371c550ebdd2f3c1ddf9f2b76745",
+    "bin/task.dart": "sha256:1146790351c49219721c13cc2ab0c179eeb1a131d0e9e81ee89f5020018f59a3",
+    "lib/chain.dart": "sha256:301fd9fbc6863a644be57818892234d4c5fa456d412a7935df2def2f2c341bbc",
+    "lib/src/actions.dart": "sha256:66c0bec1fac19f27c621e2627eca9d216bf069504954a802ac800078fc6c41dd",
+    "lib/src/briefs.dart": "sha256:0de34d9ee11884d4a18a80e546c4ce0c3c9f240a070436168bd6eaac59e04159",
+    "lib/src/model.dart": "sha256:e1ca626e550907f65680e13c97d283382f3994c12c6c3ce457d60a1f176fb88d",
+    "lib/src/on_disk.dart": "sha256:61c3623fd863e2731971e00c379e2aaeca1ac7007aa14a46943900606aa42fd4",
+    "lib/src/programs.dart": "sha256:8571eccbe64af8aa646bb77744d22745a524fe948b5e8074a16c3251ecb9b543",
+    "lib/src/record.dart": "sha256:123f8c5bf63749dff5e3d581140d9a235dd9574249f5038455ba1d91f745f72c",
+    "lib/src/terminal.dart": "sha256:4b06b02d165cf60ec7c7e75b9a30ba90057034bccae603318699ad183f5aa1ba",
+    "lib/task_graph.dart": "sha256:23b081bc622977ae999b4522dd94e85e1a71f130e36f823f07ecd656f5a4cfc9"
+  },
+  "builds": {},
+  "workflows": [
+    "lib/chain.dart#chain",
+    "lib/task_graph.dart#task"
+  ],
+  "functions": {
+    "lib/chain.dart#chain": {
+      "name": "chain",
+      "place": "lib/chain.dart:24",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "call",
+            "functions": [
+              "lib/chain.dart#lead"
+            ],
+            "place": "lib/chain.dart:25"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/chain.dart#cut": {
+      "name": "cut",
+      "place": "lib/chain.dart:349",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "spec-cutter",
+            "place": "lib/chain.dart:364"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "run.refused case final refused?",
+            "place": "lib/chain.dart:374"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/chain.dart:375"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:379"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "run.outcome == null",
+            "place": "lib/chain.dart:385"
+          },
+          {
+            "id": "6",
+            "kind": "fork",
+            "label": "!wentOn && session != null",
+            "place": "lib/chain.dart:386"
+          },
+          {
+            "id": "7",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:395"
+          },
+          {
+            "id": "8",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:399"
+          },
+          {
+            "id": "9",
+            "kind": "fork",
+            "label": "run.outcome == 'blocked'",
+            "place": "lib/chain.dart:406"
+          },
+          {
+            "id": "10",
+            "kind": "effect",
+            "name": "ask: blocked",
+            "place": "lib/chain.dart:411"
+          },
+          {
+            "id": "11",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:415"
+          },
+          {
+            "id": "12",
+            "kind": "effect",
+            "name": "posted",
+            "place": "lib/chain.dart:420"
+          },
+          {
+            "id": "13",
+            "kind": "fork",
+            "label": "!posted",
+            "place": "lib/chain.dart:424"
+          },
+          {
+            "id": "14",
+            "kind": "fork",
+            "label": "!askedToPost",
+            "place": "lib/chain.dart:425"
+          },
+          {
+            "id": "15",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:433"
+          },
+          {
+            "id": "16",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:437"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "9",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": "false"
+          },
+          {
+            "from": "7",
+            "to": "8",
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "8",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "9",
+            "to": "10",
+            "label": "true"
+          },
+          {
+            "from": "9",
+            "to": "12",
+            "label": "false"
+          },
+          {
+            "from": "10",
+            "to": "11",
+            "label": null
+          },
+          {
+            "from": "11",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "11",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "12",
+            "to": "13",
+            "label": null
+          },
+          {
+            "from": "13",
+            "to": "14",
+            "label": "true"
+          },
+          {
+            "from": "13",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "14",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "14",
+            "to": "15",
+            "label": "false"
+          },
+          {
+            "from": "15",
+            "to": "16",
+            "label": null
+          },
+          {
+            "from": "16",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "16",
+            "to": "1",
+            "label": "false"
+          }
+        ]
+      }
+    },
+    "lib/chain.dart#enter": {
+      "name": "enter",
+      "place": "lib/chain.dart:74",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "standing",
+            "place": "lib/chain.dart:80"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "!standing.specified",
+            "place": "lib/chain.dart:84"
+          },
+          {
+            "id": "3",
+            "kind": "fork",
+            "label": "standing.writerSession case final session?",
+            "place": "lib/chain.dart:85"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!standing.begun",
+            "place": "lib/chain.dart:91"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "idea == null",
+            "place": "lib/chain.dart:92"
+          },
+          {
+            "id": "6",
+            "kind": "effect",
+            "name": "idea",
+            "place": "lib/chain.dart:98"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": "false"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/chain.dart#finish": {
+      "name": "finish",
+      "place": "lib/chain.dart:609",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "range",
+            "place": "lib/chain.dart:615"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "while (span.refused != null)",
+            "place": "lib/chain.dart:616"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:618"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:622"
+          },
+          {
+            "id": "5",
+            "kind": "effect",
+            "name": "range",
+            "place": "lib/chain.dart:623"
+          },
+          {
+            "id": "6",
+            "kind": "effect",
+            "name": "account",
+            "place": "lib/chain.dart:626"
+          },
+          {
+            "id": "7",
+            "kind": "effect",
+            "name": "implementation-reviewer",
+            "place": "lib/chain.dart:630"
+          },
+          {
+            "id": "8",
+            "kind": "fork",
+            "label": "judged.run.refused case final refused?",
+            "place": "lib/chain.dart:642"
+          },
+          {
+            "id": "9",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/chain.dart:643"
+          },
+          {
+            "id": "10",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:647"
+          },
+          {
+            "id": "11",
+            "kind": "fork",
+            "label": "judged.run.outcome == null || judged.verdict == null",
+            "place": "lib/chain.dart:650"
+          },
+          {
+            "id": "12",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:656"
+          },
+          {
+            "id": "13",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:660"
+          },
+          {
+            "id": "14",
+            "kind": "fork",
+            "label": "judged.verdict == 'PASS'",
+            "place": "lib/chain.dart:664"
+          },
+          {
+            "id": "15",
+            "kind": "effect",
+            "name": "report",
+            "place": "lib/chain.dart:665"
+          },
+          {
+            "id": "16",
+            "kind": "effect",
+            "name": "gather",
+            "place": "lib/chain.dart:672"
+          },
+          {
+            "id": "17",
+            "kind": "fork",
+            "label": "while (refused != null)",
+            "place": "lib/chain.dart:673"
+          },
+          {
+            "id": "18",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/chain.dart:675"
+          },
+          {
+            "id": "19",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:679"
+          },
+          {
+            "id": "20",
+            "kind": "effect",
+            "name": "gather",
+            "place": "lib/chain.dart:680"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "6",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": "8",
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": "9",
+            "label": "true"
+          },
+          {
+            "from": "8",
+            "to": "11",
+            "label": "false"
+          },
+          {
+            "from": "9",
+            "to": "10",
+            "label": null
+          },
+          {
+            "from": "10",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "10",
+            "to": "7",
+            "label": "false"
+          },
+          {
+            "from": "11",
+            "to": "12",
+            "label": "true"
+          },
+          {
+            "from": "11",
+            "to": "14",
+            "label": "false"
+          },
+          {
+            "from": "12",
+            "to": "13",
+            "label": null
+          },
+          {
+            "from": "13",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "13",
+            "to": "7",
+            "label": "false"
+          },
+          {
+            "from": "14",
+            "to": "15",
+            "label": "true"
+          },
+          {
+            "from": "14",
+            "to": "16",
+            "label": "false"
+          },
+          {
+            "from": "15",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "16",
+            "to": "17",
+            "label": null
+          },
+          {
+            "from": "17",
+            "to": "18",
+            "label": "true"
+          },
+          {
+            "from": "17",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "18",
+            "to": "19",
+            "label": null
+          },
+          {
+            "from": "19",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "19",
+            "to": "20",
+            "label": "false"
+          },
+          {
+            "from": "20",
+            "to": "17",
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/chain.dart#implement": {
+      "name": "implement",
+      "place": "lib/chain.dart:563",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "next task",
+            "place": "lib/chain.dart:570"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "next.done",
+            "place": "lib/chain.dart:571"
+          },
+          {
+            "id": "3",
+            "kind": "fork",
+            "label": "taskFolder == null",
+            "place": "lib/chain.dart:573"
+          },
+          {
+            "id": "4",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:575"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:579"
+          },
+          {
+            "id": "6",
+            "kind": "call",
+            "functions": [
+              "lib/task_graph.dart#carry"
+            ],
+            "place": "lib/chain.dart:584"
+          },
+          {
+            "id": "7",
+            "kind": "fork",
+            "label": "!ended.finished",
+            "place": "lib/chain.dart:589"
+          },
+          {
+            "id": "8",
+            "kind": "effect",
+            "name": "ask: next",
+            "place": "lib/chain.dart:591"
+          },
+          {
+            "id": "9",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:601"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": "true"
+          },
+          {
+            "from": "3",
+            "to": "6",
+            "label": "false"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": null
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "7",
+            "to": "8",
+            "label": "false"
+          },
+          {
+            "from": "8",
+            "to": "9",
+            "label": null
+          },
+          {
+            "from": "9",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "9",
+            "to": "1",
+            "label": "false"
+          }
+        ]
+      }
+    },
+    "lib/chain.dart#judgeCut": {
+      "name": "judgeCut",
+      "place": "lib/chain.dart:448",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "plan-reviewer",
+            "place": "lib/chain.dart:464"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "judged.run.refused case final refused?",
+            "place": "lib/chain.dart:475"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/chain.dart:476"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:480"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "judged.run.outcome == null || judged.verdict == null",
+            "place": "lib/chain.dart:483"
+          },
+          {
+            "id": "6",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:488"
+          },
+          {
+            "id": "7",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:492"
+          },
+          {
+            "id": "8",
+            "kind": "fork",
+            "label": "judged.verdict == 'PASS'",
+            "place": "lib/chain.dart:496"
+          },
+          {
+            "id": "9",
+            "kind": "fork",
+            "label": "passes < passesNeeded",
+            "place": "lib/chain.dart:498"
+          },
+          {
+            "id": "10",
+            "kind": "effect",
+            "name": "acceptance",
+            "place": "lib/chain.dart:499"
+          },
+          {
+            "id": "11",
+            "kind": "fork",
+            "label": "switch (decision.choice)",
+            "place": "lib/chain.dart:506"
+          },
+          {
+            "id": "12",
+            "kind": "effect",
+            "name": "lay out",
+            "place": "lib/chain.dart:508"
+          },
+          {
+            "id": "13",
+            "kind": "fork",
+            "label": "while (refused != null)",
+            "place": "lib/chain.dart:512"
+          },
+          {
+            "id": "14",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/chain.dart:514"
+          },
+          {
+            "id": "15",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:518"
+          },
+          {
+            "id": "16",
+            "kind": "effect",
+            "name": "lay out",
+            "place": "lib/chain.dart:519"
+          },
+          {
+            "id": "17",
+            "kind": "effect",
+            "name": "request",
+            "place": "lib/chain.dart:526"
+          },
+          {
+            "id": "18",
+            "kind": "fork",
+            "label": "rounds >= maxRounds",
+            "place": "lib/chain.dart:545"
+          },
+          {
+            "id": "19",
+            "kind": "effect",
+            "name": "ask: dispute",
+            "place": "lib/chain.dart:550"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "8",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "7",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "8",
+            "to": "9",
+            "label": "true"
+          },
+          {
+            "from": "8",
+            "to": "18",
+            "label": "false"
+          },
+          {
+            "from": "9",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "9",
+            "to": "10",
+            "label": "false"
+          },
+          {
+            "from": "10",
+            "to": "11",
+            "label": null
+          },
+          {
+            "from": "11",
+            "to": "12",
+            "label": "Choice.accept"
+          },
+          {
+            "from": "11",
+            "to": "17",
+            "label": "Choice.changes"
+          },
+          {
+            "from": "11",
+            "to": null,
+            "label": "Choice.commit || Choice.stop"
+          },
+          {
+            "from": "12",
+            "to": "13",
+            "label": null
+          },
+          {
+            "from": "13",
+            "to": "14",
+            "label": "true"
+          },
+          {
+            "from": "13",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "14",
+            "to": "15",
+            "label": null
+          },
+          {
+            "from": "15",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "15",
+            "to": "16",
+            "label": "false"
+          },
+          {
+            "from": "16",
+            "to": "13",
+            "label": null
+          },
+          {
+            "from": "17",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "18",
+            "to": "19",
+            "label": "true"
+          },
+          {
+            "from": "18",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "19",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/chain.dart#judgeSpec": {
+      "name": "judgeSpec",
+      "place": "lib/chain.dart:242",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "spec-reviewer",
+            "place": "lib/chain.dart:251"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "judged.run.refused case final refused?",
+            "place": "lib/chain.dart:262"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/chain.dart:263"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:267"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "judged.run.outcome == null || judged.verdict == null",
+            "place": "lib/chain.dart:270"
+          },
+          {
+            "id": "6",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:275"
+          },
+          {
+            "id": "7",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:279"
+          },
+          {
+            "id": "8",
+            "kind": "fork",
+            "label": "judged.verdict == 'PASS'",
+            "place": "lib/chain.dart:283"
+          },
+          {
+            "id": "9",
+            "kind": "effect",
+            "name": "reading",
+            "place": "lib/chain.dart:284"
+          },
+          {
+            "id": "10",
+            "kind": "fork",
+            "label": "switch (decision.choice)",
+            "place": "lib/chain.dart:291"
+          },
+          {
+            "id": "11",
+            "kind": "effect",
+            "name": "declare",
+            "place": "lib/chain.dart:293"
+          },
+          {
+            "id": "12",
+            "kind": "fork",
+            "label": "while (refused != null)",
+            "place": "lib/chain.dart:297"
+          },
+          {
+            "id": "13",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/chain.dart:299"
+          },
+          {
+            "id": "14",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:303"
+          },
+          {
+            "id": "15",
+            "kind": "effect",
+            "name": "declare",
+            "place": "lib/chain.dart:304"
+          },
+          {
+            "id": "16",
+            "kind": "effect",
+            "name": "request",
+            "place": "lib/chain.dart:311"
+          },
+          {
+            "id": "17",
+            "kind": "fork",
+            "label": "rounds >= maxRounds",
+            "place": "lib/chain.dart:328"
+          },
+          {
+            "id": "18",
+            "kind": "effect",
+            "name": "ask: dispute",
+            "place": "lib/chain.dart:333"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "8",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "7",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "8",
+            "to": "9",
+            "label": "true"
+          },
+          {
+            "from": "8",
+            "to": "17",
+            "label": "false"
+          },
+          {
+            "from": "9",
+            "to": "10",
+            "label": null
+          },
+          {
+            "from": "10",
+            "to": "11",
+            "label": "Choice.accept"
+          },
+          {
+            "from": "10",
+            "to": "16",
+            "label": "Choice.changes"
+          },
+          {
+            "from": "10",
+            "to": null,
+            "label": "Choice.commit || Choice.stop"
+          },
+          {
+            "from": "11",
+            "to": "12",
+            "label": null
+          },
+          {
+            "from": "12",
+            "to": "13",
+            "label": "true"
+          },
+          {
+            "from": "12",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "13",
+            "to": "14",
+            "label": null
+          },
+          {
+            "from": "14",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "14",
+            "to": "15",
+            "label": "false"
+          },
+          {
+            "from": "15",
+            "to": "12",
+            "label": null
+          },
+          {
+            "from": "16",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "17",
+            "to": "18",
+            "label": "true"
+          },
+          {
+            "from": "17",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "18",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/chain.dart#lead": {
+      "name": "lead",
+      "place": "lib/chain.dart:30",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "workspace",
+            "place": "lib/chain.dart:36"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "workspace.refused case final refused?",
+            "place": "lib/chain.dart:40"
+          },
+          {
+            "id": "3",
+            "kind": "call",
+            "functions": [
+              "lib/chain.dart#enter"
+            ],
+            "place": "lib/chain.dart:51"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "switch (phase)",
+            "place": "lib/chain.dart:53"
+          },
+          {
+            "id": "5",
+            "kind": "call",
+            "functions": [
+              "lib/chain.dart#specify"
+            ],
+            "place": "lib/chain.dart:58"
+          },
+          {
+            "id": "6",
+            "kind": "call",
+            "functions": [
+              "lib/chain.dart#judgeSpec"
+            ],
+            "place": "lib/chain.dart:60"
+          },
+          {
+            "id": "7",
+            "kind": "call",
+            "functions": [
+              "lib/chain.dart#cut"
+            ],
+            "place": "lib/chain.dart:62"
+          },
+          {
+            "id": "8",
+            "kind": "call",
+            "functions": [
+              "lib/chain.dart#judgeCut"
+            ],
+            "place": "lib/chain.dart:64"
+          },
+          {
+            "id": "9",
+            "kind": "call",
+            "functions": [
+              "lib/chain.dart#implement"
+            ],
+            "place": "lib/chain.dart:66"
+          },
+          {
+            "id": "10",
+            "kind": "call",
+            "functions": [
+              "lib/chain.dart#finish"
+            ],
+            "place": "lib/chain.dart:68"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "Ended()"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "Specify()"
+          },
+          {
+            "from": "4",
+            "to": "6",
+            "label": "JudgeSpec()"
+          },
+          {
+            "from": "4",
+            "to": "7",
+            "label": "Cut()"
+          },
+          {
+            "from": "4",
+            "to": "8",
+            "label": "JudgeCut()"
+          },
+          {
+            "from": "4",
+            "to": "9",
+            "label": "Implement()"
+          },
+          {
+            "from": "4",
+            "to": "10",
+            "label": "Finish()"
+          },
+          {
+            "from": "5",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "9",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "10",
+            "to": "4",
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/chain.dart#specify": {
+      "name": "specify",
+      "place": "lib/chain.dart:132",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "spec-writer",
+            "place": "lib/chain.dart:147"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "run.refused case final refused?",
+            "place": "lib/chain.dart:157"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/chain.dart:158"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:162"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "run.outcome == null",
+            "place": "lib/chain.dart:168"
+          },
+          {
+            "id": "6",
+            "kind": "fork",
+            "label": "!wentOn && session != null",
+            "place": "lib/chain.dart:169"
+          },
+          {
+            "id": "7",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:178"
+          },
+          {
+            "id": "8",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:182"
+          },
+          {
+            "id": "9",
+            "kind": "fork",
+            "label": "run.outcome == 'blocked'",
+            "place": "lib/chain.dart:189"
+          },
+          {
+            "id": "10",
+            "kind": "effect",
+            "name": "question",
+            "place": "lib/chain.dart:190"
+          },
+          {
+            "id": "11",
+            "kind": "fork",
+            "label": "question == null",
+            "place": "lib/chain.dart:194"
+          },
+          {
+            "id": "12",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:198"
+          },
+          {
+            "id": "13",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:202"
+          },
+          {
+            "id": "14",
+            "kind": "effect",
+            "name": "answer",
+            "place": "lib/chain.dart:206"
+          },
+          {
+            "id": "15",
+            "kind": "fork",
+            "label": "answer == null",
+            "place": "lib/chain.dart:210"
+          },
+          {
+            "id": "16",
+            "kind": "effect",
+            "name": "reply",
+            "place": "lib/chain.dart:213"
+          },
+          {
+            "id": "17",
+            "kind": "effect",
+            "name": "written",
+            "place": "lib/chain.dart:218"
+          },
+          {
+            "id": "18",
+            "kind": "fork",
+            "label": "missing == null",
+            "place": "lib/chain.dart:222"
+          },
+          {
+            "id": "19",
+            "kind": "fork",
+            "label": "!askedToFinish",
+            "place": "lib/chain.dart:225"
+          },
+          {
+            "id": "20",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/chain.dart:230"
+          },
+          {
+            "id": "21",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/chain.dart:234"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "9",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": "false"
+          },
+          {
+            "from": "7",
+            "to": "8",
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "8",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "9",
+            "to": "10",
+            "label": "true"
+          },
+          {
+            "from": "9",
+            "to": "17",
+            "label": "false"
+          },
+          {
+            "from": "10",
+            "to": "11",
+            "label": null
+          },
+          {
+            "from": "11",
+            "to": "12",
+            "label": "true"
+          },
+          {
+            "from": "11",
+            "to": "14",
+            "label": "false"
+          },
+          {
+            "from": "12",
+            "to": "13",
+            "label": null
+          },
+          {
+            "from": "13",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "13",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "14",
+            "to": "15",
+            "label": null
+          },
+          {
+            "from": "15",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "15",
+            "to": "16",
+            "label": "false"
+          },
+          {
+            "from": "16",
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "17",
+            "to": "18",
+            "label": null
+          },
+          {
+            "from": "18",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "18",
+            "to": "19",
+            "label": "false"
+          },
+          {
+            "from": "19",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "19",
+            "to": "20",
+            "label": "false"
+          },
+          {
+            "from": "20",
+            "to": "21",
+            "label": null
+          },
+          {
+            "from": "21",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "21",
+            "to": "1",
+            "label": "false"
+          }
+        ]
+      }
+    },
+    "lib/task_graph.dart#admit": {
+      "name": "admit",
+      "place": "lib/task_graph.dart:63",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "status",
+            "place": "lib/task_graph.dart:66"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "row.refused case final refused?",
+            "place": "lib/task_graph.dart:67"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/task_graph.dart:68"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:72"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "finished",
+            "place": "lib/task_graph.dart:77"
+          },
+          {
+            "id": "6",
+            "kind": "fork",
+            "label": "switch (status)",
+            "place": "lib/task_graph.dart:79"
+          },
+          {
+            "id": "7",
+            "kind": "effect",
+            "name": "ask: blocked",
+            "place": "lib/task_graph.dart:86"
+          },
+          {
+            "id": "8",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:90"
+          },
+          {
+            "id": "9",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:91"
+          },
+          {
+            "id": "10",
+            "kind": "effect",
+            "name": "last session",
+            "place": "lib/task_graph.dart:94"
+          },
+          {
+            "id": "11",
+            "kind": "fork",
+            "label": "last != null",
+            "place": "lib/task_graph.dart:98"
+          },
+          {
+            "id": "12",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/task_graph.dart:104"
+          },
+          {
+            "id": "13",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:108"
+          },
+          {
+            "id": "14",
+            "kind": "effect",
+            "name": "take",
+            "place": "lib/task_graph.dart:112"
+          },
+          {
+            "id": "15",
+            "kind": "fork",
+            "label": "refused == null",
+            "place": "lib/task_graph.dart:113"
+          },
+          {
+            "id": "16",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/task_graph.dart:114"
+          },
+          {
+            "id": "17",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:118"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": "passed"
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": "withTheReviewer"
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": "blocked"
+          },
+          {
+            "from": "6",
+            "to": "10",
+            "label": "inProgress"
+          },
+          {
+            "from": "6",
+            "to": "14",
+            "label": "default"
+          },
+          {
+            "from": "7",
+            "to": "8",
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "8",
+            "to": "9",
+            "label": "false"
+          },
+          {
+            "from": "9",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "10",
+            "to": "11",
+            "label": null
+          },
+          {
+            "from": "11",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "11",
+            "to": "12",
+            "label": "false"
+          },
+          {
+            "from": "12",
+            "to": "13",
+            "label": null
+          },
+          {
+            "from": "13",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "13",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "14",
+            "to": "15",
+            "label": null
+          },
+          {
+            "from": "15",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "15",
+            "to": "16",
+            "label": "false"
+          },
+          {
+            "from": "16",
+            "to": "17",
+            "label": null
+          },
+          {
+            "from": "17",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "17",
+            "to": "1",
+            "label": "false"
+          }
+        ]
+      }
+    },
+    "lib/task_graph.dart#carry": {
+      "name": "carry",
+      "place": "lib/task_graph.dart:45",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "call",
+            "functions": [
+              "lib/task_graph.dart#admit"
+            ],
+            "place": "lib/task_graph.dart:46"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "switch (stage)",
+            "place": "lib/task_graph.dart:48"
+          },
+          {
+            "id": "3",
+            "kind": "call",
+            "functions": [
+              "lib/task_graph.dart#work"
+            ],
+            "place": "lib/task_graph.dart:53"
+          },
+          {
+            "id": "4",
+            "kind": "call",
+            "functions": [
+              "lib/task_graph.dart#review"
+            ],
+            "place": "lib/task_graph.dart:55"
+          },
+          {
+            "id": "5",
+            "kind": "call",
+            "functions": [
+              "lib/task_graph.dart#decide"
+            ],
+            "place": "lib/task_graph.dart:57"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": "Ended()"
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "Work()"
+          },
+          {
+            "from": "2",
+            "to": "4",
+            "label": "Judge()"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "Decide()"
+          },
+          {
+            "from": "3",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "5",
+            "to": "2",
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/task_graph.dart#decide": {
+      "name": "decide",
+      "place": "lib/task_graph.dart:347",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "decision",
+            "place": "lib/task_graph.dart:354"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "switch (decision.choice)",
+            "place": "lib/task_graph.dart:358"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "commit",
+            "place": "lib/task_graph.dart:360"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "committed.refused case final refused?",
+            "place": "lib/task_graph.dart:364"
+          },
+          {
+            "id": "5",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/task_graph.dart:365"
+          },
+          {
+            "id": "6",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:372"
+          },
+          {
+            "id": "7",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:378"
+          },
+          {
+            "id": "8",
+            "kind": "effect",
+            "name": "request",
+            "place": "lib/task_graph.dart:383"
+          },
+          {
+            "id": "9",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:392"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "Choice.commit"
+          },
+          {
+            "from": "2",
+            "to": "7",
+            "label": "Choice.accept"
+          },
+          {
+            "from": "2",
+            "to": "8",
+            "label": "Choice.changes"
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": "Choice.stop"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "6",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": "9",
+            "label": null
+          },
+          {
+            "from": "9",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/task_graph.dart#review": {
+      "name": "review",
+      "place": "lib/task_graph.dart:260",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "reviewer",
+            "place": "lib/task_graph.dart:276"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "judged.run.refused case final refused?",
+            "place": "lib/task_graph.dart:288"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/task_graph.dart:289"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:293"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "judged.run.outcome == null",
+            "place": "lib/task_graph.dart:296"
+          },
+          {
+            "id": "6",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/task_graph.dart:298"
+          },
+          {
+            "id": "7",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:302"
+          },
+          {
+            "id": "8",
+            "kind": "fork",
+            "label": "judged.verdict == null",
+            "place": "lib/task_graph.dart:305"
+          },
+          {
+            "id": "9",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/task_graph.dart:309"
+          },
+          {
+            "id": "10",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:313"
+          },
+          {
+            "id": "11",
+            "kind": "fork",
+            "label": "judged.verdict == 'PASS'",
+            "place": "lib/task_graph.dart:317"
+          },
+          {
+            "id": "12",
+            "kind": "fork",
+            "label": "passes < passesNeeded",
+            "place": "lib/task_graph.dart:319"
+          },
+          {
+            "id": "13",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:320"
+          },
+          {
+            "id": "14",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:327"
+          },
+          {
+            "id": "15",
+            "kind": "fork",
+            "label": "rounds >= maxRounds",
+            "place": "lib/task_graph.dart:329"
+          },
+          {
+            "id": "16",
+            "kind": "effect",
+            "name": "ask: dispute",
+            "place": "lib/task_graph.dart:334"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "8",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "7",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "8",
+            "to": "9",
+            "label": "true"
+          },
+          {
+            "from": "8",
+            "to": "11",
+            "label": "false"
+          },
+          {
+            "from": "9",
+            "to": "10",
+            "label": null
+          },
+          {
+            "from": "10",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "10",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "11",
+            "to": "12",
+            "label": "true"
+          },
+          {
+            "from": "11",
+            "to": "14",
+            "label": "false"
+          },
+          {
+            "from": "12",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "12",
+            "to": "13",
+            "label": "false"
+          },
+          {
+            "from": "13",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "14",
+            "to": "15",
+            "label": null
+          },
+          {
+            "from": "15",
+            "to": "16",
+            "label": "true"
+          },
+          {
+            "from": "15",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "16",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/task_graph.dart#task": {
+      "name": "task",
+      "place": "lib/task_graph.dart:40",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "call",
+            "functions": [
+              "lib/task_graph.dart#carry"
+            ],
+            "place": "lib/task_graph.dart:41"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/task_graph.dart#work": {
+      "name": "work",
+      "place": "lib/task_graph.dart:125",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "coder",
+            "place": "lib/task_graph.dart:139"
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "run.refused case final refused?",
+            "place": "lib/task_graph.dart:144"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "ask: refused",
+            "place": "lib/task_graph.dart:145"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:149"
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "run.outcome == null",
+            "place": "lib/task_graph.dart:155"
+          },
+          {
+            "id": "6",
+            "kind": "fork",
+            "label": "!wentOn && session != null",
+            "place": "lib/task_graph.dart:156"
+          },
+          {
+            "id": "7",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/task_graph.dart:164"
+          },
+          {
+            "id": "8",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:168"
+          },
+          {
+            "id": "9",
+            "kind": "fork",
+            "label": "run.outcome == 'blocked'",
+            "place": "lib/task_graph.dart:175"
+          },
+          {
+            "id": "10",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:176"
+          },
+          {
+            "id": "11",
+            "kind": "effect",
+            "name": "ask: blocked",
+            "place": "lib/task_graph.dart:180"
+          },
+          {
+            "id": "12",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:184"
+          },
+          {
+            "id": "13",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:185"
+          },
+          {
+            "id": "14",
+            "kind": "effect",
+            "name": "posted",
+            "place": "lib/task_graph.dart:190"
+          },
+          {
+            "id": "15",
+            "kind": "fork",
+            "label": "!posted",
+            "place": "lib/task_graph.dart:194"
+          },
+          {
+            "id": "16",
+            "kind": "fork",
+            "label": "!askedToPost",
+            "place": "lib/task_graph.dart:195"
+          },
+          {
+            "id": "17",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/task_graph.dart:202"
+          },
+          {
+            "id": "18",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:206"
+          },
+          {
+            "id": "19",
+            "kind": "effect",
+            "name": "checks",
+            "place": "lib/task_graph.dart:212"
+          },
+          {
+            "id": "20",
+            "kind": "fork",
+            "label": "while (!checked.ran)",
+            "place": "lib/task_graph.dart:213"
+          },
+          {
+            "id": "21",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/task_graph.dart:215"
+          },
+          {
+            "id": "22",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:219"
+          },
+          {
+            "id": "23",
+            "kind": "effect",
+            "name": "checks",
+            "place": "lib/task_graph.dart:220"
+          },
+          {
+            "id": "24",
+            "kind": "fork",
+            "label": "checked.clean",
+            "place": "lib/task_graph.dart:222"
+          },
+          {
+            "id": "25",
+            "kind": "effect",
+            "name": "move",
+            "place": "lib/task_graph.dart:223"
+          },
+          {
+            "id": "26",
+            "kind": "fork",
+            "label": "run.outcome == 'declined'",
+            "place": "lib/task_graph.dart:228"
+          },
+          {
+            "id": "27",
+            "kind": "effect",
+            "name": "ask: declined",
+            "place": "lib/task_graph.dart:232"
+          },
+          {
+            "id": "28",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:236"
+          },
+          {
+            "id": "29",
+            "kind": "fork",
+            "label": "repairs > maxRepairs",
+            "place": "lib/task_graph.dart:241"
+          },
+          {
+            "id": "30",
+            "kind": "effect",
+            "name": "ask: stuck",
+            "place": "lib/task_graph.dart:245"
+          },
+          {
+            "id": "31",
+            "kind": "fork",
+            "label": "!answer.goesOn",
+            "place": "lib/task_graph.dart:249"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "true"
+          },
+          {
+            "from": "2",
+            "to": "5",
+            "label": "false"
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "true"
+          },
+          {
+            "from": "5",
+            "to": "9",
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "6",
+            "to": "7",
+            "label": "false"
+          },
+          {
+            "from": "7",
+            "to": "8",
+            "label": null
+          },
+          {
+            "from": "8",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "8",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "9",
+            "to": "10",
+            "label": "true"
+          },
+          {
+            "from": "9",
+            "to": "14",
+            "label": "false"
+          },
+          {
+            "from": "10",
+            "to": "11",
+            "label": null
+          },
+          {
+            "from": "11",
+            "to": "12",
+            "label": null
+          },
+          {
+            "from": "12",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "12",
+            "to": "13",
+            "label": "false"
+          },
+          {
+            "from": "13",
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "14",
+            "to": "15",
+            "label": null
+          },
+          {
+            "from": "15",
+            "to": "16",
+            "label": "true"
+          },
+          {
+            "from": "15",
+            "to": "19",
+            "label": "false"
+          },
+          {
+            "from": "16",
+            "to": "1",
+            "label": "true"
+          },
+          {
+            "from": "16",
+            "to": "17",
+            "label": "false"
+          },
+          {
+            "from": "17",
+            "to": "18",
+            "label": null
+          },
+          {
+            "from": "18",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "18",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "19",
+            "to": "20",
+            "label": null
+          },
+          {
+            "from": "20",
+            "to": "21",
+            "label": "true"
+          },
+          {
+            "from": "20",
+            "to": "24",
+            "label": "false"
+          },
+          {
+            "from": "21",
+            "to": "22",
+            "label": null
+          },
+          {
+            "from": "22",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "22",
+            "to": "23",
+            "label": "false"
+          },
+          {
+            "from": "23",
+            "to": "20",
+            "label": null
+          },
+          {
+            "from": "24",
+            "to": "25",
+            "label": "true"
+          },
+          {
+            "from": "24",
+            "to": "26",
+            "label": "false"
+          },
+          {
+            "from": "25",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "26",
+            "to": "27",
+            "label": "true"
+          },
+          {
+            "from": "26",
+            "to": "29",
+            "label": "false"
+          },
+          {
+            "from": "27",
+            "to": "28",
+            "label": null
+          },
+          {
+            "from": "28",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "28",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "29",
+            "to": "30",
+            "label": "true"
+          },
+          {
+            "from": "29",
+            "to": "1",
+            "label": "false"
+          },
+          {
+            "from": "30",
+            "to": "31",
+            "label": null
+          },
+          {
+            "from": "31",
+            "to": null,
+            "label": "true"
+          },
+          {
+            "from": "31",
+            "to": "1",
+            "label": "false"
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

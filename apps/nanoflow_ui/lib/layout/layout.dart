@@ -106,8 +106,10 @@ GraphLayout _layout(
   orderLayers(g, layers, options);
   // The loops' sides and the order of the nodes are chosen with every turn
   // past its layer's right side, as if no node were narrower than its
-  // layer; arrows out of narrower nodes turn next to them only in the
-  // layout of the order chosen (_turnEarly).
+  // layer, and each node level with the arrow from the longest path into
+  // it; arrows out of narrower nodes turn next to them, and nodes stand
+  // where most of their arrows come in level, only in the layout of the
+  // order chosen (_finish).
   final below = <GNode>{};
   var layout = _build(g, layers, options, below, turnEarly: false);
   // A loop goes under its tile when over it it would cross other arrows.
@@ -128,7 +130,7 @@ GraphLayout _layout(
       below.remove(node);
     }
   }
-  return _turnEarly(
+  return _finish(
     g,
     layers,
     options,
@@ -138,18 +140,22 @@ GraphLayout _layout(
 }
 
 /// The best layout [_untangle] found, laid out for the order [layers] have
-/// with every turn past its layer's right side, laid out again with the
+/// with every turn past its layer's right side and every node level with
+/// the arrow from the longest path into it, laid out again with nodes
+/// standing where most of their arrows come in level (step 6) and the
 /// arrows out of nodes narrower than their layer turning next to them
 /// (step 7) — unless that crosses more or breaks a rule of step 9 more
-/// often; on a tie, the turns next to the nodes. Without a node narrower
-/// than its layer nothing turns early.
+/// often. Then the turns next to the nodes alone are tried the same way;
+/// failing that too, [best] stays. On a tie, the layout laid out again.
 ///
-/// It should never cross more: a turn goes before turns ahead of it in its
-/// gap only past turns whose order with it does not change what crosses.
-/// The order of the nodes is chosen without these turns, so that they do
-/// not steer it either: arrows shorter by them would make [_untangle] keep
-/// other swaps of as many crossings.
-GraphLayout _turnEarly(
+/// The early turns should never cross more: a turn goes before turns ahead
+/// of it in its gap only past turns whose order with it does not change
+/// what crosses. The heights may — an arrow level with another input
+/// passes its neighbours elsewhere —, and then the order keeps the heights
+/// it was chosen with. The order of the nodes is chosen without either, so
+/// that they do not steer it: arrows shorter by them would make [_untangle]
+/// keep other swaps of as many crossings.
+GraphLayout _finish(
   LayoutGraph g,
   List<List<Item>> layers,
   LayoutOptions options,
@@ -160,17 +166,36 @@ GraphLayout _turnEarly(
     (layer) =>
         {for (final item in layer) ?item.node?.widthOf(options)}.length > 1,
   );
+  bool worse(GraphLayout layout) =>
+      checkLevel(layout).length > best.broken ||
+      countCrossings(layout) > best.crossings;
+  final level = _build(
+    g,
+    layers,
+    options,
+    below,
+    turnEarly: narrower,
+    levelInputs: true,
+  );
+  if (!worse(level)) return level;
+  levelInputFallbacks++;
   if (!narrower) return best.layout;
   final early = _build(g, layers, options, below, turnEarly: true);
-  if (checkLevel(early).length > best.broken ||
-      countCrossings(early) > best.crossings) {
+  if (worse(early)) {
     earlyTurnFallbacks++;
     return best.layout;
   }
   return early;
 }
 
-/// How many times [_turnEarly] kept every turn past its layer's right side
+/// How many times [_finish] kept every node level with the arrow from the
+/// longest path into it because standing where most arrows come in level
+/// crossed more or broke a rule of step 9 more often. No level of the test
+/// graphs does, and only a few random ones: tests check both.
+@visibleForTesting
+int levelInputFallbacks = 0;
+
+/// How many times [_finish] kept every turn past its layer's right side
 /// because turning next to the nodes crossed more or broke a rule of step 9
 /// more often. It should stay 0: a test checks that it does.
 @visibleForTesting
@@ -245,17 +270,19 @@ double _length(GraphLayout layout) {
 }
 
 /// Steps 5 to 8 for the current order of [layers]: ports, heights, lanes
-/// and the layers' x, arrows; [turnEarly] as for [assignLanes].
+/// and the layers' x, arrows; [turnEarly] as for [assignLanes],
+/// [levelInputs] as for [placeLayers].
 GraphLayout _build(
   LayoutGraph g,
   List<List<Item>> layers,
   LayoutOptions options,
   Set<GNode> below, {
   required bool turnEarly,
+  bool levelInputs = false,
 }) {
   final levels = <GEdge, int>{};
   final ports = assignPorts(g, options, below: below, backLevels: levels);
-  placeLayers(g, layers, ports, options);
+  placeLayers(g, layers, ports, options, levelInputs: levelInputs);
   straightenPasses(g, layers, ports, options);
   final frames = {
     for (final node in g.nodes)

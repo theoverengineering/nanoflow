@@ -157,18 +157,48 @@ double smallestJog(LayoutOptions options) =>
 /// pass points, then from the middle of the layer out — each at the free
 /// place nearest to where it wants to be, keeping the layer's order, but
 /// never less than [smallestJog] off it.
+///
+/// With [levelInputs], a node with several arrows in wants the height at
+/// which most of them come in level ([_levelAt]) — on a tie, the height
+/// the arrow from the longest path wants, else the one nearest it — and
+/// the pass points of the long arrows that can stand level with its inputs
+/// move there once it has its place: the arrows run straight into it from
+/// their turn before the corridor instead of jogging just before it.
 void placeLayers(
   LayoutGraph graph,
   List<List<Item>> layers,
   Map<GNode, Ports> ports,
-  LayoutOptions options,
-) {
+  LayoutOptions options, {
+  bool levelInputs = false,
+}) {
   final (:before, :after) = _pathLengths(graph);
   final smallest = smallestJog(options);
   for (final layer in layers) {
     final wanted = <Item, double?>{
       for (final item in layer) item: _wantedY(item, ports),
     };
+    if (levelInputs) {
+      for (final item in layer) {
+        final node = item.node;
+        if (node == null || item.ins.length < 2) continue;
+        final longest = wanted[item]!;
+        var best = longest;
+        var most = _levelAt(item, longest, layers, ports, options).count;
+        final heights = {
+          for (final seg in item.ins)
+            outY(seg, ports) - ports[node]!.inputAt[seg.edge]!,
+        };
+        for (final y in heights) {
+          final count = _levelAt(item, y, layers, ports, options).count;
+          if (count > most ||
+              count == most && (y - longest).abs() < (best - longest).abs()) {
+            best = y;
+            most = count;
+          }
+        }
+        wanted[item] = best;
+      }
+    }
     int priority(Item item) {
       final node = item.node;
       if (node != null) return before[node]! + after[node]! - 1;
@@ -231,6 +261,14 @@ void placeLayers(
       }
       item.y = y;
       placed[i] = true;
+      if (levelInputs && item.node != null && item.ins.length > 1) {
+        final moves = _levelAt(item, y, layers, ports, options).moves;
+        for (final MapEntry(key: edge, value: level) in moves.entries) {
+          for (final seg in edge.segs.skip(1)) {
+            seg.from.y = level;
+          }
+        }
+      }
       // A place found only by overlapping pushes the items under it down.
       var previous = i;
       for (var k = i + 1; k < layer.length; k++) {
@@ -322,6 +360,92 @@ double? _wantedY(Item item, Map<GNode, Ports> ports) {
   final seg = candidates[(candidates.length - 1) ~/ 2];
   final input = node == null ? 0 : ports[node]!.inputAt[seg.edge]!;
   return outY(seg, ports) - input;
+}
+
+/// How many of the arrows into [item], a node, come in level with their
+/// inputs when its middle is at [y], and the long arrows that would move
+/// for it, with the height each would take.
+///
+/// An arrow comes in level when its item in the layer before — a node's
+/// exit or a pass point — is level with its input, or when it is a long
+/// arrow all of whose pass points can stand there, each as far from its
+/// neighbours as [minDistance] keeps them, the pass points of the other
+/// arrows that move standing where they would. A long arrow whose pass
+/// points all have room level with its exit stays there ([straightenPasses]
+/// tries that height first): it comes in level only if its exit is. The
+/// pass points of arrows to one node are a lane gap apart in the corridor,
+/// as their inputs are a port gap apart on the bar: a bundle of them that
+/// the nodes beside it push up or down comes in level all together, or
+/// each a jog off.
+({int count, Map<GEdge, double> moves}) _levelAt(
+  Item item,
+  double y,
+  List<List<Item>> layers,
+  Map<GNode, Ports> ports,
+  LayoutOptions options,
+) {
+  final port = ports[item.node]!;
+  final targets = <GEdge, double>{};
+  final moving = <GEdge>{};
+  double at(Item i) {
+    final edge = i.edge;
+    return edge != null && moving.contains(edge) ? targets[edge]! : i.y;
+  }
+
+  bool fits(GEdge edge, double Function(Item) height) {
+    for (final seg in edge.segs.skip(1)) {
+      final pass = seg.from;
+      final layer = layers[pass.layer];
+      final i = pass.order;
+      final h = height(pass);
+      if (i > 0) {
+        final above = layer[i - 1];
+        if (h < at(above) + minDistance(above, pass, ports, options) - 1e-6) {
+          return false;
+        }
+      }
+      if (i + 1 < layer.length) {
+        final below = layer[i + 1];
+        if (h > at(below) - minDistance(pass, below, ports, options) + 1e-6) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  var level = 0;
+  for (final seg in item.ins) {
+    final target = y + port.inputAt[seg.edge]!;
+    if ((outY(seg, ports) - target).abs() < 1e-6) {
+      level++;
+      continue;
+    }
+    if (!seg.from.isPass) continue;
+    // Else it turns just before the node, wherever the node stands.
+    final exit = outY(seg.edge.segs.first, ports);
+    if (fits(seg.edge, (_) => exit)) {
+      if ((exit - target).abs() < 1e-6) level++;
+      continue;
+    }
+    targets[seg.edge] = target;
+  }
+  moving.addAll(targets.keys);
+
+  // An arrow that cannot move stays where it is, and may stand in the way
+  // of the ones next to it: until none is stuck.
+  while (true) {
+    final stuck = [
+      for (final edge in moving)
+        if (!fits(edge, at)) edge,
+    ];
+    if (stuck.isEmpty) break;
+    moving.removeAll(stuck);
+  }
+  return (
+    count: level + moving.length,
+    moves: {for (final edge in moving) edge: targets[edge]!},
+  );
 }
 
 /// For every node, the number of nodes on the longest forward path from a
