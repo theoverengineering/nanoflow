@@ -179,13 +179,15 @@ Lanes assignLanes(
       for (final node in rightNodes)
         if (node.framed != null) frames[node]!.tile,
     ];
+    final leftMarks = [...leftObstacles, ...leftTiles];
+    final rightMarks = [...rightObstacles, ...rightFrames];
 
     final turns = <Turn>[];
     void setRoom(Turn turn, {required double reach}) {
       // Left: past the own label and every mark and node the turn's heights
       // pass.
       var least = reach;
-      for (final rect in [...leftObstacles, ...leftTiles]) {
+      for (final rect in leftMarks) {
         if (_spans(turn, rect)) {
           least = math.max(least, rect.right + clearance);
         }
@@ -207,7 +209,7 @@ Lanes assignLanes(
         room = r + straight;
         roomDiagonal = r45 + straight;
       }
-      for (final rect in [...rightObstacles, ...rightFrames]) {
+      for (final rect in rightMarks) {
         if (_spans(turn, rect)) {
           final need = clearance - rect.left;
           room = math.max(room, need);
@@ -573,7 +575,17 @@ List<Turn> _placeTurns(List<Turn> order, double laneGap, Set<Turn> early) {
       }
       final at = xOf(other);
       // Room for every turn still to come right of it: three lane gaps to
-      // one whose piece would seem to go on from it.
+      // one whose piece would seem to go on from it. Three gaps are asked
+      // from the next turn whenever any turn still to come would seem to
+      // go on, so that a turn going ahead moves no turn right without
+      // laying out the rest of the gap.
+      //
+      // No test fails with one lane gap here. A turn would move right only
+      // if its piece came within a lane gap of the jumping turn's, with the
+      // two turns less than three lane gaps apart. Neither the test graphs
+      // nor some 109,000 random layouts searched have that. With one lane
+      // gap, 6 of 2,000 random nested bodies only let another early turn
+      // take a lane first: as many crossings, as wide or narrower.
       final keep =
           pending.any((t) => t != other && _continues(other, t, laneGap))
           ? 3 * laneGap

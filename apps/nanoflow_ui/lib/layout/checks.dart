@@ -31,10 +31,23 @@ import 'nested.dart';
 ///   frame nearer than its outline and a clearance, nor an arrow round the
 ///   frame nearer than a clearance. (An arrow passing through a frame
 ///   passes through a tile.)
-List<String> checkLayout(GraphLayout layout) {
+List<String> checkLayout(GraphLayout layout) => _check(layout, deep: true);
+
+/// What [checkLayout] finds in [layout] itself, its frames included, but not
+/// in the bodies in its frames: those are the same for every order of its
+/// nodes.
+List<String> checkLevel(GraphLayout layout) => _check(layout, deep: false);
+
+/// [checkLayout], in the bodies in [layout]'s frames too when [deep].
+List<String> _check(GraphLayout layout, {required bool deep}) {
   final o = layout.options;
   final problems = <String>[];
   final edges = layout.edges;
+  // The exits drawn: nothing of a port's exits is.
+  final drawn = [
+    for (final exit in layout.exits)
+      if (!layout.nodes[exit.node]!.port) exit,
+  ];
 
   for (final edge in edges) {
     final segments = _segments(edge.points);
@@ -108,19 +121,21 @@ List<String> checkLayout(GraphLayout layout) {
         }
       }
     }
-    // Turns past exits: through no dot, capsule or label. Nothing of a
-    // port's exits is drawn.
-    for (final exit in layout.exits) {
-      if (layout.nodes[exit.node]!.port) continue;
-      final at = '${exit.node}#${exit.index}';
-      for (final s in segments) {
-        if (s.isHorizontal) continue;
-        if (s.entersInterior(exit.handle)) {
-          problems.add('${_name(edge)}: piece $s passes through the exit $at');
-        }
-        if (exit.labelRect case final label? when s.entersInterior(label)) {
+    // Turns past exits: through no dot, capsule or label.
+    for (final s in segments) {
+      if (s.isHorizontal) continue;
+      for (final exit in drawn) {
+        if (_meets(s, exit.handle) && s.entersInterior(exit.handle)) {
           problems.add(
-            '${_name(edge)}: piece $s passes through the label of $at',
+            '${_name(edge)}: piece $s passes through the exit '
+            '${exit.node}#${exit.index}',
+          );
+        }
+        final label = exit.labelRect;
+        if (label != null && _meets(s, label) && s.entersInterior(label)) {
+          problems.add(
+            '${_name(edge)}: piece $s passes through the label of '
+            '${exit.node}#${exit.index}',
           );
         }
       }
@@ -221,7 +236,9 @@ List<String> checkLayout(GraphLayout layout) {
     }
   }
   for (final node in layout.nodes.values) {
-    if (node.frame != null) problems.addAll(_frameProblems(layout, node));
+    if (node.frame != null) {
+      problems.addAll(_frameProblems(layout, node, deep: deep));
+    }
   }
 
   final boxes = layout.nodes.values.toList();
@@ -241,14 +258,26 @@ List<String> checkLayout(GraphLayout layout) {
   return problems;
 }
 
+/// Whether the box round [s] overlaps [rect]: a cheap test before
+/// [Segment.entersInterior].
+bool _meets(Segment s, Rect rect) =>
+    math.min(s.a.x, s.b.x) < rect.right &&
+    math.max(s.a.x, s.b.x) > rect.left &&
+    math.min(s.a.y, s.b.y) < rect.bottom &&
+    math.max(s.a.y, s.b.y) > rect.top;
+
 /// The arrow [e] in a problem: `from#exit.list->to`.
 String _name(EdgePath e) => '${e.from}#${e.exitIndex}.${e.listIndex}->${e.to}';
 
 /// What the frame of [node] breaks: the body is not in it, the link to the
 /// start, the end or the exits are off their places, an arrow of the body
-/// or of [layout] runs along a side; and what the body in it breaks, after
-/// `id ›`.
-List<String> _frameProblems(GraphLayout layout, NodeBox node) {
+/// or of [layout] runs along a side; and, when [deep], what the body in it
+/// breaks, after `id ›`.
+List<String> _frameProblems(
+  GraphLayout layout,
+  NodeBox node, {
+  required bool deep,
+}) {
   final frame = node.frame!;
   final tile = node.tile;
   final inner = frame.inner;
@@ -345,7 +374,8 @@ List<String> _frameProblems(GraphLayout layout, NodeBox node) {
   }
   return [
     ...problems,
-    for (final problem in checkLayout(inner)) '${node.id} › $problem',
+    if (deep)
+      for (final problem in checkLayout(inner)) '${node.id} › $problem',
   ];
 }
 

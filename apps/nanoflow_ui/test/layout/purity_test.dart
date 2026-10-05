@@ -35,13 +35,15 @@ void main() {
     });
   }
 
-  test('lib/layout reaches outside itself only through the model', () {
+  test('lib/layout reaches outside itself only through the model and '
+      'meta\'s annotations', () {
     for (final file in Directory('lib/layout').listSync().whereType<File>()) {
       for (final match in directive.allMatches(file.readAsStringSync())) {
         final uri = match.group(1)!;
         final allowed =
             uri.startsWith('dart:') ||
             uri == 'package:nanoflow_model/nanoflow_model.dart' ||
+            uri == 'package:meta/meta.dart' ||
             !uri.contains(':') && !uri.contains('/');
         expect(allowed, isTrue, reason: '${file.path}: $uri');
       }

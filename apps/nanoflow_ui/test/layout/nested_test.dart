@@ -767,7 +767,9 @@ void main() {
   });
 
   test('random bodies with random nodes expanded, nested, in frames of '
-      'random widths, keep step 9 but for loops in capsules', () {
+      'random widths, keep step 9 but for loops in capsules; arrows out of '
+      'nodes narrower than their layer turn next to them, crossing no more '
+      'than past the layer', () {
     // Frames whose body has an arrow going back or round from a node just
     // before its end: its lane is next to the frame's right side.
     var backBeforeEnd = 0;
@@ -837,6 +839,7 @@ void main() {
       }
     }
 
+    final fallbacks = earlyTurnFallbacks;
     for (var seed = 0; seed < 150; seed++) {
       final body = randomBody(seed);
       Map<String, ExpandedNode> expand(GraphBody body, int salt, int depth) => {
@@ -884,9 +887,19 @@ void main() {
       reason: 'arrows passing the outlines behind copies are tried',
     );
     expect(
+      earlyTurnFallbacks - fallbacks,
+      0,
+      reason:
+          'turning next to the nodes crosses no more and breaks no rule '
+          'more often than turning past the layer',
+    );
+    expect(
       turnedEarly,
-      greaterThan(0),
-      reason: 'turns next to a node narrower than its layer are tried',
+      greaterThanOrEqualTo(482),
+      reason:
+          'as many arrows turn next to a node narrower than its layer as '
+          'when the turns came in: a turn passes only turns whose order '
+          'with it does not change what crosses',
     );
   });
 }

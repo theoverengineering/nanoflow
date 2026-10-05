@@ -5,6 +5,7 @@
 /// `docs/ui-spec.md` «Граф».
 library;
 
+import 'package:meta/meta.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'checks.dart';
@@ -136,11 +137,12 @@ GraphLayout _layout(
   );
 }
 
-/// [layout], laid out for the order [layers] have with every turn past its
-/// layer's right side, laid out again with the arrows out of nodes narrower
-/// than their layer turning next to them (step 7) — unless that crosses
-/// more or breaks a rule of step 9 more often; on a tie, the turns next to
-/// the nodes.
+/// The best layout [_untangle] found, laid out for the order [layers] have
+/// with every turn past its layer's right side, laid out again with the
+/// arrows out of nodes narrower than their layer turning next to them
+/// (step 7) — unless that crosses more or breaks a rule of step 9 more
+/// often; on a tie, the turns next to the nodes. Without a node narrower
+/// than its layer nothing turns early.
 ///
 /// It should never cross more: a turn goes before turns ahead of it in its
 /// gap only past turns whose order with it does not change what crosses.
@@ -152,14 +154,27 @@ GraphLayout _turnEarly(
   List<List<Item>> layers,
   LayoutOptions options,
   Set<GNode> below,
-  GraphLayout layout,
+  ({GraphLayout layout, int broken, int crossings}) best,
 ) {
+  final narrower = layers.any(
+    (layer) =>
+        {for (final item in layer) ?item.node?.widthOf(options)}.length > 1,
+  );
+  if (!narrower) return best.layout;
   final early = _build(g, layers, options, below, turnEarly: true);
-  final worse =
-      checkLayout(early).length > checkLayout(layout).length ||
-      countCrossings(early) > countCrossings(layout);
-  return worse ? layout : early;
+  if (checkLevel(early).length > best.broken ||
+      countCrossings(early) > best.crossings) {
+    earlyTurnFallbacks++;
+    return best.layout;
+  }
+  return early;
 }
+
+/// How many times [_turnEarly] kept every turn past its layer's right side
+/// because turning next to the nodes crossed more or broke a rule of step 9
+/// more often. It should stay 0: a test checks that it does.
+@visibleForTesting
+int earlyTurnFallbacks = 0;
 
 /// The most rounds of [_untangle].
 const int _untangleRounds = 4;
@@ -171,15 +186,21 @@ const int _untangleRounds = 4;
 /// are shorter by more than a lane gap wins: its arrows run alongside each
 /// other instead of going round (ui-spec «Граф»: «при равенстве — где больше
 /// стрелок идёт параллельно»).
-GraphLayout _untangle(
+///
+/// Returns the best layout, how many rules of step 9 it breaks itself, not
+/// counting the bodies in its frames, and how many times its arrows
+/// cross.
+({GraphLayout layout, int broken, int crossings}) _untangle(
   LayoutGraph g,
   List<List<Item>> layers,
   LayoutOptions options,
   Set<GNode> below,
   GraphLayout layout,
 ) {
+  // The bodies in frames break the same rules whatever the order: only the
+  // level's own problems are compared.
   var best = layout;
-  var broken = checkLayout(best).length;
+  var broken = checkLevel(best).length;
   var fewest = countCrossings(best);
   var shortest = _length(best);
   for (var round = 0; round < _untangleRounds; round++) {
@@ -188,7 +209,7 @@ GraphLayout _untangle(
       for (var i = 0; i + 1 < layer.length; i++) {
         _swap(layer, i);
         final candidate = _build(g, layers, options, below, turnEarly: false);
-        final problems = checkLayout(candidate).length;
+        final problems = checkLevel(candidate).length;
         final count = countCrossings(candidate);
         final length = _length(candidate);
         final better =
@@ -209,7 +230,7 @@ GraphLayout _untangle(
     }
     if (!improved) break;
   }
-  return best;
+  return (layout: best, broken: broken, crossings: fewest);
 }
 
 /// The length of all arrows of [layout].
