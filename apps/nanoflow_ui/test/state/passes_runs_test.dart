@@ -181,9 +181,7 @@ Set<_Limit> _limitsOf(_Program program, _Run run, int? cut) {
           )) {
         limits.add(_Limit.sideBySide);
       }
-      if (e.past & 1 << o.order == 0 &&
-          o.start ~/ 2 == e.start ~/ 2 &&
-          !limits.contains(_Limit.tied)) {
+      if (e.past & 1 << o.order == 0 && o.start ~/ 2 == e.start ~/ 2) {
         beside.add((o, e));
       }
       for (final MapEntry(key: function, value: call) in o.calls.entries) {
