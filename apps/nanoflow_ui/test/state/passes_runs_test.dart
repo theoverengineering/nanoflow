@@ -16,13 +16,18 @@
 // a session that falls in a limit of the journal, which the rules cannot get
 // right from it (passes.dart «Limits», design §5.3 «Пределы»). The run knows
 // what the journal does not — which effects each effect waited for, which
-// call of a function each ran in —, and leaves out a session where effects
-// side by side read as joined, or the ends of an earlier call of a function
-// as joined before an effect of a later one; there alone the rules may mark
-// a way the code did not go. How often each limit comes up is bounded. A
-// quarter of the effects end in the millisecond they start, as fast effects
-// of the library do. How many times a fork was passed is not checked: the
-// journal does not always tell (design §5.2).
+// call of a function each ran in —, and leaves out a session that falls in
+// one of three: effects side by side read as joined; the ends of an earlier
+// call of a function read as joined before an effect of a later one; effects
+// side by side that end in the millisecond they start, passing each other.
+// The classes are drawn wide: in many sessions left out the marks are right
+// all the same. Outside them, no run of the seeds tried so far has marked a
+// way the code did not go or darkened one it took; that is what the test
+// asserts, and the classes are limits it found, not a proof that no other
+// is left. How often each comes up is bounded. A quarter of the effects end
+// in the millisecond they start, as fast effects of the library do. How many
+// times a fork was passed is not checked: the journal does not always tell
+// (design §5.2).
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -40,11 +45,12 @@ void main() {
     final (:sessions, :left, :wrong) = _runs(Random(20261005), 4000);
     expect(wrong, isEmpty);
     expect(sessions, greaterThan(14000));
-    // Over seeds 1–40 at this size, and 1–60 at 25,000 programs, side by side
-    // came up in 3.5–4.6% of the sessions, the ends of an earlier call in
-    // 1.0–1.7%.
+    // Over seeds 1–40 at this size, and 41–200 at 25,000 programs, side by
+    // side came up in 3.5–4.6% of the sessions, the ends of an earlier call
+    // in 1.0–1.8%, effects passing each other in 1.2–2.0%.
     expect(left[_Limit.sideBySide]!, lessThan(sessions * 6 ~/ 100));
     expect(left[_Limit.earlierCall]!, lessThan(sessions * 3 ~/ 100));
+    expect(left[_Limit.tied]!, lessThan(sessions * 4 ~/ 100));
   });
 }
 
@@ -98,6 +104,11 @@ enum _Limit {
   /// The ends of an earlier call of a function read as joined before an
   /// effect of a later call, on the body of the function.
   earlierCall,
+
+  /// Effects side by side in one call or copies node that end in the
+  /// millisecond they start read as joined before each other, and so as
+  /// passed: the effect after them finds all its ends passed.
+  tied,
 }
 
 /// The limits the journal of [run] of [program] before the tick [cut] falls
@@ -110,7 +121,11 @@ enum _Limit {
 ///   body;
 /// - [_Limit.earlierCall]: O and E are in different calls of a function,
 ///   and O leads to E on its body, or is in one call or copies node of it
-///   with E.
+///   with E;
+/// - [_Limit.tied]: O and E started and ended in one millisecond, beside
+///   each other, and each leads to the other on a body or is in one call or
+///   copies node with it — the rules read each as joined before the other,
+///   and so as passed —, and both are such ends before a later effect.
 Set<_Limit> _limitsOf(_Program program, _Run run, int? cut) {
   final recorded = [
     for (final r in run.records)
@@ -140,6 +155,11 @@ Set<_Limit> _limitsOf(_Program program, _Run run, int? cut) {
   }
 
   final limits = <_Limit>{};
+  // Ends that started and ended in the millisecond an effect beside them
+  // started, with that effect.
+  final beside = <(_Record, _Record)>[];
+  // The ends the rules may join before each effect.
+  final ends = <_Record, List<_Record>>{};
   for (final e in recorded) {
     if (!onGraph(e)) continue;
     final parent = up(e);
@@ -152,12 +172,18 @@ Set<_Limit> _limitsOf(_Program program, _Run run, int? cut) {
           !below(o, parent)) {
         continue;
       }
+      (ends[e] ??= []).add(o);
       if (e.past & 1 << o.order == 0 &&
           !limits.contains(_Limit.sideBySide) &&
           program.functions.any(
             (function) => _leads(program, function.body, o, e),
           )) {
         limits.add(_Limit.sideBySide);
+      }
+      if (e.past & 1 << o.order == 0 &&
+          o.start ~/ 2 == e.start ~/ 2 &&
+          !limits.contains(_Limit.tied)) {
+        beside.add((o, e));
       }
       for (final MapEntry(key: function, value: call) in o.calls.entries) {
         if (limits.contains(_Limit.earlierCall)) break;
@@ -171,7 +197,57 @@ Set<_Limit> _limitsOf(_Program program, _Run run, int? cut) {
       if (limits.length == _Limit.values.length) return limits;
     }
   }
+  // An end beside the effect it reads as joined before is passed by it, for
+  // a later effect it would be an end before.
+  bool leads(_Record o, _Record e) => program.functions.any(
+    (function) => _leads(program, function.body, o, e, inside: true),
+  );
+  // Two that each read as joined before the other pass each other: a later
+  // effect they would both be ends before finds neither.
+  for (final (o, other) in beside) {
+    if (!beside.contains((other, o)) || !leads(o, other) || !leads(other, o)) {
+      continue;
+    }
+    for (final MapEntry(key: e, value: before) in ends.entries) {
+      if (o.start ~/ 2 < e.start ~/ 2 &&
+          before.contains(o) &&
+          before.contains(other)) {
+        limits.add(_Limit.tied);
+        return limits;
+      }
+    }
+  }
   return limits;
+}
+
+/// The nodes of [body] the effect [record] is on or in.
+List<String> _nodesOn(_Program program, GraphBody body, _Record record) {
+  final effect = Effect(
+    id: record.key,
+    sessionId: 'a1b2-session',
+    name: record.name,
+    key: record.key,
+    after: record.after,
+    place: record.place,
+    outputId: null,
+    log: logFileName,
+  );
+  return [
+    for (final node in body.nodes)
+      if (node is! ConditionNode && program.places.isIn(effect, node)) node.id,
+  ];
+}
+
+/// Whether [from] and [to] are in one call or copies node of [body].
+bool _inOne(_Program program, GraphBody body, _Record from, _Record to) {
+  final targets = _nodesOn(program, body, to).toSet();
+  final sources = _nodesOn(program, body, from);
+  return body.nodes.any(
+    (node) =>
+        node is! EffectNode &&
+        targets.contains(node.id) &&
+        sources.contains(node.id),
+  );
 }
 
 /// Whether a way leads on [body] from the nodes [from] is on or in to those
@@ -184,36 +260,10 @@ bool _leads(
   _Record to, {
   bool inside = false,
 }) {
-  List<String> nodesOf(_Record r) {
-    final effect = Effect(
-      id: r.key,
-      sessionId: 'a1b2-session',
-      name: r.name,
-      key: r.key,
-      after: r.after,
-      place: r.place,
-      outputId: null,
-      log: logFileName,
-    );
-    return [
-      for (final node in body.nodes)
-        if (node is! ConditionNode && program.places.isIn(effect, node))
-          node.id,
-    ];
-  }
-
-  final targets = nodesOf(to).toSet();
-  final ahead = nodesOf(from);
+  if (inside && _inOne(program, body, from, to)) return true;
+  final targets = _nodesOn(program, body, to).toSet();
+  final ahead = _nodesOn(program, body, from);
   if (targets.isEmpty || ahead.isEmpty) return false;
-  if (inside &&
-      body.nodes.any(
-        (node) =>
-            node is! EffectNode &&
-            targets.contains(node.id) &&
-            ahead.contains(node.id),
-      )) {
-    return true;
-  }
   final passable = {
     for (final node in body.nodes)
       if (node is! EffectNode) node.id,

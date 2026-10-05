@@ -1717,6 +1717,49 @@ void main() {
         }
       }
 
+      test('one joined beside an effect and then, firmly, before a later one '
+          'is no end: await inner(); if (k) await z(); — inner { await '
+          'Future.wait([o(), long(), helper()]); }, helper { await retry(() => '
+          "f.effect('h')); await e2(); }, o ending as it starts; k> is "
+          'darker', () {
+        final helper = graphFunction(
+          'helper',
+          [effectAt('e2')],
+          ['>e2', 'e2>'],
+        );
+        final inner = graphFunction(
+          'inner',
+          [effectAt('o'), effectAt('long'), callAt('h', helper)],
+          ['>o', '>long', '>h', 'o>', 'long>', 'h>'],
+        );
+        final s = Shape(
+          [callAt('c', inner), forkAt('k'), effectAt('z')],
+          ['>c', 'c>k', 'k>z', 'k>', 'z>'],
+          called: [inner, helper],
+        );
+        // o ends in the millisecond long starts, beside it; e2, kept back by
+        // h, starts after o ended and before long did: o is joined before e2
+        // for sure.
+        final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+          ..effect('o', 1, end: 1, place: flowAt('o'), key: 'o', after: null)
+          ..effect(
+            'long',
+            1,
+            end: 5,
+            place: flowAt('long'),
+            key: 'long',
+            after: null,
+          )
+          ..effect('h', 1, end: 1.5, key: 'h', after: null)
+          ..effect('e2', 2, end: 3, place: flowAt('e2'), key: 'e2', after: null)
+          ..effect('z', 6, end: 7, place: flowAt('z'), key: 'z', after: null)
+          ..finish(8);
+        final p = s.passes(j.data);
+
+        expect(s.forksOf(p), {'k': 1});
+        expect(s.untakenBy(p), {'k>'});
+      });
+
       test('the way into the call they are in is one the code may have gone: '
           'while (w) await p(); await helper(); — w>h, by which the code '
           'went, is not darker', () {

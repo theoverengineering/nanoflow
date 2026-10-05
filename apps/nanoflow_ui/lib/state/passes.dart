@@ -105,19 +105,23 @@
 /// **Limits** — what the journal does not tell, and the marks it leaves
 /// wrong:
 ///
-/// - *Effects side by side read as a wait*: false taken edges and false
-///   passes, no darker exit. An effect that finished before another below
-///   the same started — earlier, or in the same millisecond, as fast effects
-///   do — though the code did not wait for it, and that leads to it on the
-///   level, reads as joined before it: round a loop; into a call node of a
-///   function called again after the wait; or from a call node of a
-///   function drawn more than once, where the effect is on each. The
-///   library's `await Future.wait([e0(), e1()]); if (mode == 'deep') { await
-///   quickSub(); if (mode.length > 3) await g(); } await
+/// - *Effects side by side read as a wait*: false taken edges, false
+///   passes, and darker exits the code took. An effect that finished before
+///   another below the same started — earlier, or in the same millisecond,
+///   as fast effects do — though the code did not wait for it, and that
+///   leads to it on the level, reads as joined before it: round a loop; into
+///   a call node of a function called again after the wait; or from a call
+///   node of a function drawn more than once, where the effect is on each.
+///   The library's `await Future.wait([e0(), e1()]); if (mode == 'deep') {
+///   await quickSub(); if (mode.length > 3) await g(); } await
 ///   Future.wait([quickSub(), e4()]);`, quickSub one fast effect, mode
 ///   `flat`, can show `mode.length > 3` passed: the wait's quickSub, ended in
 ///   the millisecond e4 started, reads as the deep branch's, joined before
-///   e4.
+///   e4. Fast effects side by side in a loop that read as joined round it
+///   pass each other, and take the place of the way into the loop: `await
+///   (() async { await Future.wait([e0(), e1(), e2()]); })(); while (i < 1) {
+///   await Future.wait([e3(), e4()]); i++; } await e5();` can darken the
+///   loop's way out to e5, which the code took.
 /// - *The ends of an earlier call*, on the body of a function run more than
 ///   once, read as joined before an effect of a later call: false taken
 ///   edges; rarely a false pass — `helper` above with a slow `sub` in place
@@ -130,8 +134,20 @@
 ///   (!first) { await e4(); await e5(); } else { await e6(); } })(); if
 ///   (!first) await e7();`, first true then false, darkens the way out the
 ///   first took.
+/// - *Effects side by side that end in the millisecond they start*, in one
+///   call or copies node: each reads as joined before the other, and so, the
+///   other done, as passed. The effect after them that has no other end
+///   finds all its ends passed: it marks nothing, and the way the code took
+///   to it can be darker, in a finished session too. The library's `h66 {
+///   await e3(); await e4(); await Future.wait([e5(), e6()]); }`, called in a
+///   closure and then again, followed by `while (i < 1) { await e1(); await
+///   e2(); i++; }`, can darken the loop's way to e1 when e5 and e6 end in the
+///   millisecond they start.
 /// - *Counts* (see «Runs»): they can be lower or higher than how many times
-///   the condition was evaluated.
+///   the condition was evaluated. An effect whose ends are all in one call or
+///   copies node with it comes by a way that marks nothing, and its way to
+///   the end is of the run it came by, not of the wait's: that too moves
+///   counts, either way.
 /// - *Paths*: a transition with more than [_maxPaths] simple paths marks
 ///   nothing.
 library;
@@ -656,8 +672,11 @@ typedef _Join = ({String key, List<({List<String> nodes, bool drawn})> from});
 /// The ends joined before the effects [shown] of [session] on [level] (see
 /// the library doc): [joins] has, by the id of each effect after a wait or
 /// an awaited call, the ends joined before it; [joined] the ids of the ends
-/// joined before some effect; and [passed] the ids of the effects before
-/// which ends would have been joined but for those passed (below).
+/// joined before some effect that started after them; [joinedBeside] those
+/// of the ends joined only before effects that started in their own
+/// millisecond, which they may have run beside; and [passed] the ids of the
+/// effects before which ends would have been joined but for those passed
+/// (below).
 ///
 /// An end that was passed may have been passed by effects beside the effect
 /// — as two calls of a function one after the other, or `Future.wait([x(),
@@ -669,7 +688,9 @@ typedef _Join = ({String key, List<({List<String> nodes, bool drawn})> from});
 /// finished by the time it started is not joined before that one: the code
 /// went from the end to the effect, and from there on — the first wait of
 /// `await Future.wait([a(), b()]); if (c) await Future.wait([x(), y()]);
-/// await z();` is not joined before z, the second is.
+/// await z();` is not joined before z, the second is. So is an end joined
+/// only beside the effect: effects side by side that end in the millisecond
+/// they start pass each other (the library doc, «Limits»).
 ///
 /// The ends are looked at by the nodes they are on: whether some lead to an
 /// effect is asked once for each nodes of the ends and of the effects, and
@@ -723,8 +744,9 @@ _joinsOf(
   // code may have gone to it inside a call or copies node.
   final leading = <String, List<_Ends>>{};
   // The ends joined before an effect, by when it finished: from then on they
-  // are joined before no effect that started later than it did. One that
-  // started with it, and ended in the same millisecond, went beside it.
+  // are joined before no effect that started later than it did — an end that
+  // started in its millisecond too, though the two may have run beside each
+  // other (the library doc, «Limits»).
   final passing =
       SplayTreeMap<DateTime, List<({DateTime started, _Ends of, int walk})>>();
   var next = 0;
