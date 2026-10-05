@@ -105,9 +105,10 @@ enum _Limit {
   /// effect of a later call, on the body of the function.
   earlierCall,
 
-  /// Effects side by side in one call or copies node that end in the
-  /// millisecond they start read as joined before each other, and so as
-  /// passed: the effect after them finds all its ends passed.
+  /// Effects side by side that end in the millisecond they start, in one call
+  /// or copies node or leading to each other round a loop, read as joined
+  /// before each other, and so as passed: the effect after them finds all its
+  /// ends passed.
   tied,
 }
 
@@ -194,7 +195,6 @@ Set<_Limit> _limitsOf(_Program program, _Run run, int? cut) {
           limits.add(_Limit.earlierCall);
         }
       }
-      if (limits.length == _Limit.values.length) return limits;
     }
   }
   // An end beside the effect it reads as joined before is passed by it, for

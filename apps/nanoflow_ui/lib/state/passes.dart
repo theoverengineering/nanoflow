@@ -135,8 +135,9 @@
 ///   (!first) await e7();`, first true then false, darkens the way out the
 ///   first took.
 /// - *Effects side by side that end in the millisecond they start*, in one
-///   call or copies node: each reads as joined before the other, and so, the
-///   other done, as passed. The effect after them that has no other end
+///   call or copies node or leading to each other round a loop: each reads as
+///   joined before the other, and so, the other done, as passed. The effect
+///   after them that has no other end
 ///   finds all its ends passed: it marks nothing, and the way the code took
 ///   to it can be darker, in a finished session too. The library's `h66 {
 ///   await e3(); await e4(); await Future.wait([e5(), e6()]); }`, called in a
