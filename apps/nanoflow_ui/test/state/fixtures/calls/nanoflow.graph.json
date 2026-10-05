@@ -1,0 +1,195 @@
+{
+  "format": 2,
+  "package": "calls",
+  "fingerprint": "sha256:848c97f045ac5225df1dab68b1296339f9bd7a9988d0a0aaf6e9f804568c6787",
+  "sources": {
+    "lib/calls.dart": "sha256:e017256ed5fc5e05dd786b306abcbd550a13147261e29900b28476ff81a7bb0d",
+    "lib/run_all.dart": "sha256:e6714f5b57c02aaef09b17771b28179b0b7a695aeac38befb5b3d98786fe9364"
+  },
+  "builds": {},
+  "workflows": [
+    "lib/calls.dart#inPlace",
+    "lib/calls.dart#release"
+  ],
+  "functions": {
+    "lib/calls.dart#inPlace": {
+      "name": "inPlace",
+      "place": "lib/calls.dart:23",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "plan",
+            "place": "lib/calls.dart:24"
+          },
+          {
+            "id": "2",
+            "kind": "effect",
+            "name": "upload",
+            "place": "lib/calls.dart:26"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "verify",
+            "place": "lib/calls.dart:27"
+          },
+          {
+            "id": "4",
+            "kind": "fork",
+            "label": "plan == 'stable'",
+            "place": "lib/calls.dart:29"
+          },
+          {
+            "id": "5",
+            "kind": "effect",
+            "name": "announce",
+            "place": "lib/calls.dart:30"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": "true"
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "5",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/calls.dart#publish": {
+      "name": "publish",
+      "place": "lib/calls.dart:9",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "upload",
+            "place": "lib/calls.dart:10"
+          },
+          {
+            "id": "2",
+            "kind": "effect",
+            "name": "verify",
+            "place": "lib/calls.dart:11"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/calls.dart#release": {
+      "name": "release",
+      "place": "lib/calls.dart:15",
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "plan",
+            "place": "lib/calls.dart:16"
+          },
+          {
+            "id": "2",
+            "kind": "call",
+            "functions": [
+              "lib/calls.dart#publish"
+            ],
+            "place": "lib/calls.dart:17"
+          },
+          {
+            "id": "3",
+            "kind": "fork",
+            "label": "plan == 'stable'",
+            "place": "lib/calls.dart:18"
+          },
+          {
+            "id": "4",
+            "kind": "effect",
+            "name": "announce",
+            "place": "lib/calls.dart:19"
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "4",
+            "label": "true"
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": "false"
+          },
+          {
+            "from": "4",
+            "to": null,
+            "label": null
+          }
+        ]
+      }
+    }
+  },
+  "warnings": []
+}

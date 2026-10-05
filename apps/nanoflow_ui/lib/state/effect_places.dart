@@ -93,6 +93,10 @@ final class EffectPlaces {
     null => false,
   };
 
+  /// Whether [body] is the workflow's own: the code comes into it once.
+  bool isWorkflow(GraphBody body) =>
+      _workflow != null && identical(_functions[_workflow]?.body, body);
+
   /// The function of each body of the graph, by the body.
   late final Map<GraphBody, String> _owners = () {
     final owners = Map<GraphBody, String>.identity();

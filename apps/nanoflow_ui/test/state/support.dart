@@ -277,6 +277,22 @@ typedef Recorded = ({
 /// whenever the library changes how it keys effects (decision D1).
 Recorded recordedCopies() => _recorded('test/state/fixtures/copies');
 
+/// Sessions the real library wrote for the workflows of
+/// tests/e2e/test/fixtures/calls — plan, a call of publish (upload, verify)
+/// or a closure called in place with the same, then announce on the stable
+/// channel — with the graph file describe wrote for them:
+/// test/state/fixtures/calls.
+///
+/// Recorded again with
+///
+/// ```sh
+/// cd tests/e2e
+/// dart run tool/record_calls.dart ../../apps/nanoflow_ui/test/state/fixtures/calls
+/// ```
+///
+/// whenever the library changes how it keys effects (decision D1).
+Recorded recordedCalls() => _recorded('test/state/fixtures/calls');
+
 /// The session the real library wrote for the `review` workflow of
 /// examples/review run on the branch its README uses, `parseConfig` —
 /// collect, inspect, fix, inspect, then publish and notify side by side —
@@ -363,6 +379,11 @@ final class Journal {
   /// [failed]; running without [end]. Its [key] is `<name>#<n>@0…0` by
   /// default, `n` counting the effects of that name; it comes [after] the
   /// effect of that key, by default the effect before it. Returns its id.
+  ///
+  /// The default is how the library keys an effect awaited where the one
+  /// before it was, not one after an awaited call, a closure called in place
+  /// or a wait: the library keys that one after the effect before them
+  /// (spec §4.3), and a test of such code says so.
   String effect(
     String name,
     num start, {

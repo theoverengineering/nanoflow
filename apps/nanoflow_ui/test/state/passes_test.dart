@@ -3,9 +3,14 @@
 // graph, and over the session the real library wrote for it.
 //
 // A body is written as its nodes and its edges `from>to`, an empty side being
-// the body's start or end. Each effect node is named by its id and is at a
-// place of its name, `lib/flow.dart:<name>`. A journal's effects follow one
-// another, each after the one before it, unless the test says otherwise.
+// the body's start or end, and `from>to:label` for an edge with a label. Each
+// effect node is named by its id and is at a place of its name,
+// `lib/flow.dart:<name>`. A journal's effects follow one another, each after
+// the one before it, unless the test says otherwise — which is how the
+// library keys them only when each effect is awaited where the one before it
+// was: after an awaited call, a closure called in place or a wait the library
+// keys the next effect after the effect before them (spec §4.3), and the tests
+// of those shapes say so.
 import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
@@ -39,11 +44,12 @@ CopiesNode copiesNode(String id, GraphBody body) =>
     CopiesNode(id: id, place: null, label: 'x in xs', body: body);
 
 GraphEdge _edge(String text) {
-  final [from, to] = text.split('>');
+  final [from, rest] = text.split('>');
+  final [to, ...label] = rest.split(':');
   return GraphEdge(
     from: from.isEmpty ? null : from,
     to: to.isEmpty ? null : to,
-    label: null,
+    label: label.firstOrNull,
   );
 }
 
@@ -232,7 +238,15 @@ void main() {
 
       expect(t.forksOf(p), {'w': 3});
       expect(t.takenBy(p), {'>w', 'w>a', 'a>w'});
-      expect(t.untakenBy(p), {'w>'});
+      // The session runs, and the third a has finished: the code may have
+      // left the loop since.
+      expect(t.untakenBy(p), isEmpty);
+
+      // While the third a runs, the code has gone nowhere from it.
+      final j = ran(['a', 'a'])..effect('a', 3, place: flowAt('a'));
+      final running = t.passes(j.data);
+      expect(t.forksOf(running), {'w': 3});
+      expect(t.untakenBy(running), {'w>'});
     });
 
     test('a loop whose rounds run no effect: no exit the code may have taken '
@@ -402,16 +416,29 @@ void main() {
 
       expect(s.forksOf(p), {'f': 1});
       expect(s.takenBy(p), {'>f', 'f>x'});
-      expect(s.untakenBy(p), {'f>y'});
+      // While the session runs, another call may have begun since and gone
+      // by f>y, its effect not started yet.
+      expect(s.untakenBy(p), isEmpty);
+
+      final finished = s.passes(ran(['plan', 'x'], finished: true).data);
+      expect(s.untakenBy(finished), contains('f>y'));
     });
 
     test("an effect followed by one outside goes along the path to the body's "
         'end', () {
+      // announce after y, as `return f.effect('y', …)` in publish would key
+      // it.
       final p = s.passes(ran(['plan', 'y', 'announce']).data);
 
       expect(s.forksOf(p), {'f': 1, 'g': 1});
       expect(s.takenBy(p), {'>f', 'f>y', 'y>g', 'g>'});
-      expect(s.untakenBy(p), {'f>x', 'g>z'});
+      // While the session runs, another call may have begun by f>x.
+      expect(s.untakenBy(p), {'g>z'});
+
+      final finished = s.passes(
+        ran(['plan', 'y', 'announce'], finished: true).data,
+      );
+      expect(s.untakenBy(finished), {'f>x', 'g>z'});
     });
 
     test('effects outside the level, one after the other, are no transition '
@@ -852,6 +879,57 @@ void main() {
       expect(s.untakenBy(p), isEmpty);
     });
 
+    test('the end of a call in a call is not the way into the next call: '
+        'helper { if (c) await sub(); await e(); await sub(); }, sub { x; y '
+        '}, twice, c false — the first sub (s1) was not left for e', () {
+      final sub = graphFunction(
+        'sub',
+        [effectAt('x'), effectAt('y')],
+        ['>x', 'x>y', 'y>'],
+      );
+      final helper = graphFunction(
+        'helper',
+        [forkAt('c'), callAt('s1', sub), effectAt('e'), callAt('s2', sub)],
+        ['>c', 'c>s1', 'c>e', 's1>e', 'e>s2', 's2>'],
+      );
+      final flow = graphFunction(
+        'flow',
+        [effectAt('pre'), forkAt('for'), callAt('h', helper)],
+        ['>pre', 'pre>for', 'for>h', 'h>for', 'for>'],
+      );
+      final s = Shape.of(
+        helper.body,
+        places: EffectPlaces.of(flow, {
+          flow.id: flow,
+          helper.id: helper,
+          sub.id: sub,
+        }),
+      );
+      // As the library keys it: e after pre in each call, sub's effects
+      // after e.
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('pre', 0, end: 0.5, place: flowAt('pre'), key: 'pre');
+      for (final call in [1, 2]) {
+        final t = call * 10;
+        j
+          ..effect(
+            'e',
+            t,
+            end: t + 1,
+            place: flowAt('e'),
+            key: 'e$call',
+            after: 'pre',
+          )
+          ..effect('x', t + 2, end: t + 3, place: flowAt('x'), key: 'x$call')
+          ..effect('y', t + 4, end: t + 5, place: flowAt('y'), key: 'y$call');
+      }
+      j.finish(30);
+      final p = s.passes(j.data);
+
+      expect(s.takenBy(p), isNot(contains('s1>e')));
+      expect(s.takenBy(p), containsAll(['>c', 'e>s2', 's2>']));
+    });
+
     test('for (pkg in pkgs) await publish(f, pkg): core goes on, tool rolls '
         'back — !ok passed by both, neither exit darker', () {
       final publish = loadGraphFile('release')
@@ -878,12 +956,16 @@ void main() {
   });
 
   group('a called body: an exit is darker only when no effect node of it '
-      'holds more than one effect, the function having run once at most', () {
+      'holds more than one effect — needed for the function to have run once '
+      'at most, not enough', () {
     // How many times the code came into a called body the journal does not
     // tell for sure: a wait does not move `after`, and a call that takes no
     // effect's result leaves all its effects after the caller's last one. So
     // the effects of one call can read as joined before an effect of the
-    // next, and the way an earlier call took out of the body is lost.
+    // next, and the way an earlier call took out of the body is lost. Calls
+    // whose waits ran on different effect nodes leave each node one effect,
+    // and can still darken an exit an earlier call took (passes.dart,
+    // «Darker exits»).
 
     /// The places of [helper]'s effects, called from `flow`: `[await pre();]
     /// for (t in ts) await helper(t);`.
@@ -1223,6 +1305,417 @@ void main() {
     });
   });
 
+  group('keyed as the library keys them: after an awaited call or closure, '
+      'the code goes on with the `after` it had', () {
+    test('a call whose last effect another follows in no `after`: plan; '
+        'await publish(); if (f) await announce(); else if (g) await b(); — '
+        'publish { upload; verify }, announce after plan; f passed once, g '
+        'never', () {
+      final publish = graphFunction(
+        'publish',
+        [effectAt('upload'), effectAt('verify')],
+        ['>upload', 'upload>verify', 'verify>'],
+      );
+      final s = Shape(
+        [
+          effectAt('plan'),
+          callAt('c', publish),
+          forkAt('f'),
+          effectAt('announce'),
+          forkAt('g'),
+          effectAt('b'),
+        ],
+        [
+          '>plan',
+          'plan>c',
+          'c>f',
+          'f>announce',
+          'f>g',
+          'g>b',
+          'g>',
+          'announce>',
+          'b>',
+        ],
+        called: [publish],
+      );
+      // As the library keys it, and as `return f.effect('verify', …)` would.
+      for (final after in ['plan', 'verify']) {
+        final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+          ..effect('plan', 1, end: 2, place: flowAt('plan'), key: 'plan')
+          ..effect('upload', 3, end: 4, place: flowAt('upload'), key: 'upload')
+          ..effect('verify', 5, end: 6, place: flowAt('verify'), key: 'verify')
+          ..effect(
+            'announce',
+            7,
+            end: 8,
+            place: flowAt('announce'),
+            key: 'announce',
+            after: after,
+          )
+          ..finish(9);
+        final p = s.passes(j.data);
+
+        expect(s.forksOf(p), {'f': 1}, reason: 'announce after $after');
+        expect(s.takenBy(p), {
+          '>plan',
+          'plan>c',
+          'c>f',
+          'f>announce',
+          'announce>',
+        }, reason: 'announce after $after');
+        expect(s.untakenBy(p), {'f>g'}, reason: 'announce after $after');
+      }
+    });
+
+    test('a closure called in place, drawn in place: await a(); await (() '
+        'async { await b(); await c(); })(); if (x) await d(); — d after a, '
+        'x passed by x>d', () {
+      final s = Shape(
+        [
+          effectAt('a'),
+          effectAt('b'),
+          effectAt('c'),
+          forkAt('x'),
+          effectAt('d'),
+        ],
+        ['>a', 'a>b', 'b>c', 'c>x', 'x>d', 'x>', 'd>'],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('a', 1, end: 2, place: flowAt('a'), key: 'a', after: null)
+        ..effect('b', 3, end: 4, place: flowAt('b'), key: 'b', after: 'a')
+        ..effect('c', 5, end: 6, place: flowAt('c'), key: 'c', after: 'b')
+        ..effect('d', 7, end: 8, place: flowAt('d'), key: 'd', after: 'a')
+        ..finish(9);
+      final p = s.passes(j.data);
+
+      expect(s.forksOf(p), {'x': 1});
+      expect(s.takenBy(p), {'>a', 'a>b', 'b>c', 'c>x', 'x>d', 'd>'});
+      expect(s.untakenBy(p), {'x>'});
+    });
+
+    test('a call beside an effect in a wait, two effects in a row: await p(); '
+        'await Future.wait([x(), helper()]); if (k) await q(); — helper { y; '
+        'z }, q after p; k passed once', () {
+      final helper = graphFunction(
+        'helper',
+        [effectAt('y'), effectAt('z')],
+        ['>y', 'y>z', 'z>'],
+      );
+      final s = Shape(
+        [
+          effectAt('p'),
+          effectAt('x'),
+          callAt('h', helper),
+          forkAt('k'),
+          effectAt('q'),
+        ],
+        ['>p', 'p>x', 'p>h', 'x>k', 'h>k', 'k>q', 'k>', 'q>'],
+        called: [helper],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('p', 1, end: 2, place: flowAt('p'), key: 'p', after: null)
+        ..effect('x', 3, end: 4, place: flowAt('x'), key: 'x', after: 'p')
+        ..effect('y', 3, end: 4, place: flowAt('y'), key: 'y', after: 'p')
+        ..effect('z', 5, end: 6, place: flowAt('z'), key: 'z', after: 'y')
+        ..effect('q', 7, end: 8, place: flowAt('q'), key: 'q', after: 'p')
+        ..finish(9);
+      final p = s.passes(j.data);
+
+      expect(s.forksOf(p), {'k': 1});
+      expect(s.takenBy(p), containsAll(['x>k', 'h>k', 'k>q']));
+      expect(s.untakenBy(p), {'k>'});
+    });
+
+    test("a call's ends inside it are no ends of the session: if (k) { await "
+        'helper(); await z(); } else { await helper(); } — helper { a; await '
+        '(() async { b; c })(); d }, k true; not out of the other call', () {
+      final helper = graphFunction(
+        'helper',
+        [effectAt('a'), effectAt('b'), effectAt('c'), effectAt('d')],
+        ['>a', 'a>b', 'b>c', 'c>d', 'd>'],
+      );
+      final s = Shape(
+        [
+          forkAt('k'),
+          callAt('h1', helper),
+          effectAt('z'),
+          callAt('h2', helper),
+        ],
+        ['>k', 'k>h1', 'k>h2', 'h1>z', 'z>', 'h2>'],
+        called: [helper],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('a', 1, end: 2, place: flowAt('a'), key: 'a', after: null)
+        ..effect('b', 3, end: 4, place: flowAt('b'), key: 'b', after: 'a')
+        ..effect('c', 5, end: 6, place: flowAt('c'), key: 'c', after: 'b')
+        ..effect('d', 7, end: 8, place: flowAt('d'), key: 'd', after: 'a')
+        ..effect('z', 9, end: 10, place: flowAt('z'), key: 'z', after: null)
+        ..finish(11);
+      final p = s.passes(j.data);
+
+      expect(s.forksOf(p), {'k': 1});
+      expect(s.takenBy(p), {'>k', 'h1>z', 'z>'});
+      expect(s.untakenBy(p), isEmpty);
+    });
+  });
+
+  group('effects not on the graph', () {
+    // for (…) { if (u) { await retry(() => f.effect('fetch')); await
+    // f.effect('apply'); } else { await f.effect('queue'); } }: fetch is in a
+    // closure passed on, which describe does not draw.
+    final s = Shape(
+      [forkAt('for'), forkAt('u'), effectAt('apply'), effectAt('queue')],
+      ['>for', 'for>u', 'u>apply', 'u>queue', 'apply>for', 'queue>for', 'for>'],
+    );
+
+    test('queue, fetch, apply: the way to apply the code went is not darker, '
+        'whether retry hands fetch on — apply after fetch — or not — apply '
+        'after queue', () {
+      for (final applyAfter in ['fetch', 'queue']) {
+        for (final finished in [true, false]) {
+          final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+            ..effect('queue', 1, end: 2, place: flowAt('queue'), key: 'queue')
+            ..effect('fetch', 3, end: 4, key: 'fetch', after: 'queue')
+            ..effect(
+              'apply',
+              5,
+              end: 6,
+              place: flowAt('apply'),
+              key: 'apply',
+              after: applyAfter,
+            );
+          if (finished) j.finish(7);
+          final p = s.passes(j.data);
+          final reason = 'apply after $applyAfter, finished: $finished';
+
+          expect(s.untakenBy(p), isNot(contains('u>apply')), reason: reason);
+          expect(s.forksOf(p), contains('u'), reason: reason);
+        }
+      }
+    });
+
+    test('the effects a wait joined before one not on the graph lead to the '
+        'effect after it: await Future.wait([a(), b()]); await handOn(() => '
+        "f.effect('h')); if (c) await x(); — x after h; not from a and b to "
+        'the end', () {
+      final t = Shape(
+        [effectAt('a'), effectAt('b'), forkAt('c'), effectAt('x')],
+        ['>a', '>b', 'a>c', 'b>c', 'c>x', 'c>', 'x>'],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('a', 1, end: 2, place: flowAt('a'), key: 'a', after: null)
+        ..effect('b', 1, end: 2, place: flowAt('b'), key: 'b', after: null)
+        ..effect('h', 3, end: 4, key: 'h', after: null)
+        ..effect('x', 5, end: 6, place: flowAt('x'), key: 'x', after: 'h')
+        ..finish(7);
+      final p = t.passes(j.data);
+
+      // Where the code went through h is not drawn: c is not marked.
+      expect(t.forksOf(p), isEmpty);
+      expect(t.takenBy(p), {'>a', '>b', 'x>'});
+      expect(t.untakenBy(p), isEmpty);
+    });
+  });
+
+  group('a session that has not finished: running, failed, interrupted', () {
+    List<Journal> ending(Journal Function() journal) => [
+      journal(),
+      journal()..fail(9, 'StateError: boom'),
+      journal()..processGone(),
+    ];
+
+    test(
+      'a workflow that fails between an exit and the effect after it: for '
+      '(…) { await build(); if (needsCheck) { checkSync(); await report(); '
+      '} } — checkSync throws in round 2; needsCheck>report is not darker',
+      () {
+        final s = Shape(
+          [forkAt('for'), effectAt('build'), forkAt('n'), effectAt('report')],
+          [
+            '>for',
+            'for>build',
+            'build>n',
+            'n>report',
+            'n>for',
+            'report>for',
+            'for>',
+          ],
+        );
+        for (final j in ending(() => ran(['build', 'build']))) {
+          final p = s.passes(j.data);
+
+          expect(s.forksOf(p), {'for': 2, 'n': 1});
+          expect(s.untakenBy(p), isEmpty);
+        }
+      },
+    );
+
+    test('a function called again after an earlier call left it: helper { if '
+        '(c) await x(); else await y(); if (k) await z(); } — the first call '
+        'x and out by k>, the second y and z; k> is not darker', () {
+      final helper = graphFunction(
+        'helper',
+        [forkAt('c'), effectAt('x'), effectAt('y'), forkAt('k'), effectAt('z')],
+        ['>c', 'c>x', 'c>y', 'x>k', 'y>k', 'k>z', 'k>', 'z>'],
+      );
+      final flow = graphFunction(
+        'flow',
+        [effectAt('pre'), forkAt('for'), callAt('h', helper)],
+        ['>pre', 'pre>for', 'for>h', 'h>for', 'for>'],
+      );
+      final s = Shape.of(
+        helper.body,
+        places: EffectPlaces.of(flow, {flow.id: flow, helper.id: helper}),
+      );
+      // As the library keys it, y after pre, and as it would were x's result
+      // handed on.
+      for (final yAfter in ['pre', 'x']) {
+        Journal calls() =>
+            Journal('a1b2-session', workflow: 'flow', snapshot: false)
+              ..effect('pre', 0, end: 0.5, place: flowAt('pre'), key: 'pre')
+              ..effect('x', 1, end: 2, place: flowAt('x'), key: 'x')
+              ..effect(
+                'y',
+                3,
+                end: 4,
+                place: flowAt('y'),
+                key: 'y',
+                after: yAfter,
+              )
+              ..effect('z', 5, end: 6, place: flowAt('z'), key: 'z');
+        for (final j in ending(calls)) {
+          final p = s.passes(j.data);
+
+          expect(
+            s.untakenBy(p),
+            isNot(contains('k>')),
+            reason: 'y after $yAfter',
+          );
+        }
+      }
+    });
+  });
+
+  group('the ends of a wait', () {
+    test(
+      'a wait that opens the workflow passes a fork after it once: await '
+      'Future.wait([lint(), test()]); if (ok) await deploy(); — ok false',
+      () {
+        final s = Shape(
+          [
+            effectAt('lint'),
+            effectAt('test'),
+            forkAt('ok'),
+            effectAt('deploy'),
+          ],
+          [
+            '>lint',
+            '>test',
+            'lint>ok',
+            'test>ok',
+            'ok>deploy',
+            'ok>',
+            'deploy>',
+          ],
+        );
+        final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+          ..effect(
+            'lint',
+            1,
+            end: 2,
+            place: flowAt('lint'),
+            key: 'l',
+            after: null,
+          )
+          ..effect(
+            'test',
+            1,
+            end: 2,
+            place: flowAt('test'),
+            key: 't',
+            after: null,
+          )
+          ..finish(3);
+        final p = s.passes(j.data);
+
+        expect(s.forksOf(p), {'ok': 1});
+        expect(s.takenBy(p), {'>lint', '>test', 'lint>ok', 'test>ok', 'ok>'});
+        expect(s.untakenBy(p), {'ok>deploy'});
+      },
+    );
+
+    test('the ends of a wait joined before the next wait are not joined again '
+        'after it: await Future.wait([a(), b()]); if (c) await '
+        'Future.wait([x(), y()]); await z(); — c true, z after nothing like '
+        'all of them', () {
+      final s = Shape(
+        [
+          effectAt('a'),
+          effectAt('b'),
+          forkAt('c'),
+          effectAt('x'),
+          effectAt('y'),
+          effectAt('z'),
+        ],
+        ['>a', '>b', 'a>c', 'b>c', 'c>x', 'c>y', 'c>z', 'x>z', 'y>z', 'z>'],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false);
+      for (final (name, start) in [
+        ('a', 1),
+        ('b', 1),
+        ('x', 3),
+        ('y', 3),
+        ('z', 5),
+      ]) {
+        j.effect(
+          name,
+          start,
+          end: start + 1,
+          place: flowAt(name),
+          key: name,
+          after: null,
+        );
+      }
+      j.finish(7);
+      final p = s.passes(j.data);
+
+      expect(s.forksOf(p), {'c': 1});
+      expect(s.takenBy(p), {
+        '>a',
+        '>b',
+        'a>c',
+        'b>c',
+        'c>x',
+        'c>y',
+        'x>z',
+        'y>z',
+        'z>',
+      });
+      expect(s.untakenBy(p), {'c>z'});
+    });
+
+    test('the other branches of a wait go with the one taken: await p(); if '
+        '(c) await Future.wait([x(), helper()]); — helper ran no effect; '
+        'c>helper is not darker', () {
+      final helper = graphFunction(
+        'helper',
+        [forkAt('n'), effectAt('y')],
+        ['>n', 'n>y:true', 'n>:false', 'y>'],
+      );
+      final s = Shape(
+        [effectAt('p'), forkAt('c'), effectAt('x'), callAt('h', helper)],
+        ['>p', 'p>c', 'c>x:true', 'c>h:true', 'c>:false', 'x>', 'h>'],
+        called: [helper],
+      );
+      for (final finished in [true, false]) {
+        final p = s.passes(ran(['p', 'x'], finished: finished).data);
+
+        expect(s.forksOf(p), {'c': 1}, reason: 'finished: $finished');
+        expect(s.untakenBy(p), {'c>'}, reason: 'finished: $finished');
+      }
+    });
+  });
+
   group('copies', () {
     // plan → (each x: (f ? b : c) → (g ? e : end)) → (h ? announce : end);
     // three copies: the first and the third take b, the second c. The first
@@ -1361,9 +1854,11 @@ void main() {
       expect(s.untakenBy(p), isEmpty);
     });
 
-    test('an effect not on the graph: neither the way to it nor the way from '
-        'it', () {
-      // (f ? a : b); the session ran a, z at no node, then b after z.
+    test('an effect not on the graph between two with no way between them: '
+        'neither the way to it nor the way from it, and nothing between them '
+        'from the one before it', () {
+      // (f ? a : b), drawn by code that changed since: the session ran a, z at
+      // no node, then b after z, though no way leads from a to b.
       final s = Shape(
         [forkAt('f'), effectAt('a'), effectAt('b')],
         ['>f', 'f>a', 'f>b', 'a>', 'b>'],
@@ -1709,5 +2204,47 @@ void main() {
       });
       expect(s.untakenBy(p), {'2>3'});
     });
+  });
+
+  group('over sessions the real library wrote (recordedCalls)', () {
+    // release: plan → publish() → (plan == 'stable' ? announce : end);
+    // inPlace: the same with publish's body drawn in place. Both run on the
+    // stable channel.
+    final recorded = recordedCalls();
+    final functions = recorded.graph.functions;
+
+    for (final workflow in ['release', 'inPlace']) {
+      final session = recorded.sessions[workflow]!;
+      final function = functions['lib/calls.dart#$workflow']!;
+      final s = Shape.of(
+        function.body,
+        places: EffectPlaces.of(function, functions),
+      );
+
+      test('$workflow: announce after plan, not after verify, the last '
+          'effect before it', () {
+        final records = session.effectsInOrder;
+        expect(
+          [for (final effect in records) effect.name],
+          ['plan', 'upload', 'verify', 'announce'],
+        );
+        expect(records[3].after, records[0].key);
+      });
+
+      test('$workflow: the fork passed once, by its true edge; its false '
+          'edge, to the end, darker', () {
+        final p = s.passes(session);
+        final fork = function.body.nodes.whereType<ConditionNode>().single.id;
+        final announce = function.body.nodes
+            .whereType<EffectNode>()
+            .singleWhere((node) => node.name == 'announce')
+            .id;
+
+        expect(s.forksOf(p), {fork: 1});
+        expect(s.takenBy(p), contains('$fork>$announce'));
+        expect(s.takenBy(p), isNot(contains('$fork>')));
+        expect(s.untakenBy(p), {'$fork>'});
+      });
+    }
   });
 }
