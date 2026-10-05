@@ -112,18 +112,18 @@ final class NodeBox {
 }
 
 /// The body of a node expanded in place, in the node's frame (decision 6):
-/// its layout, and the links from the frame's sides to its start and end.
+/// its layout, and the link from the frame's left side to its start.
 ///
 /// Arrows into the node point at the bar on the frame's left side, level
 /// with the body's start, and those of the body go on from there; the
 /// body's arrows to its end point at its bar on the frame's right side, as
-/// at a tile's, and arrows out of the node leave the bar's middle. The
-/// start and end are ports on the sides. The end is always on its side, the
-/// arrows to it running on as far as need be; a link runs straight from
-/// the left side to a start off it — the name or place under a node after
-/// the start reaching further left.
+/// at a tile's, and arrows out of the node leave the bar. The start and end
+/// are ports on the sides. The end is always on its side, the arrows to it
+/// running on as far as need be; a link runs straight from the left side to
+/// a start off it — the name or place under a node after the start reaching
+/// further left.
 final class FrameBox {
-  FrameBox({required this.inner, required this.entry, required this.exit});
+  FrameBox({required this.inner, required this.entry});
 
   /// The body's layout, in the coordinates of the layout round it: its
   /// bounds lie in the frame, under the frame's title row. It has one end,
@@ -133,10 +133,6 @@ final class FrameBox {
   /// From the frame's left side to the body's start, none long when it is
   /// on the side; `null` when the body has no start.
   final Segment? entry;
-
-  /// From the body's end to the frame's right side, none long: the end is
-  /// on the side; `null` when the body has no end.
-  final Segment? exit;
 
   /// The bar of the body's end, its width's middle on the frame's right
   /// side; `null` when the body has no end.

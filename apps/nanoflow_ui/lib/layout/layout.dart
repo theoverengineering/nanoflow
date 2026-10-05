@@ -67,14 +67,20 @@ GraphLayout layoutBody(
   Map<String, ExpandedNode> expanded = const {},
 }) => _layout(body, functions, options, expanded, inFrame: false);
 
+/// [endBarHalf] is the least half length of the bar of the end of a body
+/// in a frame ([GNode.leastBarHalf]).
 GraphLayout _layout(
   GraphBody body,
   Map<String, GraphFunction> functions,
   LayoutOptions options,
   Map<String, ExpandedNode> expanded, {
   required bool inFrame,
+  double endBarHalf = 0,
 }) {
   final g = LayoutGraph.ofBody(body, functions: functions, inFrame: inFrame);
+  for (final node in g.nodes) {
+    if (node.port && node.kind == NodeKind.end) node.leastBarHalf = endBarHalf;
+  }
   for (final node in g.nodes) {
     if (node.kind != NodeKind.call && node.kind != NodeKind.copies) continue;
     final open = expanded[node.id];
@@ -85,6 +91,11 @@ GraphLayout _layout(
       options,
       open.expanded,
       inFrame: true,
+      // The bar of the body's end is the frame's exit: half a port gap past
+      // the arrows out, as past the arrows in.
+      endBarHalf: node.exits.isEmpty
+          ? 0
+          : arrowsReach(node, options) + options.portGap / 2,
     );
     node.framed = FramedBody.of(node, inner, open.room, options);
   }

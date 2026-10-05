@@ -93,7 +93,7 @@ double tileHeight(GNode node, LayoutOptions options) {
   if (node.port) {
     return math.max(
       units * options.exitGap,
-      node.inEdges.isEmpty ? 0 : barLength(node.inEdges.length, options),
+      node.inEdges.isEmpty ? 0 : 2 * _barHalf(node, options),
     );
   }
   final exits = units == 0 ? 0.0 : (units + 1) * options.exitGap;
@@ -112,6 +112,25 @@ double exitUnits(GExit exit) =>
 /// gap beyond the outer inputs, never shorter than the least bar.
 double barLength(int count, LayoutOptions options) =>
     math.max(options.minBar, count * options.portGap);
+
+/// Half the length of the input bar of [node], which arrows come in to: the
+/// end of a body in a frame reaches past the frame's arrows out too.
+double _barHalf(GNode node, LayoutOptions options) =>
+    math.max(barLength(node.inEdges.length, options) / 2, node.leastBarHalf);
+
+/// How far from the middle of [node]'s exits its outermost arrow is, in
+/// whatever order the exits stand: with one exit, half its capsule.
+double arrowsReach(GNode node, LayoutOptions options) {
+  final units = node.exits.fold(0.0, (sum, exit) => sum + exitUnits(exit));
+  return node.exits.fold(
+    0.0,
+    (most, exit) => math.max(
+      most,
+      (units - exitUnits(exit)) * options.exitGap / 2 +
+          (exit.edges.length - 1) * options.capsuleGap / 2,
+    ),
+  );
+}
 
 /// The arrow of [exit] whose place orders the exit: the middle one of a list.
 GEdge middleArrow(GExit exit) => exit.edges[(exit.edges.length - 1) ~/ 2];
@@ -256,5 +275,5 @@ void _orderInputs(
     port.inputAt[port.inputs[i]] =
         port.inputCentre + (i - (count - 1) / 2) * options.portGap;
   }
-  port.barHalf = count == 0 ? 0 : barLength(count, options) / 2;
+  port.barHalf = count == 0 ? 0 : _barHalf(port.node, options);
 }

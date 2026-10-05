@@ -323,6 +323,11 @@ final class GNode {
   /// The body of a call or copies expanded in place: the node is its frame.
   FramedBody? framed;
 
+  /// For the end of a body in a frame: the least half length of its bar.
+  /// The bar is the frame's exit, so it reaches past the frame's arrows out
+  /// as far as past the arrows in.
+  double leastBarHalf = 0;
+
   /// The width of the node's tile, or of its frame; none for a [port].
   double widthOf(LayoutOptions options) =>
       port ? 0 : framed?.width ?? options.tile;

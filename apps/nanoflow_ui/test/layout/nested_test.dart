@@ -131,7 +131,6 @@ void main() {
       final start = frame.inner.nodes[startMarker]!.tile;
       final end = frame.inner.nodes[endMarker]!;
       expect(frame.entry!.a, frame.entry!.b, reason: 'nothing to link');
-      expect(frame.exit!.a, frame.exit!.b, reason: 'nothing to link');
       final into = frame.inner.edges.where((e) => e.from == startMarker);
       expect(into.single.points.first, Point(call.tile.left, start.center.y));
       expect(into.single.to, '1');
@@ -242,9 +241,7 @@ void main() {
       final call = layout.nodes['5']!;
       expect(call.tile.width, closeTo(1200, 1e-9));
       _expectEndBar(layout, '5', ways: 3);
-      final frame = call.frame!;
-      expect(frame.exit!.a, frame.exit!.b, reason: 'nothing to link');
-      expect(frame.inner.bounds.right, closeTo(call.tile.right, 1e-9));
+      expect(call.frame!.inner.bounds.right, closeTo(call.tile.right, 1e-9));
       expect(checkLayout(layout), isEmpty);
     });
 
@@ -275,8 +272,41 @@ void main() {
         reason: 'the name reaches past where a straight arrow ends',
       );
       _expectEndBar(layout, '5', ways: 1);
-      expect(frame.exit!.a, frame.exit!.b, reason: 'nothing to link');
       expect(checkLayout(layout), isEmpty);
+    });
+
+    group('a frame whose way out is a capsule, branches of Future.wait after '
+        'the call: the bar spans the arrows out too', () {
+      /// callThenWait([out]) with its call drawn in place as a body whose
+      /// fork has [ways] ways straight to its end.
+      GraphLayout waysInOut(int ways, int out) => layoutBody(
+        callThenWait(out),
+        expanded: {
+          'c': ExpandedNode(
+            bodyOf({
+              'start': 'pick',
+              'nodes': {
+                'pick': {
+                  'decide': true,
+                  'then': {for (var i = 0; i < ways; i++) 'k$i': <Object?>[]},
+                },
+              },
+            }),
+          ),
+        },
+      );
+
+      for (final (ways, out) in [(1, 2), (1, 3), (5, 2), (2, 5)]) {
+        test('$ways ways in, $out arrows out', () {
+          final layout = waysInOut(ways, out);
+          expect(
+            layout.exits.singleWhere((x) => x.node == 'c').shape,
+            ExitShape.capsule,
+          );
+          _expectEndBar(layout, 'c', ways: ways);
+          expect(checkLayout(layout), isEmpty);
+        });
+      }
     });
 
     test('copies drawn in place end at a bar too, and the call in them', () {
@@ -287,11 +317,11 @@ void main() {
     });
   });
 
-  test('step 9 finds a frame whose body or links are off their places', () {
+  test('step 9 finds a frame whose body, link or end are off their places', () {
     final layout = releaseWithPublish();
     final call = layout.nodes['5']!;
     final frame = call.frame!;
-    List<String> problemsWith(FrameBox moved) => checkLayout(
+    List<String> problemsWith(FrameBox moved, {Rect? tile}) => checkLayout(
       GraphLayout(
         nodes: {
           ...layout.nodes,
@@ -304,7 +334,7 @@ void main() {
             place: call.place,
             inside: call.inside,
             layer: call.layer,
-            tile: call.tile,
+            tile: tile ?? call.tile,
             nameRect: call.nameRect,
             placeRect: call.placeRect,
             marks: call.marks,
@@ -323,32 +353,22 @@ void main() {
         Segment(s.a + const Point(0, 9), s.b + const Point(0, 9));
 
     expect(
-      problemsWith(
-        FrameBox(
-          inner: frame.inner,
-          entry: lower(frame.entry!),
-          exit: frame.exit,
-        ),
-      ),
+      problemsWith(FrameBox(inner: frame.inner, entry: lower(frame.entry!))),
       containsAll([
         '5: bar is not level with the start in the frame',
         '5: the link to the start is off its place',
       ]),
     );
+    final t = call.tile;
     expect(
       problemsWith(
-        FrameBox(
-          inner: frame.inner,
-          entry: frame.entry,
-          exit: lower(frame.exit!),
-        ),
+        FrameBox(inner: frame.inner, entry: frame.entry),
+        tile: Rect.fromLTRB(t.left, t.top, t.right + 9, t.bottom),
       ),
-      contains('5: the link from the end is off its place'),
+      contains('5: the end is off the frame\'s right side'),
     );
     expect(
-      problemsWith(
-        FrameBox(inner: layoutOf('release'), entry: null, exit: null),
-      ),
+      problemsWith(FrameBox(inner: layoutOf('release'), entry: null)),
       containsAll([
         '5: the body is not in the frame',
         '5: the body has several ends',
@@ -413,7 +433,6 @@ void main() {
     expect(body.left, call.tile.left);
     final end = frame.inner.nodes[endMarker]!.tile;
     expect(end.right, call.tile.right);
-    expect(frame.exit!.a, frame.exit!.b, reason: 'nothing to link');
     expect(call.marks.top, call.tile.top - 12);
     expect(checkLayout(layout), isEmpty);
   });
@@ -448,7 +467,7 @@ void main() {
     );
     final call = layout.nodes['5']!;
     expect(call.frame!.entry, isNull);
-    expect(call.frame!.exit, isNull);
+    expect(call.frame!.endBar, isNull);
     final body = call.frame!.inner.bounds;
     const room = FrameRoom();
     expect(body.left - call.tile.left, closeTo(room.side, 1e-9));
@@ -484,8 +503,8 @@ void main() {
     expect(checkLayout(layout), isEmpty);
   });
 
-  test('random bodies with random nodes expanded, nested, keep step 9 but '
-      'for loops in capsules', () {
+  test('random bodies with random nodes expanded, nested, in frames of '
+      'random widths, keep step 9 but for loops in capsules', () {
     for (var seed = 0; seed < 60; seed++) {
       final body = randomBody(seed);
       Map<String, ExpandedNode> expand(GraphBody body, int salt, int depth) => {
@@ -497,6 +516,8 @@ void main() {
               final inner = randomBody(seed * 31 + salt + i + 1);
               return ExpandedNode(
                 inner,
+                // Often wider than the body: its end goes on to the side.
+                room: FrameRoom(width: (seed + salt + i) % 4 * 200),
                 expanded: expand(inner, salt + i + 7, depth + 1),
               );
             }(),
@@ -525,24 +546,27 @@ void main() {
 
 /// Expects the end of the body in the frame of the node [id] of [layout] to
 /// be a bar as a tile's input bar, the [ways] arrows that end the body
-/// pointing at it: its width's middle on the frame's right side, its middle
-/// level with the frame's exit, where the arrows out leave; the arrows at
-/// their own heights a port gap apart round its middle, each an arrow gap
-/// and a head before it; the bar past the outer ones as far as a tile's.
+/// pointing at it, and the frame's way out: its width's middle on the
+/// frame's right side, its middle level with the end, where the arrows out
+/// leave from; the arrows in at their own heights a port gap apart round
+/// its middle, each an arrow gap and a head before it; the bar half a port
+/// gap past the outermost arrow, in or out, never shorter than the least
+/// bar — as a tile's bar is past its inputs.
 void _expectEndBar(GraphLayout layout, String id, {required int ways}) {
   final o = layout.options;
   final call = layout.nodes[id]!;
-  final frame = call.frame!;
-  final bar = frame.inner.nodes[endMarker]!.bar!;
+  final end = call.frame!.inner.nodes[endMarker]!;
+  final bar = end.bar!;
   final rect = bar.rect;
+  expect(end.tile.left, closeTo(call.tile.right, 1e-9));
   expect((rect.left + rect.right) / 2, closeTo(call.tile.right, 1e-9));
   expect(rect.width, closeTo(o.barWidth, 1e-9));
   final middle = (rect.top + rect.bottom) / 2;
-  expect(middle, closeTo(frame.exit!.b.y, 1e-9));
+  expect(middle, closeTo(end.tile.center.y, 1e-9));
   for (final out in layout.exits.where((x) => x.node == id)) {
     expect(out.anchor, Point(call.tile.right, middle));
   }
-  final ends = frame.inner.edges.where((e) => e.to == endMarker).toList();
+  final ends = call.frame!.inner.edges.where((e) => e.to == endMarker);
   expect(ends, hasLength(ways));
   final heights = [for (final e in ends) e.tip.y]..sort();
   expect(bar.inputs, heights);
@@ -555,12 +579,17 @@ void _expectEndBar(GraphLayout layout, String id, {required int ways}) {
     expect(edge.tip.x - edge.points.last.x, closeTo(o.arrowLength, 1e-9));
     expect(edge.points.last.y, edge.tip.y);
   }
-  // Half a port gap past the outer arrows, never shorter than the least
-  // bar: as a tile's bar with as many inputs.
-  expect(
-    rect.height,
-    closeTo(math.max(o.minBar, heights.last - heights.first + o.portGap), 1e-9),
-  );
+  final outs = [
+    for (final e in layout.edges)
+      if (e.from == id) e.points.first,
+  ];
+  for (final p in outs) {
+    expect(p.x, closeTo(call.tile.right, 1e-9));
+  }
+  final reach = [
+    for (final y in [...heights, for (final p in outs) p.y]) (y - middle).abs(),
+  ].reduce(math.max);
+  expect(rect.height, closeTo(math.max(o.minBar, 2 * reach + o.portGap), 1e-9));
 }
 
 /// Whether [inner] lies in [outer].

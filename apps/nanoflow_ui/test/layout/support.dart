@@ -58,6 +58,27 @@ Map<String, GraphBody> bodiesOf(GraphFile file) {
   return bodies;
 }
 
+/// A body whose call `c` goes on to [ways] branches of `Future.wait`, each
+/// to the end: describe draws `await f(); await Future.wait([a(), b()]);`
+/// so, and the call's way out is a capsule of [ways] arrows.
+GraphBody callThenWait(int ways) => GraphBody(
+  nodes: [
+    const CallNode(
+      id: 'c',
+      place: 'lib/flow.dart:10',
+      functions: ['lib/flow.dart#f'],
+    ),
+    for (var i = 0; i < ways; i++)
+      EffectNode(id: 'w$i', place: 'lib/flow.dart:${i + 11}', name: 'w$i'),
+  ],
+  edges: [
+    const GraphEdge(from: null, to: 'c', label: null),
+    for (var i = 0; i < ways; i++) GraphEdge(from: 'c', to: 'w$i', label: null),
+    for (var i = 0; i < ways; i++)
+      GraphEdge(from: 'w$i', to: null, label: null),
+  ],
+);
+
 /// A body written the short way: `start` names the nodes the entry leads
 /// to; each node is an effect (`command`) or a condition (`decide`) whose id,
 /// name and label are its key; `then` is a node, a list of nodes the flow
@@ -123,7 +144,7 @@ String describe(GraphLayout layout, [String indent = '']) {
     );
     if (node.frame case final frame?) {
       out
-        ..writeln('$indent  frame ${frame.entry} ${frame.exit}')
+        ..writeln('$indent  frame ${frame.entry}')
         ..write(describe(frame.inner, '$indent    '));
     }
   }

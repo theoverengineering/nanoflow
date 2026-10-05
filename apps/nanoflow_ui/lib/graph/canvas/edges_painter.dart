@@ -13,18 +13,17 @@ import 'layout_geometry.dart';
 /// (docs/design/code-first/function-frames.html); and in each frame drawn in
 /// place, the bar of the end of its body on its right side, in the tone of
 /// its exit — the arrows that end the body point at it, as at a tile's bar,
-/// and the arrows out of the frame leave its middle —, and the links from
-/// its sides to the start and the end of its body where they are off its
-/// sides, in the tones of its bar and exit. Under the exits and the tiles:
-/// a tile covers the half of its bar on its side, as in the mockups. Clicks
-/// go through it.
+/// and the arrows out of the frame leave it —, and the link from its left
+/// side to the start of its body where that is off the side, in the tone
+/// of its bar. Under the exits and the tiles: a tile covers the half of its
+/// bar on its side, as in the mockups. Clicks go through it.
 class EdgesPainter extends CustomPainter {
   EdgesPainter(this.graph, this.marks);
 
   final layout.GraphLayout graph;
   final CanvasMarks marks;
 
-  /// The width of arrows and of the links in frames.
+  /// The width of arrows and of the links in frames to their starts.
   static const _width = 1.6;
 
   /// The arrowhead's half width; its length is the layout's.
@@ -53,21 +52,15 @@ class EdgesPainter extends CustomPainter {
       }
     }
     for (final node in graph.nodes.values) {
-      final frame = node.frame;
-      if (frame == null) continue;
-      for (final (link, tone) in [
-        (frame.entry, marks.bar(node.id)),
-        (frame.exit, marks.exit(node.id)),
-      ]) {
-        if (link == null || link.length < 1e-6) continue;
-        canvas.drawLine(
-          link.a.toOffset(),
-          link.b.toOffset(),
-          Paint()
-            ..color = CanvasColors.line(tone)
-            ..strokeWidth = _width,
-        );
-      }
+      final link = node.frame?.entry;
+      if (link == null || link.length < 1e-6) continue;
+      canvas.drawLine(
+        link.a.toOffset(),
+        link.b.toOffset(),
+        Paint()
+          ..color = CanvasColors.line(marks.bar(node.id))
+          ..strokeWidth = _width,
+      );
     }
     // The lighter over the darker.
     final tones = {for (final edge in graph.edges) edge: marks.edge(edge)};

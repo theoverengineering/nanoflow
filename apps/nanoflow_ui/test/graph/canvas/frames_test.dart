@@ -20,7 +20,8 @@ import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 
-import '../../layout/support.dart' show bodyOf, functionOf, loadGraphFile;
+import '../../layout/support.dart'
+    show bodyOf, callThenWait, functionOf, loadGraphFile;
 import '../../state/support.dart';
 import '../../support/golden.dart';
 import '../logs/support.dart';
@@ -218,6 +219,52 @@ void main() {
         )
         ..circle(x: out.x, y: out.y, radius: 4.5, color: CanvasColors.plain),
     );
+  });
+
+  testWidgets('a frame whose way out is a capsule, branches of Future.wait '
+      'after the call, draws no capsule: the bar of its body\'s end is its '
+      'exit; a tile\'s capsule stays', (tester) async {
+    layout.GraphLayout laid({required bool inPlace}) => layout.layoutBody(
+      callThenWait(2),
+      expanded: {
+        if (inPlace)
+          'c': layout.ExpandedNode(
+            bodyOf({
+              'start': 'a',
+              'nodes': {
+                'a': {'command': true, 'then': <Object?>[]},
+              },
+            }),
+          ),
+      },
+    );
+
+    /// What the exits of [graph] paint: a capsule round the exit of c or
+    /// none.
+    Future<RenderObject> exitsOf(layout.GraphLayout graph) async {
+      await tester.pumpWidget(
+        CustomPaint(painter: ExitsPainter(graph, CanvasMarks.plain)),
+      );
+      return tester.renderObject(find.byType(CustomPaint));
+    }
+
+    /// A capsule painted round the exit of c in [graph].
+    Object capsuleOf(layout.GraphLayout graph) {
+      final out = graph.exits.singleWhere((x) => x.node == 'c');
+      expect(out.shape, layout.ExitShape.capsule);
+      final anchor = out.anchor.toOffset();
+      return paints..something(
+        (method, args) =>
+            method == #drawRRect &&
+            (args[0] as RRect).outerRect.contains(anchor),
+      );
+    }
+
+    final tile = laid(inPlace: false);
+    expect(await exitsOf(tile), capsuleOf(tile));
+    final framed = laid(inPlace: true);
+    expect(framed.nodes['c']!.frame!.endBar, isNotNull);
+    expect(await exitsOf(framed), isNot(capsuleOf(framed)));
   });
 
   testWidgets('a frame in a frame: copies, and the call in them, at any '

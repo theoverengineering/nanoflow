@@ -180,13 +180,11 @@ final class FramedBody {
   double get exitCentre => (exit ?? height / 2) - height / 2;
 
   /// The frame of the node whose frame is [tile] on the canvas: [inner]
-  /// moved into it, with the links from its sides to the body's start and
-  /// end.
+  /// moved into it, with the link from its left side to the body's start.
   FrameBox placeIn(Rect tile) {
     final at = Point(tile.left, tile.top) + innerAt;
     final moved = shiftLayout(inner, at);
     final start = moved.nodes[startMarker]?.tile;
-    final end = moved.nodes[endMarker]?.tile;
     return FrameBox(
       inner: moved,
       entry: start == null
@@ -194,12 +192,6 @@ final class FramedBody {
           : Segment(
               Point(tile.left, start.center.y),
               Point(start.left, start.center.y),
-            ),
-      exit: end == null
-          ? null
-          : Segment(
-              Point(end.right, end.center.y),
-              Point(tile.right, end.center.y),
             ),
     );
   }
@@ -228,6 +220,10 @@ GraphLayout _endAt(GraphLayout inner, double x) {
 /// [edge] with its last, straight piece [by] longer, and its head as far
 /// further on.
 EdgePath _runOn(EdgePath edge, double by, LayoutOptions options) {
+  assert(
+    (edge.points[edge.points.length - 2].y - edge.points.last.y).abs() < 1e-6,
+    'an arrow comes to its input along a horizontal piece',
+  );
   final shift = Point(by, 0);
   final points = [
     ...edge.points.take(edge.points.length - 1),
@@ -249,8 +245,6 @@ EdgePath _runOn(EdgePath edge, double by, LayoutOptions options) {
 /// [n] moved by [by]: its tile, texts, marks and bar, and its frame.
 NodeBox _shiftNode(NodeBox n, Point by) {
   Rect rect(Rect r) => r.shift(by);
-  Segment? segment(Segment? s) =>
-      s == null ? null : Segment(s.a + by, s.b + by);
   return NodeBox(
     id: n.id,
     kind: n.kind,
@@ -275,8 +269,10 @@ NodeBox _shiftNode(NodeBox n, Point by) {
     frame: switch (n.frame) {
       final frame? => FrameBox(
         inner: shiftLayout(frame.inner, by),
-        entry: segment(frame.entry),
-        exit: segment(frame.exit),
+        entry: switch (frame.entry) {
+          final s? => Segment(s.a + by, s.b + by),
+          null => null,
+        },
       ),
       null => null,
     },

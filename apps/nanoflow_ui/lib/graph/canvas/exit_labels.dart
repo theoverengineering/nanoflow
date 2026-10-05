@@ -13,11 +13,11 @@ final class ExitChip {
   final String text;
 }
 
-/// Paints the exits of a layout (docs/ui-spec.md «Граф»): dots — but on a
-/// frame drawn in place, whose arrow out leaves the bar of its body's end —,
-/// capsules, and the labels on chips of the canvas's color that arrows go
-/// behind. Over the arrows, under the tiles: a tile covers the half of a dot
-/// on its side, as in the mockups. Clicks go through it.
+/// Paints the exits of a layout (docs/ui-spec.md «Граф»): dots, capsules —
+/// none on a frame drawn in place whose arrows out leave the bar of its
+/// body's end —, and the labels on chips of the canvas's color that arrows
+/// go behind. Over the arrows, under the tiles: a tile covers the half of a
+/// dot on its side, as in the mockups. Clicks go through it.
 class ExitsPainter extends CustomPainter {
   ExitsPainter(this.graph, this.marks)
     : chips = List.unmodifiable(_chipsOf(graph));
@@ -46,14 +46,12 @@ class ExitsPainter extends CustomPainter {
     final background = Paint()..color = CanvasColors.background;
     for (final exit in graph.exits) {
       final node = graph.nodes[exit.node];
-      // The arrows of a frame's start leave its side, where its bar is.
-      if (node?.port ?? false) continue;
+      // The arrows of a frame's start leave its side, where its bar is; the
+      // arrows out of a frame leave the bar of its body's end.
+      if ((node?.port ?? false) || node?.frame?.endBar != null) continue;
       final tone = marks.exit(exit.node);
       final anchor = exit.anchor.toOffset();
       switch (exit.shape) {
-        // The arrow out of a frame leaves the bar of its body's end.
-        case layout.ExitShape.dot when node?.frame?.endBar != null:
-          break;
         case layout.ExitShape.dot:
           _paintDot(canvas, anchor, tone, background);
         case layout.ExitShape.capsule:
