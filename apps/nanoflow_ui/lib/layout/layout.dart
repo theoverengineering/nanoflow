@@ -70,13 +70,12 @@ GraphLayout layoutBody(
 
 /// [body] laid out as before nodes stood where most of their arrows come
 /// in level — the bodies in its frames too —, and as chosen: with them
-/// standing so, in its frames too, unless that crosses more, breaks a rule
-/// of step 9 more often, or has more turns or more arrows turning twice
-/// than before. A body in a frame that changed changes the frame — its
+/// standing so, in its frames too, unless that is worse than before
+/// ([_worse]). A body in a frame that changed changes the frame — its
 /// size, where its exit is —: the level round it is laid out again round
 /// the new frames, in the order chosen round the old ones, and kept only
-/// if it is no worse by those counts than the level as before; else the
-/// level stays as before, the frames in it too.
+/// if it is no worse than the level as before; else the level stays as
+/// before, the frames in it too.
 ///
 /// [endBarHalf] is the least half length of the bar of the end of a body
 /// in a frame ([GNode.leastBarHalf]).
@@ -141,22 +140,33 @@ GraphLayout layoutBody(
   final again = graph();
   frame(again, (id) => inners[id]!.chosen);
   final after = _laid(again, options, order: before.order);
-  final was = (
-    broken: checkLevel(base).length,
-    crossings: countCrossings(base),
-    turns: _turns(base),
-  );
   for (final layout in [?after.levelled, after.kept]) {
-    final (:turns, :twice) = _turns(layout);
-    if (checkLevel(layout).length <= was.broken &&
-        countCrossings(layout) <= was.crossings &&
-        turns <= was.turns.turns &&
-        twice <= was.turns.twice) {
-      return (base: base, chosen: layout);
-    }
+    if (!_worse(layout, base)) return (base: base, chosen: layout);
   }
   levelInputFallbacks++;
   return (base: base, chosen: base);
+}
+
+/// How much taller than the layout it would replace a layout with nodes
+/// where most of their arrows come in level may be: a node far down to
+/// stand level with an exit saves a turn or two for a level much taller.
+/// 1.15 keeps every view of the user's graph that came in level, the
+/// outer level of `lead` round `specify()` and `judgeSpec()` 10.3 % taller
+/// among them; 1.1 would lose it.
+const double _tallest = 1.15;
+
+/// Whether [layout], with nodes standing where most of their arrows come in
+/// level, is worse than [was], the layout it would replace: it crosses
+/// more, breaks a rule of step 9 more often, has more turns or more arrows
+/// turning twice, or is more than [_tallest] times as tall.
+bool _worse(GraphLayout layout, GraphLayout was) {
+  final now = _turns(layout);
+  final before = _turns(was);
+  return checkLevel(layout).length > checkLevel(was).length ||
+      countCrossings(layout) > countCrossings(was) ||
+      now.turns > before.turns ||
+      now.twice > before.twice ||
+      layout.bounds.height > was.bounds.height * _tallest + 1e-6;
 }
 
 /// Steps 1 to 8 for [g], its frames made: the layout as before nodes stood
@@ -255,9 +265,8 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
 /// tie, the turns next to the nodes. Without a node narrower than its
 /// layer nothing turns early. That layout is laid out once more with nodes
 /// standing where most of their arrows come in level (step 6), if that
-/// places anything otherwise, and kept unless it crosses more, breaks a
-/// rule of step 9 more often, or has more turns or more arrows turning
-/// twice than the layout it would replace.
+/// places anything otherwise, and kept unless it is worse than the layout
+/// it would replace ([_worse]).
 ///
 /// The early turns should never cross more: a turn goes before turns ahead
 /// of it in its gap only past turns whose order with it does not change
@@ -289,17 +298,17 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
       kept = early;
     }
   }
-  final level = _levelled(
-    g,
-    layers,
-    options,
-    below,
-    turnEarly: !identical(kept, best.layout),
-  );
+  final level = levelInputs
+      ? _levelled(
+          g,
+          layers,
+          options,
+          below,
+          turnEarly: !identical(kept, best.layout),
+        )
+      : null;
   if (level == null) return (kept: kept, levelled: null);
-  final (:turns, :twice) = _turns(level);
-  final before = _turns(kept);
-  if (worse(level) || turns > before.turns || twice > before.twice) {
+  if (_worse(level, kept)) {
     levelInputFallbacks++;
     return (kept: kept, levelled: null);
   }
@@ -327,11 +336,15 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
   return (turns: turns, twice: twice);
 }
 
+/// Whether nodes stand where most of their arrows come in level (step 6);
+/// tests turn it off to lay a body out as before.
+@visibleForTesting
+bool levelInputs = true;
+
 /// How many times a level kept the heights its order was chosen with
 /// ([_finish]), or stayed as before round frames whose bodies changed
 /// ([_layout]), because nodes standing where most arrows come in level
-/// crossed more, broke a rule of step 9 more often, or had more turns or
-/// more arrows turning twice. No level of the test graphs does, and few
+/// made it worse ([_worse]). No level of the test graphs does, and few
 /// random ones: tests check both.
 @visibleForTesting
 int levelInputFallbacks = 0;

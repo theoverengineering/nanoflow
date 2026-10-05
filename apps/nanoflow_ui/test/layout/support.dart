@@ -232,19 +232,15 @@ List<({double x, double from, double to})> turnsOf(EdgePath edge) {
 }
 
 /// [body], a body laid out in a frame, if its end could stand higher or
-/// lower, by no more than its bar reaches, and bring more arrows in level:
-/// arrows into the end that turned before and then jog by one height, at
-/// most half the bar's length, in the gap before it — a group of two or
-/// more for each height, outnumbering the arrows that come in without
+/// lower and bring more arrows in level: arrows into the end that turned
+/// before and then jog by one height in the gap before it, a group of two
+/// or more for each height, outnumbering the arrows that come in without
 /// turning in that gap. The end is alone in its layer and nothing goes on
 /// from it in the body: standing by that height off, it would take each
 /// arrow of the group in level from its turn before, and turn the others.
-/// It moves no further than its bar reaches, so that the frame's exit, level
-/// with it, keeps near where the level round the frame has it.
 List<String> endJogs(GraphLayout body) {
   final end = body.nodes[endMarker];
   if (end == null) return const [];
-  final reach = end.bar!.rect.height / 2;
   final gap = body.nodes.values
       .where((node) => node.id != endMarker)
       .map((node) => node.tile.right)
@@ -256,8 +252,7 @@ List<String> endJogs(GraphLayout body) {
     final turns = turnsOf(edge);
     if (turns.isEmpty || turns.last.x < gap - 1e-6) {
       straight++;
-    } else if (turns.length > 1 &&
-        (turns.last.to - turns.last.from).abs() <= reach + 1e-6) {
+    } else if (turns.length > 1) {
       final jog = (turns.last.to - turns.last.from).toStringAsFixed(1);
       jogs.putIfAbsent(jog, () => []).add('${edge.from}#${edge.exitIndex}');
     }

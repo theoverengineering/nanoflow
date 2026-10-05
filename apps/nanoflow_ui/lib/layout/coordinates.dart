@@ -163,14 +163,11 @@ double smallestJog(LayoutOptions options) =>
 /// longest path's among them, and stands at the one where most of its
 /// arrows come in level ([_levelAt]), counted where it would stand; on a
 /// tie, at the place it takes for the longest path, else the one nearest
-/// it. The end of a body in a
-/// frame moves from that place no further than its bar reaches: the
-/// frame's exit is level with it, and the level round the frame is laid
-/// out for where it is. The pass points of the long arrows that can stand
-/// level with the node's inputs move there once it has its place: the
-/// arrows run straight into it from their turn before the corridor instead
-/// of jogging just before it. Returns whether that placed anything
-/// otherwise than without [levelInputs].
+/// it. The pass points of the long arrows that can stand level with the
+/// node's inputs move there once it has its place: the arrows run straight
+/// into it from their turn before the corridor instead of jogging just
+/// before it. Returns whether that placed anything otherwise than without
+/// [levelInputs].
 bool placeLayers(
   LayoutGraph graph,
   List<List<Item>> layers,
@@ -256,15 +253,11 @@ bool placeLayers(
         // Each height that brings an arrow in level, counted where the node
         // can stand for it.
         final longest = y;
-        final reach = node.port && node.kind == NodeKind.end
-            ? ports[node]!.barHalf
-            : double.infinity;
         var most = _levelAt(item, longest, layers, ports, options).count;
         for (final seg in item.ins) {
           final at = placeAt(
             outY(seg, ports) - ports[node]!.inputAt[seg.edge]!,
           );
-          if ((at - longest).abs() > reach + 1e-6) continue;
           final count = _levelAt(item, at, layers, ports, options).count;
           if (count > most ||
               count == most && (at - longest).abs() < (y - longest).abs()) {

@@ -90,6 +90,27 @@ void main() {
     },
   );
 
+  /// lead with its call of cut() drawn in place (chain.graph.json,
+  /// lib/chain.dart:349): four of cut's ways out come to the end of its
+  /// body along a band over it.
+  GraphLayout leadWithCut() => layoutBody(
+    functionOf(chain, 'lead').body,
+    functions: chain.functions,
+    expanded: {'7': ExpandedNode(functionOf(chain, 'cut').body)},
+  );
+
+  /// chain with its call of lead() drawn in place, and cut() in that.
+  GraphLayout chainWithCut() => layoutBody(
+    functionOf(chain, 'chain').body,
+    functions: chain.functions,
+    expanded: {
+      '1': ExpandedNode(
+        functionOf(chain, 'lead').body,
+        expanded: {'7': ExpandedNode(functionOf(chain, 'cut').body)},
+      ),
+    },
+  );
+
   /// A fork before g() drawn in place, whose ways back leave under its way
   /// in: check's `ok` goes into g(), a fork of three effects, and its
   /// `retry` and `start over…` back to prepare.
@@ -723,9 +744,32 @@ void main() {
     }
   });
 
+  for (final (view, lay, path) in [
+    ('in lead', leadWithCut, ['7']),
+    ('in lead in chain', chainWithCut, ['1', '7']),
+  ]) {
+    test('cut() drawn in place $view: every arrow to its end turns at most '
+        'once, to its input\'s height, and runs straight into the bar', () {
+      final layout = lay();
+      var body = layout;
+      for (final id in path) {
+        body = body.nodes[id]!.frame!.inner;
+      }
+      expect(checkLayout(layout), isEmpty);
+      final arrows = body.edges.where((e) => e.to == endMarker).toList();
+      expect(arrows, isNotEmpty);
+      for (final edge in arrows) {
+        expect(
+          turnsOf(edge).length,
+          lessThanOrEqualTo(1),
+          reason: '${edge.from}#${edge.exitIndex}: ${edge.points}',
+        );
+      }
+    });
+  }
+
   test('every function of the test graphs drawn in place: the end of its '
-      'body stands where no more of its arrows would come in level within '
-      'its bar\'s reach', () {
+      'body stands where no more of its arrows would come in level', () {
     var ends = 0;
     final fallbacks = levelInputFallbacks;
     for (final name in graphNames()) {
@@ -1004,44 +1048,79 @@ void main() {
     );
   });
 
-  test('random body 1577 nested: the end of the body in n8 moves no further '
-      'than its bar reaches, so the level round it crosses no more and grows '
-      'no taller', () {
+  test('random body 1577 nested: the level round the frame of n8, whose '
+      'body changed, is laid out round it in the order chosen round it as it '
+      'was and kept only if no worse, so it crosses no more and grows no '
+      'taller', () {
     final level = _randomNested(1577).nodes['n8']!.frame!.inner;
     expect(countCrossings(level), 0);
     expect(level.bounds.height, lessThanOrEqualTo(1202));
   });
 
+  test('random body 603 nested: nodes standing where more arrows come in '
+      'level do not make it far taller', () {
+    // 2442 px with every node level with the arrow from the longest path:
+    // a node 1394 px further down, level with an exit, would save two
+    // turns for half as much height again.
+    expect(_randomNested(603).bounds.height, lessThanOrEqualTo(2442 * 1.15));
+  });
+
   test('random bodies in frames, nested: the end of each body stands where '
-      'no more of its arrows would come in level within its bar\'s reach — '
-      'where no two arrows that turned before jog by one height, no more '
-      'than the bar reaches, into it while fewer come in without turning '
-      'before it', () {
+      'no more of its arrows would come in level — no two arrows that '
+      'turned before jog by one height into it while fewer come in without '
+      'turning before it —, but where the guards kept the body as before', () {
     var ends = 0;
+    var asBefore = 0;
     final fallbacks = levelInputFallbacks;
-    void visit(GraphLayout level, String where) {
+    void visit(GraphLayout level, GraphLayout before, String where) {
       for (final node in level.nodes.values) {
         final inner = node.frame?.inner;
         if (inner == null) continue;
+        final old = before.nodes[node.id]!.frame!.inner;
         if (inner.nodes[endMarker] != null) ends++;
-        expect(endJogs(inner), isEmpty, reason: '$where ${node.id}');
-        visit(inner, '$where ${node.id} ›');
+        // The arrows of each group, which the layout as before shows too
+        // where the guards kept the body's heights.
+        Set<String> groups(GraphLayout body) => {
+          for (final jog in endJogs(body))
+            jog.substring(0, jog.indexOf(' jog')),
+        };
+        final jogs = groups(inner);
+        if (jogs.isNotEmpty && groups(old).containsAll(jogs)) {
+          asBefore++;
+        } else {
+          expect(jogs, isEmpty, reason: '$where ${node.id}');
+        }
+        visit(inner, old, '$where ${node.id} ›');
       }
     }
 
     for (var seed = 0; seed < 150; seed++) {
-      visit(_randomNested(seed), 'seed $seed:');
+      final layout = _randomNested(seed);
+      levelInputs = false;
+      final before = _randomNested(seed);
+      levelInputs = true;
+      visit(layout, before, 'seed $seed:');
     }
     expect(ends, greaterThan(500));
     expect(
+      asBefore,
+      lessThanOrEqualTo(4),
+      reason:
+          'only where standing the end where more arrows come in level '
+          'turned more there or round it, or made it over 15 % taller, does '
+          'a body keep the jogs before its end it had: 87 › n1, '
+          '128 › n0 › n5, and one body in 112 drawn twice, n0 › n0 and n7',
+    );
+    expect(
       levelInputFallbacks - fallbacks,
-      lessThanOrEqualTo(15),
+      lessThanOrEqualTo(63),
       reason:
           'nodes stand where most of their arrows come in level only where '
           'the level — and round a frame whose body changed, the level '
-          'round it — crosses no more, breaks no more rules and has no more '
-          'turns or arrows turning twice than before; of these random '
-          'levels 15 keep the heights of before',
+          'round it — crosses no more, breaks no more rules, has no more '
+          'turns or arrows turning twice and is at most 15 % taller than '
+          'before; of these random levels 63 keep the heights of before, 49 '
+          'of them for height',
     );
   });
 }
