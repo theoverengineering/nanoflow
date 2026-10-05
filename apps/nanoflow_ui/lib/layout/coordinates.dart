@@ -393,6 +393,7 @@ final class NodeFrame {
     this.name,
     this.place,
     this.marks,
+    this.behind,
     this.status,
     this.bar,
     this.exits,
@@ -410,6 +411,11 @@ final class NodeFrame {
   /// right corner.
   final Rect marks;
 
+  /// Right of a frame drawn with outlines stacked behind it, up and to the
+  /// right — copies —: where they run down its right side; `null` without
+  /// them.
+  final Rect? behind;
+
   /// The state badge on the tile's bottom right corner.
   final Rect status;
 
@@ -424,6 +430,7 @@ final class NodeFrame {
     yield name;
     yield place;
     yield marks;
+    if (behind case final behind?) yield behind;
     yield status;
     if (bar case final bar?) yield bar;
     for (final exit in exits.values) {
@@ -436,12 +443,13 @@ final class NodeFrame {
 ///
 /// The tile of an expanded node is its frame: no name or place under it,
 /// no state badge, the input bar and the exits level with its body's start
-/// and end, and over it only what is drawn with the frame. A port has no
-/// width and no marks, and nothing of its exits is drawn: arrows leave the
-/// start straight from the frame's side. The end's bar is on the frame's
-/// side as a tile's is on the tile's, the arrows pointing at it from a gap
-/// and a head before it; the room it keeps ends at the side, past which
-/// the frame's exit is.
+/// and end, and over it and down its right side only what is drawn with
+/// the frame — the outlines stacked behind copies. A port has no width and
+/// no marks, and nothing of its exits is drawn: arrows leave the start
+/// straight from the frame's side. The end's bar is on the frame's side as
+/// a tile's is on the tile's, the arrows pointing at it from a gap and a
+/// head before it; the room it keeps ends at the side, past which the
+/// frame's exit is.
 NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   final o = options;
   final framed = node.framed;
@@ -486,6 +494,14 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       tile.top,
     ),
   };
+  final behind = above == null || above <= 0
+      ? null
+      : Rect.fromLTRB(
+          tile.right,
+          tile.top - above,
+          tile.right + above,
+          tile.bottom,
+        );
   final status = framed != null || node.port
       ? Rect.fromLTRB(tile.right, tile.bottom, tile.right, tile.bottom)
       : Rect.fromLTRB(
@@ -540,7 +556,7 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       area: area,
     );
   }
-  return NodeFrame._(tile, name, place, marks, status, bar, exits);
+  return NodeFrame._(tile, name, place, marks, behind, status, bar, exits);
 }
 
 /// Where a label's chip starts right of the exit, how much room an arrow

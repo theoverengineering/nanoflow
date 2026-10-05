@@ -104,9 +104,9 @@ const double clearance = 8;
 /// back arrows and loops nest — and start right of every label they
 /// pass. A small change of height becomes a 45° diagonal where
 /// that fits in the gap. A gap is as wide as its labels, lanes, the straight
-/// piece before an input and the arrowhead need; before the end of a body
-/// in a frame, which is on the frame's right side, its lanes keep clear of
-/// the frame's outline too.
+/// piece before an input and the arrowhead need; before a frame, and before
+/// the end of a body in a frame, which is on the frame's right side, its
+/// lanes keep clear of the frame's outline too.
 ///
 /// [frames] are the nodes' frames with tiles at x = 0; [depth] is the y of
 /// every back arrow's lane under the graph.
@@ -160,6 +160,13 @@ Lanes assignLanes(
     // outline runs the body's whole height: every turn before it keeps
     // clear of the outline, as of a mark it passes.
     final side = rightNodes.any((n) => n.port && n.kind == NodeKind.end);
+    // A frame's outline runs its whole height, its bar only at its start's:
+    // a turn before a frame keeps clear of its left side wherever it passes
+    // the frame's heights, as of a mark.
+    final rightFrames = [
+      for (final node in rightNodes)
+        if (node.framed != null) frames[node]!.tile,
+    ];
 
     final turns = <Turn>[];
     void setRoom(Turn turn, {required double reach}) {
@@ -187,7 +194,7 @@ Lanes assignLanes(
         room = r + straight;
         roomDiagonal = r45 + straight;
       }
-      for (final rect in rightObstacles) {
+      for (final rect in [...rightObstacles, ...rightFrames]) {
         if (_spans(turn, rect)) {
           final need = clearance - rect.left;
           room = math.max(room, need);

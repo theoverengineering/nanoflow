@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/layout/lanes.dart' show clearance;
 import 'package:nanoflow_ui/layout/layout.dart';
 import 'package:test/test.dart';
 
@@ -51,6 +52,43 @@ void main() {
     functionOf(taskCarry, 'task').body,
     functions: taskCarry.functions,
     expanded: {'1': ExpandedNode(functionOf(taskCarry, 'carry').body)},
+  );
+
+  /// A fork before g() drawn in place, whose ways back leave under its way
+  /// in: check's `ok` goes into g(), a fork of three effects, and its
+  /// `retry` and `start over…` back to prepare.
+  GraphLayout forkBeforeFrame() => layoutBody(
+    const GraphBody(
+      nodes: [
+        EffectNode(id: 'b', place: 'lib/a.dart:2', name: 'prepare'),
+        ConditionNode(id: 'a', place: 'lib/a.dart:3', label: 'check'),
+        CallNode(id: 'f', place: 'lib/a.dart:4', functions: ['lib/a.dart#g']),
+      ],
+      edges: [
+        GraphEdge(from: null, to: 'b', label: null),
+        GraphEdge(from: 'b', to: 'a', label: null),
+        GraphEdge(from: 'a', to: 'f', label: 'ok'),
+        GraphEdge(from: 'a', to: 'b', label: 'retry'),
+        GraphEdge(from: 'a', to: 'b', label: 'start over with a fresh token'),
+        GraphEdge(from: 'f', to: null, label: null),
+      ],
+    ),
+    expanded: {
+      'f': ExpandedNode(
+        bodyOf({
+          'start': 'which',
+          'nodes': {
+            'which': {
+              'decide': true,
+              'then': {'x': 'one', 'y': 'two', 'z': 'three'},
+            },
+            'one': {'command': true, 'then': <Object?>[]},
+            'two': {'command': true, 'then': <Object?>[]},
+            'three': {'command': true, 'then': <Object?>[]},
+          },
+        }),
+      ),
+    },
   );
 
   group('publish() expanded inside release', () {
@@ -442,6 +480,67 @@ void main() {
     );
   });
 
+  test('step 9 finds an arrow of the level running along a side of a '
+      'frame in it nearer than a clearance', () {
+    final layout = forkBeforeFrame();
+    final tile = layout.nodes['f']!.tile;
+    final back = edgeOf(layout, 'a', 1);
+    final (down, _, _) = verticals(back).first;
+    // The problems of the layout with retry's way back moved.
+    List<String> problemsWith(Point Function(Point) move) => checkLayout(
+      GraphLayout(
+        nodes: layout.nodes,
+        exits: layout.exits,
+        edges: [
+          for (final e in layout.edges)
+            identical(e, back) ? _moved(e, move, layout.options) : e,
+        ],
+        bounds: layout.bounds,
+        options: layout.options,
+      ),
+    );
+
+    // Its way down on the frame's left side, and just before it.
+    for (final gap in [0.0, clearance - 0.5]) {
+      expect(
+        problemsWith((p) => p.x == down ? Point(tile.left - gap, p.y) : p),
+        contains(
+          'f: a#1.0->b runs outside along the frame\'s left side '
+          '${gap.toStringAsFixed(1)} from it',
+        ),
+      );
+    }
+    expect(
+      problemsWith((p) => p.x == down ? Point(tile.left - clearance, p.y) : p),
+      isNot(contains(contains('runs outside along'))),
+    );
+  });
+
+  group('check\'s ways back to prepare, leaving under its way into g() drawn '
+      'in place', () {
+    late GraphLayout layout;
+    setUpAll(() => layout = forkBeforeFrame());
+
+    test('keeps every rule of step 9', () {
+      expect(checkLayout(layout), isEmpty);
+    });
+
+    test('go down a lane gap apart before the frame, the outer a clearance '
+        'off its left side, which runs all the frame\'s height', () {
+      final tile = layout.nodes['f']!.tile;
+      final downs = [
+        for (final exit in [1, 2]) verticals(edgeOf(layout, 'a', exit)).first,
+      ];
+      for (final (_, top, bottom) in downs) {
+        expect(top, lessThan(tile.bottom), reason: 'it passes the frame');
+        expect(bottom, greaterThan(tile.bottom));
+      }
+      final xs = [for (final (x, _, _) in downs) x]..sort();
+      expect(tile.left - xs.last, closeTo(clearance, 1e-9));
+      expect(xs.last - xs.first, closeTo(layout.options.laneGap, 1e-9));
+    });
+  });
+
   group('carry() drawn in place in task, its loop coming back from the '
       'last nodes before its end', () {
     late GraphLayout layout;
@@ -612,10 +711,42 @@ void main() {
     // Frames whose body has an arrow going back or round from a node just
     // before its end: its lane is next to the frame's right side.
     var backBeforeEnd = 0;
-    void count(GraphLayout layout) {
-      for (final node in layout.nodes.values) {
+    // Copies drawn in place with an arrow of their level passing the
+    // outlines stacked behind them, down their right side.
+    var passedStacked = 0;
+    // At every depth: no arrow of a level touches a frame in it but those
+    // into it and out of it, and none comes nearer than a clearance to the
+    // outlines stacked behind copies.
+    void visit(GraphLayout level, String where) {
+      for (final node in level.nodes.values) {
         final inner = node.frame?.inner;
         if (inner == null) continue;
+        final at = '$where ${node.id}';
+        final tile = node.tile;
+        final above = tile.top - node.marks.top;
+        for (final edge in level.edges) {
+          if (edge.from != node.id && edge.to != node.id) {
+            expect(
+              _borderTouches(edge, tile),
+              isEmpty,
+              reason: '$at: ${edge.from}->${edge.to}',
+            );
+          }
+          if (above <= 0) continue;
+          for (final (x, top, bottom) in verticals(edge)) {
+            if (x <= tile.right ||
+                bottom <= tile.top - above ||
+                top >= tile.bottom) {
+              continue;
+            }
+            passedStacked++;
+            expect(
+              x - (tile.right + above),
+              greaterThanOrEqualTo(clearance - 1e-9),
+              reason: '$at: ${edge.from}->${edge.to} at x $x',
+            );
+          }
+        }
         final end = inner.nodes[endMarker];
         if (end != null &&
             inner.edges.any(
@@ -625,11 +756,11 @@ void main() {
             )) {
           backBeforeEnd++;
         }
-        count(inner);
+        visit(inner, '$at ›');
       }
     }
 
-    for (var seed = 0; seed < 60; seed++) {
+    for (var seed = 0; seed < 150; seed++) {
       final body = randomBody(seed);
       Map<String, ExpandedNode> expand(GraphBody body, int salt, int depth) => {
         for (final (i, node) in body.nodes.indexed)
@@ -638,38 +769,42 @@ void main() {
               depth < 2)
             node.id: () {
               final inner = randomBody(seed * 31 + salt + i + 1);
+              // Often wider than the body: its end goes on to the side.
+              final width = (seed + salt + i) % 4 * 200.0;
               return ExpandedNode(
                 inner,
-                // Often wider than the body: its end goes on to the side.
-                room: FrameRoom(width: (seed + salt + i) % 4 * 200),
+                // Copies keep the canvas's room, with the outlines stacked
+                // behind them.
+                room: node is CopiesNode
+                    ? FrameRoom(
+                        top: 42,
+                        side: 24,
+                        bottom: 30,
+                        width: width,
+                        above: 12,
+                      )
+                    : FrameRoom(width: width),
                 expanded: expand(inner, salt + i + 7, depth + 1),
               );
             }(),
       };
       final layout = layoutBody(body, expanded: expand(body, 0, 0));
-      count(layout);
       expect(
         checkLayout(layout).where((p) => !p.contains('loop crosses')),
         isEmpty,
         reason: 'seed $seed',
       );
-      for (final node in layout.nodes.values) {
-        final frame = node.frame;
-        if (frame == null) continue;
-        for (final edge in layout.edges) {
-          if (edge.from == node.id || edge.to == node.id) continue;
-          expect(
-            _borderTouches(edge, node.tile),
-            isEmpty,
-            reason: 'seed $seed: ${edge.from}->${edge.to} at ${node.id}',
-          );
-        }
-      }
+      visit(layout, 'seed $seed:');
     }
     expect(
       backBeforeEnd,
       greaterThan(0),
       reason: 'the lanes next to a frame\'s right side are tried',
+    );
+    expect(
+      passedStacked,
+      greaterThan(0),
+      reason: 'arrows passing the outlines behind copies are tried',
     );
   });
 }

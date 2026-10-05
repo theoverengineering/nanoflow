@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'geometry.dart';
 import 'graph_layout.dart';
+import 'lanes.dart' show clearance;
 import 'layout_graph.dart';
 import 'nested.dart';
 
@@ -26,8 +27,9 @@ import 'nested.dart';
 ///   bar is level with the body's start, a straight link joining them
 ///   across the frame's room; the body's end is on its right side, its
 ///   exits level with it. No arrow of the body runs along a side of the
-///   frame nearer than its outline and a clearance. (An arrow passing
-///   through a frame passes through a tile.)
+///   frame nearer than its outline and a clearance, nor an arrow round the
+///   frame nearer than a clearance. (An arrow passing through a frame
+///   passes through a tile.)
 List<String> checkLayout(GraphLayout layout) {
   final o = layout.options;
   final problems = <String>[];
@@ -226,7 +228,8 @@ String _name(EdgePath e) => '${e.from}#${e.exitIndex}.${e.listIndex}->${e.to}';
 
 /// What the frame of [node] breaks: the body is not in it, the link to the
 /// start, the end or the exits are off their places, an arrow of the body
-/// runs along a side; and what the body in it breaks, after `id ›`.
+/// or of [layout] runs along a side; and what the body in it breaks, after
+/// `id ›`.
 List<String> _frameProblems(GraphLayout layout, NodeBox node) {
   final frame = node.frame!;
   final tile = node.tile;
@@ -288,9 +291,10 @@ List<String> _frameProblems(GraphLayout layout, NodeBox node) {
       }
     }
   }
-  // The body's arrows keep off the frame's outline, drawn inside its sides,
-  // as far as off a mark they pass: the arrows from the start and to the
-  // end meet their sides square, and nothing runs along one.
+  // Arrows keep off the frame's outline as far as off a mark they pass:
+  // the body's, inside it, past the outline too, drawn inside the sides;
+  // the level's round it. Arrows into the frame, out of it, from the start
+  // and to the end meet their sides square; nothing runs along one.
   final sides = {
     'left': Segment(Point(tile.left, tile.top), Point(tile.left, tile.bottom)),
     'right': Segment(
@@ -303,15 +307,20 @@ List<String> _frameProblems(GraphLayout layout, NodeBox node) {
       Point(tile.right, tile.bottom),
     ),
   };
-  for (final edge in inner.edges) {
-    for (final piece in _segments(edge.points)) {
-      for (final MapEntry(key: side, value: line) in sides.entries) {
-        final gap = _parallelGap(piece, line);
-        if (gap != null && gap < sideClearance - 1e-6) {
-          problems.add(
-            '${node.id}: ${_name(edge)} runs along the frame\'s $side side '
-            '${_n(gap)} from it',
-          );
+  for (final (edges, near, along) in [
+    (inner.edges, sideClearance, 'runs along'),
+    (layout.edges, clearance, 'runs outside along'),
+  ]) {
+    for (final edge in edges) {
+      for (final piece in _segments(edge.points)) {
+        for (final MapEntry(key: side, value: line) in sides.entries) {
+          final gap = _parallelGap(piece, line);
+          if (gap != null && gap < near - 1e-6) {
+            problems.add(
+              '${node.id}: ${_name(edge)} $along the frame\'s $side side '
+              '${_n(gap)} from it',
+            );
+          }
         }
       }
     }
