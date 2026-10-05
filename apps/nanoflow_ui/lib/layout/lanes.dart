@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'coordinates.dart';
 import 'geometry.dart';
 import 'layout_graph.dart';
+import 'nested.dart';
 import 'ports.dart';
 
 /// What turns in a gap between layers.
@@ -103,7 +104,9 @@ const double clearance = 8;
 /// back arrows and loops nest — and start right of every label they
 /// pass. A small change of height becomes a 45° diagonal where
 /// that fits in the gap. A gap is as wide as its labels, lanes, the straight
-/// piece before an input and the arrowhead need.
+/// piece before an input and the arrowhead need; before the end of a body
+/// in a frame, which is on the frame's right side, its lanes keep clear of
+/// the frame's outline too.
 ///
 /// [frames] are the nodes' frames with tiles at x = 0; [depth] is the y of
 /// every back arrow's lane under the graph.
@@ -153,6 +156,10 @@ Lanes assignLanes(
     final rightObstacles = [
       for (final node in rightNodes) ...frames[node]!.obstacles,
     ];
+    // The end of a body in a frame is on the frame's right side, whose
+    // outline runs the body's whole height: every turn before it keeps
+    // clear of the outline, as of a mark it passes.
+    final side = rightNodes.any((n) => n.port && n.kind == NodeKind.end);
 
     final turns = <Turn>[];
     void setRoom(Turn turn, {required double reach}) {
@@ -186,6 +193,10 @@ Lanes assignLanes(
           room = math.max(room, need);
           roomDiagonal = math.max(roomDiagonal, need);
         }
+      }
+      if (side) {
+        room = math.max(room, sideClearance);
+        roomDiagonal = math.max(roomDiagonal, sideClearance);
       }
       turn._room = room;
       turn._roomDiagonal = roomDiagonal;

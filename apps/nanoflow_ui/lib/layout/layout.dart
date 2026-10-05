@@ -47,7 +47,7 @@ export 'layout_graph.dart'
         reachableEffects,
         shortName,
         startMarker;
-export 'nested.dart' show ExpandedNode, FrameRoom;
+export 'nested.dart' show ExpandedNode, FrameRoom, frameOutline, sideClearance;
 
 /// Lays out one level of the graph, [body], from a start marker to end
 /// markers (`LayoutGraph.ofBody`), its calls named after their functions in

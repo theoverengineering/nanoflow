@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'geometry.dart';
 import 'graph_layout.dart';
 import 'layout_graph.dart';
+import 'nested.dart';
 
 /// Step 9: what a layout breaks of the rules every layout must keep, one
 /// line each; empty when it keeps them all.
@@ -24,20 +25,20 @@ import 'layout_graph.dart';
 /// - A frame holds the body in it, which keeps these rules in turn; its
 ///   bar is level with the body's start, a straight link joining them
 ///   across the frame's room; the body's end is on its right side, its
-///   exits level with it. (An arrow passing through a frame passes through
-///   a tile.)
+///   exits level with it. No arrow of the body runs along a side of the
+///   frame nearer than its outline and a clearance. (An arrow passing
+///   through a frame passes through a tile.)
 List<String> checkLayout(GraphLayout layout) {
   final o = layout.options;
   final problems = <String>[];
   final edges = layout.edges;
-  String name(EdgePath e) => '${e.from}#${e.exitIndex}.${e.listIndex}->${e.to}';
 
   for (final edge in edges) {
     final segments = _segments(edge.points);
     for (final s in segments) {
       if (!s.isAllowedDirection) {
         problems.add(
-          '${name(edge)}: piece $s is not horizontal, vertical '
+          '${_name(edge)}: piece $s is not horizontal, vertical '
           'or at 45°',
         );
       }
@@ -50,11 +51,11 @@ List<String> checkLayout(GraphLayout layout) {
     );
     final firstTurn = segments.length > 1 ? _tangent(edge, 1, o) : 0.0;
     if (!first.isHorizontal || first.b.x <= first.a.x) {
-      problems.add('${name(edge)}: does not leave its exit going right');
+      problems.add('${_name(edge)}: does not leave its exit going right');
     } else if (segments.length > 1 &&
         first.length - firstTurn < exit.reach - 1e-6) {
       problems.add(
-        '${name(edge)}: straight piece at the exit '
+        '${_name(edge)}: straight piece at the exit '
         '${_n(first.length - firstTurn)} is shorter than its label '
         '${_n(exit.reach)}',
       );
@@ -66,10 +67,10 @@ List<String> checkLayout(GraphLayout layout) {
         ? last.length - lastTurn
         : last.length - exit.reach;
     if (!last.isHorizontal || last.b.x <= last.a.x) {
-      problems.add('${name(edge)}: does not enter its input going right');
+      problems.add('${_name(edge)}: does not enter its input going right');
     } else if (straight < o.minInputStraight - 1e-6) {
       problems.add(
-        '${name(edge)}: straight piece at the input ${_n(straight)} is '
+        '${_name(edge)}: straight piece at the input ${_n(straight)} is '
         'shorter than ${_n(o.minInputStraight)}',
       );
     }
@@ -77,19 +78,19 @@ List<String> checkLayout(GraphLayout layout) {
     final target = layout.nodes[edge.to]!;
     final bar = target.bar;
     if (bar == null) {
-      problems.add('${name(edge)}: ${edge.to} has no input bar');
+      problems.add('${_name(edge)}: ${edge.to} has no input bar');
     } else {
       final tip = edge.tip;
       if ((tip.x - (bar.rect.left - o.arrowGap)).abs() > 1e-6 ||
           (tip.x - edge.points.last.x - o.arrowLength).abs() > 1e-6) {
         problems.add(
-          '${name(edge)}: arrowhead tip $tip is not an arrow gap '
+          '${_name(edge)}: arrowhead tip $tip is not an arrow gap '
           'before the bar of ${edge.to}',
         );
       }
       if (tip.y < bar.rect.top || tip.y > bar.rect.bottom) {
         problems.add(
-          '${name(edge)}: arrowhead tip $tip misses the bar of '
+          '${_name(edge)}: arrowhead tip $tip misses the bar of '
           '${edge.to}',
         );
       }
@@ -99,7 +100,7 @@ List<String> checkLayout(GraphLayout layout) {
       for (final rect in [node.tile, node.nameRect, node.placeRect]) {
         for (final s in segments) {
           if (s.entersInterior(rect)) {
-            problems.add('${name(edge)}: piece $s passes through ${node.id}');
+            problems.add('${_name(edge)}: piece $s passes through ${node.id}');
           }
         }
       }
@@ -119,7 +120,7 @@ List<String> checkLayout(GraphLayout layout) {
       final gap = _parallelGap(a, b);
       if (gap != null && gap < o.laneGap - 1e-6) {
         problems.add(
-          '${name(ea)} and ${name(eb)}: parallel pieces $a and $b '
+          '${_name(ea)} and ${_name(eb)}: parallel pieces $a and $b '
           'are ${_n(gap)} apart',
         );
       }
@@ -131,7 +132,7 @@ List<String> checkLayout(GraphLayout layout) {
     for (final other in edges) {
       if (identical(other, loop)) continue;
       if (crossingsBetween(loop.points, other.points) > 0) {
-        problems.add('${name(loop)}: loop crosses ${name(other)}');
+        problems.add('${_name(loop)}: loop crosses ${_name(other)}');
       }
     }
   }
@@ -187,7 +188,7 @@ List<String> checkLayout(GraphLayout layout) {
       );
       if (chip.overlaps(head)) {
         problems.add(
-          '$owner: label chip covers the arrowhead of ${name(edge)}',
+          '$owner: label chip covers the arrowhead of ${_name(edge)}',
         );
       }
     }
@@ -220,9 +221,12 @@ List<String> checkLayout(GraphLayout layout) {
   return problems;
 }
 
+/// The arrow [e] in a problem: `from#exit.list->to`.
+String _name(EdgePath e) => '${e.from}#${e.exitIndex}.${e.listIndex}->${e.to}';
+
 /// What the frame of [node] breaks: the body is not in it, the link to the
-/// start, the end or the exits are off their places; and what the body in
-/// it breaks, after `id ›`.
+/// start, the end or the exits are off their places, an arrow of the body
+/// runs along a side; and what the body in it breaks, after `id ›`.
 List<String> _frameProblems(GraphLayout layout, NodeBox node) {
   final frame = node.frame!;
   final tile = node.tile;
@@ -280,6 +284,34 @@ List<String> _frameProblems(GraphLayout layout, NodeBox node) {
       for (final edge in inner.edges) {
         if (crossingsBetween([entry.a, entry.b], edge.points) > 0) {
           problems.add('${node.id}: the link crosses an arrow in the frame');
+        }
+      }
+    }
+  }
+  // The body's arrows keep off the frame's outline, drawn inside its sides,
+  // as far as off a mark they pass: the arrows from the start and to the
+  // end meet their sides square, and nothing runs along one.
+  final sides = {
+    'left': Segment(Point(tile.left, tile.top), Point(tile.left, tile.bottom)),
+    'right': Segment(
+      Point(tile.right, tile.top),
+      Point(tile.right, tile.bottom),
+    ),
+    'top': Segment(Point(tile.left, tile.top), Point(tile.right, tile.top)),
+    'bottom': Segment(
+      Point(tile.left, tile.bottom),
+      Point(tile.right, tile.bottom),
+    ),
+  };
+  for (final edge in inner.edges) {
+    for (final piece in _segments(edge.points)) {
+      for (final MapEntry(key: side, value: line) in sides.entries) {
+        final gap = _parallelGap(piece, line);
+        if (gap != null && gap < sideClearance - 1e-6) {
+          problems.add(
+            '${node.id}: ${_name(edge)} runs along the frame\'s $side side '
+            '${_n(gap)} from it',
+          );
         }
       }
     }

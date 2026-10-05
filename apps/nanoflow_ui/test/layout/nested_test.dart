@@ -11,6 +11,7 @@ void main() {
   final release = loadGraphFile('release');
   final inline = loadGraphFile('inline');
   final recursion = loadGraphFile('recursion');
+  final taskCarry = loadGraphFile('task-carry');
 
   /// release with its call of publish() expanded in place.
   GraphLayout releaseWithPublish() => layoutBody(
@@ -41,6 +42,15 @@ void main() {
         expanded: {'2': ExpandedNode(functionOf(recursion, 'crawl').body)},
       ),
     },
+  );
+
+  /// task with its call of carry() expanded in place: carry's loop comes
+  /// back from work(), review() and decide(), the last nodes before its
+  /// end.
+  GraphLayout taskWithCarry() => layoutBody(
+    functionOf(taskCarry, 'task').body,
+    functions: taskCarry.functions,
+    expanded: {'1': ExpandedNode(functionOf(taskCarry, 'carry').body)},
   );
 
   group('publish() expanded inside release', () {
@@ -376,6 +386,100 @@ void main() {
     );
   });
 
+  test('step 9 finds an arrow of the body running along a side of its '
+      'frame nearer than the outline and a clearance', () {
+    final layout = taskWithCarry();
+    final call = layout.nodes['1']!;
+    final tile = call.tile;
+    final frame = call.frame!;
+    final inner = frame.inner;
+    final back = inner.edges.singleWhere(
+      (e) => e.from == '3' && e.kind == EdgeKind.back,
+    );
+    final (down, _, _) = verticals(back).first;
+    final lane = back.points.map((p) => p.y).reduce(math.max);
+    // The problems of the layout with the arrow back from work() moved.
+    List<String> problemsWith(Point Function(Point) move) => checkLayout(
+      _withFrame(
+        layout,
+        '1',
+        FrameBox(
+          inner: GraphLayout(
+            nodes: inner.nodes,
+            exits: inner.exits,
+            edges: [
+              for (final e in inner.edges)
+                identical(e, back) ? _moved(e, move, layout.options) : e,
+            ],
+            bounds: inner.bounds,
+            options: inner.options,
+          ),
+          entry: frame.entry,
+        ),
+      ),
+    );
+
+    // Its way down on the right side, and just inside it.
+    for (final gap in [0.0, sideClearance - 0.5]) {
+      expect(
+        problemsWith((p) => p.x == down ? Point(tile.right - gap, p.y) : p),
+        contains(
+          '1: 3#0.0->2 runs along the frame\'s right side '
+          '${gap.toStringAsFixed(1)} from it',
+        ),
+      );
+    }
+    expect(
+      problemsWith(
+        (p) => p.x == down ? Point(tile.right - sideClearance, p.y) : p,
+      ),
+      isNot(contains(contains('runs along'))),
+    );
+    // Its lane under the body, near the bottom.
+    expect(
+      problemsWith((p) => p.y == lane ? Point(p.x, tile.bottom - 4) : p),
+      contains('1: 3#0.0->2 runs along the frame\'s bottom side 4.0 from it'),
+    );
+  });
+
+  group('carry() drawn in place in task, its loop coming back from the '
+      'last nodes before its end', () {
+    late GraphLayout layout;
+    late NodeBox call;
+    setUpAll(() {
+      layout = taskWithCarry();
+      call = layout.nodes['1']!;
+    });
+
+    test('keeps every rule of step 9, in the frame too', () {
+      expect(checkLayout(layout), isEmpty);
+    });
+
+    test('the back arrows of work(), review() and decide() go down a lane '
+        'gap apart, the outermost the outline and a clearance inside the '
+        'frame\'s right side, where the end is', () {
+      final inner = call.frame!.inner;
+      final downs = [
+        for (final id in ['3', '4', '5'])
+          verticals(
+            inner.edges.singleWhere(
+              (e) => e.from == id && e.kind == EdgeKind.back,
+            ),
+          ).first.$1,
+      ]..sort();
+      expect(call.tile.right - downs.last, closeTo(sideClearance, 1e-9));
+      for (var i = 1; i < downs.length; i++) {
+        expect(downs[i] - downs[i - 1], closeTo(layout.options.laneGap, 1e-9));
+      }
+      expect(inner.nodes[endMarker]!.tile.left, call.tile.right);
+    });
+
+    test('the end is a bar on the frame\'s right side, the way out leaving '
+        'its middle', () {
+      _expectEndBar(layout, '1', ways: 1);
+    });
+  });
+
   group('two levels nested', () {
     for (final (name, lay, outer, inner) in [
       ('a call in copies', copiesWithCall, '1', '1'),
@@ -505,6 +609,26 @@ void main() {
 
   test('random bodies with random nodes expanded, nested, in frames of '
       'random widths, keep step 9 but for loops in capsules', () {
+    // Frames whose body has an arrow going back or round from a node just
+    // before its end: its lane is next to the frame's right side.
+    var backBeforeEnd = 0;
+    void count(GraphLayout layout) {
+      for (final node in layout.nodes.values) {
+        final inner = node.frame?.inner;
+        if (inner == null) continue;
+        final end = inner.nodes[endMarker];
+        if (end != null &&
+            inner.edges.any(
+              (e) =>
+                  e.kind != EdgeKind.forward &&
+                  inner.nodes[e.from]!.layer == end.layer - 1,
+            )) {
+          backBeforeEnd++;
+        }
+        count(inner);
+      }
+    }
+
     for (var seed = 0; seed < 60; seed++) {
       final body = randomBody(seed);
       Map<String, ExpandedNode> expand(GraphBody body, int salt, int depth) => {
@@ -523,6 +647,7 @@ void main() {
             }(),
       };
       final layout = layoutBody(body, expanded: expand(body, 0, 0));
+      count(layout);
       expect(
         checkLayout(layout).where((p) => !p.contains('loop crosses')),
         isEmpty,
@@ -541,6 +666,11 @@ void main() {
         }
       }
     }
+    expect(
+      backBeforeEnd,
+      greaterThan(0),
+      reason: 'the lanes next to a frame\'s right side are tried',
+    );
   });
 }
 
@@ -590,6 +720,58 @@ void _expectEndBar(GraphLayout layout, String id, {required int ways}) {
     for (final y in [...heights, for (final p in outs) p.y]) (y - middle).abs(),
   ].reduce(math.max);
   expect(rect.height, closeTo(math.max(o.minBar, 2 * reach + o.portGap), 1e-9));
+}
+
+/// [layout] with the frame of its node [id] replaced by [frame].
+GraphLayout _withFrame(GraphLayout layout, String id, FrameBox frame) {
+  final node = layout.nodes[id]!;
+  return GraphLayout(
+    nodes: {
+      ...layout.nodes,
+      id: NodeBox(
+        id: node.id,
+        kind: node.kind,
+        node: node.node,
+        name: node.name,
+        fullName: node.fullName,
+        place: node.place,
+        inside: node.inside,
+        layer: node.layer,
+        tile: node.tile,
+        nameRect: node.nameRect,
+        placeRect: node.placeRect,
+        marks: node.marks,
+        status: node.status,
+        bar: node.bar,
+        frame: frame,
+        port: node.port,
+      ),
+    },
+    exits: layout.exits,
+    edges: layout.edges,
+    bounds: layout.bounds,
+    options: layout.options,
+  );
+}
+
+/// [edge] with its points moved by [move].
+EdgePath _moved(
+  EdgePath edge,
+  Point Function(Point) move,
+  LayoutOptions options,
+) {
+  final points = [for (final p in edge.points) move(p)];
+  return EdgePath(
+    from: edge.from,
+    exitIndex: edge.exitIndex,
+    listIndex: edge.listIndex,
+    edgeIndex: edge.edgeIndex,
+    to: edge.to,
+    kind: edge.kind,
+    points: points,
+    tip: points.last + Point(options.arrowLength, 0),
+    pieces: roundCorners(points, options.cornerRadius),
+  );
 }
 
 /// Whether [inner] lies in [outer].

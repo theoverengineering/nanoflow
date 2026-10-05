@@ -180,7 +180,10 @@ class CopiesFrameView extends StatelessWidget {
             decoration: BoxDecoration(
               color: CanvasColors.background,
               border: Border.fromBorderSide(
-                BorderSide(color: Color(0xFF5A5A62)),
+                BorderSide(
+                  color: Color(0xFF5A5A62),
+                  width: layout.frameOutline,
+                ),
               ),
               borderRadius: BorderRadius.all(Radius.circular(_radius)),
             ),

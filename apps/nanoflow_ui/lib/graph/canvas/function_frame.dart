@@ -56,7 +56,10 @@ class FunctionFrameView extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: Border.fromBorderSide(
-              BorderSide(color: CanvasColors.tileBorder),
+              BorderSide(
+                color: CanvasColors.tileBorder,
+                width: layout.frameOutline,
+              ),
             ),
             borderRadius: BorderRadius.all(Radius.circular(_radius)),
           ),

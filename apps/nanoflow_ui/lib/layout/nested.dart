@@ -4,8 +4,17 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'geometry.dart';
 import 'graph_layout.dart';
+import 'lanes.dart';
 import 'layout_graph.dart';
 import 'ports.dart';
+
+/// The width of a frame's outline, drawn inside its sides.
+const double frameOutline = 1;
+
+/// How far the arrows of a body in a frame keep from a side of the frame
+/// they run along: past its outline, as far as an arrow keeps from a mark
+/// it passes.
+const double sideClearance = frameOutline + clearance;
 
 /// The room a frame keeps round the body it holds (decision 6,
 /// docs/design/code-first/function-frames.html): a row over the body for
