@@ -231,6 +231,27 @@ List<({double x, double from, double to})> turnsOf(EdgePath edge) {
   return turns;
 }
 
+/// How many times the arrows going forward of [layout] change height, and
+/// how many of them twice or more: in the bodies in its frames too.
+({int turns, int twice}) deepTurns(GraphLayout layout) {
+  var turns = 0;
+  var twice = 0;
+  for (final edge in layout.edges) {
+    if (edge.kind != EdgeKind.forward) continue;
+    final count = turnsOf(edge).length;
+    turns += count;
+    if (count > 1) twice++;
+  }
+  for (final node in layout.nodes.values) {
+    if (node.frame case final frame?) {
+      final inner = deepTurns(frame.inner);
+      turns += inner.turns;
+      twice += inner.twice;
+    }
+  }
+  return (turns: turns, twice: twice);
+}
+
 /// [body], a body laid out in a frame, if its end could stand higher or
 /// lower and bring more arrows in level: arrows into the end that turned
 /// before and then jog by one height in the gap before it, a group of two

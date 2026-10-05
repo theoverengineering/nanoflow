@@ -1057,13 +1057,25 @@ void main() {
     expect(level.bounds.height, lessThanOrEqualTo(1202));
   });
 
-  test('random body 603 nested: nodes standing where more arrows come in '
-      'level do not make it far taller', () {
-    // 2442 px with every node level with the arrow from the longest path:
-    // a node 1394 px further down, level with an exit, would save two
-    // turns for half as much height again.
-    expect(_randomNested(603).bounds.height, lessThanOrEqualTo(2442 * 1.15));
-  });
+  for (final (seed, base) in [(603, 2442.0), (870, 3083.0)]) {
+    test('random body $seed nested: it grows taller for nodes standing where '
+        'more arrows come in level only by half a tile for each turn saved, '
+        'counted twice for an arrow turning twice no more', () {
+      // Without the guard, seed 603 grows 1394 px to save two turns, and
+      // 870 grows 438.5 px to save a turn and an arrow turning twice.
+      final layout = _randomNested(seed);
+      final before = _asBefore(() => _randomNested(seed));
+      expect(before.bounds.height, closeTo(base, 1));
+      final now = deepTurns(layout);
+      final was = deepTurns(before);
+      final saved = was.turns - now.turns + 2 * (was.twice - now.twice);
+      expect(
+        layout.bounds.height - before.bounds.height,
+        lessThanOrEqualTo(layout.options.tile / 2 * saved + 1e-6),
+        reason: 'saved $saved',
+      );
+    });
+  }
 
   test('random bodies in frames, nested: the end of each body stands where '
       'no more of its arrows would come in level — no two arrows that '
@@ -1078,14 +1090,10 @@ void main() {
         if (inner == null) continue;
         final old = before.nodes[node.id]!.frame!.inner;
         if (inner.nodes[endMarker] != null) ends++;
-        // The arrows of each group, which the layout as before shows too
-        // where the guards kept the body's heights.
-        Set<String> groups(GraphLayout body) => {
-          for (final jog in endJogs(body))
-            jog.substring(0, jog.indexOf(' jog')),
-        };
-        final jogs = groups(inner);
-        if (jogs.isNotEmpty && groups(old).containsAll(jogs)) {
+        // Each group, its jog and the arrows without one too, as the layout
+        // as before has it where the guards kept the body's heights.
+        final jogs = endJogs(inner);
+        if (jogs.isNotEmpty && endJogs(old).toSet().containsAll(jogs)) {
           asBefore++;
         } else {
           expect(jogs, isEmpty, reason: '$where ${node.id}');
@@ -1096,33 +1104,43 @@ void main() {
 
     for (var seed = 0; seed < 150; seed++) {
       final layout = _randomNested(seed);
-      levelInputs = false;
-      final before = _randomNested(seed);
-      levelInputs = true;
+      final before = _asBefore(() => _randomNested(seed));
       visit(layout, before, 'seed $seed:');
     }
     expect(ends, greaterThan(500));
     expect(
       asBefore,
-      lessThanOrEqualTo(4),
+      lessThanOrEqualTo(2),
       reason:
           'only where standing the end where more arrows come in level '
-          'turned more there or round it, or made it over 15 % taller, does '
-          'a body keep the jogs before its end it had: 87 › n1, '
-          '128 › n0 › n5, and one body in 112 drawn twice, n0 › n0 and n7',
+          'turned more there or round it, or grew it taller than the turns '
+          'it saved pay for, does a body keep the jogs before its end it '
+          'had: 87 › n1 and 128 › n0 › n5',
     );
     expect(
       levelInputFallbacks - fallbacks,
-      lessThanOrEqualTo(63),
+      lessThanOrEqualTo(46),
       reason:
           'nodes stand where most of their arrows come in level only where '
           'the level — and round a frame whose body changed, the level '
           'round it — crosses no more, breaks no more rules, has no more '
-          'turns or arrows turning twice and is at most 15 % taller than '
-          'before; of these random levels 63 keep the heights of before, 49 '
-          'of them for height',
+          'turns or arrows turning twice and grows no more than half a tile '
+          'for each turn saved; of these random levels 46 keep the heights '
+          'of before, 14 without that last check',
     );
   });
+}
+
+/// What [lay] lays out with every node level with the arrow from the
+/// longest path into it, as before nodes stood where most of their arrows
+/// come in level.
+GraphLayout _asBefore(GraphLayout Function() lay) {
+  levelInputsEnabled = false;
+  try {
+    return lay();
+  } finally {
+    levelInputsEnabled = true;
+  }
 }
 
 /// The layout of random body [seed] with random nodes expanded, nested two

@@ -147,18 +147,11 @@ GraphLayout layoutBody(
   return (base: base, chosen: base);
 }
 
-/// How much taller than the layout it would replace a layout with nodes
-/// where most of their arrows come in level may be: a node far down to
-/// stand level with an exit saves a turn or two for a level much taller.
-/// 1.15 keeps every view of the user's graph that came in level, the
-/// outer level of `lead` round `specify()` and `judgeSpec()` 10.3 % taller
-/// among them; 1.1 would lose it.
-const double _tallest = 1.15;
-
 /// Whether [layout], with nodes standing where most of their arrows come in
 /// level, is worse than [was], the layout it would replace: it crosses
 /// more, breaks a rule of step 9 more often, has more turns or more arrows
-/// turning twice, or is more than [_tallest] times as tall.
+/// turning twice, or is taller by more than what it saves pays for
+/// ([_paidFor]).
 bool _worse(GraphLayout layout, GraphLayout was) {
   final now = _turns(layout);
   final before = _turns(was);
@@ -166,7 +159,41 @@ bool _worse(GraphLayout layout, GraphLayout was) {
       countCrossings(layout) > countCrossings(was) ||
       now.turns > before.turns ||
       now.twice > before.twice ||
-      layout.bounds.height > was.bounds.height * _tallest + 1e-6;
+      !_paidFor(layout, was);
+}
+
+/// Whether [layout] is no taller than [was] by more than half a tile for
+/// each turn it saves, an arrow it saves turning twice counted as two more:
+/// over the level and the bodies in its frames, since a level round a frame
+/// whose body changed grows for what that body saves. A node far down to
+/// stand level with an exit saves a turn or two for a level much taller:
+/// random body 603 would grow 1394 px for 2 turns, 232 px a turn, and 870
+/// 438.5 px for 146 px a turn. The user's graph, where the jogs before the
+/// end were seen, needs at most 2.8 px a turn: `lead` round `specify()` and
+/// `judgeSpec()` grows 70.5 px for 7 turns and 9 arrows no longer turning
+/// twice in them. That leaves the user's graph a margin of 14 times, and
+/// stops 603 and 870 by 5.8 and 3.7 times. Over random levels half the
+/// growths cost under 8 px a turn, and 95 % under 43.
+bool _paidFor(GraphLayout layout, GraphLayout was) {
+  final grows = layout.bounds.height - was.bounds.height;
+  if (grows <= 1e-6) return true;
+  final now = _deepTurns(layout);
+  final before = _deepTurns(was);
+  final saved = before.turns - now.turns + 2 * (before.twice - now.twice);
+  return grows <= layout.options.tile / 2 * saved + 1e-6;
+}
+
+/// [_turns] of [layout] and of the bodies in its frames.
+({int turns, int twice}) _deepTurns(GraphLayout layout) {
+  var (:turns, :twice) = _turns(layout);
+  for (final node in layout.nodes.values) {
+    final inner = node.frame?.inner;
+    if (inner == null) continue;
+    final deep = _deepTurns(inner);
+    turns += deep.turns;
+    twice += deep.twice;
+  }
+  return (turns: turns, twice: twice);
 }
 
 /// Steps 1 to 8 for [g], its frames made: the layout as before nodes stood
@@ -298,7 +325,7 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
       kept = early;
     }
   }
-  final level = levelInputs
+  final level = levelInputsEnabled
       ? _levelled(
           g,
           layers,
@@ -339,7 +366,7 @@ Object _key(Item item) => item.node?.id ?? item.edge!.index;
 /// Whether nodes stand where most of their arrows come in level (step 6);
 /// tests turn it off to lay a body out as before.
 @visibleForTesting
-bool levelInputs = true;
+bool levelInputsEnabled = true;
 
 /// How many times a level kept the heights its order was chosen with
 /// ([_finish]), or stayed as before round frames whose bodies changed
