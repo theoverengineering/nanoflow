@@ -1,6 +1,7 @@
 // Records a session of examples/review run by the real library, for the UI's
-// tests of the forks a session passed
-// (apps/nanoflow_ui/test/state/passes_test.dart): copies the example into a
+// tests of the forks a session passed and how they are drawn
+// (apps/nanoflow_ui/test/state/passes_test.dart, graph_marks_test.dart and
+// test/graph/canvas/canvas_marks_test.dart): copies the example into a
 // temporary project, runs its program there as its README does, on the
 // branch parseConfig, and writes the example's graph file and the session as
 // the library wrote it.

@@ -311,6 +311,12 @@ void main() {
       documents: outcomesOf(const {}),
       graphFile: null,
       levels: levels,
+      // The places of the graph the levels are of: publish's body drawn is
+      // the body of a function the workflow calls.
+      places: EffectPlaces.of(
+        release.workflowNamed('release'),
+        release.functions,
+      ),
       frames: frames,
     );
     // The arrows of the frame as the canvas lays them out and draws them.
@@ -324,9 +330,10 @@ void main() {
       inner.edges.singleWhere((e) => e.from == from && e.to == to),
     );
 
-    // publish: upload → verify → (!ok ? rollback : end). It ran once, each
-    // of its effect nodes holding one effect at most, so an exit of its body
-    // can be darker.
+    // publish: upload → verify → (!ok ? rollback : end), announce after
+    // verify, as `return f.effect('verify', …)` keys it. It ran once, each of
+    // its effect nodes holding one effect at most, so an exit of its body can
+    // be darker.
     expect(marks.node('3')!.state, NodeState.visited);
     expect(tone('3', '4'), Tone.untaken);
     expect(tone('3', endMarker), Tone.plain);

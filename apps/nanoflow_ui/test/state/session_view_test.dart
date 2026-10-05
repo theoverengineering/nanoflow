@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart' show GraphFunction;
 import 'package:nanoflow_ui/state/body_path.dart';
+import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/in_place.dart';
 import 'package:nanoflow_ui/state/session_view.dart';
 
@@ -418,6 +419,12 @@ void main() {
         documents: noDocuments,
         graphFile: null,
         levels: levels,
+        // The places of the graph the levels are of: publish's body drawn is
+        // the body of a function the workflow calls.
+        places: EffectPlaces.of(
+          release.workflowNamed('release'),
+          release.functions,
+        ),
         frames: inPlaceFrames(
           levels,
           release.functions,
@@ -425,7 +432,8 @@ void main() {
         ),
       );
       final scope = view.scopeOf(const [publish])!;
-      // publish: upload → verify → (!ok ? rollback : end). It ran once, each
+      // publish: upload → verify → (!ok ? rollback : end), announce after
+      // verify, as `return f.effect('verify', …)` keys it. It ran once, each
       // of its effect nodes holding one effect at most, so an exit of its
       // body can be darker.
       final body = scope.frame.level.body;
