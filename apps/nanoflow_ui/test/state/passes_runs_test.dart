@@ -12,9 +12,17 @@
 //
 // On the body of every function, after the session finished and at moments
 // while it ran, failed or was cut off: every fork passed and every edge taken
-// is on the way the code went, and no exit the code took is darker. How many
-// times a fork was passed is not checked: the journal does not always tell
-// (design §5.2).
+// is on the way the code went, and no exit the code took is darker — but in
+// a session that falls in a limit of the journal, which the rules cannot get
+// right from it (passes.dart «Limits», design §5.3 «Пределы»). The run knows
+// what the journal does not — which effects each effect waited for, which
+// call of a function each ran in —, and leaves out a session where effects
+// side by side read as joined, or the ends of an earlier call of a function
+// as joined before an effect of a later one; there alone the rules may mark
+// a way the code did not go. How often each limit comes up is bounded. A
+// quarter of the effects end in the millisecond they start, as fast effects
+// of the library do. How many times a fork was passed is not checked: the
+// journal does not always tell (design §5.2).
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -27,46 +35,83 @@ import 'support.dart';
 
 void main() {
   test('random programs: the forks marked passed and the edges taken are '
-      'on the way the code went, and no exit it went along is darker', () {
-    final random = Random(20261005);
-    var (sessions, sideBySide) = (0, 0);
-    for (var n = 0; n < 4000; n++) {
-      final program = _Generator(random).program();
-      final run = _Run(program, random)..start();
-      if (run.records.isEmpty) continue;
-      for (final (:status, :cut) in <({String status, int? cut})>[
-        (status: 'finished', cut: null),
-        for (final status in ['running', 'failed', 'interrupted'])
-          (status: status, cut: random.nextInt(run.last + 2)),
-      ]) {
-        sessions++;
-        // A limit of the journal, not of the rules: left out.
-        if (_looksJoined(program, run, cut)) {
-          sideBySide++;
-          continue;
-        }
-        final wrong = _check(program, run, status: status, cut: cut);
-        expect(
-          wrong,
-          isEmpty,
-          reason:
-              '$status${cut == null ? '' : ' before tick $cut'}\n'
-              '${program.source}\njournal: ${run.journal(cut)}',
-        );
-      }
-    }
+      'on the way the code went, and no exit it went along is darker, in '
+      'every session the run does not find in a limit of the journal', () {
+    final (:sessions, :left, :wrong) = _runs(Random(20261005), 4000);
+    expect(wrong, isEmpty);
     expect(sessions, greaterThan(14000));
-    expect(sideBySide, lessThan(sessions ~/ 40));
+    // Over seeds 1–40 at this size, and 1–60 at 25,000 programs, side by side
+    // came up in 3.5–4.6% of the sessions, the ends of an earlier call in
+    // 1.0–1.7%.
+    expect(left[_Limit.sideBySide]!, lessThan(sessions * 6 ~/ 100));
+    expect(left[_Limit.earlierCall]!, lessThan(sessions * 3 ~/ 100));
   });
 }
 
-/// Whether the journal of [run] of [program] before the tick [cut] cannot
-/// tell effects side by side from a wait (design §5, the library doc of
-/// passes.dart, «Limits»): an effect E, and an effect O on the graph below
-/// what E follows that no effect on the graph follows, that had finished by
-/// E's first start though E's code did not wait for it, and that leads to E
-/// on a body.
-bool _looksJoined(_Program program, _Run run, int? cut) {
+/// Runs [programs] random programs made with [random], each finished and
+/// cut off once running, once failed, once interrupted: how many sessions,
+/// how many of them were left out for each limit of the journal, and what
+/// was wrong in the others, by session.
+({int sessions, Map<_Limit, int> left, List<String> wrong}) _runs(
+  Random random,
+  int programs,
+) {
+  var sessions = 0;
+  final left = {for (final limit in _Limit.values) limit: 0};
+  final wrong = <String>[];
+  for (var n = 0; n < programs; n++) {
+    final program = _Generator(random).program();
+    final run = _Run(program, random)..start();
+    if (run.records.isEmpty) continue;
+    for (final (:status, :cut) in <({String status, int? cut})>[
+      (status: 'finished', cut: null),
+      for (final status in ['running', 'failed', 'interrupted'])
+        (status: status, cut: random.nextInt(run.last + 2)),
+    ]) {
+      sessions++;
+      final limits = _limitsOf(program, run, cut);
+      for (final limit in limits) {
+        left[limit] = left[limit]! + 1;
+      }
+      if (limits.isNotEmpty) continue;
+      final errors = _check(program, run, status: status, cut: cut);
+      if (errors.isNotEmpty) {
+        wrong.add(
+          '$status${cut == null ? '' : ' before tick $cut'}: '
+          '${errors.join('; ')}\n'
+          '${program.source}\njournal: ${run.journal(cut)}',
+        );
+      }
+    }
+  }
+  return (sessions: sessions, left: left, wrong: wrong);
+}
+
+/// A limit of the journal (passes.dart, «Limits»; design §5.3 «Пределы»):
+/// where a session falls in one, the rules may mark a way the code did not
+/// go, and the session is left out of the check.
+enum _Limit {
+  /// Effects side by side that end before another starts read as joined
+  /// before it.
+  sideBySide,
+
+  /// The ends of an earlier call of a function read as joined before an
+  /// effect of a later call, on the body of the function.
+  earlierCall,
+}
+
+/// The limits the journal of [run] of [program] before the tick [cut] falls
+/// in, by what the run knows and the journal does not: there is an effect E
+/// on the graph, and an effect O on the graph, below what E follows, that no
+/// effect on the graph follows and that had finished by E's first start in
+/// the journal's milliseconds — an end the rules may join before E — and
+///
+/// - [_Limit.sideBySide]: E's code did not wait for O, and O leads to E on a
+///   body;
+/// - [_Limit.earlierCall]: O and E are in different calls of a function,
+///   and O leads to E on its body, or is in one call or copies node of it
+///   with E.
+Set<_Limit> _limitsOf(_Program program, _Run run, int? cut) {
   final recorded = [
     for (final r in run.records)
       if (cut == null || r.start < cut) r,
@@ -94,6 +139,7 @@ bool _looksJoined(_Program program, _Run run, int? cut) {
     return false;
   }
 
+  final limits = <_Limit>{};
   for (final e in recorded) {
     if (!onGraph(e)) continue;
     final parent = up(e);
@@ -103,21 +149,41 @@ bool _looksJoined(_Program program, _Run run, int? cut) {
           followed.contains(o.key) ||
           (cut != null && o.end >= cut) ||
           o.end ~/ 2 > e.start ~/ 2 ||
-          e.past & 1 << o.order != 0 ||
           !below(o, parent)) {
         continue;
       }
-      for (final function in program.functions) {
-        if (_leads(program, function.body, o, e)) return true;
+      if (e.past & 1 << o.order == 0 &&
+          !limits.contains(_Limit.sideBySide) &&
+          program.functions.any(
+            (function) => _leads(program, function.body, o, e),
+          )) {
+        limits.add(_Limit.sideBySide);
       }
+      for (final MapEntry(key: function, value: call) in o.calls.entries) {
+        if (limits.contains(_Limit.earlierCall)) break;
+        final other = e.calls[function];
+        if (other == null || other == call) continue;
+        final body = program.functions[function].body;
+        if (_leads(program, body, o, e, inside: true)) {
+          limits.add(_Limit.earlierCall);
+        }
+      }
+      if (limits.length == _Limit.values.length) return limits;
     }
   }
-  return false;
+  return limits;
 }
 
 /// Whether a way leads on [body] from the nodes [from] is on or in to those
-/// [to] is, through forks, calls and copies.
-bool _leads(_Program program, GraphBody body, _Record from, _Record to) {
+/// [to] is, through forks, calls and copies; or, when [inside], they share a
+/// call or copies node.
+bool _leads(
+  _Program program,
+  GraphBody body,
+  _Record from,
+  _Record to, {
+  bool inside = false,
+}) {
   List<String> nodesOf(_Record r) {
     final effect = Effect(
       id: r.key,
@@ -139,6 +205,15 @@ bool _leads(_Program program, GraphBody body, _Record from, _Record to) {
   final targets = nodesOf(to).toSet();
   final ahead = nodesOf(from);
   if (targets.isEmpty || ahead.isEmpty) return false;
+  if (inside &&
+      body.nodes.any(
+        (node) =>
+            node is! EffectNode &&
+            targets.contains(node.id) &&
+            ahead.contains(node.id),
+      )) {
+    return true;
+  }
   final passable = {
     for (final node in body.nodes)
       if (node is! EffectNode) node.id,
@@ -650,9 +725,10 @@ final class _Drawing {
 
 // ---- running -----------------------------------------------------------------
 
-/// An effect the run called: the [order]th, the effects done before it
-/// started on the way the code took to it a bit set over their orders —
-/// those of the code it awaited, not those beside it.
+/// An effect the run called: the [order]th; the effects done before it
+/// started on the way the code took to it, a bit set over their orders —
+/// those of the code it awaited, not those beside it; and by each function
+/// it was called in, which call of it.
 typedef _Record = ({
   int order,
   String name,
@@ -662,6 +738,7 @@ typedef _Record = ({
   int start,
   int end,
   int past,
+  Map<int, int> calls,
 });
 
 /// The context code runs in, as far as `after` goes: the key of the effect
@@ -689,10 +766,12 @@ typedef _Done = ({_Here here, bool returned, String? handed});
 ///
 /// Times are ticks, two to a millisecond of the journal. Code runs in turns:
 /// in one turn, at an even tick, the code goes along its edges and calls
-/// effects, which start a tick later and last one to three milliseconds; the
-/// turn after an `await` comes when what it awaited is done, or a
-/// millisecond later. So a session cut off at an odd tick may have gone
-/// along an edge to an effect that has not started.
+/// effects, which start a tick later and last one to three milliseconds —
+/// or, one in four, end in the millisecond they started, as a fast effect of
+/// the library does; the turn after an `await` comes when what it awaited is
+/// done, or a millisecond later. So a session cut off at an odd tick may
+/// have gone along an edge to an effect that has not started, and effects
+/// side by side may end in the millisecond others start.
 final class _Run {
   _Run(this.program, this.random)
     : routes = [for (final _ in program.functions) {}];
@@ -764,14 +843,22 @@ final class _Run {
   /// any.
   ({_Here here, String? handed}) _call(int i, _Context context, _Here here) {
     final drawing = program._drawings[i]!;
+    _calls[i] = _called[i]++;
     final done = _block(i, program.bodies[i], context, (
       at: [(drawing.entry, null)],
       time: here.time,
       past: here.past,
     ), closure: false);
+    _calls.remove(i);
     if (!done.returned) _arrive(i, done.here.at, drawing.exit, done.here.time);
     return (here: done.here, handed: done.handed);
   }
+
+  /// By each function the code is in now, which call of it.
+  final Map<int, int> _calls = {};
+
+  /// How many times each function was called.
+  late final List<int> _called = [for (final _ in program.functions) 0];
 
   _Done _block(
     int i,
@@ -910,7 +997,7 @@ final class _Run {
   }
 
   /// The turn after an `await` of what is done at [done].
-  int _turn(int done) => done + 2 * random.nextInt(2);
+  int _turn(int done) => done + done % 2 + 2 * random.nextInt(2);
 
   _Record _record(String name, String? place, String? after, _Here here) {
     if (records.length == 40) throw _TooLong();
@@ -921,8 +1008,11 @@ final class _Run {
       after: after,
       place: place,
       start: here.time + 1,
-      end: here.time + 2 * (1 + random.nextInt(3)),
+      end: random.nextInt(4) == 0
+          ? here.time + 1
+          : here.time + 2 * (1 + random.nextInt(3)),
       past: here.past,
+      calls: {..._calls},
     );
     records.add(record);
     return record;
