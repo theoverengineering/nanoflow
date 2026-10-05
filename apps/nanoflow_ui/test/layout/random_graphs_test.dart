@@ -82,6 +82,16 @@ void main() {
     }
   });
 
+  test('random body 239: n6 stays level with n7, its one arrow from the '
+      'layer before, where no other reachable place brings more arrows in '
+      'level', () {
+    final layout = layoutBody(randomBody(239));
+    final arrow = layout.edges.singleWhere(
+      (e) => e.from == 'n7' && e.to == 'n6',
+    );
+    expect(turnsOf(arrow), isEmpty, reason: '${arrow.points}');
+  });
+
   test('a body with no nodes and no edges lays out empty', () {
     final layout = layoutBody(const GraphBody(nodes: [], edges: []));
     expect(layout.nodes, isEmpty);

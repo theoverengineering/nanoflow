@@ -724,7 +724,8 @@ void main() {
   });
 
   test('every function of the test graphs drawn in place: the end of its '
-      'body stands where no more of its arrows would come in level', () {
+      'body stands where no more of its arrows would come in level within '
+      'its bar\'s reach', () {
     var ends = 0;
     final fallbacks = levelInputFallbacks;
     for (final name in graphNames()) {
@@ -983,10 +984,39 @@ void main() {
     );
   });
 
+  test('random body 781 nested, n2 in n7: n6 stands where the arrow from n5 '
+      'to the end still runs through its corridor in two turns, not a '
+      'staircase', () {
+    final body = _randomNested(781)
+        .nodes['n7']!
+        .frame!
+        .inner
+        .nodes['n2']!
+        .frame!
+        .inner;
+    final arrow = body.edges.singleWhere(
+      (e) => e.from == 'n5' && e.exitIndex == 0 && e.to == endMarker,
+    );
+    expect(
+      turnsOf(arrow).length,
+      lessThanOrEqualTo(2),
+      reason: '${arrow.points}',
+    );
+  });
+
+  test('random body 1577 nested: the end of the body in n8 moves no further '
+      'than its bar reaches, so the level round it crosses no more and grows '
+      'no taller', () {
+    final level = _randomNested(1577).nodes['n8']!.frame!.inner;
+    expect(countCrossings(level), 0);
+    expect(level.bounds.height, lessThanOrEqualTo(1202));
+  });
+
   test('random bodies in frames, nested: the end of each body stands where '
-      'no more of its arrows would come in level — where no two arrows that '
-      'turned before jog by one height into it while fewer come in without '
-      'turning before it', () {
+      'no more of its arrows would come in level within its bar\'s reach — '
+      'where no two arrows that turned before jog by one height, no more '
+      'than the bar reaches, into it while fewer come in without turning '
+      'before it', () {
     var ends = 0;
     final fallbacks = levelInputFallbacks;
     void visit(GraphLayout level, String where) {
@@ -1005,11 +1035,13 @@ void main() {
     expect(ends, greaterThan(500));
     expect(
       levelInputFallbacks - fallbacks,
-      lessThanOrEqualTo(4),
+      lessThanOrEqualTo(15),
       reason:
-          'only a few random levels cross more with their nodes where most '
-          'arrows come in level than with the heights their order was '
-          'chosen with, and keep those',
+          'nodes stand where most of their arrows come in level only where '
+          'the level — and round a frame whose body changed, the level '
+          'round it — crosses no more, breaks no more rules and has no more '
+          'turns or arrows turning twice than before; of these random '
+          'levels 15 keep the heights of before',
     );
   });
 }

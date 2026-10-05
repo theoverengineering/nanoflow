@@ -158,47 +158,33 @@ double smallestJog(LayoutOptions options) =>
 /// place nearest to where it wants to be, keeping the layer's order, but
 /// never less than [smallestJog] off it.
 ///
-/// With [levelInputs], a node with several arrows in wants the height at
-/// which most of them come in level ([_levelAt]) — on a tie, the height
-/// the arrow from the longest path wants, else the one nearest it — and
-/// the pass points of the long arrows that can stand level with its inputs
-/// move there once it has its place: the arrows run straight into it from
-/// their turn before the corridor instead of jogging just before it.
-void placeLayers(
+/// With [levelInputs], a node with several arrows in tries the places it
+/// would take for each height that brings one of its arrows in level, the
+/// longest path's among them, and stands at the one where most of its
+/// arrows come in level ([_levelAt]), counted where it would stand; on a
+/// tie, at the place it takes for the longest path, else the one nearest
+/// it. The end of a body in a
+/// frame moves from that place no further than its bar reaches: the
+/// frame's exit is level with it, and the level round the frame is laid
+/// out for where it is. The pass points of the long arrows that can stand
+/// level with the node's inputs move there once it has its place: the
+/// arrows run straight into it from their turn before the corridor instead
+/// of jogging just before it. Returns whether that placed anything
+/// otherwise than without [levelInputs].
+bool placeLayers(
   LayoutGraph graph,
   List<List<Item>> layers,
   Map<GNode, Ports> ports,
   LayoutOptions options, {
   bool levelInputs = false,
 }) {
+  var levelled = false;
   final (:before, :after) = _pathLengths(graph);
   final smallest = smallestJog(options);
   for (final layer in layers) {
     final wanted = <Item, double?>{
       for (final item in layer) item: _wantedY(item, ports),
     };
-    if (levelInputs) {
-      for (final item in layer) {
-        final node = item.node;
-        if (node == null || item.ins.length < 2) continue;
-        final longest = wanted[item]!;
-        var best = longest;
-        var most = _levelAt(item, longest, layers, ports, options).count;
-        final heights = {
-          for (final seg in item.ins)
-            outY(seg, ports) - ports[node]!.inputAt[seg.edge]!,
-        };
-        for (final y in heights) {
-          final count = _levelAt(item, y, layers, ports, options).count;
-          if (count > most ||
-              count == most && (y - longest).abs() < (best - longest).abs()) {
-            best = y;
-            most = count;
-          }
-        }
-        wanted[item] = best;
-      }
-    }
     int priority(Item item) {
       final node = item.node;
       if (node != null) return before[node]! + after[node]! - 1;
@@ -249,26 +235,54 @@ void placeLayers(
       final high = below == null
           ? double.infinity
           : layer[below].y - distance(i, below);
-      final want =
-          wanted[item] ?? (above != null ? low : (below != null ? high : 0.0));
-      var y = low > high ? low : want.clamp(low, high);
-      // A place a hair off where the item wants to be would leave its arrow
-      // a jog too small for full corners: it moves on to a clear slant.
-      final off = y - want;
-      if (wanted[item] != null && off != 0 && off.abs() < smallest) {
-        final further = want + off.sign * smallest;
-        if (further >= low && further <= high) y = further;
+      double placeAt(double want) {
+        var y = low > high ? low : want.clamp(low, high);
+        // A place a hair off where the item wants to be would leave its
+        // arrow a jog too small for full corners: it moves on to a clear
+        // slant.
+        final off = y - want;
+        if (wanted[item] != null && off != 0 && off.abs() < smallest) {
+          final further = want + off.sign * smallest;
+          if (further >= low && further <= high) y = further;
+        }
+        return y;
       }
-      item.y = y;
-      placed[i] = true;
-      if (levelInputs && item.node != null && item.ins.length > 1) {
+
+      var y = placeAt(
+        wanted[item] ?? (above != null ? low : (below != null ? high : 0.0)),
+      );
+      final node = item.node;
+      if (levelInputs && node != null && item.ins.length > 1) {
+        // Each height that brings an arrow in level, counted where the node
+        // can stand for it.
+        final longest = y;
+        final reach = node.port && node.kind == NodeKind.end
+            ? ports[node]!.barHalf
+            : double.infinity;
+        var most = _levelAt(item, longest, layers, ports, options).count;
+        for (final seg in item.ins) {
+          final at = placeAt(
+            outY(seg, ports) - ports[node]!.inputAt[seg.edge]!,
+          );
+          if ((at - longest).abs() > reach + 1e-6) continue;
+          final count = _levelAt(item, at, layers, ports, options).count;
+          if (count > most ||
+              count == most && (at - longest).abs() < (y - longest).abs()) {
+            y = at;
+            most = count;
+          }
+        }
+        if ((y - longest).abs() > 1e-9) levelled = true;
         final moves = _levelAt(item, y, layers, ports, options).moves;
         for (final MapEntry(key: edge, value: level) in moves.entries) {
           for (final seg in edge.segs.skip(1)) {
+            if ((seg.from.y - level).abs() > 1e-9) levelled = true;
             seg.from.y = level;
           }
         }
       }
+      item.y = y;
+      placed[i] = true;
       // A place found only by overlapping pushes the items under it down.
       var previous = i;
       for (var k = i + 1; k < layer.length; k++) {
@@ -279,6 +293,7 @@ void placeLayers(
       }
     }
   }
+  return levelled;
 }
 
 /// Straightens long arrows: moves all pass points of an arrow to one height
@@ -366,13 +381,13 @@ double? _wantedY(Item item, Map<GNode, Ports> ports) {
 /// inputs when its middle is at [y], and the long arrows that would move
 /// for it, with the height each would take.
 ///
-/// An arrow comes in level when its item in the layer before — a node's
-/// exit or a pass point — is level with its input, or when it is a long
-/// arrow all of whose pass points can stand there, each as far from its
-/// neighbours as [minDistance] keeps them, the pass points of the other
-/// arrows that move standing where they would. A long arrow whose pass
-/// points all have room level with its exit stays there ([straightenPasses]
-/// tries that height first): it comes in level only if its exit is. The
+/// An arrow comes in level when the exit it comes from in the layer before
+/// is level with its input, or when it is a long arrow all of whose pass
+/// points stand there or can, each as far from its neighbours as
+/// [minDistance] keeps them, the pass points of the other arrows that move
+/// standing where they would. A long arrow whose pass points all have room
+/// level with its exit stays there ([straightenPasses] tries that height
+/// first): it comes in level only if its exit is. The
 /// pass points of arrows to one node are a lane gap apart in the corridor,
 /// as their inputs are a port gap apart on the bar: a bundle of them that
 /// the nodes beside it push up or down comes in level all together, or
@@ -417,17 +432,19 @@ double? _wantedY(Item item, Map<GNode, Ports> ports) {
   var level = 0;
   for (final seg in item.ins) {
     final target = y + port.inputAt[seg.edge]!;
-    if ((outY(seg, ports) - target).abs() < 1e-6) {
-      level++;
+    if (!seg.from.isPass) {
+      if ((outY(seg, ports) - target).abs() < 1e-6) level++;
       continue;
     }
-    if (!seg.from.isPass) continue;
     // Else it turns just before the node, wherever the node stands.
     final exit = outY(seg.edge.segs.first, ports);
     if (fits(seg.edge, (_) => exit)) {
       if ((exit - target).abs() < 1e-6) level++;
       continue;
     }
+    // Its last pass point level with the input is not enough: if the
+    // others cannot stand there too, straightenPasses finds no one height
+    // for them, and the arrow keeps the steps they stand at.
     targets[seg.edge] = target;
   }
   moving.addAll(targets.keys);

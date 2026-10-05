@@ -66,11 +66,21 @@ GraphLayout layoutBody(
   Map<String, GraphFunction> functions = const {},
   LayoutOptions options = const LayoutOptions(),
   Map<String, ExpandedNode> expanded = const {},
-}) => _layout(body, functions, options, expanded, inFrame: false);
+}) => _layout(body, functions, options, expanded, inFrame: false).chosen;
 
+/// [body] laid out as before nodes stood where most of their arrows come
+/// in level — the bodies in its frames too —, and as chosen: with them
+/// standing so, in its frames too, unless that crosses more, breaks a rule
+/// of step 9 more often, or has more turns or more arrows turning twice
+/// than before. A body in a frame that changed changes the frame — its
+/// size, where its exit is —: the level round it is laid out again round
+/// the new frames, in the order chosen round the old ones, and kept only
+/// if it is no worse by those counts than the level as before; else the
+/// level stays as before, the frames in it too.
+///
 /// [endBarHalf] is the least half length of the bar of the end of a body
 /// in a frame ([GNode.leastBarHalf]).
-GraphLayout _layout(
+({GraphLayout base, GraphLayout chosen}) _layout(
   GraphBody body,
   Map<String, GraphFunction> functions,
   LayoutOptions options,
@@ -78,15 +88,23 @@ GraphLayout _layout(
   required bool inFrame,
   double endBarHalf = 0,
 }) {
-  final g = LayoutGraph.ofBody(body, functions: functions, inFrame: inFrame);
-  for (final node in g.nodes) {
-    if (node.port && node.kind == NodeKind.end) node.leastBarHalf = endBarHalf;
+  LayoutGraph graph() {
+    final g = LayoutGraph.ofBody(body, functions: functions, inFrame: inFrame);
+    for (final node in g.nodes) {
+      if (node.port && node.kind == NodeKind.end) {
+        node.leastBarHalf = endBarHalf;
+      }
+    }
+    return g;
   }
+
+  final g = graph();
+  final inners = <String, ({GraphLayout base, GraphLayout chosen})>{};
   for (final node in g.nodes) {
     if (node.kind != NodeKind.call && node.kind != NodeKind.copies) continue;
     final open = expanded[node.id];
     if (open == null) continue;
-    final inner = _layout(
+    inners[node.id] = _layout(
       open.body,
       functions,
       options,
@@ -98,11 +116,83 @@ GraphLayout _layout(
           ? 0
           : arrowsReach(node, options) + options.portGap / 2,
     );
-    node.framed = FramedBody.of(node, inner, open.room, options);
   }
+  void frame(LayoutGraph g, GraphLayout Function(String id) inner) {
+    for (final node in g.nodes) {
+      if (!inners.containsKey(node.id)) continue;
+      node.framed = FramedBody.of(
+        node,
+        inner(node.id),
+        expanded[node.id]!.room,
+        options,
+      );
+    }
+  }
+
+  frame(g, (id) => inners[id]!.base);
+  final before = _laid(g, options);
+  final base = before.kept;
+  if (inners.values.every((inner) => identical(inner.base, inner.chosen))) {
+    return (base: base, chosen: before.levelled ?? base);
+  }
+  // The frames that changed are laid out in the order chosen round them as
+  // they were: the level keeps its order, and only what their new sizes
+  // and exits move moves.
+  final again = graph();
+  frame(again, (id) => inners[id]!.chosen);
+  final after = _laid(again, options, order: before.order);
+  final was = (
+    broken: checkLevel(base).length,
+    crossings: countCrossings(base),
+    turns: _turns(base),
+  );
+  for (final layout in [?after.levelled, after.kept]) {
+    final (:turns, :twice) = _turns(layout);
+    if (checkLevel(layout).length <= was.broken &&
+        countCrossings(layout) <= was.crossings &&
+        turns <= was.turns.turns &&
+        twice <= was.turns.twice) {
+      return (base: base, chosen: layout);
+    }
+  }
+  levelInputFallbacks++;
+  return (base: base, chosen: base);
+}
+
+/// Steps 1 to 8 for [g], its frames made: the layout as before nodes stood
+/// where most of their arrows come in level, and with them standing so —
+/// `null` when that places nothing otherwise or is worse ([_finish]) —,
+/// and the order of the layers and the nodes whose loops go under them.
+/// With [order], that of another layout of the same body, the layers keep
+/// it, and the loops their sides.
+({GraphLayout kept, GraphLayout? levelled, _Order order}) _laid(
+  LayoutGraph g,
+  LayoutOptions options, {
+  _Order? order,
+}) {
   findBackEdges(g);
   assignLayers(g);
   final layers = buildLayers(g);
+  if (order != null) {
+    final below = {
+      for (final node in g.nodes)
+        if (order.below.contains(node.id)) node,
+    };
+    for (final (i, layer) in layers.indexed) {
+      final rank = {for (final (k, key) in order.layers[i].indexed) key: k};
+      layer.sort((a, b) => rank[_key(a)]!.compareTo(rank[_key(b)]!));
+      for (final (k, item) in layer.indexed) {
+        item.order = k;
+      }
+    }
+    final layout = _build(g, layers, options, below, turnEarly: false);
+    final (:kept, :levelled) = _finish(g, layers, options, below, (
+      layout: layout,
+      broken: checkLevel(layout).length,
+      crossings: countCrossings(layout),
+    ));
+    return (kept: kept, levelled: levelled, order: order);
+  }
   orderLayers(g, layers, options);
   // The loops' sides and the order of the nodes are chosen with every turn
   // past its layer's right side, as if no node were narrower than its
@@ -130,23 +220,44 @@ GraphLayout _layout(
       below.remove(node);
     }
   }
-  return _finish(
+  final (:kept, :levelled) = _finish(
     g,
     layers,
     options,
     below,
     _untangle(g, layers, options, below, layout),
   );
+  return (
+    kept: kept,
+    levelled: levelled,
+    order: (
+      layers: [
+        for (final layer in layers) [for (final item in layer) _key(item)],
+      ],
+      below: {for (final node in below) node.id},
+    ),
+  );
 }
+
+/// The order of a layout's layers, by [_key], and the nodes whose loops go
+/// under their tiles, by id.
+typedef _Order = ({List<List<Object>> layers, Set<String> below});
+
+/// What names [item] in every layout of its body: its node's id, or its
+/// arrow's index — a string never equal to an int.
+Object _key(Item item) => item.node?.id ?? item.edge!.index;
 
 /// The best layout [_untangle] found, laid out for the order [layers] have
 /// with every turn past its layer's right side and every node level with
-/// the arrow from the longest path into it, laid out again with nodes
-/// standing where most of their arrows come in level (step 6) and the
-/// arrows out of nodes narrower than their layer turning next to them
-/// (step 7) — unless that crosses more or breaks a rule of step 9 more
-/// often. Then the turns next to the nodes alone are tried the same way;
-/// failing that too, [best] stays. On a tie, the layout laid out again.
+/// the arrow from the longest path into it, laid out again with the arrows
+/// out of nodes narrower than their layer turning next to them (step 7) —
+/// unless that crosses more or breaks a rule of step 9 more often; on a
+/// tie, the turns next to the nodes. Without a node narrower than its
+/// layer nothing turns early. That layout is laid out once more with nodes
+/// standing where most of their arrows come in level (step 6), if that
+/// places anything otherwise, and kept unless it crosses more, breaks a
+/// rule of step 9 more often, or has more turns or more arrows turning
+/// twice than the layout it would replace.
 ///
 /// The early turns should never cross more: a turn goes before turns ahead
 /// of it in its gap only past turns whose order with it does not change
@@ -155,7 +266,7 @@ GraphLayout _layout(
 /// it was chosen with. The order of the nodes is chosen without either, so
 /// that they do not steer it: arrows shorter by them would make [_untangle]
 /// keep other swaps of as many crossings.
-GraphLayout _finish(
+({GraphLayout kept, GraphLayout? levelled}) _finish(
   LayoutGraph g,
   List<List<Item>> layers,
   LayoutOptions options,
@@ -169,29 +280,59 @@ GraphLayout _finish(
   bool worse(GraphLayout layout) =>
       checkLevel(layout).length > best.broken ||
       countCrossings(layout) > best.crossings;
-  final level = _build(
+  var kept = best.layout;
+  if (narrower) {
+    final early = _build(g, layers, options, below, turnEarly: true);
+    if (worse(early)) {
+      earlyTurnFallbacks++;
+    } else {
+      kept = early;
+    }
+  }
+  final level = _levelled(
     g,
     layers,
     options,
     below,
-    turnEarly: narrower,
-    levelInputs: true,
+    turnEarly: !identical(kept, best.layout),
   );
-  if (!worse(level)) return level;
-  levelInputFallbacks++;
-  if (!narrower) return best.layout;
-  final early = _build(g, layers, options, below, turnEarly: true);
-  if (worse(early)) {
-    earlyTurnFallbacks++;
-    return best.layout;
+  if (level == null) return (kept: kept, levelled: null);
+  final (:turns, :twice) = _turns(level);
+  final before = _turns(kept);
+  if (worse(level) || turns > before.turns || twice > before.twice) {
+    levelInputFallbacks++;
+    return (kept: kept, levelled: null);
   }
-  return early;
+  return (kept: kept, levelled: level);
 }
 
-/// How many times [_finish] kept every node level with the arrow from the
-/// longest path into it because standing where most arrows come in level
-/// crossed more or broke a rule of step 9 more often. No level of the test
-/// graphs does, and only a few random ones: tests check both.
+/// How many times arrows of [layout] going forward change height, and how
+/// many of them change height twice or more.
+({int turns, int twice}) _turns(GraphLayout layout) {
+  var turns = 0;
+  var twice = 0;
+  for (final edge in layout.edges) {
+    if (edge.kind != EdgeKind.forward) continue;
+    final points = edge.points;
+    var count = 0;
+    var turning = false;
+    for (var i = 1; i < points.length; i++) {
+      final flat = (points[i].y - points[i - 1].y).abs() < 1e-6;
+      if (!flat && !turning) count++;
+      turning = !flat;
+    }
+    turns += count;
+    if (count > 1) twice++;
+  }
+  return (turns: turns, twice: twice);
+}
+
+/// How many times a level kept the heights its order was chosen with
+/// ([_finish]), or stayed as before round frames whose bodies changed
+/// ([_layout]), because nodes standing where most arrows come in level
+/// crossed more, broke a rule of step 9 more often, or had more turns or
+/// more arrows turning twice. No level of the test graphs does, and few
+/// random ones: tests check both.
 @visibleForTesting
 int levelInputFallbacks = 0;
 
@@ -270,9 +411,34 @@ double _length(GraphLayout layout) {
 }
 
 /// Steps 5 to 8 for the current order of [layers]: ports, heights, lanes
-/// and the layers' x, arrows; [turnEarly] as for [assignLanes],
-/// [levelInputs] as for [placeLayers].
+/// and the layers' x, arrows; [turnEarly] as for [assignLanes].
 GraphLayout _build(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  LayoutOptions options,
+  Set<GNode> below, {
+  required bool turnEarly,
+}) => _buildWith(g, layers, options, below, turnEarly: turnEarly)!;
+
+/// [_build] with nodes standing where most of their arrows come in level
+/// (`placeLayers`' levelInputs); `null` when that places nothing
+/// otherwise.
+GraphLayout? _levelled(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  LayoutOptions options,
+  Set<GNode> below, {
+  required bool turnEarly,
+}) => _buildWith(
+  g,
+  layers,
+  options,
+  below,
+  turnEarly: turnEarly,
+  levelInputs: true,
+);
+
+GraphLayout? _buildWith(
   LayoutGraph g,
   List<List<Item>> layers,
   LayoutOptions options,
@@ -282,7 +448,14 @@ GraphLayout _build(
 }) {
   final levels = <GEdge, int>{};
   final ports = assignPorts(g, options, below: below, backLevels: levels);
-  placeLayers(g, layers, ports, options, levelInputs: levelInputs);
+  final levelled = placeLayers(
+    g,
+    layers,
+    ports,
+    options,
+    levelInputs: levelInputs,
+  );
+  if (levelInputs && !levelled) return null;
   straightenPasses(g, layers, ports, options);
   final frames = {
     for (final node in g.nodes)
