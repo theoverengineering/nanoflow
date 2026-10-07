@@ -323,3 +323,54 @@ class NodeIcon extends StatelessWidget {
       stroke,
     );
 }
+
+/// A subgraph: a node on the left branching to two on the right — the
+/// effects folded in a call or in copies. 28 units, as [NodeIcon]'s.
+class SubgraphIcon extends StatelessWidget {
+  const SubgraphIcon({
+    super.key,
+    required this.size,
+    required this.color,
+    this.strokeWidth = 1.6,
+  });
+
+  final double size;
+  final Color color;
+  final double strokeWidth;
+
+  static const _corner = Radius.circular(1.8);
+
+  @override
+  Widget build(BuildContext context) => _LineIcon(
+    kind: 'subgraph',
+    units: 28,
+    size: size,
+    color: color,
+    strokeWidth: strokeWidth,
+    draw: (canvas, stroke) => canvas
+      ..drawRRect(RRect.fromLTRBR(3, 11, 9, 17, _corner), stroke)
+      ..drawRRect(RRect.fromLTRBR(19, 4, 25, 10, _corner), stroke)
+      ..drawRRect(RRect.fromLTRBR(19, 18, 25, 24, _corner), stroke)
+      ..drawPath(
+        Path()
+          ..moveTo(9, 14)
+          ..relativeLineTo(4, 0)
+          ..moveTo(13, 14)
+          ..lineTo(13, 9)
+          ..relativeArcToPoint(
+            const Offset(2, -2),
+            radius: const Radius.circular(2),
+          )
+          ..relativeLineTo(4, 0)
+          ..moveTo(13, 14)
+          ..relativeLineTo(0, 5)
+          ..relativeArcToPoint(
+            const Offset(2, 2),
+            radius: const Radius.circular(2),
+            clockwise: false,
+          )
+          ..relativeLineTo(4, 0),
+        stroke,
+      ),
+  );
+}

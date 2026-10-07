@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
+import 'package:nanoflow_ui/graph/canvas/frame_toggle.dart';
 import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/canvas/tile_marks.dart';
@@ -75,6 +76,7 @@ void main() {
     NodeMarks? marks,
     bool allCopies = false,
     String copies = '×n',
+    ValueChanged<Offset>? onExpand,
   }) {
     final node = layout.nodes[id]!;
     return pumpScreen(
@@ -89,6 +91,7 @@ void main() {
               marks: marks,
               allCopies: allCopies,
               copies: copies,
+              onExpand: onExpand,
             ),
           ),
         ],
@@ -108,6 +111,38 @@ void main() {
         if (element.renderObject case final RenderBox box)
           box.localToGlobal(Offset.zero) & box.size,
   ];
+
+  /// Checks that [tile] has the subgraph icon on it, no other, with the
+  /// effects [count] under it, smaller than the name and muted: the two of
+  /// them in the middle of the tile. Returns where the icon is.
+  Rect expectSubgraph(WidgetTester tester, Rect tile, String count) {
+    expect(find.byType(NodeIcon), findsNothing);
+    final iconFinder = find.byType(SubgraphIcon);
+    expect(iconFinder, findsOneWidget);
+    final icon = tester.getRect(iconFinder);
+    expect(icon.size, const Size.square(28));
+    final effects = find.text(count);
+    expect(effects, findsOneWidget);
+    final text = tester.getRect(effects);
+    expect(tile.intersect(icon), icon);
+    expect(tile.intersect(text), text);
+    expect(text.top, greaterThanOrEqualTo(icon.bottom));
+    expect(icon.center.dx, moreOrLessEquals(tile.center.dx));
+    expect(text.center.dx, moreOrLessEquals(tile.center.dx));
+    expect(
+      (icon.top + text.bottom) / 2,
+      moreOrLessEquals(tile.center.dy, epsilon: 1),
+    );
+    final style = tester.widget<Text>(effects).style!;
+    expect(style.fontSize, lessThan(CanvasText.name.fontSize!));
+    final iconColor = tester.widget<SubgraphIcon>(iconFinder).color;
+    expect(
+      Color.alphaBlend(style.color!, CanvasColors.tileFill).computeLuminance(),
+      lessThan(iconColor.computeLuminance()),
+      reason: 'the count is muted against the icon',
+    );
+    return icon;
+  }
 
   testWidgets('an effect: a terminal, its name and place under it', (
     tester,
@@ -129,35 +164,33 @@ void main() {
     expect(find.text('ok'), findsOneWidget);
   });
 
-  testWidgets('a call: a tile stacked behind it, over its top, the effects of '
-      'its function on it, its name with ()', (tester) async {
-    await pumpTile(tester, 'call');
+  testWidgets('a call: one tile, nothing stacked behind it, a subgraph on '
+      'it with the effects of its function under it, + in its top right '
+      'corner clear of them, its name with ()', (tester) async {
+    await pumpTile(tester, 'call', onExpand: (_) {});
     final tile = tileOf(tester, 'call');
-    final stack = stackOf(tester);
-    expect(stack, hasLength(1));
-    expect(stack.single.top, lessThan(tile.top));
-    expect(stack.single.left, greaterThan(tile.left));
-    expect(stack.single.right, lessThan(tile.right));
-    expect(find.byType(NodeIcon), findsNothing);
-    expect(find.text('{ 1 }'), findsOneWidget);
+    expect(stackOf(tester), isEmpty);
+    final icon = expectSubgraph(tester, tile, '{ 1 }');
+    final toggle = tester.getRect(find.byKey(FrameToggle.expandKeyOf('call')));
+    expect(toggle.right, moreOrLessEquals(tile.right - 4));
+    expect(toggle.top, moreOrLessEquals(tile.top + 4));
+    expect(toggle.overlaps(icon), isFalse);
     expect(find.text('f()'), findsOneWidget);
   });
 
-  testWidgets('copies: two tiles stacked behind, the effects of a copy on '
-      'them as on a call, ×n across the top right of the stack, their '
-      'label', (tester) async {
-    await pumpTile(tester, 'copies');
+  testWidgets('copies: two tiles stacked behind, a subgraph on them with the '
+      'effects of a copy under it as on a call, ×n across the top right of '
+      'the stack, their label', (tester) async {
+    await pumpTile(tester, 'copies', onExpand: (_) {});
     final tile = tileOf(tester, 'copies');
     final stack = stackOf(tester);
     expect(stack, hasLength(2));
     expect(stack.first.top, lessThan(stack.last.top));
-    final effects = find.text('{ 2 }');
-    expect(effects, findsOneWidget);
-    expect(
-      tester.widget<Text>(effects).style!.fontSize,
-      CanvasText.inside.fontSize,
+    final icon = expectSubgraph(tester, tile, '{ 2 }');
+    final toggle = tester.getRect(
+      find.byKey(FrameToggle.expandKeyOf('copies')),
     );
-    expect(tester.getCenter(effects).dx, moreOrLessEquals(tile.center.dx));
+    expect(toggle.overlaps(icon), isFalse);
     final badge = tester.getRect(
       find.ancestor(of: find.text('×n'), matching: find.byType(Container)),
     );
@@ -348,6 +381,10 @@ void main() {
       await pumpTile(tester, 'copies', marks: marks, copies: '×3');
       expect(find.text('×3'), findsOneWidget);
       expect(find.text('4×'), findsNothing);
+      expect(
+        tester.widget<SubgraphIcon>(find.byType(SubgraphIcon)).color,
+        TileLook.running.icon,
+      );
       expect(
         tester.widget<Text>(find.text('×3')).style!.color,
         CanvasColors.badgeText,

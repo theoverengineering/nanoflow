@@ -38,7 +38,7 @@ abstract final class CanvasColors {
   static const name = Color(0xFFECECEE);
   static const place = Color(0xFF9A9BA2);
 
-  /// The tiles stacked behind a call or copies.
+  /// The tiles stacked behind copies.
   static const stackFill = Color(0xFF2C2D32);
   static const stackBorder = Color(0xFF55565C);
 
@@ -90,8 +90,9 @@ abstract final class CanvasText {
   /// A node's place in the code under its name.
   static final place = _mono.copyWith(fontSize: 10.5);
 
-  /// The effects of a call or of a copy: `{ 3 }`.
-  static final inside = _mono.copyWith(fontSize: 15, color: CanvasColors.icon);
+  /// The effects of a call or of a copy, small under its subgraph icon:
+  /// `{ 3 }`. A tile draws them in its look's colour (`TileLook.inside`).
+  static final inside = _mono.copyWith(fontSize: 11, color: CanvasColors.icon);
 
   /// The badges over a tile: `×3`, `2×`.
   static final badge = _mono.copyWith(

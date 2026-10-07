@@ -16,15 +16,14 @@ const double placeTop = nameTop + nameHeight + 2;
 /// The height of the place's line.
 const double placeHeight = 13;
 
-/// How far each tile stacked behind a call or copies shows over the tile,
-/// and how far in from its sides it is.
+/// How far each tile stacked behind copies shows over the tile, and how far
+/// in from its sides it is.
 const double stackStep = 7;
 const double stackInset = 8;
 
-/// How many tiles are stacked behind the tile of [kind]: one behind a call,
-/// two behind copies.
+/// How many tiles are stacked behind the tile of [kind]: two behind copies,
+/// for the copies run; none behind a call, one tile with a subgraph on it.
 int tilesBehind(NodeKind kind) => switch (kind) {
-  NodeKind.call => 1,
   NodeKind.copies => 2,
   _ => 0,
 };
@@ -39,15 +38,15 @@ const double badgeHeight = 14;
 const double badgeOverhang = 6;
 
 /// How far over the tile of [kind] what is drawn over it reaches: the tiles
-/// stacked behind it, and the badge across the top of the stack of copies.
+/// stacked behind copies and the badge across the top of their stack.
 double overTile(NodeKind kind) {
   final stack = stackStep * tilesBehind(kind);
   return kind == NodeKind.copies ? stack + badgeHeight / 2 : stack;
 }
 
 /// The room the marks over a tile take: badges in its top right corner, the
-/// tiles stacked behind it; over a frame, what is drawn over it. None over
-/// a port.
+/// tiles stacked behind copies; over a frame, what is drawn over it. None
+/// over a port.
 double marksAbove(GNode node) => node.port
     ? 0
     : math.max(12, (node.framed?.room.above ?? overTile(node.kind)) + 4);
@@ -630,7 +629,7 @@ final class NodeFrame {
   /// The place under the name; empty without one.
   final Rect place;
 
-  /// Over the tile: the tiles stacked behind it, the badges over its top
+  /// Over the tile: the tiles stacked behind copies, the badges over its top
   /// right corner.
   final Rect marks;
 

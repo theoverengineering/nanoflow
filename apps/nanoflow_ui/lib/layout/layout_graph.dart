@@ -150,10 +150,11 @@ enum NodeKind {
   /// A condition the flow goes one of several ways on.
   condition,
 
-  /// A call of a function with effects: a stack of tiles.
+  /// A call of a function with effects: a tile with a subgraph on it.
   call,
 
-  /// A body run in copies side by side: a stack of tiles.
+  /// A body run in copies side by side: a stack of tiles with a subgraph on
+  /// them.
   copies,
 }
 
@@ -187,12 +188,13 @@ String _functionName(List<String> ids, Map<String, GraphFunction> functions) {
   return name.substring(name.lastIndexOf('.') + 1);
 }
 
-/// What is written inside the tile of [node], when not an icon: how many
-/// effects can run in it ([reachableEffects]). `{ 3 }` on a call, the effects
-/// of its function; `{ 1–2 }` for implementations of a method with different
-/// counts; `{ ? }` when the file has none of its functions. `{ 3 }` on
-/// copies, the effects of one copy; `{ ? }` when they have none but call a
-/// function the file does not have. `{ }` when there are none.
+/// What is written on the tile of [node] under its subgraph icon, `null` on
+/// an effect or a condition: how many effects can run in a call or copies
+/// ([reachableEffects]). `{ 3 }` on a call, the effects of its function;
+/// `{ 1–2 }` for implementations of a method with different counts; `{ ? }`
+/// when the file has none of its functions. `{ 3 }` on copies, the effects
+/// of one copy; `{ ? }` when they have none but call a function the file
+/// does not have. `{ }` when there are none.
 String? insideText(GraphNode node, Map<String, GraphFunction> functions) {
   final List<int> counts;
   switch (node) {
@@ -310,7 +312,8 @@ final class GNode {
   /// The place under the name; `null` for a marker, or when unknown.
   final String? place;
 
-  /// What is written inside the tile instead of an icon.
+  /// What is written on the tile: a marker's word instead of an icon, the
+  /// effects of a call or copies under their subgraph icon.
   final String? inside;
 
   /// Whether this is the start marker or an end marker.

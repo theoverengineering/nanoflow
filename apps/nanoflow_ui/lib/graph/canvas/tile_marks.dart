@@ -54,8 +54,12 @@ final class TileLook {
   final FontWeight nameWeight;
   final Color place;
 
-  /// The outline of the tiles stacked behind a call or copies.
+  /// The outline of the tiles stacked behind copies.
   final Color stack;
+
+  /// The effects of a call or copies under their icon: the icon's colour,
+  /// muted.
+  Color get inside => icon.withValues(alpha: icon.a * 0.7);
 
   static TileLook of(NodeState? state) => switch (state) {
     null => plain,

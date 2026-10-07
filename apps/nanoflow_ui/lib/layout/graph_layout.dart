@@ -73,8 +73,8 @@ final class NodeBox {
   /// marker, or when unknown.
   final String? place;
 
-  /// What is written inside the tile instead of an icon: `start`, `end`,
-  /// the effects of a call or of a copy, `{ 3 }`.
+  /// What is written on the tile: `start`, `end` instead of an icon; the
+  /// effects of a call or of a copy under its subgraph icon, `{ 3 }`.
   final String? inside;
 
   /// The node's layer, 0 for the leftmost.
@@ -89,8 +89,8 @@ final class NodeBox {
   /// The place, centred under the name; empty without a place.
   final Rect placeRect;
 
-  /// The room kept over the tile: for the tiles stacked behind a call or
-  /// copies, and for badges over its top right corner.
+  /// The room kept over the tile: for the tiles stacked behind copies, and
+  /// for badges over its top right corner.
   final Rect marks;
 
   /// The room kept for the state badge on the tile's bottom right corner.

@@ -97,8 +97,9 @@ void main() {
   });
 
   group('release', () {
-    test('draws a call as a stack named after the function, the effects of '
-        'its body counted on it', () {
+    test('draws a call named after the function, the effects of its body '
+        'counted on it, nothing stacked behind it: the room over it is an '
+        'effect\'s', () {
       final layout = layoutOf('release');
       final call = layout.nodes['5']!;
       expect(call.kind, NodeKind.call);
@@ -106,6 +107,21 @@ void main() {
       // upload, verify, rollback.
       expect(call.inside, '{ 3 }');
       expect(call.node, isA<CallNode>());
+      expect(tilesBehind(NodeKind.call), 0);
+      expect(overTile(NodeKind.call), 0);
+      final effect = layout.nodes.values.firstWhere(
+        (node) => node.kind == NodeKind.effect,
+      );
+      // Its marks reach as far from its top right corner as an effect's.
+      List<double> marks(NodeBox node) => [
+        node.marks.left - node.tile.right,
+        node.marks.top - node.tile.top,
+        node.marks.right - node.tile.right,
+        node.marks.bottom - node.tile.top,
+      ];
+      expect(marks(call), [
+        for (final side in marks(effect)) closeTo(side, 1e-9),
+      ]);
       expect(arrows(layout), [
         '$startMarker-null->1',
         '1-null->2',
@@ -148,6 +164,7 @@ void main() {
       expect(copies.name, 'pkg in packages');
       // upload, verify, tag.
       expect(copies.inside, '{ 3 }');
+      expect(tilesBehind(NodeKind.copies), 2);
       expect(arrows(layout), [
         '$startMarker-null->1',
         '1-null->2',

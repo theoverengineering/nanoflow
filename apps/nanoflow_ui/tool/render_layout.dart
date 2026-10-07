@@ -268,15 +268,34 @@ String renderSvg(GraphLayout layout, String caption) {
           'width="${_n(t.width - 2)}" height="${_n(t.height - 2)}" rx="11" '
           'fill="$_tileFill" stroke="$_tileBorder" stroke-width="2"/>',
         );
-        if (node.inside case final text?) {
-          svg.writeln(_inside(c, text, _icon, size: 15, mono: true));
-        } else {
+        // On a call or copies, the subgraph with the count of the effects in
+        // them under it, the two in the middle of the tile as the app draws
+        // them; an effect's or a condition's icon alone in the middle.
+        final subgraph =
+            node.kind == NodeKind.call || node.kind == NodeKind.copies;
+        final count = subgraph ? node.inside : null;
+        final iconTop = count == null ? c.y - 14 : c.y - (28 + _countLine) / 2;
+        svg.writeln(
+          '<g transform="translate(${_n(c.x - 14)} ${_n(iconTop)})" '
+          'fill="none" stroke="$_icon" stroke-width="1.6" '
+          'stroke-linecap="round" stroke-linejoin="round">'
+          '${switch (node.kind) {
+            NodeKind.condition => _conditionIcon,
+            NodeKind.call || NodeKind.copies => _subgraphIcon,
+            _ => _effectIcon,
+          }}'
+          '</g>',
+        );
+        if (count != null) {
           svg.writeln(
-            '<g transform="translate(${_n(c.x - 14)} ${_n(c.y - 14)})" '
-            'fill="none" stroke="$_icon" stroke-width="1.6" '
-            'stroke-linecap="round" stroke-linejoin="round">'
-            '${node.kind == NodeKind.condition ? _conditionIcon : _effectIcon}'
-            '</g>',
+            _inside(
+              Point(c.x, iconTop + 28 + _countLine / 2),
+              count,
+              _icon,
+              size: _countSize,
+              mono: true,
+              opacity: 0.7,
+            ),
           );
         }
         if (node.kind == NodeKind.copies) {
@@ -362,23 +381,38 @@ String _chip(Rect rect, String text, String colour, double padding) =>
     'font-family="Geist Mono, Menlo, monospace" font-size="10" '
     'fill="$colour">${_escape(text)}</text>';
 
-/// [text] in the middle of a tile whose middle is [c], [size] px high.
+/// [text] on a line whose middle is [c], [size] px high, [opacity] opaque.
 String _inside(
   Point c,
   String text,
   String colour, {
   required double size,
   required bool mono,
+  double opacity = 1,
 }) =>
     '<text x="${_n(c.x)}" y="${_n(c.y + size * 0.35)}" text-anchor="middle" '
     'font-family="${mono ? 'Geist Mono, Menlo, monospace' : 'Geist, Helvetica, sans-serif'}" '
-    'font-size="${_n(size)}" fill="$colour">${_escape(text)}</text>';
+    'font-size="${_n(size)}" fill="$colour"'
+    '${opacity < 1 ? ' fill-opacity="${_n(opacity)}"' : ''}>'
+    '${_escape(text)}</text>';
+
+/// The effects of a call or of a copy under its subgraph: their size, and
+/// the height of their line.
+const _countSize = 11.0;
+const _countLine = _countSize * 1.3;
 
 const _effectIcon =
     '<rect x="3.5" y="5.5" width="21" height="17" rx="3.5"/>'
     '<path d="M9 11l3.2 3L9 17M14.5 17.5h4.5"/>';
 
 const _conditionIcon = '<path d="M14 4.5L23.5 14L14 23.5L4.5 14z"/>';
+
+const _subgraphIcon =
+    '<rect x="3" y="11" width="6" height="6" rx="1.8"/>'
+    '<rect x="19" y="4" width="6" height="6" rx="1.8"/>'
+    '<rect x="19" y="18" width="6" height="6" rx="1.8"/>'
+    '<path d="M9 14 h4 M13 14 V9 a2 2 0 0 1 2 -2 h4 '
+    'M13 14 v5 a2 2 0 0 0 2 2 h4"/>';
 
 String _p(Point p) => '${_n(p.x)} ${_n(p.y)}';
 

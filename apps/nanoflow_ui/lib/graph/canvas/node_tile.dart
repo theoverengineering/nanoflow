@@ -25,11 +25,11 @@ import 'tile_marks.dart';
 /// A node on the canvas (docs/ui-spec.md «Граф», spec §9 «Граф», «Эффекты на
 /// графе»): the tile of its kind with its name and place under it, a name
 /// cut short whole in a tooltip. An effect's tile has a terminal on it, a
-/// condition's a diamond; a call's is a stack of two tiles with the effects
-/// of the function on it (`{ 3 }`), copies' a stack of three with the effects
-/// of a copy on it and how many copies ran across the top right of the
-/// stack (`×3`; `×n` without a session); the start and end markers are
-/// dashed and say so.
+/// condition's a diamond; a call's a subgraph with the effects of the
+/// function small under it (`{ 3 }`); copies' is a stack of three tiles, the
+/// subgraph on it with the effects of a copy under it, and how many copies
+/// ran across the top right of the stack (`×3`; `×n` without a session); the
+/// start and end markers are dashed and say so.
 ///
 /// With a session, the tile is framed in the state of the effects on it, its
 /// state's badge on its bottom right corner; an effect node entered more than
@@ -100,10 +100,13 @@ class NodeTile extends StatelessWidget {
   final ValueChanged<Offset>? onExpand;
 
   /// How far round the tile the widget reaches: the tiles stacked behind
-  /// it, the badges, the ring.
+  /// copies, the badges, the ring.
   static const _margin = 16.0;
 
   static const _radius = 12.0;
+
+  /// The side of the icon on a tile.
+  static const _iconSize = 28.0;
 
   /// How far the ring round the selected effect's node reaches out of its
   /// tile.
@@ -226,8 +229,8 @@ class NodeTile extends StatelessWidget {
   /// Over an effect node's top right corner: in the body of copies, all
   /// shown, how many copies are on it now, if any; else `2×` when it was
   /// entered more than once. Over a fork's, `2×` when the code went through
-  /// it more than once, but not in the body of copies, all shown. Calls and
-  /// copies have their stacks there.
+  /// it more than once, but not in the body of copies, all shown. Nothing
+  /// over a call's, nor over copies', which have their stack there.
   Widget? _countBadge() {
     final marks = this.marks;
     if (marks == null ||
@@ -322,17 +325,25 @@ class NodeTile extends StatelessWidget {
             borderRadius: const BorderRadius.all(Radius.circular(_radius)),
           ),
           child: Center(
-            child: inside != null
-                ? Text(
-                    inside,
-                    style: CanvasText.inside.copyWith(color: look.icon),
-                    textScaler: TextScaler.noScaling,
-                  )
-                : NodeIcon(
-                    fork: node.kind == NodeKind.condition,
-                    size: 28,
-                    color: look.icon,
-                  ),
+            child: switch (node.kind) {
+              NodeKind.call || NodeKind.copies => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SubgraphIcon(size: _iconSize, color: look.icon),
+                  if (inside != null)
+                    Text(
+                      inside,
+                      style: CanvasText.inside.copyWith(color: look.inside),
+                      textScaler: TextScaler.noScaling,
+                    ),
+                ],
+              ),
+              _ => NodeIcon(
+                fork: node.kind == NodeKind.condition,
+                size: _iconSize,
+                color: look.icon,
+              ),
+            },
           ),
         );
     }
