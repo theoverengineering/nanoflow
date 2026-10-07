@@ -273,9 +273,9 @@ class LinkIcon extends StatelessWidget {
   );
 }
 
-/// An effect's terminal. 28 units.
-class EffectIcon extends StatelessWidget {
-  const EffectIcon({
+/// A node's icon on its tile, 28 units: [_kind] drawn by [_draw].
+abstract class _NodeIcon extends StatelessWidget {
+  const _NodeIcon({
     super.key,
     required this.size,
     required this.color,
@@ -286,118 +286,112 @@ class EffectIcon extends StatelessWidget {
   final Color color;
   final double strokeWidth;
 
+  /// Tells the icons apart for repainting.
+  String get _kind;
+
+  void _draw(Canvas canvas, Paint stroke);
+
   @override
   Widget build(BuildContext context) => _LineIcon(
-    kind: 'effect',
+    kind: _kind,
     units: 28,
     size: size,
     color: color,
     strokeWidth: strokeWidth,
-    draw: (canvas, stroke) => canvas
-      ..drawRRect(
-        RRect.fromLTRBR(3.5, 5.5, 24.5, 22.5, const Radius.circular(3.5)),
-        stroke,
-      )
-      ..drawPath(
-        Path()
-          ..moveTo(9, 11)
-          ..lineTo(12.2, 14)
-          ..lineTo(9, 17)
-          ..moveTo(14.5, 17.5)
-          ..lineTo(19, 17.5),
-        stroke,
-      ),
+    draw: _draw,
   );
 }
 
-/// A condition's branch: a node on the left branching to two on the right.
-/// 28 units.
-class ConditionIcon extends StatelessWidget {
-  const ConditionIcon({
+/// An effect's terminal.
+class EffectIcon extends _NodeIcon {
+  const EffectIcon({
     super.key,
-    required this.size,
-    required this.color,
-    this.strokeWidth = 1.6,
+    required super.size,
+    required super.color,
+    super.strokeWidth,
   });
 
-  final double size;
-  final Color color;
-  final double strokeWidth;
+  @override
+  String get _kind => 'effect';
+
+  @override
+  void _draw(Canvas canvas, Paint stroke) => canvas
+    ..drawRRect(
+      RRect.fromLTRBR(3.5, 5.5, 24.5, 22.5, const Radius.circular(3.5)),
+      stroke,
+    )
+    ..drawPath(
+      Path()
+        ..moveTo(9, 11)
+        ..lineTo(12.2, 14)
+        ..lineTo(9, 17)
+        ..moveTo(14.5, 17.5)
+        ..lineTo(19, 17.5),
+      stroke,
+    );
+}
+
+/// A condition's branch: a node on the left branching to two on the right.
+class ConditionIcon extends _NodeIcon {
+  const ConditionIcon({super.key, required super.size, required super.color});
 
   static const _corner = Radius.circular(1.8);
 
   @override
-  Widget build(BuildContext context) => _LineIcon(
-    kind: 'condition',
-    units: 28,
-    size: size,
-    color: color,
-    strokeWidth: strokeWidth,
-    draw: (canvas, stroke) => canvas
-      ..drawRRect(RRect.fromLTRBR(3, 11, 9, 17, _corner), stroke)
-      ..drawRRect(RRect.fromLTRBR(19, 4, 25, 10, _corner), stroke)
-      ..drawRRect(RRect.fromLTRBR(19, 18, 25, 24, _corner), stroke)
-      ..drawPath(
-        Path()
-          ..moveTo(9, 14)
-          ..relativeLineTo(4, 0)
-          ..moveTo(13, 14)
-          ..lineTo(13, 9)
-          ..relativeArcToPoint(
-            const Offset(2, -2),
-            radius: const Radius.circular(2),
-          )
-          ..relativeLineTo(4, 0)
-          ..moveTo(13, 14)
-          ..relativeLineTo(0, 5)
-          ..relativeArcToPoint(
-            const Offset(2, 2),
-            radius: const Radius.circular(2),
-            clockwise: false,
-          )
-          ..relativeLineTo(4, 0),
-        stroke,
-      ),
-  );
+  String get _kind => 'condition';
+
+  @override
+  void _draw(Canvas canvas, Paint stroke) => canvas
+    ..drawRRect(RRect.fromLTRBR(3, 11, 9, 17, _corner), stroke)
+    ..drawRRect(RRect.fromLTRBR(19, 4, 25, 10, _corner), stroke)
+    ..drawRRect(RRect.fromLTRBR(19, 18, 25, 24, _corner), stroke)
+    ..drawPath(
+      Path()
+        ..moveTo(9, 14)
+        ..relativeLineTo(4, 0)
+        ..moveTo(13, 14)
+        ..lineTo(13, 9)
+        ..relativeArcToPoint(
+          const Offset(2, -2),
+          radius: const Radius.circular(2),
+        )
+        ..relativeLineTo(4, 0)
+        ..moveTo(13, 14)
+        ..relativeLineTo(0, 5)
+        ..relativeArcToPoint(
+          const Offset(2, 2),
+          radius: const Radius.circular(2),
+          clockwise: false,
+        )
+        ..relativeLineTo(4, 0),
+      stroke,
+    );
 }
 
 /// A function, `ƒ` with `×` by it as in `f(x)`: a call, or copies of a
-/// body, with the effects folded in it. 28 units.
-class FunctionIcon extends StatelessWidget {
-  const FunctionIcon({
-    super.key,
-    required this.size,
-    required this.color,
-    this.strokeWidth = 1.6,
-  });
-
-  final double size;
-  final Color color;
-  final double strokeWidth;
+/// body, with the effects folded in it.
+class FunctionIcon extends _NodeIcon {
+  const FunctionIcon({super.key, required super.size, required super.color});
 
   @override
-  Widget build(BuildContext context) => _LineIcon(
-    kind: 'function',
-    units: 28,
-    size: size,
-    color: color,
-    strokeWidth: strokeWidth,
-    draw: (canvas, stroke) => canvas.drawPath(
-      Path()
-        // The hook of the ƒ.
-        ..moveTo(5.5, 22.5)
-        ..relativeCubicTo(1.6, 0, 2.4, -1.1, 2.8, -3.1)
-        ..lineTo(11.6, 8.6)
-        ..relativeCubicTo(.5, -2.1, 1.3, -3.1, 3, -3.1)
-        // Its bar.
-        ..moveTo(8, 12.5)
-        ..relativeLineTo(6, 0)
-        // The ×.
-        ..moveTo(16.5, 13.5)
-        ..relativeLineTo(6, 6)
-        ..moveTo(22.5, 13.5)
-        ..relativeLineTo(-6, 6),
-      stroke,
-    ),
+  String get _kind => 'function';
+
+  @override
+  void _draw(Canvas canvas, Paint stroke) => canvas.drawPath(
+    Path()
+      // The hook of the ƒ.
+      ..moveTo(5.5, 22.5)
+      ..relativeCubicTo(1.6, 0, 2.4, -1.1, 2.8, -3.1)
+      ..lineTo(11.6, 8.6)
+      ..relativeCubicTo(.5, -2.1, 1.3, -3.1, 3, -3.1)
+      // Its bar.
+      ..moveTo(8, 12.5)
+      ..relativeLineTo(6, 0)
+      // The ×.
+      ..moveTo(16.5, 13.5)
+      ..relativeLineTo(6, 6)
+      ..moveTo(22.5, 13.5)
+      ..relativeLineTo(-6, 6),
+    stroke,
   );
 }
