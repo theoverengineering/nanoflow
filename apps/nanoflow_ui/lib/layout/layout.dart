@@ -93,6 +93,10 @@ GraphLayout layoutBody(
 /// A level so takes at most one build for its order's best, one for its
 /// early turns, one for its heights and two for its end — besides its
 /// loops' tries and [_untangle] —, and five more round changed frames.
+/// With forks whose `false` stands above their `true` it takes a build for
+/// each swap that could turn one up in each round of [_trueAbove]'s tries,
+/// and up to four more — for its early turns, heights and end — for each
+/// order of such swaps it weighs.
 ///
 /// [endBarHalf] is the least half length of the bar of the end of a body
 /// in a frame ([GNode.leastBarHalf]).
@@ -192,13 +196,16 @@ _Counts _counts(GraphLayout layout) => (
 /// turns, more arrows turning twice or more arrows turning three times or
 /// more — a staircase —, or is taller by more than what it saves pays for
 /// ([_paidFor]).
-bool _worse(_Counts now, _Counts was) =>
+///
+/// [credit] counts as turns saved besides those of the layout: each may pay
+/// for a turn more, or for half a tile of height.
+bool _worse(_Counts now, _Counts was, {int credit = 0}) =>
     now.broken > was.broken ||
     now.crossings > was.crossings ||
-    now.own.turns > was.own.turns ||
+    now.own.turns > was.own.turns + credit ||
     now.own.twice > was.own.twice ||
     now.own.thrice > was.own.thrice ||
-    !_paidFor(now, was);
+    !_paidFor(now, was, credit: credit);
 
 /// Whether a layout counted [now] is no taller than the one counted [was]
 /// by more than half a tile for each turn it saves, an arrow it saves
@@ -206,12 +213,15 @@ bool _worse(_Counts now, _Counts was) =>
 /// frames, since a level round a frame whose body changed grows for what
 /// that body saves. A node far down to stand level with an exit saves a
 /// turn or two for a level much taller; docs/graph-layout.md §6 has the
-/// cases that set half a tile.
-bool _paidFor(_Counts now, _Counts was) {
+/// cases that set half a tile. [credit] turns more count as saved.
+bool _paidFor(_Counts now, _Counts was, {int credit = 0}) {
   final grows = now.height - was.height;
   if (grows <= 1e-6) return true;
   final saved =
-      was.deep.turns - now.deep.turns + 2 * (was.deep.twice - now.deep.twice);
+      credit +
+      was.deep.turns -
+      now.deep.turns +
+      2 * (was.deep.twice - now.deep.twice);
   return grows <= now.tile / 2 * saved + 1e-6;
 }
 
@@ -289,7 +299,7 @@ bool _paidFor(_Counts now, _Counts was) {
       below.remove(node);
     }
   }
-  final (:kept, :improved) = _finish(
+  final (:kept, :improved) = _trueAbove(
     g,
     layers,
     options,
@@ -589,6 +599,168 @@ const int _untangleRounds = 4;
     if (!improved) break;
   }
   return (layout: best, broken: broken, crossings: fewest);
+}
+
+/// Whether forks whose `false` stands above their `true` are turned with
+/// `true` up where that costs no more than it is worth ([_trueAbove]);
+/// tests turn it off to lay a body out as before.
+@visibleForTesting
+bool trueAboveEnabled = true;
+
+/// The layout [_finish] makes of [untangled], or of an order with fewer
+/// forks whose `false` stands above their `true` ([GNode.fork]). Only a
+/// swap of neighbours where a fork's `false` and `true` go can turn it up —
+/// a fork's exits stand in the order of where they go —, so only those
+/// swaps are tried ([_swapUp]); forks whose `true` or `false` goes back are
+/// left: a back arrow leaves under the arrows forward. A swap moves only
+/// what stands right after the fork: a way of `true` longer than a layer
+/// starts above that of `false` from step 1's walk.
+///
+/// Swaps are kept if their order, laid out as [_untangle] lays out its
+/// orders, crosses no more and breaks no more rules of step 9 than the
+/// order before, and its layout as [_finish] makes it is not worse than
+/// the layout before ([_worse]), each fork turned up counted as a turn
+/// saved: it may cost a turn or half a tile of height for each, but no more
+/// crossings, rules of step 9 broken, arrows turning twice or three times.
+/// The swaps are weighed all together first — two forks may turn up for
+/// less than each alone —, then, if that is worse, one by one: a costly one
+/// does not keep the others from being taken.
+///
+/// It goes after [_untangle], not into its choice: a swap that keeps the
+/// crossings and turns a fork up would stop the swaps after it that cross
+/// less.
+///
+/// The counts of [_finish]'s fallbacks are those of the layout taken, not
+/// of the orders tried and dropped.
+({GraphLayout kept, GraphLayout? improved}) _trueAbove(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  LayoutOptions options,
+  Set<GNode> below,
+  ({GraphLayout layout, int broken, int crossings}) untangled,
+) {
+  final uncounted = _fallbacks;
+  var best = _finish(g, layers, options, below, untangled);
+  if (!trueAboveEnabled) return best;
+  final targets = {
+    for (final node in g.nodes)
+      if (node.fork case (:final yes, :final no)
+          when middleArrow(yes).kind == EdgeKind.forward &&
+              middleArrow(no).kind == EdgeKind.forward)
+        (middleArrow(no).segs.first.to, middleArrow(yes).segs.first.to),
+  };
+  var order = untangled;
+  var counted = _fallbacks;
+  var counts = _counts(best.improved ?? best.kept);
+  var above = _falseAbove(g, best.improved ?? best.kept);
+
+  // Whether the order of [layers], laid out as [_untangle] lays out orders
+  // in [swapped], turns forks up for what it is worth; it then becomes
+  // [order], its layout [best].
+  bool keep(({GraphLayout layout, int broken, int crossings}) swapped) {
+    if (swapped.broken > order.broken || swapped.crossings > order.crossings) {
+      return false;
+    }
+    _fallbacks = uncounted;
+    final other = _finish(g, layers, options, below, swapped);
+    final tried = _fallbacks;
+    _fallbacks = counted;
+    final now = other.improved ?? other.kept;
+    final up = above - _falseAbove(g, now);
+    final nowCounts = _counts(now);
+    if (up <= 0 || _worse(nowCounts, counts, credit: up)) return false;
+    order = swapped;
+    best = other;
+    _fallbacks = counted = tried;
+    counts = nowCounts;
+    above -= up;
+    return true;
+  }
+
+  // All together: each swap that crosses no more and turns a fork up.
+  var together = order;
+  var fewer = above;
+  final swaps = _swapUp(g, layers, options, below, targets, (swapped) {
+    final now = _falseAbove(g, swapped.layout);
+    if (swapped.broken > together.broken ||
+        swapped.crossings > together.crossings ||
+        now >= fewer) {
+      return false;
+    }
+    together = swapped;
+    fewer = now;
+    return true;
+  });
+  if (swaps.isEmpty || keep(together)) return best;
+  for (final (layer, i) in swaps.reversed) {
+    _swap(layer, i);
+  }
+  _swapUp(g, layers, options, below, targets, keep);
+  return best;
+}
+
+/// The counts of [_finish]'s fallbacks.
+(int, int, int) get _fallbacks =>
+    (earlyTurnFallbacks, levelInputFallbacks, endSnapFallbacks);
+
+set _fallbacks((int, int, int) counts) {
+  final (early, level, snap) = counts;
+  earlyTurnFallbacks = early;
+  levelInputFallbacks = level;
+  endSnapFallbacks = snap;
+}
+
+/// Swaps neighbours of [layers] that are where a fork's `false` and `true`
+/// go — [targets], in that order —, round after round while [take] keeps
+/// one: [take] gets the order after the swap, laid out as [_untangle] lays
+/// out its orders, and the swap is undone unless it returns true. Returns
+/// the swaps kept, in order.
+List<(List<Item>, int)> _swapUp(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  LayoutOptions options,
+  Set<GNode> below,
+  Set<(Item, Item)> targets,
+  bool Function(({GraphLayout layout, int broken, int crossings})) take,
+) {
+  final swaps = <(List<Item>, int)>[];
+  for (var round = 0; round < _untangleRounds; round++) {
+    var turned = false;
+    for (final layer in layers) {
+      for (var i = 0; i + 1 < layer.length; i++) {
+        if (!targets.contains((layer[i], layer[i + 1]))) continue;
+        _swap(layer, i);
+        final layout = _build(g, layers, options, below, turnEarly: false);
+        final swapped = (
+          layout: layout,
+          broken: checkLevel(layout).length,
+          crossings: countCrossings(layout),
+        );
+        if (take(swapped)) {
+          swaps.add((layer, i));
+          turned = true;
+        } else {
+          _swap(layer, i);
+        }
+      }
+    }
+    if (!turned) break;
+  }
+  return swaps;
+}
+
+/// How many forks of [g] ([GNode.fork]) have their `false` above their
+/// `true` in [layout].
+int _falseAbove(LayoutGraph g, GraphLayout layout) {
+  final at = {
+    for (final exit in layout.exits) (exit.node, exit.index): exit.anchor.y,
+  };
+  return g.nodes.where((node) {
+    if (node.fork case (:final yes, :final no)) {
+      return at[(node.id, no.index)]! < at[(node.id, yes.index)]!;
+    }
+    return false;
+  }).length;
 }
 
 /// The length of all arrows of [layout].

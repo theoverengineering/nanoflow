@@ -337,6 +337,21 @@ final class GNode {
   /// The node's exits, in the order their first edges have in the body.
   final List<GExit> exits = [];
 
+  /// The node's exits `true` and `false` when they are its only ones — a
+  /// fork: the condition of an `if`, of a loop, of `a || b` —; `null`
+  /// otherwise. The layout puts `true` above `false` where it can.
+  ({GExit yes, GExit no})? get fork => switch (exits) {
+    [final a, final b] when a.label == 'true' && b.label == 'false' => (
+      yes: a,
+      no: b,
+    ),
+    [final a, final b] when a.label == 'false' && b.label == 'true' => (
+      yes: b,
+      no: a,
+    ),
+    _ => null,
+  };
+
   /// Arrows into the node.
   final List<GEdge> inEdges = [];
 

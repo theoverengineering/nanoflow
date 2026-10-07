@@ -4,7 +4,9 @@ import 'layout_graph.dart';
 /// the walk reached them.
 ///
 /// The walk goes depth first from the start marker, through each node's
-/// exits in order (and each capsule's arrows in order). An arrow into a node
+/// exits in order (and each capsule's arrows in order) — a fork's `true`
+/// before its `false` ([GNode.fork]), whichever the body lists first, so
+/// that the layers start with the way of `true` above. An arrow into a node
 /// that is on the walk's stack is a back arrow; an arrow into its own node
 /// is a loop; every other arrow is forward. Nodes the walk from the start
 /// does not reach are walked from afterwards, in the layout's order, so that
@@ -22,7 +24,11 @@ List<GNode> findBackEdges(LayoutGraph graph) {
     reached.add(node);
     onStack.add(node);
     order.add(node);
-    for (final exit in node.exits) {
+    final exits = switch (node.fork) {
+      (:final yes, :final no) => [yes, no],
+      null => node.exits,
+    };
+    for (final exit in exits) {
       for (final edge in exit.edges) {
         edge.seen = clock++;
         if (edge.to == node) {

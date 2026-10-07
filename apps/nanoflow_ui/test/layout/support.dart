@@ -231,6 +231,17 @@ List<({double x, double from, double to})> turnsOf(EdgePath edge) {
   return turns;
 }
 
+/// The forks of [layout] — nodes whose only exits are `true` and `false` —
+/// whose `false` stands above their `true`, by id.
+List<String> falseAbove(GraphLayout layout) => [
+  for (final node in layout.nodes.keys)
+    if (layout.exits.where((exit) => exit.node == node).toList()
+        case [final a, final b]
+        when {a.label, b.label}.containsAll(['true', 'false']) &&
+            (a.label == 'false') == (a.anchor.y < b.anchor.y))
+      node,
+];
+
 /// How many times the arrows going forward of [layout] change height, and
 /// how many of them twice or more: in the bodies in its frames too.
 ({int turns, int twice}) deepTurns(GraphLayout layout) {

@@ -66,6 +66,26 @@ void main() {
     });
   });
 
+  test('at a fork of true and false the walk takes true first, whichever '
+      'the body lists first', () {
+    final graph = LayoutGraph.ofBody(
+      bodyOf({
+        'start': 'c',
+        'nodes': {
+          'c': {
+            'decide': 'c',
+            'then': {'false': 'x', 'true': 'y'},
+          },
+          'x': {'command': 'x', 'then': 'z'},
+          'y': {'command': 'y', 'then': 'z'},
+          'z': {'command': 'z'},
+        },
+      }),
+    );
+    final order = findBackEdges(graph).map((n) => n.id);
+    expect(order, [startMarker, 'c', 'y', 'z', 'x']);
+  });
+
   test('the walk goes from the start marker through its arrows in order, '
       'then from nodes nothing reached, in the body\'s order', () {
     final graph = LayoutGraph.ofBody(
