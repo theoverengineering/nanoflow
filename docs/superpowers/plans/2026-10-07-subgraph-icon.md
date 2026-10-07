@@ -35,3 +35,22 @@
 - [ ] **Step 3:** Implement design §2 (icon geometry verbatim from the design).
 - [ ] **Step 4:** All tests; layout tests and `reference.json` (counts must not rise); regenerate the goldens with calls or copies and look at each — the call tile has the icon and the count under it, no stack; copies have the stack, `×3`, the icon. Render `tool/render_layout.dart --png` on `test/layout/graphs/release.graph.json` and look.
 - [ ] **Step 5:** Docs; `flutter test`, analyzers, format, `tool/ci.sh`; commit (why: a stack read as «called many times» and meant something else on copies; a call gets its own icon as an effect and a condition have).
+
+---
+
+### Task 2: ƒ on calls and copies, the branch on forks
+
+**Spec:** design, «Поправка» and §2 (both icons' geometry), §4.
+
+The branch icon from Task 1 reads as a fork: it moves to the condition's tile in place of the diamond, and calls and copies get the function icon `ƒ`. In ASCII SVG (28 units, stroke 1.6, round caps and joins): `M5.5 22.5c1.6 0 2.4-1.1 2.8-3.1L11.6 8.6c.5-2.1 1.3-3.1 3-3.1M8 12.5h6M16.5 13.5l6 6M22.5 13.5l-6 6`.
+
+**Files:**
+- Modify: `apps/nanoflow_ui/lib/widgets/icons.dart` (the function icon; the condition's icon is the branch; name the icons by what they stand for), `apps/nanoflow_ui/lib/graph/canvas/node_tile.dart`, `apps/nanoflow_ui/tool/render_layout.dart`, and every other place the condition's diamond is drawn in the app.
+- Docs: `docs/ui-spec.md`, `apps/nanoflow_ui/README.md`, `docs/superpowers/specs/2026-10-03-code-first-design.md` and code comments where a fork is a «ромб»/diamond or a call has the subgraph/branch icon.
+- Test: `node_tile_test.dart` and the tests of other places that draw a condition's icon; goldens.
+
+- [ ] **Step 1: Failing tests.** A call and copies show the function icon; a condition shows the branch, no diamond anywhere a condition's icon is drawn.
+- [ ] **Step 2:** See them fail.
+- [ ] **Step 3:** Implement (geometry verbatim).
+- [ ] **Step 4:** All tests; regenerate the goldens and reference renders with calls, copies or forks and look at each.
+- [ ] **Step 5:** Docs; `flutter test`, analyzers, format, `tool/ci.sh`; commit (why: the branch read as a fork, so forks get it and calls say «function»).
