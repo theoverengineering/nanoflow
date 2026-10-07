@@ -269,12 +269,12 @@ String renderSvg(GraphLayout layout, String caption) {
             'stroke="$_stackBorder" stroke-width="1.5"/>',
           );
         }
-        // The subgraph with the count of the effects in them under it, the
-        // two in the middle of the tile as the app draws them.
+        // ƒ with the count of the effects in them under it, the two in the
+        // middle of the tile as the app draws them.
         final iconTop = c.y - (28 + _countLine) / 2;
         svg
           ..writeln(_tile(t))
-          ..writeln(_lineIcon(Point(c.x - 14, iconTop), _subgraphIcon))
+          ..writeln(_lineIcon(Point(c.x - 14, iconTop), _functionIcon))
           ..writeln(
             _inside(
               Point(c.x, iconTop + 28 + _countLine / 2),
@@ -395,23 +395,28 @@ String _inside(
     '${opacity < 1 ? ' fill-opacity="${_n(opacity)}"' : ''}>'
     '${_escape(text)}</text>';
 
-/// The effects of a call or of a copy under its subgraph: their size, and
-/// the height of their line.
+/// The effects of a call or of a copy under its `ƒ`: their size, and the
+/// height of their line.
 const _countSize = 11.0;
 const _countLine = _countSize * 1.3;
 
+/// An effect's terminal.
 const _effectIcon =
     '<rect x="3.5" y="5.5" width="21" height="17" rx="3.5"/>'
     '<path d="M9 11l3.2 3L9 17M14.5 17.5h4.5"/>';
 
-const _conditionIcon = '<path d="M14 4.5L23.5 14L14 23.5L4.5 14z"/>';
-
-const _subgraphIcon =
+/// The branch: a node on the left branching to two on the right.
+const _conditionIcon =
     '<rect x="3" y="11" width="6" height="6" rx="1.8"/>'
     '<rect x="19" y="4" width="6" height="6" rx="1.8"/>'
     '<rect x="19" y="18" width="6" height="6" rx="1.8"/>'
     '<path d="M9 14 h4 M13 14 V9 a2 2 0 0 1 2 -2 h4 '
     'M13 14 v5 a2 2 0 0 0 2 2 h4"/>';
+
+/// `ƒ` with `×` by it, as in `f(x)`.
+const _functionIcon =
+    '<path d="M5.5 22.5c1.6 0 2.4-1.1 2.8-3.1L11.6 8.6c.5-2.1 1.3-3.1 3-3.1'
+    'M8 12.5h6M16.5 13.5l6 6M22.5 13.5l-6 6"/>';
 
 String _p(Point p) => '${_n(p.x)} ${_n(p.y)}';
 

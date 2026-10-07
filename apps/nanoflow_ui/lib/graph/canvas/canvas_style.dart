@@ -90,7 +90,7 @@ abstract final class CanvasText {
   /// A node's place in the code under its name.
   static final place = _mono.copyWith(fontSize: 10.5);
 
-  /// The effects of a call or of a copy, small under its subgraph icon:
+  /// The effects of a call or of a copy, small under its function icon:
   /// `{ 3 }`. A tile draws them in its look's colour (`TileLook.inside`).
   static final inside = _mono.copyWith(fontSize: 11, color: CanvasColors.icon);
 

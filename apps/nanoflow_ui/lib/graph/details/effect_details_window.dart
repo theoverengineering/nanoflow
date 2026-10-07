@@ -362,8 +362,7 @@ class _NodeBadge extends StatelessWidget {
       ),
       borderRadius: BorderRadius.circular(8),
     ),
-    child: const NodeIcon(
-      fork: false,
+    child: const EffectIcon(
       size: 18,
       color: AppColors.textAreaText,
       strokeWidth: 2,

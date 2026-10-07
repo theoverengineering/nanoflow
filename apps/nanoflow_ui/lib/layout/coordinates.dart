@@ -22,7 +22,7 @@ const double stackStep = 7;
 const double stackInset = 8;
 
 /// How many tiles are stacked behind the tile of [kind]: two behind copies,
-/// for the copies run; none behind a call, one tile with a subgraph on it.
+/// for the copies run; none behind a call, one tile with `ƒ` on it.
 int tilesBehind(NodeKind kind) => switch (kind) {
   NodeKind.copies => 2,
   _ => 0,

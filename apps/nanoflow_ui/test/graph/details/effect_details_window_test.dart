@@ -357,6 +357,14 @@ void main() {
         textIn(tester, find.byKey(NodeColumn.pathKey)),
         allOf(startsWith('…'), endsWith(p.basename(inspectEffectPath))),
       );
+      // The top bar has the effect's terminal by its name.
+      expect(
+        find.descendant(
+          of: find.byType(EffectDetailsWindow),
+          matching: find.byType(EffectIcon),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('copies the place, to go to it in an editor', (tester) async {

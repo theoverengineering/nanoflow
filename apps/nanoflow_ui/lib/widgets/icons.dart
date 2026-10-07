@@ -273,61 +273,47 @@ class LinkIcon extends StatelessWidget {
   );
 }
 
-/// An effect's terminal, or a condition's diamond when [fork]. 28 units.
-class NodeIcon extends StatelessWidget {
-  const NodeIcon({
+/// An effect's terminal. 28 units.
+class EffectIcon extends StatelessWidget {
+  const EffectIcon({
     super.key,
-    required this.fork,
     required this.size,
     required this.color,
     this.strokeWidth = 1.6,
   });
 
-  final bool fork;
   final double size;
   final Color color;
   final double strokeWidth;
 
   @override
   Widget build(BuildContext context) => _LineIcon(
-    kind: fork ? 'condition' : 'effect',
+    kind: 'effect',
     units: 28,
     size: size,
     color: color,
     strokeWidth: strokeWidth,
-    draw: fork ? _fork : _terminal,
+    draw: (canvas, stroke) => canvas
+      ..drawRRect(
+        RRect.fromLTRBR(3.5, 5.5, 24.5, 22.5, const Radius.circular(3.5)),
+        stroke,
+      )
+      ..drawPath(
+        Path()
+          ..moveTo(9, 11)
+          ..lineTo(12.2, 14)
+          ..lineTo(9, 17)
+          ..moveTo(14.5, 17.5)
+          ..lineTo(19, 17.5),
+        stroke,
+      ),
   );
-
-  static void _fork(Canvas canvas, Paint stroke) => canvas.drawPath(
-    Path()
-      ..moveTo(14, 4.5)
-      ..lineTo(23.5, 14)
-      ..lineTo(14, 23.5)
-      ..lineTo(4.5, 14)
-      ..close(),
-    stroke,
-  );
-
-  static void _terminal(Canvas canvas, Paint stroke) => canvas
-    ..drawRRect(
-      RRect.fromLTRBR(3.5, 5.5, 24.5, 22.5, const Radius.circular(3.5)),
-      stroke,
-    )
-    ..drawPath(
-      Path()
-        ..moveTo(9, 11)
-        ..lineTo(12.2, 14)
-        ..lineTo(9, 17)
-        ..moveTo(14.5, 17.5)
-        ..lineTo(19, 17.5),
-      stroke,
-    );
 }
 
-/// A subgraph: a node on the left branching to two on the right — the
-/// effects folded in a call or in copies. 28 units, as [NodeIcon]'s.
-class SubgraphIcon extends StatelessWidget {
-  const SubgraphIcon({
+/// A condition's branch: a node on the left branching to two on the right.
+/// 28 units.
+class ConditionIcon extends StatelessWidget {
+  const ConditionIcon({
     super.key,
     required this.size,
     required this.color,
@@ -342,7 +328,7 @@ class SubgraphIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _LineIcon(
-    kind: 'subgraph',
+    kind: 'condition',
     units: 28,
     size: size,
     color: color,
@@ -372,5 +358,46 @@ class SubgraphIcon extends StatelessWidget {
           ..relativeLineTo(4, 0),
         stroke,
       ),
+  );
+}
+
+/// A function, `ƒ` with `×` by it as in `f(x)`: a call, or copies of a
+/// body, with the effects folded in it. 28 units.
+class FunctionIcon extends StatelessWidget {
+  const FunctionIcon({
+    super.key,
+    required this.size,
+    required this.color,
+    this.strokeWidth = 1.6,
+  });
+
+  final double size;
+  final Color color;
+  final double strokeWidth;
+
+  @override
+  Widget build(BuildContext context) => _LineIcon(
+    kind: 'function',
+    units: 28,
+    size: size,
+    color: color,
+    strokeWidth: strokeWidth,
+    draw: (canvas, stroke) => canvas.drawPath(
+      Path()
+        // The hook of the ƒ.
+        ..moveTo(5.5, 22.5)
+        ..relativeCubicTo(1.6, 0, 2.4, -1.1, 2.8, -3.1)
+        ..lineTo(11.6, 8.6)
+        ..relativeCubicTo(.5, -2.1, 1.3, -3.1, 3, -3.1)
+        // Its bar.
+        ..moveTo(8, 12.5)
+        ..relativeLineTo(6, 0)
+        // The ×.
+        ..moveTo(16.5, 13.5)
+        ..relativeLineTo(6, 6)
+        ..moveTo(22.5, 13.5)
+        ..relativeLineTo(-6, 6),
+      stroke,
+    ),
   );
 }

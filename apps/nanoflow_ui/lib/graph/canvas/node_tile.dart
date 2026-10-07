@@ -25,10 +25,10 @@ import 'tile_marks.dart';
 /// A node on the canvas (docs/ui-spec.md «Граф», spec §9 «Граф», «Эффекты на
 /// графе»): the tile of its kind with its name and place under it, a name
 /// cut short whole in a tooltip. An effect's tile has a terminal on it, a
-/// condition's a diamond; a call's a subgraph with the effects of the
-/// function small under it (`{ 3 }`); copies' is a stack of three tiles, the
-/// subgraph on it with the effects of a copy under it, and how many copies
-/// ran across the top right of the stack (`×3`; `×n` without a session); the
+/// condition's a branch; a call's `ƒ`, a function, with the effects of the
+/// function small under it (`{ 3 }`); copies' is a stack of three tiles, `ƒ`
+/// on it with the effects of a copy under it, and how many copies ran
+/// across the top right of the stack (`×3`; `×n` without a session); the
 /// start and end markers are dashed and say so.
 ///
 /// With a session, the tile is framed in the state of the effects on it, its
@@ -311,22 +311,17 @@ class NodeTile extends StatelessWidget {
             ),
           ),
         );
-      case NodeKind.effect || NodeKind.condition:
-        return _framed(
-          look,
-          NodeIcon(
-            fork: node.kind == NodeKind.condition,
-            size: _iconSize,
-            color: look.icon,
-          ),
-        );
+      case NodeKind.effect:
+        return _framed(look, EffectIcon(size: _iconSize, color: look.icon));
+      case NodeKind.condition:
+        return _framed(look, ConditionIcon(size: _iconSize, color: look.icon));
       case NodeKind.call || NodeKind.copies:
         return _framed(
           look,
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SubgraphIcon(size: _iconSize, color: look.icon),
+              FunctionIcon(size: _iconSize, color: look.icon),
               Text(
                 inside!,
                 style: CanvasText.inside.copyWith(color: look.inside),

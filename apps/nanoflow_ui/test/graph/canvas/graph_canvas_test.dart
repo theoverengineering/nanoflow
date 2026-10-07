@@ -97,12 +97,15 @@ void main() {
       expect(_chips(tester), containsAll(['true', 'false']));
     });
 
-    testWidgets('draws a call as a subgraph with its effects counted, copies '
-        'as a stack of them with the effects of a copy and ×n', (tester) async {
+    testWidgets('draws a call as ƒ with its effects counted, copies as a '
+        'stack of them with the effects of a copy and ×n, conditions as the '
+        'branch', (tester) async {
       await pumpCanvas(tester, modelOf());
       expect(find.text('publish()'), findsOneWidget);
       expect(find.text('{ 3 }'), findsOneWidget);
-      expect(find.byType(SubgraphIcon), findsOneWidget);
+      expect(find.byType(FunctionIcon), findsOneWidget);
+      // for pkg in plan.packages, switch (plan.channel), pkg.isPublic.
+      expect(find.byType(ConditionIcon), findsNWidgets(3));
       expect(_chips(tester), containsAll(['each', 'done', 'Channel.dev']));
 
       await pumpCanvas(
@@ -116,7 +119,7 @@ void main() {
       );
       expect(find.text('pkg in packages'), findsOneWidget);
       expect(find.text('{ 3 }'), findsOneWidget);
-      expect(find.byType(SubgraphIcon), findsOneWidget);
+      expect(find.byType(FunctionIcon), findsOneWidget);
       expect(find.text('×n'), findsOneWidget);
     });
 

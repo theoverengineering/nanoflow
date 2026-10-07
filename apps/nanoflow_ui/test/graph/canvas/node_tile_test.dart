@@ -112,12 +112,13 @@ void main() {
           box.localToGlobal(Offset.zero) & box.size,
   ];
 
-  /// Checks that [tile] has the subgraph icon on it, no other, with the
+  /// Checks that [tile] has the function icon on it, no other, with the
   /// effects [count] under it, smaller than the name and muted: the two of
   /// them in the middle of the tile. Returns where the icon is.
-  Rect expectSubgraph(WidgetTester tester, Rect tile, String count) {
-    expect(find.byType(NodeIcon), findsNothing);
-    final iconFinder = find.byType(SubgraphIcon);
+  Rect expectFunction(WidgetTester tester, Rect tile, String count) {
+    expect(find.byType(EffectIcon), findsNothing);
+    expect(find.byType(ConditionIcon), findsNothing);
+    final iconFinder = find.byType(FunctionIcon);
     expect(iconFinder, findsOneWidget);
     final icon = tester.getRect(iconFinder);
     expect(icon.size, const Size.square(28));
@@ -135,7 +136,7 @@ void main() {
     );
     final style = tester.widget<Text>(effects).style!;
     expect(style.fontSize, lessThan(CanvasText.name.fontSize!));
-    final iconColor = tester.widget<SubgraphIcon>(iconFinder).color;
+    final iconColor = tester.widget<FunctionIcon>(iconFinder).color;
     expect(
       Color.alphaBlend(style.color!, CanvasColors.tileFill).computeLuminance(),
       lessThan(iconColor.computeLuminance()),
@@ -148,7 +149,9 @@ void main() {
     tester,
   ) async {
     await pumpTile(tester, 'effect');
-    expect(tester.widget<NodeIcon>(find.byType(NodeIcon)).fork, isFalse);
+    expect(find.byType(EffectIcon), findsOneWidget);
+    expect(find.byType(ConditionIcon), findsNothing);
+    expect(find.byType(FunctionIcon), findsNothing);
     expect(find.text('collect'), findsOneWidget);
     expect(find.text('a.dart:3'), findsOneWidget);
     expect(stackOf(tester), isEmpty);
@@ -158,19 +161,25 @@ void main() {
     );
   });
 
-  testWidgets('a condition: a diamond, its label as its name', (tester) async {
+  testWidgets('a condition: the branch in the middle of its tile, its label '
+      'as its name', (tester) async {
     await pumpTile(tester, 'if');
-    expect(tester.widget<NodeIcon>(find.byType(NodeIcon)).fork, isTrue);
+    final icon = find.byType(ConditionIcon);
+    expect(icon, findsOneWidget);
+    expect(find.byType(EffectIcon), findsNothing);
+    expect(find.byType(FunctionIcon), findsNothing);
+    expect(tester.getSize(icon), const Size.square(28));
+    expect(tester.getCenter(icon), tileOf(tester, 'if').center);
     expect(find.text('ok'), findsOneWidget);
   });
 
-  testWidgets('a call: one tile, nothing stacked behind it, a subgraph on '
-      'it with the effects of its function under it, + in its top right '
-      'corner clear of them, its name with ()', (tester) async {
+  testWidgets('a call: one tile, nothing stacked behind it, ƒ on it with the '
+      'effects of its function under it, + in its top right corner clear of '
+      'them, its name with ()', (tester) async {
     await pumpTile(tester, 'call', onExpand: (_) {});
     final tile = tileOf(tester, 'call');
     expect(stackOf(tester), isEmpty);
-    final icon = expectSubgraph(tester, tile, '{ 1 }');
+    final icon = expectFunction(tester, tile, '{ 1 }');
     final toggle = tester.getRect(find.byKey(FrameToggle.expandKeyOf('call')));
     expect(toggle.right, moreOrLessEquals(tile.right - 4));
     expect(toggle.top, moreOrLessEquals(tile.top + 4));
@@ -178,15 +187,15 @@ void main() {
     expect(find.text('f()'), findsOneWidget);
   });
 
-  testWidgets('copies: two tiles stacked behind, a subgraph on them with the '
-      'effects of a copy under it as on a call, ×n across the top right of '
-      'the stack, their label', (tester) async {
+  testWidgets('copies: two tiles stacked behind, ƒ on them with the effects '
+      'of a copy under it as on a call, ×n across the top right of the '
+      'stack, their label', (tester) async {
     await pumpTile(tester, 'copies', onExpand: (_) {});
     final tile = tileOf(tester, 'copies');
     final stack = stackOf(tester);
     expect(stack, hasLength(2));
     expect(stack.first.top, lessThan(stack.last.top));
-    final icon = expectSubgraph(tester, tile, '{ 2 }');
+    final icon = expectFunction(tester, tile, '{ 2 }');
     final toggle = tester.getRect(
       find.byKey(FrameToggle.expandKeyOf('copies')),
     );
@@ -335,7 +344,7 @@ void main() {
         tester.widget<StateBadge>(find.byType(StateBadge)).mark,
         BadgeMark.check,
       );
-      expect(tester.widget<NodeIcon>(find.byType(NodeIcon)).fork, isTrue);
+      expect(find.byType(ConditionIcon), findsOneWidget);
       expect(find.text('2×'), findsOneWidget);
 
       // In the body of copies, all shown: no count over it.
@@ -382,7 +391,7 @@ void main() {
       expect(find.text('×3'), findsOneWidget);
       expect(find.text('4×'), findsNothing);
       expect(
-        tester.widget<SubgraphIcon>(find.byType(SubgraphIcon)).color,
+        tester.widget<FunctionIcon>(find.byType(FunctionIcon)).color,
         TileLook.running.icon,
       );
       expect(

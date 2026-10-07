@@ -150,11 +150,10 @@ enum NodeKind {
   /// A condition the flow goes one of several ways on.
   condition,
 
-  /// A call of a function with effects: a tile with a subgraph on it.
+  /// A call of a function with effects: a tile with `ƒ` on it.
   call,
 
-  /// A body run in copies side by side: a stack of tiles with a subgraph on
-  /// them.
+  /// A body run in copies side by side: a stack of tiles with `ƒ` on them.
   copies,
 }
 
@@ -188,7 +187,7 @@ String _functionName(List<String> ids, Map<String, GraphFunction> functions) {
   return name.substring(name.lastIndexOf('.') + 1);
 }
 
-/// What is written on the tile of [node] under its subgraph icon, `null` on
+/// What is written on the tile of [node] under its function icon, `null` on
 /// an effect or a condition: how many effects can run in a call or copies
 /// ([reachableEffects]). `{ 3 }` on a call, the effects of its function;
 /// `{ 1–2 }` for implementations of a method with different counts; `{ ? }`
@@ -313,7 +312,7 @@ final class GNode {
   final String? place;
 
   /// What is written on the tile: a marker's word instead of an icon, the
-  /// effects of a call or copies under their subgraph icon.
+  /// effects of a call or copies under their function icon.
   final String? inside;
 
   /// Whether this is the start marker or an end marker.

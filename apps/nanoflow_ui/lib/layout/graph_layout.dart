@@ -74,7 +74,7 @@ final class NodeBox {
   final String? place;
 
   /// What is written on the tile: `start`, `end` instead of an icon; the
-  /// effects of a call or of a copy under its subgraph icon, `{ 3 }`.
+  /// effects of a call or of a copy under its function icon, `{ 3 }`.
   final String? inside;
 
   /// The node's layer, 0 for the leftmost.
