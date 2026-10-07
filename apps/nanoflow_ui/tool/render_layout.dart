@@ -250,10 +250,16 @@ String renderSvg(GraphLayout layout, String caption) {
           ..writeln(
             _inside(c, node.inside!, _markerText, size: 12, mono: false),
           );
-      case NodeKind.effect ||
-          NodeKind.condition ||
-          NodeKind.call ||
-          NodeKind.copies:
+      case NodeKind.effect || NodeKind.condition:
+        svg
+          ..writeln(_tile(t))
+          ..writeln(
+            _lineIcon(
+              Point(c.x - 14, c.y - 14),
+              node.kind == NodeKind.condition ? _conditionIcon : _effectIcon,
+            ),
+          );
+      case NodeKind.call || NodeKind.copies:
         for (var k = tilesBehind(node.kind); k >= 1; k--) {
           svg.writeln(
             '<rect x="${_n(t.left + k * stackInset + 0.75)}" '
@@ -263,41 +269,22 @@ String renderSvg(GraphLayout layout, String caption) {
             'stroke="$_stackBorder" stroke-width="1.5"/>',
           );
         }
-        svg.writeln(
-          '<rect x="${_n(t.left + 1)}" y="${_n(t.top + 1)}" '
-          'width="${_n(t.width - 2)}" height="${_n(t.height - 2)}" rx="11" '
-          'fill="$_tileFill" stroke="$_tileBorder" stroke-width="2"/>',
-        );
-        // On a call or copies, the subgraph with the count of the effects in
-        // them under it, the two in the middle of the tile as the app draws
-        // them; an effect's or a condition's icon alone in the middle.
-        final subgraph =
-            node.kind == NodeKind.call || node.kind == NodeKind.copies;
-        final count = subgraph ? node.inside : null;
-        final iconTop = count == null ? c.y - 14 : c.y - (28 + _countLine) / 2;
-        svg.writeln(
-          '<g transform="translate(${_n(c.x - 14)} ${_n(iconTop)})" '
-          'fill="none" stroke="$_icon" stroke-width="1.6" '
-          'stroke-linecap="round" stroke-linejoin="round">'
-          '${switch (node.kind) {
-            NodeKind.condition => _conditionIcon,
-            NodeKind.call || NodeKind.copies => _subgraphIcon,
-            _ => _effectIcon,
-          }}'
-          '</g>',
-        );
-        if (count != null) {
-          svg.writeln(
+        // The subgraph with the count of the effects in them under it, the
+        // two in the middle of the tile as the app draws them.
+        final iconTop = c.y - (28 + _countLine) / 2;
+        svg
+          ..writeln(_tile(t))
+          ..writeln(_lineIcon(Point(c.x - 14, iconTop), _subgraphIcon))
+          ..writeln(
             _inside(
               Point(c.x, iconTop + 28 + _countLine / 2),
-              count,
+              node.inside!,
               _icon,
               size: _countSize,
               mono: true,
               opacity: 0.7,
             ),
           );
-        }
         if (node.kind == NodeKind.copies) {
           // The badge across the top right of the stack.
           const width = 24.0;
@@ -372,6 +359,18 @@ String renderSvg(GraphLayout layout, String caption) {
     ..writeln('</svg>');
   return svg.toString();
 }
+
+/// The tile [t] of an effect, a condition, a call or copies.
+String _tile(Rect t) =>
+    '<rect x="${_n(t.left + 1)}" y="${_n(t.top + 1)}" '
+    'width="${_n(t.width - 2)}" height="${_n(t.height - 2)}" rx="11" '
+    'fill="$_tileFill" stroke="$_tileBorder" stroke-width="2"/>';
+
+/// A tile's 28-unit line icon drawn by [shapes], its top left at [at].
+String _lineIcon(Point at, String shapes) =>
+    '<g transform="translate(${_n(at.x)} ${_n(at.y)})" '
+    'fill="none" stroke="$_icon" stroke-width="1.6" '
+    'stroke-linecap="round" stroke-linejoin="round">$shapes</g>';
 
 String _chip(Rect rect, String text, String colour, double padding) =>
     '<rect x="${_n(rect.left)}" y="${_n(rect.top)}" '

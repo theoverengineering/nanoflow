@@ -386,6 +386,10 @@ void main() {
         TileLook.running.icon,
       );
       expect(
+        tester.widget<Text>(find.text('{ 2 }')).style!.color,
+        TileLook.running.inside,
+      );
+      expect(
         tester.widget<Text>(find.text('×3')).style!.color,
         CanvasColors.badgeText,
       );

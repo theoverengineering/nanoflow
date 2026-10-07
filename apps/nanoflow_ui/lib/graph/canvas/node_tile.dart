@@ -311,43 +311,45 @@ class NodeTile extends StatelessWidget {
             ),
           ),
         );
-      case NodeKind.effect ||
-          NodeKind.condition ||
-          NodeKind.call ||
-          NodeKind.copies:
-        return DecoratedBox(
-          key: tileKeyOf(id),
-          decoration: BoxDecoration(
-            color: look.fill,
-            border: Border.fromBorderSide(
-              BorderSide(color: look.border, width: look.borderWidth),
-            ),
-            borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+      case NodeKind.effect || NodeKind.condition:
+        return _framed(
+          look,
+          NodeIcon(
+            fork: node.kind == NodeKind.condition,
+            size: _iconSize,
+            color: look.icon,
           ),
-          child: Center(
-            child: switch (node.kind) {
-              NodeKind.call || NodeKind.copies => Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SubgraphIcon(size: _iconSize, color: look.icon),
-                  if (inside != null)
-                    Text(
-                      inside,
-                      style: CanvasText.inside.copyWith(color: look.inside),
-                      textScaler: TextScaler.noScaling,
-                    ),
-                ],
+        );
+      case NodeKind.call || NodeKind.copies:
+        return _framed(
+          look,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SubgraphIcon(size: _iconSize, color: look.icon),
+              Text(
+                inside!,
+                style: CanvasText.inside.copyWith(color: look.inside),
+                textScaler: TextScaler.noScaling,
               ),
-              _ => NodeIcon(
-                fork: node.kind == NodeKind.condition,
-                size: _iconSize,
-                color: look.icon,
-              ),
-            },
+            ],
           ),
         );
     }
   }
+
+  /// The tile filled and framed in [look], [content] in its middle.
+  Widget _framed(TileLook look, Widget content) => DecoratedBox(
+    key: tileKeyOf(id),
+    decoration: BoxDecoration(
+      color: look.fill,
+      border: Border.fromBorderSide(
+        BorderSide(color: look.border, width: look.borderWidth),
+      ),
+      borderRadius: const BorderRadius.all(Radius.circular(_radius)),
+    ),
+    child: Center(child: content),
+  );
 
   void _tapped(SerialTapUpDetails details) {
     switch (details.count) {
