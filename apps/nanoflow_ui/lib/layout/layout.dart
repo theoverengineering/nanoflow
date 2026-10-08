@@ -247,6 +247,9 @@ bool _paidFor(_Counts now, _Counts was) {
       for (final node in g.nodes)
         if (order.below.contains(node.id)) node,
     };
+    for (final edge in g.edges) {
+      edge.over = order.over.contains(edge.index);
+    }
     for (final (i, layer) in layers.indexed) {
       final rank = {for (final (k, key) in order.layers[i].indexed) key: k};
       layer.sort((a, b) => rank[_key(a)]!.compareTo(rank[_key(b)]!));
@@ -289,6 +292,24 @@ bool _paidFor(_Counts now, _Counts was) {
       below.remove(node);
     }
   }
+  // A back arrow runs over the graph when that crosses less, breaking no
+  // rule of step 9 more often.
+  var crossings = countCrossings(layout);
+  var broken = checkLevel(layout).length;
+  for (final edge in g.edges) {
+    if (edge.kind != EdgeKind.back) continue;
+    edge.over = true;
+    final over = _build(g, layers, options, below, turnEarly: false);
+    final count = countCrossings(over);
+    final problems = checkLevel(over).length;
+    if (count < crossings && problems <= broken) {
+      layout = over;
+      crossings = count;
+      broken = problems;
+    } else {
+      edge.over = false;
+    }
+  }
   final (:kept, :improved) = _finish(
     g,
     layers,
@@ -304,13 +325,22 @@ bool _paidFor(_Counts now, _Counts was) {
         for (final layer in layers) [for (final item in layer) _key(item)],
       ],
       below: {for (final node in below) node.id},
+      over: {
+        for (final edge in g.edges)
+          if (edge.over) edge.index,
+      },
     ),
   );
 }
 
-/// The order of a layout's layers, by [_key], and the nodes whose loops go
-/// under their tiles, by id.
-typedef _Order = ({List<List<Object>> layers, Set<String> below});
+/// The order of a layout's layers, by [_key], the nodes whose loops go
+/// under their tiles, by id, and the back arrows that run over the graph,
+/// by index.
+typedef _Order = ({
+  List<List<Object>> layers,
+  Set<String> below,
+  Set<int> over,
+});
 
 /// What names [item] in every layout of its body: its node's id, or its
 /// arrow's index — a string never equal to an int.
@@ -669,16 +699,22 @@ GraphLayout? _buildWith(
     for (final node in g.nodes)
       node: frameOf(node, ports[node]!, node.item.y, options),
   };
+  var top = double.infinity;
   var bottom = double.negativeInfinity;
   for (final layer in layers) {
     for (final item in layer) {
-      final down = item.y + extentOf(item, ports, options).down;
-      if (down > bottom) bottom = down;
+      final (:up, :down) = extentOf(item, ports, options);
+      if (item.y - up < top) top = item.y - up;
+      if (item.y + down > bottom) bottom = item.y + down;
     }
   }
+  // Back arrows run under the graph, or over it: their first lane a lane
+  // offset off it, the next a lane gap further.
   final depth = {
     for (final MapEntry(key: edge, value: level) in levels.entries)
-      edge: bottom + options.backLaneOffset + (level - 1) * options.backLaneGap,
+      edge: edge.over
+          ? top - options.backLaneOffset - (level - 1) * options.backLaneGap
+          : bottom + options.backLaneOffset + (level - 1) * options.backLaneGap,
   };
   final lanes = assignLanes(
     layers,

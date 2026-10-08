@@ -412,6 +412,9 @@ final class GEdge {
 
   EdgeKind kind = EdgeKind.forward;
 
+  /// Whether a back arrow runs over the graph instead of under it.
+  bool over = false;
+
   /// When the walk of step 1 looked at the arrow.
   int seen = 0;
 

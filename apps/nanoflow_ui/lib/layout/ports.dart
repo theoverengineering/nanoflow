@@ -46,22 +46,25 @@ final class Ports {
 /// Step 5: the order of every node's exits and inputs, for the current order
 /// of the layers.
 ///
-/// Exits, top to bottom: loops over the tile (nested), forward arrows (a
-/// ladder: by where they go in the next layer), back arrows (nested: the
-/// higher the exit, the lower its lane), loops under the tile (nested). A
-/// capsule takes its place by its middle arrow.
+/// Exits, top to bottom: loops over the tile (nested), back arrows over the
+/// graph ([GEdge.over]), forward arrows (a ladder: by where they go in the
+/// next layer), back arrows under the graph, loops under the tile (nested).
+/// Back arrows nest on either side: the higher the exit, the lower its
+/// lane. A capsule takes its place by its middle arrow.
 ///
 /// A fork's `true` stands above its `false` whatever kind their arrows are
 /// ([GNode.fork]): a loop of `true` goes over the tile, of `false` under it,
 /// whatever [below] says.
 ///
-/// Inputs, top to bottom: loops over the tile (nested), forward arrows (a
-/// ladder: by where they come from in the layer before), back arrows (nested:
-/// the lower the lane, the higher the input), loops under the tile (nested).
+/// Inputs, top to bottom: loops over the tile (nested), back arrows over
+/// the graph, forward arrows (a ladder: by where they come from in the layer
+/// before), back arrows under the graph, loops under the tile (nested). Back
+/// arrows nest on either side: the lower the lane, the higher the input.
 ///
 /// [below] are the nodes whose loops go under the tile. Returns the ports of
-/// every node, and sets the lane levels of back arrows in [backLevels]: 1 is
-/// the lane nearest the graph, a wider arrow runs lower.
+/// every node, and sets the lane levels of back arrows in [backLevels], on
+/// each side of the graph: 1 is the lane nearest the graph, a wider arrow
+/// runs further off it.
 Map<GNode, Ports> assignPorts(
   LayoutGraph graph,
   LayoutOptions options, {
@@ -155,15 +158,17 @@ void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
   }
   final loops = <GExit>[];
   final forward = <GExit>[];
+  final over = <GExit>[];
   final back = <GExit>[];
   for (final exit in port.node.exits) {
-    switch (middleArrow(exit).kind) {
+    final arrow = middleArrow(exit);
+    switch (arrow.kind) {
       case EdgeKind.loop:
         loops.add(exit);
       case EdgeKind.forward:
         forward.add(exit);
       case EdgeKind.back:
-        back.add(exit);
+        (arrow.over ? over : back).add(exit);
     }
   }
   forward.sort((a, b) {
@@ -171,15 +176,22 @@ void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
     final y = middleArrow(b).segs.first.to.order;
     return x != y ? x.compareTo(y) : a.index.compareTo(b.index);
   });
-  back.sort((a, b) {
+  // Back arrows nest on either side: under the graph the higher exit goes
+  // further back, round the others; over it, the lower one does.
+  int backOrder(GExit a, GExit b, {required bool over}) {
     final x = middleArrow(a).to;
     final y = middleArrow(b).to;
-    if (x.layer != y.layer) return x.layer.compareTo(y.layer);
+    if (x.layer != y.layer) {
+      return over ? y.layer.compareTo(x.layer) : x.layer.compareTo(y.layer);
+    }
     if (x.item.order != y.item.order) {
       return x.item.order.compareTo(y.item.order);
     }
     return a.index.compareTo(b.index);
-  });
+  }
+
+  back.sort((a, b) => backOrder(a, b, over: false));
+  over.sort((a, b) => backOrder(a, b, over: true));
   // Loops nest: the first declared is the innermost, nearest the tile's top
   // over it and nearest the bottom under it.
   final loopEdges = [
@@ -190,6 +202,7 @@ void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
   (below ? port.loopsBelow : port.loopsAbove).addAll(loopEdges);
   port.slots.addAll([
     if (!below) ...loops,
+    ...over,
     ...forward,
     ...back,
     if (below) ...loops.reversed,
@@ -215,23 +228,37 @@ void _placeExits(Ports port, LayoutOptions options) {
   }
 }
 
-Map<GEdge, int> _backLevels(LayoutGraph graph, Map<GNode, Ports> ports) {
-  final backs = [
-    for (final edge in graph.edges)
-      if (edge.kind == EdgeKind.back) edge,
-  ];
-  // Narrow arrows take the upper lanes. Of two equally wide arrows, the one
-  // leaving lower takes the upper lane, so that their turns nest.
+Map<GEdge, int> _backLevels(LayoutGraph graph, Map<GNode, Ports> ports) => {
+  for (final over in [false, true])
+    ..._sideLevels(
+      [
+        for (final edge in graph.edges)
+          if (edge.kind == EdgeKind.back && edge.over == over) edge,
+      ],
+      ports,
+      over: over,
+    ),
+};
+
+/// The lane levels of [backs], back arrows on one side of the graph: under
+/// it, or [over] it.
+Map<GEdge, int> _sideLevels(
+  List<GEdge> backs,
+  Map<GNode, Ports> ports, {
+  required bool over,
+}) {
+  // Narrow arrows take the lanes nearest the graph. Of two equally wide
+  // arrows, the one leaving nearer the lanes' side — lower under the graph,
+  // higher over it — takes the nearer lane, so that their turns nest.
   int span(GEdge e) => e.from.layer - e.to.layer;
+  int nearer(num a, num b) => over ? a.compareTo(b) : b.compareTo(a);
   backs.sort((a, b) {
     if (span(a) != span(b)) return span(a).compareTo(span(b));
     if (a.from.layer != b.from.layer) {
       return b.from.layer.compareTo(a.from.layer);
     }
-    if (a.from != b.from) return b.from.item.order.compareTo(a.from.item.order);
-    final at = ports[a.from]!.exitAt[a]!;
-    final bt = ports[b.from]!.exitAt[b]!;
-    return bt.compareTo(at);
+    if (a.from != b.from) return nearer(a.from.item.order, b.from.item.order);
+    return nearer(ports[a.from]!.exitAt[a]!, ports[b.from]!.exitAt[b]!);
   });
   final levels = <GEdge, int>{};
   for (final edge in backs) {
@@ -256,13 +283,14 @@ void _orderInputs(
   LayoutOptions options,
 ) {
   final forward = <GEdge>[];
+  final over = <GEdge>[];
   final back = <GEdge>[];
   for (final edge in port.node.inEdges) {
     switch (edge.kind) {
       case EdgeKind.forward:
         forward.add(edge);
       case EdgeKind.back:
-        back.add(edge);
+        (edge.over ? over : back).add(edge);
       case EdgeKind.loop:
         break;
     }
@@ -281,13 +309,20 @@ void _orderInputs(
     final sy = sourceY(b);
     return sx != sy ? sx.compareTo(sy) : a.index.compareTo(b.index);
   });
-  back.sort((a, b) {
+  // On either side the lower lane comes in higher: under the graph the
+  // outer arrow, over it the inner one.
+  int lowerLaneFirst(GEdge a, GEdge b, {required bool over}) {
     final x = backLevels[a]!;
     final y = backLevels[b]!;
-    return x != y ? y.compareTo(x) : a.index.compareTo(b.index);
-  });
+    if (x == y) return a.index.compareTo(b.index);
+    return over ? x.compareTo(y) : y.compareTo(x);
+  }
+
+  back.sort((a, b) => lowerLaneFirst(a, b, over: false));
+  over.sort((a, b) => lowerLaneFirst(a, b, over: true));
   port.inputs.addAll([
     ...port.loopsAbove,
+    ...over,
     ...forward,
     ...back,
     ...port.loopsBelow.reversed,

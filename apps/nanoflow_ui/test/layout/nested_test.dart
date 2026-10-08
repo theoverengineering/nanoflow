@@ -704,42 +704,30 @@ void main() {
         expect(checkLayout(layout), isEmpty);
       });
 
-      test('$view: every arrow to the end turns to its input\'s height '
-          'where it first changes height and runs straight into the bar; '
-          'the true of !answer.goesOn after the second ask: refused, a fork '
-          'with true above false, first goes over declare, the node at its '
-          'exit\'s height in the layer after', () {
+      test('$view: every arrow to the end runs straight into the bar, none '
+          'jogging just before it; it turns once, to its input\'s height, '
+          'but for the ways out of the switch\'s commit or stop, of rounds '
+          '>= maxRounds and of ask: dispute, which go down round the nodes '
+          'under the switch and come up to it', () {
         final bar = body.nodes[endMarker]!.bar!;
         final arrows = body.edges.where((e) => e.to == endMarker).toList();
         expect(arrows, hasLength(8));
-        // The node standing level with the arrow's exit in the next layer,
-        // which its first turn goes over.
-        const around = {'14': '15'};
+        expect(jogsBeforeEnd(body), isEmpty);
+        const round = {'10#2', '17#1', '18#0'};
         for (final edge in arrows) {
           final name = '${edge.from}#${edge.exitIndex}';
           final turns = turnsOf(edge);
-          expect(turns.last.to, edge.points.last.y, reason: name);
           expect(bar.inputs, contains(edge.points.last.y), reason: name);
-          final obstacle = around[edge.from];
-          if (obstacle == null) {
-            expect(turns, hasLength(1), reason: '$name: ${edge.points}');
-            continue;
+          if (turns.isEmpty) continue;
+          expect(turns.last.to, edge.points.last.y, reason: name);
+          expect(
+            turns,
+            hasLength(round.contains(name) ? 2 : 1),
+            reason: '$name: ${edge.points}',
+          );
+          if (round.contains(name)) {
+            expect(turns.first.to, greaterThan(turns.last.to), reason: name);
           }
-          expect(turns, hasLength(2), reason: '$name: ${edge.points}');
-          final from = body.nodes[edge.from]!;
-          final node = body.nodes[obstacle]!;
-          final exit = edge.points.first.y;
-          expect(node.layer, from.layer + 1, reason: name);
-          expect(
-            node.tile.top < exit && exit < node.tile.bottom,
-            isTrue,
-            reason: '$name: $obstacle stands at its exit\'s height',
-          );
-          expect(
-            turns.first.to,
-            lessThan(node.tile.top),
-            reason: '$name: goes over $obstacle',
-          );
         }
       });
     }
@@ -1226,7 +1214,7 @@ void main() {
     expect(level.bounds.height, lessThanOrEqualTo(1202));
   });
 
-  for (final (seed, base) in [(603, 2442.0), (870, 3083.0)]) {
+  for (final (seed, base) in [(603, 2436.0), (870, 3087.0)]) {
     test('random body $seed nested: it grows taller for nodes standing where '
         'more arrows come in level only by half a tile for each turn saved, '
         'counted twice for an arrow turning twice no more', () {

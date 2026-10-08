@@ -1,4 +1,8 @@
+import 'package:nanoflow_ui/layout/cycles.dart';
+import 'package:nanoflow_ui/layout/layers.dart';
 import 'package:nanoflow_ui/layout/layout.dart';
+import 'package:nanoflow_ui/layout/layout_graph.dart';
+import 'package:nanoflow_ui/layout/ports.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
@@ -63,6 +67,64 @@ void main() {
       'go-on',
       'post',
     ]);
+  });
+
+  test('back arrows over the graph leave above the arrows forward and come '
+      'in above them; each side nests: the higher exit runs the lower lane, '
+      'the lower lane enters the higher input', () {
+    final graph = LayoutGraph.ofBody(
+      bodyOf({
+        'start': 'a',
+        'nodes': {
+          'a': {'command': 'a', 'then': 'b'},
+          'b': {'command': 'b', 'then': 'c'},
+          'c': {
+            'decide': 'c',
+            'then': {'to-a': 'a', 'on': 'd', 'to-b': 'b', 'down': 'a'},
+          },
+          'd': {'command': 'd', 'then': 'a'},
+        },
+      }),
+    );
+    findBackEdges(graph);
+    assignLayers(graph);
+    buildLayers(graph);
+    GNode node(String id) => graph.nodes.singleWhere((n) => n.id == id);
+    GEdge edge(String from, String? label, String to) =>
+        graph.edges.singleWhere(
+          (e) => e.from.id == from && e.exit.label == label && e.to.id == to,
+        );
+    final toA = edge('c', 'to-a', 'a');
+    final toB = edge('c', 'to-b', 'b');
+    final down = edge('c', 'down', 'a');
+    final fromD = edge('d', null, 'a');
+    for (final e in [toA, toB, down, fromD]) {
+      expect(e.kind, EdgeKind.back);
+    }
+    for (final e in [toA, toB, fromD]) {
+      e.over = true;
+    }
+    final levels = <GEdge, int>{};
+    final ports = assignPorts(
+      graph,
+      const LayoutOptions(),
+      below: const {},
+      backLevels: levels,
+    );
+    expect(
+      [for (final exit in ports[node('c')]!.slots) exit.label],
+      ['to-b', 'to-a', 'on', 'down'],
+    );
+    // Over the graph the wider arrow runs higher; under it, lower.
+    expect([levels[toB], levels[toA], levels[fromD]], [1, 2, 3]);
+    expect(levels[down], 1);
+    expect(ports[node('a')]!.inputs, [
+      toA,
+      fromD,
+      edge(startMarker, null, 'a'),
+      down,
+    ]);
+    expect(ports[node('b')]!.inputs, [toB, edge('a', null, 'b')]);
   });
 
   test('edges with one label are one capsule: arrows a capsule gap apart in '

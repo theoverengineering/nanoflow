@@ -36,10 +36,6 @@ GraphBody randomForks(int seed) {
   return GraphBody(nodes: nodes, edges: edges);
 }
 
-/// The exit of [node] in [layout] labelled [label].
-ExitBox _exit(GraphLayout layout, String node, String label) => layout.exits
-    .singleWhere((exit) => exit.node == node && exit.label == label);
-
 void main() {
   test('every fork of true and false in the test graphs stands with true '
       'above false', () {
@@ -75,8 +71,9 @@ void main() {
     }
   });
 
-  test('a fork whose true goes back: its back arrow leaves above its false '
-      'and goes down past it, clear of its label', () {
+  test('a fork whose true goes back, a node going on under its false: the '
+      'back arrow leaves above its false and runs over the graph, crossing '
+      'nothing', () {
     final layout = layoutBody(
       bodyOf({
         'start': 'a',
@@ -86,16 +83,18 @@ void main() {
             'decide': 'c',
             'then': {'false': 'd', 'true': 'a'},
           },
-          'd': {'command': 'd', 'then': <String>[]},
+          'd': {'command': 'd', 'then': 'e'},
+          'e': {'command': 'e', 'then': <String>[]},
         },
       }),
     );
     expect(checkLayout(layout), isEmpty);
     expect(falseAbove(layout), isEmpty);
+    expect(countCrossings(layout), 0);
     final back = layout.edges.singleWhere((e) => e.from == 'c' && e.to == 'a');
     expect(back.kind, EdgeKind.back);
-    final (down, _, _) = verticals(back).first;
-    expect(down, greaterThan(_exit(layout, 'c', 'false').labelRect!.right));
+    final top = layout.nodes.values.map((n) => n.marks.top).reduce(min);
+    expect(back.points.map((p) => p.y).reduce(min), lessThan(top));
   });
 
   test('a fork whose false comes back to it: the loop goes under its tile, '
