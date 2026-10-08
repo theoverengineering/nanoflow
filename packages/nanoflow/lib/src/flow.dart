@@ -66,6 +66,13 @@ final class Flow {
   void addCodec<T>(T Function(Map<String, Object?> json) fromJson) =>
       _codecs.add(fromJson);
 
+  /// Registers the enum whose values are [values] as a codec of [T]: a [T]
+  /// that a session keeps is written as its name, and read back by it.
+  ///
+  /// It serves `T?`, `List<T>`, `Map<String, T>` and any nesting of them
+  /// too, as [addCodec] does.
+  void addEnum<T extends Enum>(List<T> values) => _codecs.addEnum(values);
+
   /// Starts a session of [workflow] with [input]: the session is written and
   /// owned by this process, and [workflow] runs.
   ///

@@ -139,6 +139,22 @@ Future<Report> keepsReports(Flow f, Change change) async {
   );
 }
 
+enum Verdict { pass, fail }
+
+/// Effects that give an enum, nullables and lists of it, and a pair, then a
+/// gate.
+Future<Verdict> keepsVerdicts(Flow f, Verdict input) async {
+  got['input'] = input;
+  await keep(f, 'verdict', Verdict.fail);
+  await keep<List<Verdict?>>(f, 'verdicts', [Verdict.pass, null]);
+  await keep<(Verdict, Report)>(f, 'pair', (
+    Verdict.pass,
+    const Report('p', 1),
+  ));
+  await passGate(f);
+  return f.effect('result', () => body('result', Verdict.pass));
+}
+
 /// Runs a session of [workflow] with [input] on the flow [make] gives until
 /// its effect `gate`, and stops the flow there; then resumes the session past
 /// the gate on another flow [make] gives, the effects before the gate taken
@@ -268,6 +284,25 @@ void main() {
     expect(got['any'], {
       'a': [1, 'b'],
     });
+  });
+
+  test('an enum with addEnum, and a record of two, come back from the '
+      'journal as they were', () async {
+    final dir = await tempDir();
+
+    final session = await resumedPastGate(
+      () => withCodecs(dir)..addEnum(Verdict.values),
+      keepsVerdicts,
+      Verdict.fail,
+    );
+
+    expect(await session.result, Verdict.pass);
+    expect(ran, ['gate', 'result']);
+    expect(got['input'], Verdict.fail);
+    expect(got['verdict'], Verdict.fail);
+    expect(got['verdicts'], isA<List<Verdict?>>());
+    expect(got['verdicts'], [Verdict.pass, null]);
+    expect(got['pair'], (Verdict.pass, const Report('p', 1)));
   });
 
   test('a value of a type with a codec comes back from the journal equal, '
