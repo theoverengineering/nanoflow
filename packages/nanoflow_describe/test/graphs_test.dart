@@ -47,7 +47,39 @@ Map<String, Object?> _function(
   'body': {'nodes': nodes, 'edges': edges},
 };
 
+Map<String, Object?> _warning(int line, String message) => {
+  'place': 'lib/graph_warnings.dart:$line',
+  'message': message,
+};
+
 void main() {
+  test('warns where arrows carry what their targets do not take, where a key '
+      'never matches, and of what is not drawn', () async {
+    final graph = await describeFixture('graph_warnings');
+    expect(
+      graph['warnings'],
+      unorderedEquals([
+        _warning(39, 'needsChange takes Change, not the Report of check'),
+        _warning(40, 'key Square never matches: switch (judge) takes Verdict'),
+        _warning(40, "key 'pass' never matches: switch (judge) takes Verdict"),
+        _warning(41, 'both takes (String, String), not the int of right'),
+        _warning(46, 'graph name is not a string literal'),
+        _warning(48, 'a graph outside a top-level variable is not drawn'),
+        _warning(52, 'graph part not drawn: aPart'),
+        _warning(
+          55,
+          'graph node is not a top-level function, a static method or a '
+          'graph: (String text) async => text',
+        ),
+      ]),
+    );
+    final functions = graph['functions']! as Map<String, Object?>;
+    expect(
+      (functions['lib/graph_warnings.dart#named']! as Map)['name'],
+      'named',
+    );
+  });
+
   test('draws graphs with the nodes of functions: effects, forks for maps, '
       'calls of graphs and workflow functions', () async {
     final graph = await describeFixture('graphs');

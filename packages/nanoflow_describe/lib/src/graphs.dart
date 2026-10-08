@@ -115,12 +115,13 @@ extension on _Package {
 sealed class _At {}
 
 /// A node of the body: its id, the name a fork after it is labelled with,
-/// and the type of its output, when known.
+/// and the types of its input and its output, when known.
 final class _AtNode extends _At {
-  _AtNode(this.id, this.name, this.output);
+  _AtNode(this.id, this.name, this.input, this.output);
 
   final String id;
   final String name;
+  final DartType? input;
   final DartType? output;
 }
 
@@ -235,13 +236,16 @@ final class _GraphBody {
       final keys = <Expression>[];
       for (final entry in target.elements.whereType<MapLiteralEntry>()) {
         keys.add(entry.key);
-        for (final node in _targets(entry.value)) {
+        final payload = _keyPayload(at, entry.key);
+        for (final (node, written) in _targets(entry.value)) {
           _edge(fork, node.id, _source(entry.key));
+          if (payload case (:final type)) _check(type, at, node, written);
         }
       }
       if (otherwise != null) {
-        for (final node in _targets(otherwise)) {
+        for (final (node, written) in _targets(otherwise)) {
           _edge(fork, node.id, 'otherwise');
+          _check(at.output, at, node, written);
         }
       } else if (!_coversAll(at.output, keys)) {
         _edge(fork, null, 'otherwise');
@@ -249,29 +253,118 @@ final class _GraphBody {
       return null;
     }
     final targets = _targets(target);
-    final sources = switch (at) {
-      _AtNode() => [at],
-      _AtJoin(:final sources) => sources,
-    };
-    for (final source in sources) {
-      for (final node in targets) {
-        _edge(source.id, node.id);
-      }
+    switch (at) {
+      case _AtNode():
+        for (final (node, written) in targets) {
+          _edge(at.id, node.id);
+          _check(at.output, at, node, written);
+        }
+      case _AtJoin(:final sources):
+        for (final (node, written) in targets) {
+          for (final source in sources) {
+            _edge(source.id, node.id);
+          }
+          _checkJoin(sources, node, written);
+        }
     }
     if (target is SetOrMapLiteral || targets.length != 1) return null;
-    return targets.single;
+    return targets.single.$1;
   }
 
-  /// The nodes of [e], a node or a set of nodes.
-  List<_AtNode> _targets(Expression e) {
-    final target = e.unParenthesized;
-    if (target is SetOrMapLiteral && target.isSet) {
-      return [
-        for (final element in target.elements)
-          if (element is Expression) ?_node(element),
-      ];
+  TypeSystem get _types => _package._libraryOf[_graph.made.root]!.typeSystem;
+
+  /// Warns at [written] when [payload], what [source] sends [target], is not
+  /// what [target] takes: its input, or [takes], the field of it [source]
+  /// fills.
+  void _check(
+    DartType? payload,
+    _AtNode source,
+    _AtNode target,
+    AstNode written, {
+    DartType? takes,
+  }) {
+    final input = takes ?? target.input;
+    if (!_known(payload) || !_known(input)) return;
+    if (!_types.isAssignableTo(payload!, input!)) {
+      _package._warn(
+        written,
+        '${target.name} takes ${target.input!.getDisplayString()}, not the '
+        '${payload.getDisplayString()} of ${source.name}',
+      );
     }
-    return [?_node(target)];
+  }
+
+  /// Warns at [written] when [target] does not take the record of the
+  /// outputs of [sources], its join.
+  void _checkJoin(List<_AtNode> sources, _AtNode target, AstNode written) {
+    final input = target.input;
+    if (!_known(input)) return;
+    if (input case RecordType(:final positionalFields, namedFields: [])
+        when positionalFields.length == sources.length) {
+      for (final (i, source) in sources.indexed) {
+        _check(
+          source.output,
+          source,
+          target,
+          written,
+          takes: positionalFields[i].type,
+        );
+      }
+      return;
+    }
+    _package._warn(
+      written,
+      '${target.name} takes ${input!.getDisplayString()}, not the record of '
+      'its join',
+    );
+  }
+
+  /// What the key [key] of a map of targets after [at] gives its targets: the
+  /// second field of a record of two, the value of an Exit, or what it
+  /// matches; `null` when it never matches, which it warns of.
+  ({DartType? type})? _keyPayload(_AtNode at, Expression key) {
+    final output = at.output;
+    final second = switch (output) {
+      RecordType(positionalFields: [_, final second], namedFields: []) =>
+        second.type,
+      _ => null,
+    };
+    final subject = _subjectOf(output);
+    final keyElement = _keyElement(key);
+    final isType =
+        keyElement is InterfaceElement &&
+        (key.unParenthesized is TypeLiteral ||
+            key.unParenthesized is Identifier);
+    final DartType? keyType = isType ? keyElement.thisType : key.staticType;
+    if (_known(subject) && _known(keyType)) {
+      final matches = isType
+          ? _types.isSubtypeOf(keyType!, subject!)
+          : _types.isAssignableTo(keyType!, subject!);
+      if (!matches) {
+        _package._warn(
+          key,
+          'key ${_source(key)} never matches: switch (${at.name}) takes '
+          '${subject.getDisplayString()}',
+        );
+        return null;
+      }
+    }
+    if (second != null) return (type: second);
+    if (isType) return (type: _exitValue(keyType) ?? keyType);
+    return (type: key is NullLiteral ? keyType : subject);
+  }
+
+  /// The nodes of [e], a node or a set of nodes, each with where it is
+  /// written.
+  List<(_AtNode, Expression)> _targets(Expression e) {
+    final target = e.unParenthesized;
+    return [
+      for (final written
+          in target is SetOrMapLiteral && target.isSet
+              ? target.elements.whereType<Expression>()
+              : [target])
+        if (_node(written) case final node?) (node, written),
+    ];
   }
 
   /// The node [e] refers to, made the first time: a function of one
@@ -288,12 +381,14 @@ final class _GraphBody {
     final place = _graph.place;
     if (graph != null) {
       final type = graph.variable.type;
+      final arguments = type is InterfaceType && type.typeArguments.length == 2
+          ? type.typeArguments
+          : null;
       return _make(
         graph,
         graph.name,
-        type is InterfaceType && type.typeArguments.length == 2
-            ? type.typeArguments[1]
-            : null,
+        arguments?[0],
+        arguments?[1],
         (id) => CallNode(id: id, place: place, functions: [graph.id]),
       );
     }
@@ -307,6 +402,7 @@ final class _GraphBody {
         return _make(
           element.baseElement,
           name,
+          parameters[1].type,
           output,
           (id) => CallNode(id: id, place: place, functions: [?declaration?.id]),
         );
@@ -315,6 +411,7 @@ final class _GraphBody {
         return _make(
           element.baseElement,
           name,
+          parameters.single.type,
           output,
           (id) => EffectNode(id: id, place: place, name: name),
         );
@@ -331,9 +428,10 @@ final class _GraphBody {
   _AtNode _make(
     Object key,
     String name,
+    DartType? input,
     DartType? output,
     GraphNode Function(String id) node,
-  ) => _made[key] = _AtNode(_add(node), name, output);
+  ) => _made[key] = _AtNode(_add(node), name, input, output);
 
   /// Adds the node [node] makes with the next id, and gives the id.
   String _add(GraphNode Function(String id) node) {
@@ -359,6 +457,21 @@ DartType _awaited(DartType type) =>
         type.typeArguments.length == 1
     ? type.typeArguments.single
     : type;
+
+/// Whether [type] is known enough to check: not `null`, not `dynamic`.
+bool _known(DartType? type) => type != null && type is! DynamicType;
+
+/// The type of the value of an Exit [type] is: `Change` for a class that
+/// extends `Exit<Change>`; `null` for a type that is no Exit.
+DartType? _exitValue(DartType? type) {
+  if (type is! InterfaceType) return null;
+  for (final supertype in [type, ...type.element.allSupertypes]) {
+    if (_isNanoflowClass(supertype.element, 'Exit')) {
+      return supertype.typeArguments.firstOrNull;
+    }
+  }
+  return null;
+}
 
 /// The type the keys of a map of targets are matched against, for an output
 /// of [output]: the first field of a record of two, or the output itself.

@@ -16,6 +16,7 @@ import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/element/element.dart';
 import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
+import 'package:analyzer/dart/element/type_system.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 part 'graphs.dart';
@@ -312,6 +313,10 @@ final class _Package {
           'effects in a local function are not drawn',
           offset: local.name.offset,
         );
+      case final InstanceCreationExpression made
+          when _makesGraph(made) &&
+              !_graphs.values.any((graph) => identical(graph.made, made)):
+        _warn(made, 'a graph outside a top-level variable is not drawn');
       case final MethodInvocation start
           when _isFlow(start, const {'start', 'run', 'resume'}):
         final argument =
