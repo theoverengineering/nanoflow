@@ -13,6 +13,10 @@
   `Future<R> Function(Flow f, I input)`. Эффект — вызов
   `f.effect('имя', () => …)`. Развилки — `if` и `switch`, петли — циклы,
   параллельность — `Future.wait`: своего языка графа нет.
+- **Или граф из узлов.** Узел — функция «вход → выход», которая не знает, что
+  до неё и что после; что за чем, говорит объявление `Graph`, а ветвит и
+  сводит библиотека ([граф из узлов](#граф-из-узлов)). Функция и граф
+  вкладываются друг в друга.
 - **Сессию ведёт библиотека в процессе приложения.** Сессия — один вызов
   воркфлоу: вход, каждый эффект с результатом и результат воркфлоу пишутся в
   [`runs/`](#хранение). Отдельного движка нет.
@@ -71,6 +75,65 @@ Future<void> main(List<String> args) async {
 Целиком — с `Change`, `Report`, `inspect` через `exec`, Ctrl+C и `--resume` —
 в [examples/review](examples/review/README.md).
 
+## Граф из узлов
+
+Тот же ревью графом: узлы — обычные функции, объявление говорит, что за чем.
+Дизайн — в [спецификации графа](docs/superpowers/specs/2026-10-08-graph-nodes-design.md).
+
+```dart
+sealed class Collected {}
+final class Empty extends Exit<void> implements Collected { Empty() : super(null); }
+final class Found extends Exit<Change> implements Collected { Found(super.value); }
+
+Future<Collected> collect(String branch) async { … }   // Empty() или Found(change)
+Future<Inspected> inspect(Change change) async { … }   // Clean(report) или Findings(report)
+Future<Change> fix(Report report) async { … }
+void discard(void _) => print('nothing to review');
+Future<String> publish(Report r) async { … }
+Future<String> notify(Report r) async { … }
+Future<void> report((String, String) sent) async { … }
+
+final review = Graph<String, void>('review', [
+  Graph.start(collect).next({Empty: discard, Found: inspect}),
+  Graph.part(inspect).next({Clean: {publish, notify}, Findings: fix}),
+  Graph.part(fix).next(inspect),
+  Graph.join([publish, notify]).next(report),
+]);
+
+await flow.run(review.call, 'feature/parse-config');
+```
+
+- **Узел** — функция одного параметра (выполняется эффектом с её именем,
+  выход пишется в журнал), функция воркфлоу `(Flow f, I input)` или другой
+  граф. Функция — верхнего уровня или статический метод; имена узлов графа
+  различны; та же функция в нескольких стрелках — один узел.
+- **Стрелки:** `Graph.start(узел)` — откуда граф начинается,
+  `Graph.part(узел)` — кусок от любого узла, `.next(цель, otherwise: …)` —
+  стрелки из узла. Цель — узел (получает выход), множество `{a, b}` (все
+  получают выход, рядом) или карта `{ключ: цель}`. Стрелки узла объявляются
+  один раз; узел без стрелок кончает ветку.
+- **Ветвление.** Из выхода берутся предмет и груз: у записи `(k, p)` —
+  `k` и `p`, у наследника `Exit<T>` — он сам и `value`, у остального — он
+  сам. Ключ-тип совпадает, когда тип предмета ровно он; ключ-значение — по
+  `==` (`Verdict.pass`, `true`, `null`). Совпавший ключ — его цели груз;
+  ни один — целям `otherwise` выход целиком, без `otherwise` ветка
+  кончается.
+- **Схождение** `Graph.join([a, b]).next(c)`: `c` получает запись выходов
+  `(a, b)`, когда каждый дал выход; в петле — по разу на полный набор;
+  неполное схождение не наступает, и граф кончается.
+- **Граф — воркфлоу:** `flow.start(review.call, …)`, `run`, `resume`,
+  `unfinished`; имя сессии — имя графа. Из функции воркфлоу граф вызывают как
+  функцию: `await review(f, change)`.
+- **Результат** — выход, который никуда не пошёл, последним; обычно граф
+  `void`. Ошибка узла — ошибка графа, когда кончились остальные ветки.
+- **Выход узла-функции** раскодируется при `resume` по типу, который функция
+  возвращает: `Future<Collected>` — кодеком `Collected`. Перечисления —
+  `flow.addEnum(Verdict.values)`, записи из двух полей пишутся списком.
+- **Ограничения:** данные идут только через выходы; параллель — объявленная
+  (`{a, b}`, схождение), копий «по элементу списка» нет; ключ-тип ловит ровно
+  свой класс, не подкласс подкласса; две стрелки в узел без схождения — два
+  запуска, на рисунке это не отличить от схождения.
+
 ## Репозиторий
 
 Pub workspace: общие `pubspec.lock` и `analysis_options.yaml` в корне,
@@ -82,10 +145,10 @@ Pub workspace: общие `pubspec.lock` и `analysis_options.yaml` в корн�
 | [`packages/nanoflow_store`](packages/nanoflow_store/README.md)       | запись и чтение своей сессии для `resume`                                   | `nanoflow_model`                                       |
 | [`packages/nanoflow_process`](packages/nanoflow_process/README.md)   | порт ОС: время старта процесса и его выход                                  | `ffi`                                                  |
 | [`packages/nanoflow_reader`](packages/nanoflow_reader/README.md)     | чтение и подписка на все сессии каталога, жив ли владелец сессии            | `nanoflow_model`, `nanoflow_process`                   |
-| [`packages/nanoflow`](packages/nanoflow/README.md)                   | библиотека воркфлоу: `Flow`, эффекты, кодеки, `exec`                        | `nanoflow_model`, `nanoflow_store`, `nanoflow_process` |
+| [`packages/nanoflow`](packages/nanoflow/README.md)                   | библиотека воркфлоу: `Flow`, эффекты, графы, кодеки, `exec`                 | `nanoflow_model`, `nanoflow_store`, `nanoflow_process` |
 | [`packages/nanoflow_describe`](packages/nanoflow_describe/README.md) | извлечение графа, команды `describe` и `stamp`                              | `nanoflow_model`, `analyzer`                           |
 | [`apps/nanoflow_ui`](apps/nanoflow_ui/README.md)                     | приложение для macOS                                                        | `nanoflow_model`, `nanoflow_reader`                    |
-| [`examples/review`](examples/review/README.md)                       | граф ревью функцией воркфлоу                                                | `nanoflow`, `nanoflow_describe` (dev)                  |
+| [`examples/review`](examples/review/README.md)                       | граф ревью функцией воркфлоу и графом из узлов                              | `nanoflow`, `nanoflow_describe` (dev)                  |
 | `tests/e2e`                                                          | пример процессом, падение и продолжение, договор хранилища и читателя       | всё, кроме UI                                          |
 
 - **Пакеты не зависят от программ.** Общий у всех только `nanoflow_model`.
@@ -141,6 +204,9 @@ await flow.run(review, 'feature/parse-config');     // start, потом result
 await flow.resume(review, sessionId);               // после падения
 await flow.unfinished(review);                      // id незаконченных сессий
 flow.stop();                                        // эффекты больше не стартуют
+
+flow.addEnum(Verdict.values);                       // перечисление пишется именем
+await flow.run(reviewGraph.call, 'main');           // граф — так же, через .call
 ```
 
 Подробно — в [README пакета](packages/nanoflow/README.md).
@@ -323,10 +389,12 @@ UUID v4 в нижнем регистре.
 
 - **`functions`** — функции с эффектами по id `путь#имя` (метод —
   `путь#Класс.имя`). Граф функции описан один раз, сколько бы раз её ни
-  вызывали.
-- **`workflows`** — функции, переданные первым аргументом в `Flow.start`,
-  `Flow.run` или `Flow.resume`; у каждой есть запись в `functions`, даже без
-  эффектов.
+  вызывали. Граф из узлов — тоже запись здесь: id `путь#<переменная>`,
+  `name` — имя графа, `place` — строка переменной; функции воркфлоу, служащие
+  узлами, — тоже, даже без эффектов.
+- **`workflows`** — функции и графы, переданные первым аргументом в
+  `Flow.start`, `Flow.run` или `Flow.resume`; у каждого есть запись в
+  `functions`, даже без эффектов.
 - **`warnings`** — что извлечение не нарисовало, с местом.
 - **`place`** — `путь:строка` от корня пакета.
 - **`doc`** — у функции и у эффекта: текст его комментария документации
@@ -368,6 +436,13 @@ UUID v4 в нижнем регистре.
   `default`. У остальных рёбер `label: null`.
 - **Несколько рёбер из узла с одной подписью** — ветки `Future.wait`; узел,
   в который они входят, ждёт все.
+- **Тело графа из узлов** — из тех же видов: узел-функция — `effect` (`name`
+  — имя узла, `place` — место графа: по нему UI находит эффекты узла), узел —
+  функция воркфлоу или граф — `call`; карта целей — `fork` после узла с
+  `label` `switch (<узел>)` и рёбрами, подписанными исходником ключа или
+  `otherwise`. Карта, которая не покрывает все значения (`bool`,
+  перечисление, `sealed`, первое поле пары) и без `otherwise`, — ребро
+  `otherwise` в конец; схождение — рёбра от каждого его узла к цели.
 
 ### Отпечаток исходников
 
@@ -398,8 +473,11 @@ dart run nanoflow_describe stamp build/review   # хэш бинарника в b
 ```
 
 - **Код не выполняется:** граф потока управления каждой функции с эффектами,
-  сведённый к узлам [тела](#тело). Что извлечение понимает, — в README
-  пакета.
+  сведённый к узлам [тела](#тело), и тело каждого графа из узлов,
+  объявленного в переменной верхнего уровня. Что извлечение понимает, — в
+  README пакета.
+- **Графы проверяются по типам:** цель, которая не принимает груз стрелки,
+  ключ, который никогда не совпадёт, — предупреждения в `warnings`.
 - **Документация — `doc` функций и эффектов:** у функции — её комментарий
   `///` (или `/** */`) над объявлением; у эффекта — `///` прямо над ним,
   над выражением, которое с него начинается, или над простым оператором

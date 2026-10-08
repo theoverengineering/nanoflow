@@ -2,7 +2,7 @@
 
 Дополняет [дизайн code-first](2026-10-03-code-first-design.md) (§4.1 API,
 §4.4 кодеки, §6.1 формат, §7.1 извлечение) и
-[журнал решений](2026-10-02-code-first-decisions.md) (решение 13). Ничего из
+[журнал решений](2026-10-02-code-first-decisions.md) (решение 14). Ничего из
 нынешнего не убирает. Решения приняты 2026-10-08.
 
 ## 1. Зачем
@@ -37,7 +37,7 @@ final review = Graph<String, void>('review', [
   Graph.join([publish, notify]).next(report),
 ]);
 
-await flow.run(review, 'feature/parse-config');
+await flow.run(review.call, 'feature/parse-config');
 ```
 
 ## 3. Узлы
@@ -117,9 +117,11 @@ await flow.run(review, 'feature/parse-config');
   без карты; цель не узел, не множество узлов и не карта; `next` после
   множества или карты.
 - **Граф — функция воркфлоу:** `Future<O> call(Flow f, I input)`. Поэтому
-  `flow.start(review, input)`, `flow.run`, `flow.resume`, `flow.unfinished`
-  принимают граф как функцию, а функция воркфлоу вызывает граф как функцию:
-  `await review(f, change)`. Имя сессии — имя графа.
+  `flow.start(review.call, input)`, `flow.run`, `flow.resume`,
+  `flow.unfinished` принимают его `call` (неявный `flow.start(review, …)` тоже
+  работает, но рекомендованные линты его помечают), а функция воркфлоу
+  вызывает граф как функцию: `await review(f, change)`. Имя сессии — имя
+  графа.
 - **Конец.** Граф кончается, когда кончились все ветки; ошибка узла — ошибка
   графа после того, как кончились остальные ветки (как у `Future.wait`).
 - **Результат** — выход узла, который никуда не пошёл (у узла нет стрелок, он
