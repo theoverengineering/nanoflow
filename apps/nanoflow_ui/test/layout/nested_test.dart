@@ -590,8 +590,10 @@ void main() {
         for (final exit in [1, 2]) verticals(edgeOf(layout, 'a', exit)).first,
       ];
       for (final (_, top, bottom) in downs) {
-        expect(top, lessThan(tile.bottom), reason: 'it passes the frame');
-        expect(bottom, greaterThan(tile.bottom));
+        // It passes the frame's heights down to its lane under check, not
+        // under the frame.
+        expect(top, greaterThan(tile.top));
+        expect(bottom, lessThan(tile.bottom));
       }
       final xs = [for (final (x, _, _) in downs) x]..sort();
       expect(tile.left - xs.last, closeTo(clearance, 1e-9));
@@ -1214,7 +1216,7 @@ void main() {
     expect(level.bounds.height, lessThanOrEqualTo(1202));
   });
 
-  for (final (seed, base) in [(603, 2436.0), (870, 2943.0)]) {
+  for (final (seed, base) in [(603, 2412.0), (870, 2895.5)]) {
     test('random body $seed nested: it grows taller for nodes standing where '
         'more arrows come in level only by half a tile for each turn saved, '
         'counted twice for an arrow turning twice no more', () {

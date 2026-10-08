@@ -788,23 +788,7 @@ GraphLayout? _buildWith(
     for (final node in g.nodes)
       node: frameOf(node, ports[node]!, node.item.y, options),
   };
-  var top = double.infinity;
-  var bottom = double.negativeInfinity;
-  for (final layer in layers) {
-    for (final item in layer) {
-      final (:up, :down) = extentOf(item, ports, options);
-      if (item.y - up < top) top = item.y - up;
-      if (item.y + down > bottom) bottom = item.y + down;
-    }
-  }
-  // Back arrows run under the graph, or over it: their first lane a lane
-  // offset off it, the next a lane gap further.
-  final depth = {
-    for (final MapEntry(key: edge, value: level) in levels.entries)
-      edge: edge.over
-          ? top - options.backLaneOffset - (level - 1) * options.backLaneGap
-          : bottom + options.backLaneOffset + (level - 1) * options.backLaneGap,
-  };
+  final depth = _backLanes(g, layers, ports, levels, options);
   final lanes = assignLanes(
     layers,
     ports,
@@ -814,6 +798,127 @@ GraphLayout? _buildWith(
     turnEarly: turnEarly,
   );
   return route(g, ports, frames, lanes, depth, options);
+}
+
+/// The y of every back arrow's lane, under the graph or over it
+/// ([GEdge.over]): a lane offset off what the arrow passes, and a lane gap
+/// off the lane of every arrow on its side nested in it — whose turns share
+/// a gap with its own and whose level of [levels] is lower.
+///
+/// An arrow passes the items of the layers from its input's to its exit's,
+/// and in the gaps it turns in, before its input's layer and after its
+/// exit's, the ends of whatever else turns there — forward arrows, loops,
+/// back arrows on the other side —: its lane past them would cross them
+/// there. Lanes on its side keep off it by nesting. So the way back of a
+/// loop after a tall frame runs under the loop, not under the frame.
+Map<GEdge, double> _backLanes(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  Map<GNode, Ports> ports,
+  Map<GEdge, int> levels,
+  LayoutOptions options,
+) {
+  final tops = <double>[];
+  final bottoms = <double>[];
+  for (final layer in layers) {
+    var top = double.infinity;
+    var bottom = double.negativeInfinity;
+    for (final item in layer) {
+      final (:up, :down) = extentOf(item, ports, options);
+      top = math.min(top, item.y - up);
+      bottom = math.max(bottom, item.y + down);
+    }
+    tops.add(top);
+    bottoms.add(bottom);
+  }
+  // The lowest and highest ends of what turns in each gap — gap i lies
+  // between layers i and i + 1 —, for lanes under the graph and over it.
+  final lowest = <int, double>{};
+  final highest = <int, double>{};
+  void turns(int gap, double y, {GEdge? back}) {
+    if (back == null || back.over) {
+      lowest[gap] = math.max(lowest[gap] ?? y, y);
+    }
+    if (back == null || !back.over) {
+      highest[gap] = math.min(highest[gap] ?? y, y);
+    }
+  }
+
+  for (final (i, layer) in layers.indexed) {
+    for (final item in layer) {
+      for (final seg in item.outs) {
+        turns(i, outY(seg, ports));
+        turns(i, inY(seg, ports));
+      }
+    }
+  }
+  for (final node in g.nodes) {
+    final port = ports[node]!;
+    final y = node.item.y;
+    for (final exit in node.exits) {
+      for (final edge in exit.edges) {
+        if (edge.kind == EdgeKind.back) {
+          turns(node.layer, y + port.exitAt[edge]!, back: edge);
+        }
+      }
+    }
+    for (final edge in node.inEdges) {
+      if (edge.kind == EdgeKind.back) {
+        turns(node.layer - 1, y + port.inputAt[edge]!, back: edge);
+      }
+    }
+    for (final (below, loops) in [
+      (false, port.loopsAbove),
+      (true, port.loopsBelow),
+    ]) {
+      for (final (index, loop) in loops.indexed) {
+        final far =
+            y + loopOffset(node, port, options, below: below, index: index);
+        for (final (gap, at) in [
+          (node.layer, port.exitAt[loop]!),
+          (node.layer - 1, port.inputAt[loop]!),
+        ]) {
+          turns(gap, y + at);
+          turns(gap, far);
+        }
+      }
+    }
+  }
+
+  final lanes = <GEdge, double>{};
+  for (final edge
+      in levels.keys.toList()
+        ..sort((a, b) => levels[a]!.compareTo(levels[b]!))) {
+    final left = edge.to.layer;
+    final right = edge.from.layer;
+    final gaps = [left - 1, right];
+    double lane;
+    if (edge.over) {
+      var top = tops.sublist(left, right + 1).reduce(math.min);
+      for (final gap in gaps) {
+        top = math.min(top, highest[gap] ?? top);
+      }
+      lane = top - options.backLaneOffset;
+    } else {
+      var bottom = bottoms.sublist(left, right + 1).reduce(math.max);
+      for (final gap in gaps) {
+        bottom = math.max(bottom, lowest[gap] ?? bottom);
+      }
+      lane = bottom + options.backLaneOffset;
+    }
+    for (final MapEntry(key: other, value: y) in lanes.entries) {
+      final nested =
+          other.over == edge.over &&
+          other.to.layer - 1 <= edge.from.layer &&
+          edge.to.layer - 1 <= other.from.layer;
+      if (!nested) continue;
+      lane = edge.over
+          ? math.min(lane, y - options.backLaneGap)
+          : math.max(lane, y + options.backLaneGap);
+    }
+    lanes[edge] = lane;
+  }
+  return lanes;
 }
 
 void _swap(List<Item> layer, int i) {

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/layout/lanes.dart' show clearance;
 import 'package:nanoflow_ui/layout/layout.dart';
@@ -142,18 +144,27 @@ void main() {
     }
   });
 
-  test('back arrows run under every node, a wider one lower', () {
+  test('back arrows run under every node between their ends, a wider one '
+      'lower', () {
     final layout = layoutOf('task');
-    final lowest = layout.nodes.values
-        .map((n) => n.placeRect.bottom)
-        .reduce((a, b) => a > b ? a : b);
     final lanes = <String, double>{};
     for (final edge in layout.edges.where((e) => e.kind == EdgeKind.back)) {
       final lane = edge.points[2].y;
       expect(edge.points[3].y, lane);
-      expect(lane, greaterThan(lowest));
+      final left = layout.nodes[edge.to]!.tile.left;
+      final right = layout.nodes[edge.from]!.tile.right;
+      for (final node in layout.nodes.values) {
+        if (node.tile.left < left || node.tile.right > right) continue;
+        expect(lane, greaterThan(node.placeRect.bottom));
+      }
       lanes['${edge.from}->${edge.to}#${edge.exitIndex}'] = lane;
     }
+    // review's way back runs under review alone: above coder's innermost,
+    // which shares no gap with it but passes the taller coder-status.
+    expect(
+      lanes['review-verdict->reviewer#2']!,
+      lessThan(lanes['coder-status->coder#2']!),
+    );
     expect(
       lanes['human-answer->coder#1']!,
       greaterThan(lanes['review-verdict->coder#1']!),
@@ -166,6 +177,29 @@ void main() {
       lanes['checks-result->coder#1']!,
       greaterThan(lanes['coder-status->coder#1']!),
     );
+  });
+
+  test('a back arrow runs under what lies between its ends, not under the '
+      'whole level', () {
+    // The user's agreeCut(), writeAndReviewCut() drawn in place: the way
+    // back of the loop after the frame ran under the frame, far below the
+    // loop.
+    GraphBody body(String json) =>
+        GraphBody.fromJson(jsonDecode(json) as Map<String, Object?>);
+    final layout = layoutBody(
+      body(_agreeCut),
+      expanded: {'1': ExpandedNode(body(_writeAndReviewCut))},
+    );
+    final frame = layout.nodes['1']!.tile;
+    final ask = layout.nodes['6']!;
+    final loop = edgeOf(layout, '6', 0);
+    final round = edgeOf(layout, '3', 1);
+    expect(loop.points[2].y, loop.points[3].y);
+    expect(loop.points[2].y, greaterThan(ask.placeRect.bottom));
+    expect(loop.points[2].y, lessThan(frame.bottom));
+    // The way back to the frame passes under it.
+    expect(round.points[2].y, greaterThan(frame.bottom));
+    expect(checkLayout(layout), isEmpty);
   });
 
   group('a layer as wide as a frame in it', () {
@@ -269,3 +303,11 @@ void main() {
     });
   });
 }
+
+/// agreeCut() of the user's lib/chain.dart, as describe wrote it.
+const _agreeCut = r'''
+{"nodes":[{"id":"1","kind":"call","functions":["lib/chain.dart#writeAndReviewCut"],"place":"lib/chain.dart:381"},{"id":"2","kind":"effect","name":"you review the cut","place":"lib/chain.dart:388"},{"id":"3","kind":"fork","label":"switch (decision.choice)","place":"lib/chain.dart:395"},{"id":"4","kind":"effect","name":"lay out the tasks","place":"lib/chain.dart:398"},{"id":"5","kind":"fork","label":"refused == null","place":"lib/chain.dart:402"},{"id":"6","kind":"effect","name":"ask you: refused","place":"lib/chain.dart:403"}],"edges":[{"from":null,"to":"1","label":null},{"from":"1","to":"2","label":null},{"from":"2","to":"3","label":null},{"from":"3","to":"4","label":"Choice.accept"},{"from":"3","to":"1","label":"Choice.changes"},{"from":"4","to":"5","label":null},{"from":"5","to":null,"label":"true"},{"from":"5","to":"6","label":"false"},{"from":"6","to":"4","label":null}]}''';
+
+/// writeAndReviewCut() of the user's lib/chain.dart, as describe wrote it.
+const _writeAndReviewCut = r'''
+{"nodes":[{"id":"1","kind":"fork","label":"cutter != null","place":"lib/chain.dart:432"},{"id":"2","kind":"call","functions":["lib/chain.dart#writeCut"],"place":"lib/chain.dart:433"},{"id":"3","kind":"call","functions":["lib/chain.dart#reviewCut"],"place":"lib/chain.dart:437"},{"id":"4","kind":"fork","label":"verdict.passed","place":"lib/chain.dart:445"},{"id":"5","kind":"fork","label":"freshPass","place":"lib/chain.dart:446"},{"id":"6","kind":"fork","label":"failures >= maxRounds","place":"lib/chain.dart:459"},{"id":"7","kind":"effect","name":"ask you: dispute","place":"lib/chain.dart:464"}],"edges":[{"from":null,"to":"1","label":null},{"from":"1","to":"2","label":"true"},{"from":"1","to":"3","label":"false"},{"from":"2","to":"3","label":null},{"from":"3","to":"4","label":null},{"from":"4","to":"5","label":"true"},{"from":"4","to":"6","label":"false"},{"from":"5","to":null,"label":"true"},{"from":"5","to":"1","label":"false"},{"from":"6","to":"7","label":"true"},{"from":"6","to":"1","label":"false"},{"from":"7","to":"1","label":null}]}''';

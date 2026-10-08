@@ -113,10 +113,11 @@ final class LayoutOptions {
   /// The least vertical gap between a node and an arrow passing it.
   final double passGap;
 
-  /// How far below the lowest node the first lane of back arrows runs.
+  /// How far a back arrow's lane runs off what it passes.
   final double backLaneOffset;
 
-  /// The distance between lanes of back arrows.
+  /// The least distance between the lanes of back arrows nested in each
+  /// other.
   final double backLaneGap;
 
   /// Measures text widths.
