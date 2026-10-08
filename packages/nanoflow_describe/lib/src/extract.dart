@@ -515,6 +515,42 @@ final class _Exit extends _V {}
 /// Where ways meet: a loop's head, the end of a `do` body. Not drawn.
 final class _Join extends _V {}
 
+/// Where a variable a `switch` goes by takes a value the path from here on
+/// knows (spec 2026-10-08): a constant, or `null` when it is not known. The
+/// entry of a case is one too: the value is the case's. Not drawn.
+final class _Set extends _V {
+  _Set(this.variable, this.value);
+  final Element variable;
+  final (Object?,)? value;
+
+  /// The ways out of a fork that lead here, not linked until a way leads on
+  /// from here: so the edges of a switch keep the order they are taken in,
+  /// as they did when they led into the bodies straight.
+  List<_Out>? waiting;
+}
+
+/// A `switch` on a variable the paths into it may know the value of: each
+/// of its bodies, by the constants its cases name, whether one of them
+/// matches all, and the point the body is entered at.
+final class _Threaded {
+  _Threaded(this.variable, this.fork);
+  final Element variable;
+  final _Fork fork;
+  final cases = <(List<(Object?,)> consts, bool any, _Set entry)>[];
+
+  /// Where a path that knows [value] enters: the first case naming it, else
+  /// the first that matches all; `null` when none does.
+  _Set? entryFor((Object?,) value) {
+    for (final (consts, _, entry) in cases) {
+      if (consts.contains(value)) return entry;
+    }
+    for (final (_, any, entry) in cases) {
+      if (any) return entry;
+    }
+    return null;
+  }
+}
+
 /// A point drawn as a node, unless it is a fork that decides nothing.
 sealed class _Drawn extends _V {
   _Drawn(this.place);
@@ -680,7 +716,24 @@ final class _Body {
   final _vertices = <_V>[];
   final _edges = <_V, List<(String?, _V)>>{};
 
+  /// The points an edge leads to each point from.
+  final _preds = <_V, List<_V>>{};
+
+  /// The local variables a `switch` of the body goes by that nothing sets
+  /// but a statement of the body itself: a path that knows the value of one
+  /// goes straight into the case it takes (spec 2026-10-08).
+  var _tracked = <Element>{};
+
+  /// The head of a `while (true)` whose body is a `switch` on a tracked
+  /// variable, until that switch takes it on: the paths into the head go
+  /// each into its case.
+  _Join? _pendingHead;
+
+  /// The switch the paths into a loop head go straight into.
+  final _threaded = <_V, _Threaded>{};
+
   GraphBody ofFunction(FunctionBody body) {
+    _tracked = _trackedIn(body);
     _connect(_body(body, [(_entry, null)], const _Scope()), _exit);
     return _emit();
   }
@@ -688,6 +741,7 @@ final class _Body {
   /// The graph of one copy whose body is [body]: a closure or an
   /// expression.
   GraphBody ofCopy(AstNode body) {
+    _tracked = _trackedIn(body);
     final exits = body is FunctionExpression
         ? _body(body.body, [(_entry, null)], const _Scope())
         : _expression(body, [(_entry, null)], const _Scope());
@@ -722,10 +776,30 @@ final class _Body {
 
   List<_Out> _statement(Statement s, List<_Out> into, _Scope scope) {
     if (into.isEmpty) return into; // unreachable
-    // No effect and no jump out of it: the flow goes through as if it were not
-    // there.
-    if (!_package._hasEffects(s) && !_jumpsOut(s)) return into;
+    // No effect, no jump out of it and no value a switch goes by: the flow
+    // goes through as if it were not there.
+    if (!_package._hasEffects(s) && !_jumpsOut(s) && !_setsTracked(s)) {
+      return into;
+    }
     switch (s) {
+      case ExpressionStatement(expression: final AssignmentExpression e)
+          when _trackedTarget(e) != null:
+        return _set(
+          _trackedTarget(e)!,
+          e.operator.type == TokenType.EQ ? _constOf(e.rightHandSide) : null,
+          _expression(e, into, scope),
+        );
+      case VariableDeclarationStatement(:final variables)
+          when variables.variables.any(_isTrackedDeclaration):
+        var current = _expression(variables, into, scope);
+        for (final v in variables.variables) {
+          if (!_isTrackedDeclaration(v)) continue;
+          current = _set(v.declaredFragment!.element, switch (v.initializer) {
+            final i? => _constOf(i),
+            null => null,
+          }, current);
+        }
+        return current;
       case Block():
         return _statements(s.statements, into, scope);
       case ReturnStatement():
@@ -759,10 +833,17 @@ final class _Body {
         ];
       case WhileStatement():
         final head = _join();
-        _connect(into, head);
-        final condition = _expression(s.condition, [(head, null)], scope);
         final breaks = <_Out>[];
         final inner = scope.loop(s, breaks, head);
+        if (_isTrue(s.condition) && _threadsInto(s.body)) {
+          // The head joins nothing: every path into the loop, from before it,
+          // a `continue` or the end of its body, goes into the case it knows.
+          _pendingHead = head;
+          _connect(_statement(s.body, [...into, (head, null)], inner), head);
+          return breaks;
+        }
+        _connect(into, head);
+        final condition = _expression(s.condition, [(head, null)], scope);
         if (_isTrue(s.condition)) {
           _connect(_statement(s.body, condition, inner), head);
           return breaks;
@@ -972,6 +1053,35 @@ final class _Body {
   }
 
   List<_Out> _switch(SwitchStatement s, List<_Out> into, _Scope scope) {
+    if (_trackedSubject(s) case final variable?) {
+      return _switchOn(s, variable, into, scope);
+    }
+    final (fork, labels, matchesAll) = _switchFork(s);
+    _connect(_expression(s.expression, into, scope), fork);
+    final breaks = <_Out>[];
+    final inner = scope.breaking(s, breaks);
+    final exits = <_Out>[];
+    // Cases with no statements of their own share the body of the next one.
+    final pending = <String>[];
+    for (final (i, member) in s.members.indexed) {
+      pending.add(labels[i]);
+      if (member.statements.isEmpty) continue;
+      exits.addAll(
+        _statements(member.statements, [
+          for (final label in pending) (fork, label),
+        ], inner),
+      );
+      pending.clear();
+    }
+    exits.addAll([for (final label in pending) (fork, label)]);
+    if (!matchesAll) exits.add((fork, 'default'));
+    return [...exits, ...breaks];
+  }
+
+  /// The fork of the switch [s], the labels of its members in order, and
+  /// whether they match every value (an exhaustive switch or a `default`,
+  /// `case _`): without, the fork has a `default` outcome of its own.
+  (_Fork, List<String>, bool) _switchFork(SwitchStatement s) {
     final labels = [
       for (final member in s.members)
         switch (member) {
@@ -991,30 +1101,235 @@ final class _Body {
             SwitchCase() => false,
           },
         );
-    final value = _expression(s.expression, into, scope);
     final fork = _fork('switch (${_source(s.expression)})', s.expression, [
       ...labels,
       if (!matchesAll) 'default',
     ]);
-    _connect(value, fork);
+    return (fork, labels, matchesAll);
+  }
+
+  /// A switch on [variable], a tracked one: a path that knows the value goes
+  /// straight into the body of the case it takes, the fork is drawn for the
+  /// paths that do not. Each body is entered where the value is the case's.
+  List<_Out> _switchOn(
+    SwitchStatement s,
+    Element variable,
+    List<_Out> into,
+    _Scope scope,
+  ) {
+    final (fork, labels, matchesAll) = _switchFork(s);
+    final threaded = _Threaded(variable, fork);
+    // Cases with no statements of their own share the body of the next one.
+    final bodies = <(SwitchMember, _Set)>[];
+    var pending = <int>[];
+    for (final (i, member) in s.members.indexed) {
+      pending.add(i);
+      if (member.statements.isEmpty && i < s.members.length - 1) continue;
+      final consts = <(Object?,)>[];
+      var any = false;
+      for (final j in pending) {
+        switch (s.members[j]) {
+          case SwitchDefault():
+            any = true;
+          case SwitchPatternCase(:final guardedPattern):
+            if (_matchesAll(guardedPattern)) {
+              any = true;
+            } else if (guardedPattern.whenClause == null &&
+                guardedPattern.pattern is ConstantPattern) {
+              final c = _constOf(
+                (guardedPattern.pattern as ConstantPattern).expression,
+              );
+              if (c != null) consts.add(c);
+            }
+          case SwitchCase(:final expression):
+            final c = _constOf(expression);
+            if (c != null) consts.add(c);
+        }
+      }
+      final entry = _add(
+        _Set(variable, consts.length == 1 && !any ? consts.single : null),
+      )..waiting = [for (final j in pending) (fork, labels[j])];
+      threaded.cases.add((consts, any, entry));
+      bodies.add((member, entry));
+      pending = [];
+    }
+    if (_pendingHead case final head?) {
+      _threaded[head] = threaded;
+      _pendingHead = null;
+    }
+    _thread(into, threaded, fork);
     final breaks = <_Out>[];
     final inner = scope.breaking(s, breaks);
     final exits = <_Out>[];
-    // Cases with no statements of their own share the body of the next one.
-    final pending = <String>[];
-    for (final (i, member) in s.members.indexed) {
-      pending.add(labels[i]);
-      if (member.statements.isEmpty) continue;
-      exits.addAll(
-        _statements(member.statements, [
-          for (final label in pending) (fork, label),
-        ], inner),
-      );
-      pending.clear();
+    for (final (member, entry) in bodies) {
+      exits.addAll(_statements(member.statements, [(entry, null)], inner));
     }
-    exits.addAll([for (final label in pending) (fork, label)]);
     if (!matchesAll) exits.add((fork, 'default'));
     return [...exits, ...breaks];
+  }
+
+  /// Leads each of [from] into the case of [threaded] it knows the value for,
+  /// and the rest to [otherwise].
+  void _thread(List<_Out> from, _Threaded threaded, _V otherwise) {
+    for (final out in from) {
+      final value = _valueAt(out.$1, threaded.variable);
+      final entry = value == null ? null : threaded.entryFor(value);
+      _link([out], entry ?? otherwise);
+    }
+  }
+
+  /// The value of [variable] every way back from [v] agrees on, or `null`
+  /// when a way back reaches the entry, a point that lost it or a value not
+  /// known. A case's entry knows its own value.
+  (Object?,)? _valueAt(_V v, Element variable) {
+    final seen = <_V>{};
+    final values = <(Object?,)>{};
+    var unknown = false;
+    void back(_V v) {
+      if (unknown || !seen.add(v)) return;
+      if (v is _Set && v.variable == variable) {
+        if (v.value case final value?) {
+          values.add(value);
+        } else {
+          unknown = true;
+        }
+        return;
+      }
+      final preds = _preds[v];
+      if (v is _Entry || preds == null || preds.isEmpty) {
+        unknown = true;
+        return;
+      }
+      preds.forEach(back);
+    }
+
+    back(v);
+    return !unknown && values.length == 1 ? values.single : null;
+  }
+
+  /// A point where [variable] takes [value] on the way from [into].
+  List<_Out> _set(Element variable, (Object?,)? value, List<_Out> into) {
+    final set = _add(_Set(variable, value));
+    _connect(into, set);
+    return [(set, null)];
+  }
+
+  /// The tracked variable [e] assigns, or `null`.
+  Element? _trackedTarget(AssignmentExpression e) => switch (e.leftHandSide) {
+    SimpleIdentifier(:final element?) when _tracked.contains(element) =>
+      element,
+    _ => null,
+  };
+
+  bool _isTrackedDeclaration(VariableDeclaration v) =>
+      _tracked.contains(v.declaredFragment?.element);
+
+  /// The tracked variable [s] goes by, or `null`.
+  Element? _trackedSubject(SwitchStatement s) =>
+      switch (s.expression.unParenthesized) {
+        SimpleIdentifier(:final element?) when _tracked.contains(element) =>
+          element,
+        _ => null,
+      };
+
+  /// Whether [body], a `while (true)`'s, is a switch on a tracked variable
+  /// (or starts with one) that is drawn.
+  bool _threadsInto(Statement body) {
+    final first = switch (body) {
+      SwitchStatement() => body,
+      Block(:final statements) when statements.isNotEmpty => statements.first,
+      _ => null,
+    };
+    return first is SwitchStatement &&
+        _trackedSubject(first) != null &&
+        (_package._hasEffects(first) ||
+            _jumpsOut(first) ||
+            _setsTracked(first));
+  }
+
+  /// Whether a statement of [s] (not of a closure in it) sets a tracked
+  /// variable.
+  bool _setsTracked(Statement s) {
+    if (_tracked.isEmpty) return false;
+    var sets = false;
+    void visit(AstNode node) {
+      if (sets) return;
+      switch (node) {
+        case FunctionExpression():
+          return;
+        case ExpressionStatement(expression: final AssignmentExpression e)
+            when _trackedTarget(e) != null:
+          sets = true;
+        case VariableDeclaration() when _isTrackedDeclaration(node):
+          sets = true;
+        default:
+          for (final child in node.childEntities.whereType<AstNode>()) {
+            visit(child);
+          }
+      }
+    }
+
+    visit(s);
+    return sets;
+  }
+
+  /// The local variables and parameters a `switch` in [root] goes by, less
+  /// those something else than a statement of [root] itself assigns: a
+  /// closure, a local function, an expression.
+  Set<Element> _trackedIn(AstNode root) {
+    final subjects = <Element>{};
+    _walk(root, (node) {
+      if (node case SwitchStatement(:final expression)) {
+        if (expression.unParenthesized case SimpleIdentifier(:final element?)
+            when element is LocalVariableElement ||
+                element is FormalParameterElement) {
+          subjects.add(element);
+        }
+      }
+    });
+    if (subjects.isEmpty) return subjects;
+    void visit(AstNode node, bool nested) {
+      switch (node) {
+        case AssignmentExpression(
+              leftHandSide: SimpleIdentifier(:final element?),
+            )
+            when subjects.contains(element) &&
+                (nested || node.parent is! ExpressionStatement):
+          subjects.remove(element);
+        case FunctionExpression() when !identical(node, root):
+          nested = true;
+        default:
+      }
+      for (final child in node.childEntities.whereType<AstNode>()) {
+        visit(child, nested);
+      }
+    }
+
+    visit(root, false);
+    return subjects;
+  }
+
+  /// The constant [e] is, as a switch case names it: a `bool`, `int`,
+  /// `String` or `null` literal, or a value of an enum; `null` otherwise.
+  (Object?,)? _constOf(Expression e) => switch (e.unParenthesized) {
+    BooleanLiteral(:final value) => (value,),
+    IntegerLiteral(:final value) => (value,),
+    SimpleStringLiteral(:final value) => (value,),
+    NullLiteral() => (null,),
+    PrefixedIdentifier(:final identifier) => _enumValue(identifier.element),
+    PropertyAccess(:final propertyName) => _enumValue(propertyName.element),
+    SimpleIdentifier(:final element) => _enumValue(element),
+    _ => null,
+  };
+
+  /// The value of an enum [element] names: the field, or its getter, which
+  /// a reference such as `Stage.write` resolves to.
+  (Object?,)? _enumValue(Element? element) {
+    final field = switch (element) {
+      PropertyAccessorElement(:final variable) => variable,
+      _ => element,
+    };
+    return field is FieldElement && field.isEnumConstant ? (field,) : null;
   }
 
   /// Whether [s] has a `return`, a `throw` that no `catch` in [s] takes on
@@ -1279,9 +1594,24 @@ final class _Body {
     return v;
   }
 
+  /// Leads [from] to [to]; to the cases they know when [to] is the head of
+  /// a loop over a switch (see [_threadsInto]).
   void _connect(List<_Out> from, _V to) {
+    if (_threaded[to] case final threaded?) {
+      _thread(from, threaded, to);
+    } else {
+      _link(from, to);
+    }
+  }
+
+  void _link(List<_Out> from, _V to) {
     for (final (v, outcome) in from) {
+      if (v case _Set(:final waiting?)) {
+        v.waiting = null;
+        _link(waiting, v);
+      }
       (_edges[v] ??= []).add((outcome, to));
+      (_preds[to] ??= []).add(v);
     }
   }
 
@@ -1295,7 +1625,21 @@ final class _Body {
     // A fork whose outcomes all lead to the same nodes decides nothing that
     // can be seen: it is not drawn, as a join. An outcome without an edge
     // (a throw) leads nowhere, which differs from anywhere.
-    final hidden = <_V>{..._vertices.whereType<_Join>()};
+    // What no path from the entry reaches — a case no path takes, the fork
+    // of a switch every path knows — is not drawn either.
+    final reached = <_V>{};
+    for (final queue = <_V>[_entry]; queue.isNotEmpty;) {
+      final v = queue.removeLast();
+      if (!reached.add(v)) continue;
+      for (final (_, to) in _edges[v] ?? const <(String?, _V)>[]) {
+        queue.add(to);
+      }
+    }
+    final hidden = <_V>{
+      ..._vertices.whereType<_Join>(),
+      ..._vertices.whereType<_Set>(),
+      ..._vertices.where((v) => !reached.contains(v)),
+    };
     for (var changed = true; changed;) {
       changed = false;
       for (final fork in _vertices.whereType<_Fork>()) {

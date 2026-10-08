@@ -2097,6 +2097,171 @@ void main() {
     );
   });
 
+  test('takes a switch on a local variable the way a path already knows, '
+      'and draws its fork only for a path that does not', () async {
+    expectFile(
+      await describeFixture('stages'),
+      await expectedFile(
+        'stages',
+        workflows: [],
+        functions: {
+          // The stage chosen before the loop and the jumps `stage = …;
+          // continue loop` go straight into their cases: no `switch (stage)`.
+          'lib/stages.dart#agree': {
+            'name': 'agree',
+            'place': 'lib/stages.dart:10',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'written',
+                  'place': 'lib/stages.dart:12',
+                },
+                {
+                  'id': '2',
+                  'kind': 'effect',
+                  'name': 'write',
+                  'place': 'lib/stages.dart:21',
+                },
+                {
+                  'id': '3',
+                  'kind': 'effect',
+                  'name': 'review',
+                  'place': 'lib/stages.dart:25',
+                },
+                {
+                  'id': '4',
+                  'kind': 'fork',
+                  'label': 'ok',
+                  'place': 'lib/stages.dart:26',
+                },
+                {
+                  'id': '5',
+                  'kind': 'effect',
+                  'name': 'declare',
+                  'place': 'lib/stages.dart:33',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '3', 'label': 'true'},
+                {'from': '1', 'to': '2', 'label': 'false'},
+                {'from': '2', 'to': '3', 'label': null},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': '5', 'label': 'true'},
+                {'from': '4', 'to': '2', 'label': 'false'},
+                {'from': '5', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // Set in a local function: not followed, drawn as any switch.
+          'lib/stages.dart#captured': {
+            'name': 'captured',
+            'place': 'lib/stages.dart:57',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'switch (stage)',
+                  'place': 'lib/stages.dart:65',
+                },
+                {
+                  'id': '2',
+                  'kind': 'effect',
+                  'name': 'write',
+                  'place': 'lib/stages.dart:67',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': 'Stage.write'},
+                {'from': '1', 'to': null, 'label': 'Stage.review'},
+                {'from': '1', 'to': null, 'label': 'Stage.done'},
+                {'from': '2', 'to': '1', 'label': null},
+              ],
+            },
+          },
+          // A value no case names goes to default.
+          'lib/stages.dart#fallback': {
+            'name': 'fallback',
+            'place': 'lib/stages.dart:89',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'effect',
+                  'name': 'other',
+                  'place': 'lib/stages.dart:95',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // Outside a loop: only the case the value takes is drawn.
+          'lib/stages.dart#once': {
+            'name': 'once',
+            'place': 'lib/stages.dart:77',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'effect',
+                  'name': 'review',
+                  'place': 'lib/stages.dart:83',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': null, 'label': null},
+              ],
+            },
+          },
+          // `stage = next()` is not known: that path alone goes through the
+          // fork; the break after review comes back to review itself.
+          'lib/stages.dart#pick': {
+            'name': 'pick',
+            'place': 'lib/stages.dart:39',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'switch (stage)',
+                  'place': 'lib/stages.dart:43',
+                },
+                {
+                  'id': '2',
+                  'kind': 'effect',
+                  'name': 'write',
+                  'place': 'lib/stages.dart:45',
+                },
+                {
+                  'id': '3',
+                  'kind': 'effect',
+                  'name': 'review',
+                  'place': 'lib/stages.dart:49',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '2', 'label': null},
+                {'from': '1', 'to': '2', 'label': 'Stage.write'},
+                {'from': '1', 'to': '3', 'label': 'Stage.review'},
+                {'from': '1', 'to': null, 'label': 'Stage.done'},
+                {'from': '2', 'to': '1', 'label': null},
+                {'from': '3', 'to': '3', 'label': null},
+              ],
+            },
+          },
+        },
+      ),
+    );
+  });
+
   test('writes the same file every time', () async {
     final first = await describePackage(fixture('release'), packageName: 'x');
     final second = await describePackage(fixture('release'), packageName: 'x');
