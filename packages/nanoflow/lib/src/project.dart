@@ -8,6 +8,8 @@ import 'dart:io';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
+import 'graph.dart';
+
 /// Whether this is a compiled program, as `dart compile exe` builds it.
 const bool isCompiled = bool.fromEnvironment('dart.vm.product');
 
@@ -83,17 +85,26 @@ String? _snapshotPackageDir(String dir) {
 /// and in a compiled program alike.
 final _staticFunction = RegExp(r" from Function '([^']+)': static\.$");
 
-/// The name of [workflow]: the name of the function, as its `toString()`
-/// gives it — a static method's without its class.
+/// The name of [function], a top-level function or a static method, as its
+/// `toString()` gives it — a static method's without its class; `null` for
+/// any other function, whose name cannot be found.
+String? staticNameOf(Function function) =>
+    _staticFunction.firstMatch('$function')?.group(1);
+
+/// The name of [workflow]: the name of the graph whose `call` it is, or of
+/// the function, as its `toString()` gives it — a static method's without its
+/// class.
 ///
-/// Throws an [ArgumentError] when [workflow] is not a top-level function or a
-/// static method: a closure's or an instance method's name cannot be found.
+/// Throws an [ArgumentError] when [workflow] is neither a graph's `call` nor
+/// a top-level function or a static method: a closure's or an instance
+/// method's name cannot be found.
 String workflowNameOf(Function workflow) =>
-    _staticFunction.firstMatch('$workflow')?.group(1) ??
+    graphOfCall(workflow)?.name ??
+    staticNameOf(workflow) ??
     (throw ArgumentError.value(
       workflow,
       'workflow',
-      'a workflow is a top-level function or a static method: '
+      'a workflow is a graph, a top-level function or a static method: '
           'the name of anything else cannot be found',
     ));
 
