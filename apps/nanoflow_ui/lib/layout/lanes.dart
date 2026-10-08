@@ -14,10 +14,11 @@ enum TurnKind {
   /// A forward arrow changing height on its way to the next layer.
   forward,
 
-  /// A back arrow going down from its exit to its lane under the graph.
+  /// A back arrow going from its exit to its lane, under the graph or over
+  /// it.
   backOut,
 
-  /// A back arrow coming up from its lane to its input.
+  /// A back arrow coming from its lane to its input.
   backIn,
 
   /// A loop coming back to its node's input.
@@ -80,7 +81,7 @@ final class Lanes {
   /// The turns of forward pieces that change height.
   final Map<Seg, Turn> forward = {};
 
-  /// Back arrows going down, and coming up.
+  /// Back arrows going to their lanes, and coming back.
   final Map<GEdge, Turn> backOut = {};
   final Map<GEdge, Turn> backIn = {};
 
@@ -114,7 +115,7 @@ const double clearance = 8;
 /// order let it; without, every turn is past its layer's right side.
 ///
 /// [frames] are the nodes' frames with tiles at x = 0; [depth] is the y of
-/// every back arrow's lane under the graph.
+/// every back arrow's lane, under the graph or over it.
 Lanes assignLanes(
   List<List<Item>> layers,
   Map<GNode, Ports> ports,

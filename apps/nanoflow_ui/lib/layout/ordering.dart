@@ -6,7 +6,8 @@ import 'ports.dart';
 const int maxSweeps = 24;
 
 /// How far under the packed layers step 4 takes back arrows to run when it
-/// sorts by medians: below everything, as their lanes will be.
+/// sorts by medians: below everything, where their lanes are unless they
+/// are later found to cross less over the graph.
 const double backLaneDepth = 200;
 
 /// Step 4: orders the items of every layer for fewer crossings.
@@ -15,8 +16,8 @@ const double backLaneDepth = 200;
 /// layer by the median height of the exits its arrows come from; right to
 /// left, by the median height of the inputs they go to. Heights are of ports,
 /// not of item middles, with the layers packed tight. A back arrow comes from
-/// and goes to the graph's bottom, where its lane is, so nodes with back
-/// arrows sink. Sweeps go on while the count of crossings does not grow and
+/// and goes to the graph's bottom, where its lane is unless it later goes
+/// over the graph, so nodes with back arrows sink. Sweeps go on while the count of crossings does not grow and
 /// the order is new, at most [maxSweeps]; the order with the fewest
 /// crossings stays. Ties keep the graph's declaration order. Sets
 /// [Item.order].

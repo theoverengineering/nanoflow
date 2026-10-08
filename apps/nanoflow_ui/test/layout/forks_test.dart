@@ -97,6 +97,39 @@ void main() {
     expect(back.points.map((p) => p.y).reduce(min), lessThan(top));
   });
 
+  test('a way back over the graph clears the copies it passes over: their '
+      'stacked tiles and badge', () {
+    final layout = layoutBody(
+      const GraphBody(
+        nodes: [
+          CopiesNode(
+            id: 'a',
+            place: 'lib/flow.dart:10',
+            label: 'part in parts',
+            body: GraphBody(nodes: [], edges: []),
+          ),
+          ConditionNode(id: 'c', place: 'lib/flow.dart:11', label: 'more?'),
+          EffectNode(id: 'd', place: 'lib/flow.dart:12', name: 'done'),
+        ],
+        edges: [
+          GraphEdge(from: null, to: 'a', label: null),
+          GraphEdge(from: 'a', to: 'c', label: null),
+          GraphEdge(from: 'c', to: 'a', label: 'true'),
+          GraphEdge(from: 'c', to: 'd', label: 'false'),
+          GraphEdge(from: 'd', to: null, label: null),
+        ],
+      ),
+    );
+    expect(checkLayout(layout), isEmpty);
+    expect(countCrossings(layout), 0);
+    final back = layout.edges.singleWhere((e) => e.kind == EdgeKind.back);
+    final lane = back.points.map((p) => p.y).reduce(min);
+    expect(
+      lane,
+      lessThan(layout.nodes['a']!.marks.top - layout.options.laneGap),
+    );
+  });
+
   test('a fork whose false comes back to it: the loop goes under its tile, '
       'true over it', () {
     GraphLayout lay(String looping) => layoutBody(

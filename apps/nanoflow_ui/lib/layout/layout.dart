@@ -92,7 +92,8 @@ GraphLayout layoutBody(
 ///    before, round the frames as they were.
 /// A level so takes at most one build for its order's best, one for its
 /// early turns, one for its heights and two for its end — besides its
-/// loops' tries and [_untangle] —, and five more round changed frames.
+/// loops' and back arrows' tries and [_untangle] —, and five more round
+/// changed frames.
 ///
 /// [endBarHalf] is the least half length of the bar of the end of a body
 /// in a frame ([GNode.leastBarHalf]).
@@ -231,9 +232,10 @@ bool _paidFor(_Counts now, _Counts was) {
 /// Steps 1 to 8 for [g], its frames made: the layout as before nodes stood
 /// where most of their arrows come in level, and with them standing so —
 /// `null` when that places nothing otherwise or is worse ([_finish]) —,
-/// and the order of the layers and the nodes whose loops go under them.
-/// With [order], that of another layout of the same body, the layers keep
-/// it, and the loops their sides.
+/// and the order of the layers, the nodes whose loops go under them and the
+/// back arrows over the graph. With [order], that of another layout of the
+/// same body, the layers keep it, and the loops and back arrows their
+/// sides.
 ({GraphLayout kept, GraphLayout? improved, _Order order}) _laid(
   LayoutGraph g,
   LayoutOptions options, {
@@ -264,6 +266,10 @@ bool _paidFor(_Counts now, _Counts was) {
       crossings: countCrossings(layout),
     ));
     return (kept: kept, improved: improved, order: order);
+  }
+  // Every back arrow runs under the graph until its side is chosen.
+  for (final edge in g.edges) {
+    edge.over = false;
   }
   orderLayers(g, layers, options);
   // The loops' sides and the order of the nodes are chosen with every turn

@@ -128,7 +128,8 @@ enum EdgeKind {
   /// To a node of a later layer, left to right.
   forward,
 
-  /// To a node of an earlier layer: dashed, around the graph's bottom.
+  /// To a node of an earlier layer: dashed, around the graph's bottom or,
+  /// where that crosses less, its top ([GEdge.over]).
   back,
 
   /// From a node to itself, around its tile.
