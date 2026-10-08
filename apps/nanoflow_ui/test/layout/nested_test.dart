@@ -706,15 +706,15 @@ void main() {
 
       test('$view: every arrow to the end turns to its input\'s height '
           'where it first changes height and runs straight into the bar; '
-          'the ways out of !answer.goesOn after ask: refused and of rounds '
-          '>= maxRounds first go under the node at their exit\'s height in '
-          'the layer after', () {
+          'the true of !answer.goesOn after the second ask: refused, a fork '
+          'with true above false, first goes over declare, the node at its '
+          'exit\'s height in the layer after', () {
         final bar = body.nodes[endMarker]!.bar!;
         final arrows = body.edges.where((e) => e.to == endMarker).toList();
         expect(arrows, hasLength(8));
         // The node standing level with the arrow's exit in the next layer,
-        // which its first turn goes under.
-        const around = {'4': '7', '17': '18'};
+        // which its first turn goes over.
+        const around = {'14': '15'};
         for (final edge in arrows) {
           final name = '${edge.from}#${edge.exitIndex}';
           final turns = turnsOf(edge);
@@ -737,8 +737,8 @@ void main() {
           );
           expect(
             turns.first.to,
-            greaterThan(node.placeRect.bottom),
-            reason: '$name: goes under $obstacle',
+            lessThan(node.tile.top),
+            reason: '$name: goes over $obstacle',
           );
         }
       });
@@ -750,7 +750,9 @@ void main() {
     ('in lead in chain', chainWithCut, ['1', '7']),
   ]) {
     test('cut() drawn in place $view: every arrow to its end turns at most '
-        'once, to its input\'s height, and runs straight into the bar', () {
+        'once, to its input\'s height, and runs straight into the bar, but '
+        'for the true of the first !answer.goesOn and the false of !posted, '
+        'which jog into it: their forks stand with true above false', () {
       final layout = lay();
       var body = layout;
       for (final id in path) {
@@ -759,20 +761,27 @@ void main() {
       expect(checkLayout(layout), isEmpty);
       final arrows = body.edges.where((e) => e.to == endMarker).toList();
       expect(arrows, isNotEmpty);
+      const jogging = {'4#0', '13#1'};
       for (final edge in arrows) {
+        final name = '${edge.from}#${edge.exitIndex}';
         expect(
           turnsOf(edge).length,
-          lessThanOrEqualTo(1),
-          reason: '${edge.from}#${edge.exitIndex}: ${edge.points}',
+          lessThanOrEqualTo(jogging.contains(name) ? 2 : 1),
+          reason: '$name: ${edge.points}',
         );
       }
+      expect({
+        for (final jog in jogsBeforeEnd(body)) jog.split(' ').first,
+      }, jogging);
     });
   }
 
   test('specify() drawn in place in lead, and judgeSpec() in it '
       '(chain-later.graph.json): every arrow to either end turns at most '
-      'once and runs straight into the bar, and the height that takes is '
-      'paid for by the turns it saves', () {
+      'once and runs straight into the bar — but in judgeSpec() the true of '
+      'judged.verdict == \'PASS\' and the false of failed >= maxRounds, '
+      'whose forks stand with true above false —, and the height that takes '
+      'is paid for by the turns it saves', () {
     GraphLayout lay() => layoutBody(
       functionOf(chainLater, 'lead').body,
       functions: chainLater.functions,
@@ -789,16 +798,21 @@ void main() {
     expect(checkLayout(layout), isEmpty);
     final specify = layout.nodes['4']!.frame!.inner;
     final judgeSpec = specify.nodes['7']!.frame!.inner;
+    // The arrows that turn more: the true of judged.verdict == 'PASS'
+    // climbs over failed >= maxRounds and comes down to the end, and the
+    // false of failed >= maxRounds goes round ask: dispute, under it.
+    const more = {'judgeSpec 8#0': 3, 'judgeSpec 9#1': 2};
     for (final (name, body) in [
       ('specify', specify),
       ('judgeSpec', judgeSpec),
     ]) {
       expect(unheldJogs(body), isEmpty, reason: name);
       for (final edge in body.edges.where((e) => e.to == endMarker)) {
+        final arrow = '$name ${edge.from}#${edge.exitIndex}';
         expect(
           turnsOf(edge).length,
-          lessThanOrEqualTo(1),
-          reason: '$name ${edge.from}#${edge.exitIndex}: ${edge.points}',
+          lessThanOrEqualTo(more[arrow] ?? 1),
+          reason: '$arrow: ${edge.points}',
         );
       }
     }
@@ -811,10 +825,10 @@ void main() {
     final grows = layout.bounds.height - before.bounds.height;
     expect(saved, greaterThan(0));
     expect(grows, lessThanOrEqualTo(layout.options.tile / 2 * saved + 1e-6));
-    expect(grows / saved, lessThan(layout.options.tile / 2 / 10));
+    expect(grows / saved, lessThan(layout.options.tile / 2 / 8));
   });
 
-  for (final function in ['write', 'writeCut', 'decide', 'work', 'review']) {
+  for (final function in ['write', 'decide', 'work']) {
     test('$function() of chain-later drawn in place: no arrow that turned '
         'before turns again just before its end', () {
       final drawn = inPlace(
@@ -827,8 +841,32 @@ void main() {
     });
   }
 
+  for (final (function, fork) in [
+    ('writeCut', 'account == null'),
+    ('review', 'failed >= maxRounds'),
+  ]) {
+    test('$function() of chain-later drawn in place: only the true of the '
+        'first !answer.goesOn and the false of $fork turn again just before '
+        'its end — their forks stand with true above false, the end between '
+        'them', () {
+      final drawn = inPlace(
+        functionOf(chainLater, function).body,
+        functions: chainLater.functions,
+      );
+      expect(checkLayout(drawn), isEmpty);
+      final body = drawn.nodes['c']!.frame!.inner;
+      expect(
+        {for (final jog in jogsBeforeEnd(body)) jog.split(' ').first},
+        {'4#0', '12#1'},
+      );
+      expect(unheldJogs(body), isEmpty);
+    });
+  }
+
   test('write() of chain-later drawn in place: every arrow into its end '
-      'turns once, to its input\'s height, past what stands in its way', () {
+      'turns once, to its input\'s height, past what stands in its way — '
+      'but the true of the first !answer.goesOn, a fork with true above '
+      'false, which turns twice', () {
     final drawn = inPlace(
       functionOf(chainLater, 'write').body,
       functions: chainLater.functions,
@@ -837,17 +875,18 @@ void main() {
     final arrows = body.edges.where((e) => e.to == endMarker).toList();
     expect(arrows, hasLength(5));
     for (final edge in arrows) {
+      final name = '${edge.from}#${edge.exitIndex}';
       expect(
         turnsOf(edge).length,
-        lessThanOrEqualTo(1),
-        reason: '${edge.from}#${edge.exitIndex}: ${edge.points}',
+        lessThanOrEqualTo(name == '4#0' ? 2 : 1),
+        reason: '$name: ${edge.points}',
       );
     }
   });
 
   test('work() drawn in place in carry() in task (chain-later): the arrow from '
-      'the first !answer.goesOn turns down to its input right past the second '
-      'and runs straight into the bar; move\'s turns twice at most', () {
+      'the first !answer.goesOn turns once, to its input\'s height, and runs '
+      'straight into the bar; move\'s turns twice at most', () {
     final task = layoutBody(
       functionOf(chainLater, 'task').body,
       functions: chainLater.functions,
@@ -862,14 +901,10 @@ void main() {
     final work = task.nodes['1']!.frame!.inner.nodes['5']!.frame!.inner;
     EdgePath into(String from) =>
         work.edges.singleWhere((e) => e.from == from && e.to == endMarker);
-    final turns = turnsOf(into('4'));
-    final second = work.nodes['8']!;
-    final after = work.nodes.values
-        .where((n) => n.layer == second.layer + 1)
-        .map((n) => n.tile.left)
-        .reduce(math.min);
-    expect(turns.last.x, greaterThan(second.tile.right), reason: '$turns');
-    expect(turns.last.x, lessThan(after), reason: '$turns');
+    final first = into('4');
+    final turns = turnsOf(first);
+    expect(turns, hasLength(1), reason: '$turns');
+    expect(turns.single.to, first.points.last.y);
     expect(turnsOf(into('24')).length, lessThanOrEqualTo(2));
   });
 

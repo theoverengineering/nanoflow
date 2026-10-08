@@ -241,15 +241,15 @@ void main() {
           nodes: [
             check,
             call,
-            ConditionNode(id: 'n', place: 'lib/a.dart:4', label: 'retry?'),
+            ConditionNode(id: 'n', place: 'lib/a.dart:4', label: 'give up?'),
             done,
           ],
           edges: [
             GraphEdge(from: null, to: 's', label: null),
             GraphEdge(from: 's', to: 'n', label: 'again'),
             GraphEdge(from: 's', to: 'f', label: 'ok'),
-            GraphEdge(from: 'n', to: 's', label: 'true'),
-            GraphEdge(from: 'n', to: 't', label: 'false'),
+            GraphEdge(from: 'n', to: 's', label: 'false'),
+            GraphEdge(from: 'n', to: 't', label: 'true'),
             GraphEdge(from: 'f', to: 't', label: null),
             GraphEdge(from: 't', to: null, label: null),
           ],

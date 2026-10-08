@@ -6,9 +6,10 @@ import 'package:test/test.dart';
 
 import 'support.dart';
 
-/// A random body of up to 12 effects and forks of `true` and `false`; a
-/// fork lists either first, as describe does: `if` lists `true` first,
-/// `a || b`, or an `if` that returns from a `try` with `finally`, `false`.
+/// A random body of up to 12 effects and forks of `true` and `false`, whose
+/// ways go forward, back, to their own fork or to the end; a fork lists
+/// either first, as describe does: `if` lists `true` first, `a || b`, or an
+/// `if` that returns from a `try` with `finally`, `false`.
 GraphBody randomForks(int seed) {
   final random = Random(seed);
   final count = 2 + random.nextInt(11);
@@ -35,122 +36,36 @@ GraphBody randomForks(int seed) {
   return GraphBody(nodes: nodes, edges: edges);
 }
 
-/// [lay] with every fork left where the order chosen for crossings and
-/// arrows' length puts it: no fork turned with its `true` up.
-GraphLayout _withoutTurningUp(GraphLayout Function() lay) {
-  trueAboveEnabled = false;
-  try {
-    return lay();
-  } finally {
-    trueAboveEnabled = true;
-  }
-}
-
-/// How many arrows going forward of [layout] turn three times or more.
-int _thrice(GraphLayout layout) => layout.edges
-    .where((e) => e.kind == EdgeKind.forward && turnsOf(e).length > 2)
-    .length;
+/// The exit of [node] in [layout] labelled [label].
+ExitBox _exit(GraphLayout layout, String node, String label) => layout.exits
+    .singleWhere((exit) => exit.node == node && exit.label == label);
 
 void main() {
-  test('!ok in publish: its true goes up to rollback, though the end its '
-      'false goes to would stand nearer over rollback than under it', () {
-    GraphLayout lay() => layoutOf('release', 'publish');
-    expect(falseAbove(_withoutTurningUp(lay)), ['3']);
-    final layout = lay();
-    expect(falseAbove(layout), isEmpty);
-    expect(checkLayout(layout), isEmpty);
-    expect(countCrossings(layout), 0);
-  });
-
-  for (final (graph, function) in [
-    ('control', 'deployLocked'),
-    ('throws', 'cleanUp'),
-    ('throws', 'mirror'),
-  ]) {
-    test('$function of $graph: an if in a try with finally, whose false '
-        'describe lists first, stands with its true up', () {
-      expect(falseAbove(layoutOf(graph, function)), isEmpty);
-    });
-  }
-
-  test('of the 268 forks of true and false in the test graphs at most 48 '
-      'keep false above: their true goes back, turning it up would cost, or '
-      'no swap of neighbours turns it up', () {
+  test('every fork of true and false in the test graphs stands with true '
+      'above false', () {
     var forks = 0;
-    var above = 0;
     for (final name in graphNames()) {
       final file = loadGraphFile(name);
-      for (final body in bodiesOf(file).values) {
+      for (final MapEntry(key: id, value: body) in bodiesOf(file).entries) {
         final layout = layoutBody(body, functions: file.functions);
-        forks += layout.nodes.keys.where((id) {
+        forks += layout.nodes.keys.where((node) {
           final labels = {
             for (final exit in layout.exits)
-              if (exit.node == id) exit.label,
+              if (exit.node == node) exit.label,
           };
           return labels.length == 2 && labels.containsAll(['true', 'false']);
         }).length;
-        above += falseAbove(layout).length;
+        expect(falseAbove(layout), isEmpty, reason: '$name $id');
       }
     }
     expect(forks, 268);
-    expect(above, lessThanOrEqualTo(48));
   });
 
-  group('a fork turned with its true up costs no crossing, no rule of step '
-      '9, no arrow turning twice or three times; at most a turn or half a '
-      'tile of height for each fork turned up and each turn it saves', () {
-    void check(GraphLayout Function() lay, String reason) {
-      final layout = lay();
-      final before = _withoutTurningUp(lay);
-      final up = falseAbove(before).length - falseAbove(layout).length;
-      if (falseAbove(layout).length == falseAbove(before).length) {
-        expect(describe(layout), describe(before), reason: reason);
-        return;
-      }
-      expect(up, greaterThan(0), reason: reason);
-      expect(checkLayout(layout), isEmpty, reason: reason);
-      expect(
-        countCrossings(layout),
-        lessThanOrEqualTo(countCrossings(before)),
-        reason: reason,
-      );
-      final now = deepTurns(layout);
-      final was = deepTurns(before);
-      expect(now.turns, lessThanOrEqualTo(was.turns + up), reason: reason);
-      expect(now.twice, lessThanOrEqualTo(was.twice), reason: reason);
-      expect(
-        _thrice(layout),
-        lessThanOrEqualTo(_thrice(before)),
-        reason: reason,
-      );
-      final saved = up + was.turns - now.turns + 2 * (was.twice - now.twice);
-      expect(
-        layout.bounds.height - before.bounds.height,
-        lessThanOrEqualTo(layout.options.tile / 2 * saved + 1e-6),
-        reason: reason,
-      );
-    }
-
-    test('in the test graphs', () {
-      for (final name in graphNames()) {
-        final file = loadGraphFile(name);
-        for (final MapEntry(key: id, value: body) in bodiesOf(file).entries) {
-          check(() => layoutBody(body, functions: file.functions), '$name $id');
-        }
-      }
-    });
-
-    test('in random bodies', () {
-      for (var seed = 0; seed < 300; seed++) {
-        check(() => layoutBody(randomForks(seed)), 'seed $seed');
-      }
-    });
-  });
-
-  test('a random body with forks lays out the same way every time, keeping '
-      'step 9', () {
+  test('a random body with forks lays out the same way every time, every '
+      'fork with true above false, keeping step 9', () {
     for (var seed = 0; seed < 300; seed++) {
       final layout = layoutBody(randomForks(seed));
+      expect(falseAbove(layout), isEmpty, reason: 'seed $seed');
       expect(
         describe(layoutBody(randomForks(seed))),
         describe(layout),
@@ -158,5 +73,68 @@ void main() {
       );
       expect(checkLayout(layout), isEmpty, reason: 'seed $seed');
     }
+  });
+
+  test('a fork whose true goes back: its back arrow leaves above its false '
+      'and goes down past it, clear of its label', () {
+    final layout = layoutBody(
+      bodyOf({
+        'start': 'a',
+        'nodes': {
+          'a': {'command': 'a', 'then': 'c'},
+          'c': {
+            'decide': 'c',
+            'then': {'false': 'd', 'true': 'a'},
+          },
+          'd': {'command': 'd', 'then': <String>[]},
+        },
+      }),
+    );
+    expect(checkLayout(layout), isEmpty);
+    expect(falseAbove(layout), isEmpty);
+    final back = layout.edges.singleWhere((e) => e.from == 'c' && e.to == 'a');
+    expect(back.kind, EdgeKind.back);
+    final (down, _, _) = verticals(back).first;
+    expect(down, greaterThan(_exit(layout, 'c', 'false').labelRect!.right));
+  });
+
+  test('a fork whose false comes back to it: the loop goes under its tile, '
+      'true over it', () {
+    GraphLayout lay(String looping) => layoutBody(
+      bodyOf({
+        'start': 'c',
+        'nodes': {
+          'c': {
+            'decide': 'c',
+            'then': {
+              looping: 'c',
+              if (looping == 'true') 'false': 'd' else 'true': 'd',
+            },
+          },
+          'd': {'command': 'd', 'then': <String>[]},
+        },
+      }),
+    );
+    for (final looping in ['true', 'false']) {
+      final layout = lay(looping);
+      expect(checkLayout(layout), isEmpty, reason: looping);
+      expect(falseAbove(layout), isEmpty, reason: looping);
+      final tile = layout.nodes['c']!.tile;
+      final loop = layout.edges.singleWhere((e) => e.kind == EdgeKind.loop);
+      final ys = loop.points.map((p) => p.y);
+      if (looping == 'true') {
+        expect(ys.reduce(min), lessThan(tile.top));
+      } else {
+        expect(ys.reduce(max), greaterThan(tile.bottom));
+      }
+    }
+  });
+
+  test('!ok in publish: its true goes up to rollback, though the end its '
+      'false goes to would stand nearer over rollback than under it', () {
+    final layout = layoutOf('release', 'publish');
+    expect(falseAbove(layout), isEmpty);
+    expect(checkLayout(layout), isEmpty);
+    expect(countCrossings(layout), 0);
   });
 }

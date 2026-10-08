@@ -51,6 +51,10 @@ final class Ports {
 /// higher the exit, the lower its lane), loops under the tile (nested). A
 /// capsule takes its place by its middle arrow.
 ///
+/// A fork's `true` stands above its `false` whatever kind their arrows are
+/// ([GNode.fork]): a loop of `true` goes over the tile, of `false` under it,
+/// whatever [below] says.
+///
 /// Inputs, top to bottom: loops over the tile (nested), forward arrows (a
 /// ladder: by where they come from in the layer before), back arrows (nested:
 /// the lower the lane, the higher the input), loops under the tile (nested).
@@ -136,6 +140,19 @@ double arrowsReach(GNode node, LayoutOptions options) {
 GEdge middleArrow(GExit exit) => exit.edges[(exit.edges.length - 1) ~/ 2];
 
 void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
+  if (port.node.fork case (:final yes, :final no)) {
+    // A fork's true stands above its false, whatever kind its arrows are:
+    // a loop of true goes over the tile, a loop of false under it.
+    for (final (exit, loops) in [
+      (yes, port.loopsAbove),
+      (no, port.loopsBelow),
+    ]) {
+      loops.addAll(exit.edges.where((edge) => edge.kind == EdgeKind.loop));
+    }
+    port.slots.addAll([yes, no]);
+    _placeExits(port, options);
+    return;
+  }
   final loops = <GExit>[];
   final forward = <GExit>[];
   final back = <GExit>[];
@@ -177,7 +194,12 @@ void _orderExits(Ports port, LayoutOptions options, {required bool below}) {
     ...back,
     if (below) ...loops.reversed,
   ]);
+  _placeExits(port, options);
+}
 
+/// Puts the exits of [port] in [Ports.slots]' order, an exit gap apart
+/// round the middle of its exits, and their arrows a capsule gap apart.
+void _placeExits(Ports port, LayoutOptions options) {
   final units = port.slots.fold(0.0, (sum, exit) => sum + exitUnits(exit));
   var cursor = port.exitCentre - units * options.exitGap / 2;
   for (final exit in port.slots) {

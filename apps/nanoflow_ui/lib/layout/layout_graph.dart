@@ -339,7 +339,7 @@ final class GNode {
 
   /// The node's exits `true` and `false` when they are its only ones — a
   /// fork: the condition of an `if`, of a loop, of `a || b` —; `null`
-  /// otherwise. The layout puts `true` above `false` where it can.
+  /// otherwise. The layout puts `true` above `false`, always.
   ({GExit yes, GExit no})? get fork => switch (exits) {
     [final a, final b] when a.label == 'true' && b.label == 'false' => (
       yes: a,
