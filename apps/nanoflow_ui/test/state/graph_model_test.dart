@@ -13,7 +13,7 @@ import 'package:nanoflow_ui/state/session_feed.dart';
 import 'package:nanoflow_ui/state/session_view.dart';
 import 'package:path/path.dart' as p;
 
-import '../layout/support.dart' show loadGraphFile;
+import '../layout/support.dart' show loadGraphFile, withEffectFirst;
 import 'support.dart';
 
 void main() {
@@ -954,7 +954,7 @@ void main() {
     });
 
     test('stay as another session or Current graph is shown, and go for '
-        'another workflow or a graph file written again', () {
+        'another workflow', () {
       run((async) {
         graphFile.graph = GraphFile.fromJson({
           ...release.toJson(),
@@ -990,6 +990,50 @@ void main() {
 
         model.expandNode(const [], publish);
         graphFile.graph = GraphFile.fromJson(graphFile.graph!.toJson());
+        expect(frames(), ['publish()'], reason: 'written again the same');
+      });
+    });
+
+    test('follow their nodes into a graph file written again, as the levels '
+        'opened do: an edit numbers the nodes anew', () {
+      run((async) {
+        const releaseId = 'lib/release.dart#release';
+        const publishId = 'lib/publish.dart#publish';
+        graphFile.graph = release;
+        model.expandNode(const [], publish);
+        model.expandNode(const [publish], const Opened('4'));
+        expect(frames(), ['publish()']);
+
+        // An effect added at the start of release: publish's call is 6 now.
+        graphFile.graph = withEffectFirst(release, releaseId, 'prepare');
+        const moved = Opened('6', functionId: publishId);
+        expect(frames(), ['publish()']);
+        expect(model.canvas.frames.single.path, const [moved]);
+
+        model.open(moved);
+        expect(model.canvas.path, const [moved]);
+        // And one at the start of publish: still opened, the level drawn.
+        graphFile.graph = withEffectFirst(
+          withEffectFirst(release, releaseId, 'prepare'),
+          publishId,
+          'sign',
+        );
+        expect(model.canvas.path, const [moved]);
+
+        // A graph file without the call: the level closes.
+        final json = release.toJson();
+        final body =
+            ((json['functions']! as Map)[releaseId]! as Map)['body']! as Map;
+        body['nodes'] = [
+          for (final node in body['nodes']! as List)
+            if ((node as Map)['id'] != '5') node,
+        ];
+        body['edges'] = [
+          for (final edge in body['edges']! as List)
+            if ((edge as Map)['from'] != '5' && edge['to'] != '5') edge,
+        ];
+        graphFile.graph = GraphFile.fromJson(json);
+        expect(model.canvas.path, isEmpty);
         expect(frames(), isEmpty);
       });
     });

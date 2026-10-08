@@ -14,6 +14,7 @@ import 'effect_files.dart';
 import 'freshness.dart';
 import 'graph_file_source.dart';
 import 'in_place.dart';
+import 'node_keys.dart';
 import 'outcomes.dart';
 import 'selection.dart';
 import 'session_feed.dart';
@@ -100,6 +101,12 @@ class GraphModel extends ChangeNotifier {
   /// as far as the graph it draws has them.
   List<Opened> _path = const [];
 
+  /// The nodes of the levels opened last, by their keys ([pathKeys]), while
+  /// a graph file written again has not all of them: [_path] goes down them
+  /// again as far as the graph file has them. `null` while [_path] has them
+  /// all.
+  List<(String, String?)>? _wanted;
+
   /// The time, for what is derived at a moment.
   final DateTime Function() _now;
 
@@ -107,10 +114,12 @@ class GraphModel extends ChangeNotifier {
   final _copies = CopyChoices();
 
   /// The nodes expanded in place: they stay for any session of the
-  /// workflow, and go for another workflow, or a graph file written again.
+  /// workflow, go for another workflow, and follow their nodes into a graph
+  /// file written again ([_carryOver]).
   final _expansions = Expansions();
 
-  /// The graph file read last: another one collapses every node.
+  /// The graph file read last: the levels opened and the nodes expanded
+  /// follow their nodes into another one.
   GraphFile? _graphRead;
 
   /// Whether the [selection] changes because of new data: the change is told
@@ -154,6 +163,7 @@ class GraphModel extends ChangeNotifier {
     final choice = workflows.where((w) => w.id == id).firstOrNull;
     if (choice == null) return;
     _path = const [];
+    _wanted = null;
     if (id != workflow?.id) {
       _chosen = (id: choice.id, name: choice.name);
       _expansions.clear();
@@ -167,6 +177,7 @@ class GraphModel extends ChangeNotifier {
   /// drawn in place at [from] — one level down (`openings`).
   void open(Opened opened, {List<Opened>? from}) {
     _path = [...from ?? canvas.path, opened];
+    _wanted = null;
     _changed();
   }
 
@@ -187,6 +198,7 @@ class GraphModel extends ChangeNotifier {
   /// workflow's body.
   void openLevel(int depth) {
     _path = canvas.path.take(depth).toList();
+    _wanted = null;
     _changed();
   }
 
@@ -467,13 +479,56 @@ class GraphModel extends ChangeNotifier {
   }
 
   void _graphFileChanged() {
-    // The nodes expanded may be other nodes in a graph file written again.
-    if (!identical(graphFile.graph, _graphRead)) {
-      _graphRead = graphFile.graph;
-      _expansions.clear();
-    }
+    final drawn = _canvas;
     // Which sessions are the workflow's may have changed.
     _feedSelection();
+    _changed();
+    if (!identical(graphFile.graph, _graphRead)) {
+      _graphRead = graphFile.graph;
+      if (drawn != null) _carryOver(drawn, canvas);
+    }
+  }
+
+  /// Takes the levels opened and the nodes expanded on [before], the graph
+  /// drawn before the graph file was written again, to the same nodes of
+  /// [after], the graph drawn now: its nodes may be numbered anew. A level
+  /// whose node is gone closes, with those under it, and opens again once a
+  /// graph file written later has the node back; an expanded node that is
+  /// gone collapses. Nothing changes while the graph drawn is the same — a
+  /// session's snapshot —; another workflow drawn starts at its top.
+  void _carryOver(CanvasGraph before, CanvasGraph after) {
+    final (was, wasFile) = (before.workflow, before.file);
+    final (now, nowFile) = (after.workflow, after.file);
+    if (identical(wasFile, nowFile) && identical(was, now)) return;
+    if (was == null ||
+        wasFile == null ||
+        now == null ||
+        nowFile == null ||
+        was.id != now.id) {
+      _path = const [];
+      _wanted = null;
+      _expansions.clear();
+      _changed();
+      return;
+    }
+    ({List<Opened> path, bool complete}) follow(List<Opened> path) =>
+        followPath(
+          path,
+          before: was,
+          beforeFunctions: wasFile.functions,
+          after: now,
+          afterFunctions: nowFile.functions,
+        );
+    // A level whose node is gone for a while — an edit half made — opens
+    // again once the node is back.
+    final wanted = _wanted ?? pathKeys(was, wasFile.functions, _path);
+    final opened = pathOfKeys(wanted, now, nowFile.functions);
+    _path = opened.path;
+    _wanted = opened.complete ? null : wanted;
+    _expansions.follow((path) {
+      final followed = follow(path);
+      return followed.complete ? followed.path : null;
+    });
     _changed();
   }
 

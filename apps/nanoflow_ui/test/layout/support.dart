@@ -338,3 +338,38 @@ GraphLayout inPlace(
   functions: functions,
   expanded: {'c': ExpandedNode(body)},
 );
+
+/// [file] as `describe` writes it once an effect [name] is added at the
+/// start of the function [functionId]: the new node is `1`, the others are
+/// numbered one more than before.
+GraphFile withEffectFirst(GraphFile file, String functionId, String name) {
+  final json = jsonDecode(jsonEncode(file.toJson())) as Map<String, Object?>;
+  final functions = json['functions']! as Map<String, Object?>;
+  final function = functions[functionId]! as Map<String, Object?>;
+  final body = function['body']! as Map<String, Object?>;
+  String? shift(Object? id) => id == null ? null : '${int.parse('$id') + 1}';
+  final nodes = [
+    for (final node in body['nodes']! as List<Object?>)
+      {...node! as Map<String, Object?>, 'id': shift((node as Map)['id'])},
+  ];
+  final edges = [
+    for (final edge in body['edges']! as List<Object?>)
+      {
+        ...edge! as Map<String, Object?>,
+        'from': shift((edge as Map)['from']),
+        'to': shift(edge['to']),
+      },
+  ];
+  final first = edges.firstWhere((e) => e['from'] == null);
+  body['nodes'] = [
+    {'id': '1', 'kind': 'effect', 'name': name, 'place': 'lib/added.dart:1'},
+    ...nodes,
+  ];
+  body['edges'] = [
+    {'from': null, 'to': '1', 'label': null},
+    {...first, 'from': '1'},
+    for (final edge in edges)
+      if (!identical(edge, first)) edge,
+  ];
+  return GraphFile.fromJson(json);
+}

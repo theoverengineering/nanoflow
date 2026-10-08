@@ -21,6 +21,7 @@ import 'package:nanoflow_ui/state/graph_marks.dart' show NodeState;
 import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/widgets/icons.dart';
 
+import '../../layout/support.dart' show withEffectFirst;
 import '../../state/support.dart';
 import '../../support/golden.dart';
 import 'support.dart';
@@ -390,6 +391,45 @@ void main() {
       await settle(tester);
       expect(controller.scale, isNot(scale));
       expect(find.text('publish()'), findsOneWidget);
+    });
+
+    testWidgets('keeps the scale when an edit numbers the nodes of the level '
+        'drawn anew, the node nearest the middle where it was on the screen; '
+        'fits again while the view is as fitting left it', (tester) async {
+      final model = modelOf(graph: graphFileNamed('release'));
+      await pumpCanvas(tester, model);
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+      final scale = controller.scale;
+      final middle = viewport(tester).center;
+      final nearest =
+          [
+            for (final id in ['1', '2', '3', '4', '5', '6', '7', '8']) id,
+          ]..sort(
+            (a, b) => (tester.getRect(tile(a)).center - middle).distance
+                .compareTo((tester.getRect(tile(b)).center - middle).distance),
+          );
+      final id = nearest.first;
+      final before = tester.getRect(tile(id));
+
+      // describe wrote the file again after an effect was added first: every
+      // node of release is numbered one more.
+      graphFileOf(model).graph = withEffectFirst(
+        graphFileNamed('release'),
+        'lib/release.dart#release',
+        'prepare',
+      );
+      await settle(tester);
+      expect(controller.scale, scale);
+      expect(tester.getRect(tile('${int.parse(id) + 1}')), before);
+
+      await tester.tap(find.byTooltip('Zoom to fit'));
+      await tester.pump();
+      final fitted = controller.scale;
+      graphFileOf(model).graph = graphFileNamed('release');
+      await settle(tester);
+      expect(controller.scale, fitted);
+      expect(inside(viewport(tester), tester.getRect(tile('8'))), isTrue);
     });
 
     testWidgets('keeps the view as sessions come', (tester) async {

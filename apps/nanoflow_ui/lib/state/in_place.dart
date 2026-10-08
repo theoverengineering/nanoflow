@@ -12,26 +12,45 @@ import 'body_path.dart';
 /// frames it is in — the nodes of it expanded, each as it opens
 /// ([openings]).
 final class Expansions {
-  /// By [levelKey] of a body's path, its expanded nodes by id.
-  final Map<String, Map<String, Opened>> _at = {};
+  /// By [levelKey] of a body's path, the path and its expanded nodes by id.
+  final Map<String, ({List<Opened> path, Map<String, Opened> nodes})> _at = {};
 
   /// Whether nothing is expanded anywhere.
   bool get isEmpty => _at.isEmpty;
 
   /// The nodes expanded in the body at [path], in the order expanded.
-  List<Opened> at(List<Opened> path) => [...?_at[levelKey(path)]?.values];
+  List<Opened> at(List<Opened> path) => [...?_at[levelKey(path)]?.nodes.values];
 
   /// Expands [node], a node of the body at [path]: drawn in place, as it
   /// opens. Another opening of the same node gives way to it.
-  void expand(List<Opened> path, Opened node) =>
-      (_at[levelKey(path)] ??= {})[node.nodeId] = node;
+  void expand(List<Opened> path, Opened node) => (_at[levelKey(path)] ??= (
+    path: List.unmodifiable(path),
+    nodes: {},
+  )).nodes[node.nodeId] = node;
+
+  /// Keeps each expanded node that [follow] finds again — it gives the path
+  /// to a node's body, the node last, as the graph has it now, or `null`
+  /// when it is not there — in the body it finds, and forgets the rest: a
+  /// graph file written again numbers its nodes anew.
+  void follow(List<Opened>? Function(List<Opened> path) follow) {
+    final before = [
+      for (final (:path, :nodes) in _at.values)
+        for (final node in nodes.values) [...path, node],
+    ];
+    _at.clear();
+    for (final opened in before) {
+      final now = follow(opened);
+      if (now == null || now.isEmpty) continue;
+      expand(now.sublist(0, now.length - 1), now.last);
+    }
+  }
 
   /// Collapses the node [nodeId] of the body at [path] back to its tile,
   /// and forgets what was expanded in its frame.
   void collapse(List<Opened> path, String nodeId) {
     final key = levelKey(path);
-    final node = _at[key]?.remove(nodeId);
-    if (_at[key]?.isEmpty ?? false) _at.remove(key);
+    final node = _at[key]?.nodes.remove(nodeId);
+    if (_at[key]?.nodes.isEmpty ?? false) _at.remove(key);
     if (node == null) return;
     final inside = levelKey([...path, node]);
     _at.removeWhere((k, _) => k == inside || k.startsWith('$inside/'));

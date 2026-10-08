@@ -9,6 +9,7 @@ import 'package:nanoflow_model/nanoflow_model.dart'
 
 import '../../layout/layout.dart' as layout;
 import '../../state/graph_model.dart';
+import '../../state/node_keys.dart';
 import '../../state/session_view.dart';
 import '../../widgets/clickable.dart';
 import '../copy_switcher.dart';
@@ -129,6 +130,10 @@ class _GraphCanvasState extends State<GraphCanvas> {
   /// place in it, and which nodes those are.
   GraphBody? _body;
   String? _bodyJson;
+
+  /// Which level of which graph is drawn ([_levelOf]): the same level drawn
+  /// otherwise — the graph file written again — keeps the view.
+  String? _level;
   Map<String, layout.ExpandedNode> _expanded = const {};
   String _expansions = '';
   layout.GraphLayout? _layout;
@@ -200,6 +205,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
       _canvas.file?.functions ?? const {},
       expandedOf(_canvas.frames, view),
       expansionsKeyOf(_canvas.frames),
+      _levelOf(_canvas, model),
     );
     final depth = _canvas.levels.length - 1;
     _marks = CanvasMarks.of(view, depth: depth);
@@ -238,27 +244,44 @@ class _GraphCanvasState extends State<GraphCanvas> {
   /// Another body is fitted anew. Nodes expanded or collapsed fit the graph
   /// again while the view is as fitting left it; else the node expanded or
   /// collapsed stays where it was on the screen. What the session changes
-  /// — the room of a frame of copies for its switcher — keeps the view.
+  /// — the room of a frame of copies for its switcher — keeps the view. The
+  /// same [level] drawn otherwise — the graph file written again — keeps
+  /// the scale, and the node nearest the middle of the screen stays where
+  /// it is on it; while the view is as fitting left it, it fits again.
   void _layOut(
     GraphBody? body,
     Map<String, GraphFunction> functions,
     Map<String, layout.ExpandedNode> expanded,
     String expansions,
+    String? level,
   ) {
     // A body read once is drawn with the functions of its own file.
     var another = false;
+    ({String key, Offset at})? kept;
+    final sameLevel = level != null && level == _level;
+    _level = level;
     if (!identical(body, _body)) {
+      final was = _body;
       _body = body;
       final json = body == null ? null : bodyKeyOf(body, functions);
       if (json != _bodyJson) {
         _bodyJson = json;
-        another = true;
-        _needsFit = true;
         _anchor = null;
+        if (sameLevel && was != null && _layout != null && !_fitted) {
+          kept = _middleNode(was);
+        } else {
+          another = true;
+          _needsFit = true;
+        }
       }
     }
     final toggled = expansions != _expansions;
-    if (!another && !toggled && sameExpanded(expanded, _expanded)) return;
+    if (!another &&
+        kept == null &&
+        !toggled &&
+        sameExpanded(expanded, _expanded)) {
+      return;
+    }
     final before = _layout;
     _expanded = expanded;
     _expansions = expansions;
@@ -270,6 +293,14 @@ class _GraphCanvasState extends State<GraphCanvas> {
             options: _options,
             expanded: expanded,
           );
+    if (kept != null && body != null) {
+      final node = nodeOfKey(body, kept.key);
+      final box = node == null ? null : _layout?.nodes[node.id];
+      if (box != null) {
+        _offset = kept.at - box.tile.toRect().topLeft * _scale;
+      }
+      return;
+    }
     if (before == null || another || !toggled) return;
     final anchor = _anchor;
     _anchor = null;
@@ -282,6 +313,27 @@ class _GraphCanvasState extends State<GraphCanvas> {
     if (moved != null) {
       _offset = anchor.at - moved.tile.toRect().topLeft * _scale;
     }
+  }
+
+  /// The node of [body], laid out as [_layout], whose tile is nearest the
+  /// middle of the screen: its key ([nodeKey]) and where its tile's top
+  /// left corner is on the screen. `null` when the body has no node drawn.
+  ({String key, Offset at})? _middleNode(GraphBody body) {
+    final middle = _room(_size).center;
+    ({String key, Offset at})? nearest;
+    var distance = double.infinity;
+    for (final node in body.nodes) {
+      final box = _layout?.nodes[node.id];
+      if (box == null) continue;
+      final tile = box.tile.toRect();
+      final at = _offset + tile.topLeft * _scale;
+      final d = (_offset + tile.center * _scale - middle).distance;
+      if (d < distance) {
+        distance = d;
+        nearest = (key: nodeKey(body, node), at: at);
+      }
+    }
+    return nearest;
   }
 
   /// The node [id] on the canvas: of the body drawn, or of a frame drawn in
@@ -687,4 +739,21 @@ class _ZoomIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ZoomIconPainter old) => old.icon != icon;
+}
+
+/// Which level of which graph [canvas] draws, whatever its nodes are
+/// numbered: the workflow, the session whose snapshot it is (none for
+/// `Current graph`), and the nodes opened down to the level by their keys
+/// ([nodeKey]); `null` when there is no workflow drawn.
+String? _levelOf(CanvasGraph canvas, GraphModel model) {
+  final workflow = canvas.workflow;
+  final file = canvas.file;
+  if (workflow == null || file == null) return null;
+  final session = canvas.ofSession ? model.selection.sessionId : null;
+  final keys = pathKeys(workflow, file.functions, canvas.path);
+  return [
+    workflow.id,
+    session ?? '',
+    for (final (key, function) in keys) '$key>${function ?? ''}',
+  ].join('\n');
 }

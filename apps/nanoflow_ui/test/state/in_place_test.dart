@@ -24,6 +24,32 @@ void main() {
   );
 
   group('Expansions', () {
+    test('follow keeps each node found again, in the body found, and forgets '
+        'the rest', () {
+      const upload = Opened('1');
+      const gone = Opened('9', functionId: 'lib/x.dart#x');
+      final expansions = Expansions()
+        ..expand(const [], publish)
+        ..expand(const [publish], upload)
+        ..expand(const [], gone);
+      expansions.follow(
+        (path) => switch (path) {
+          [Opened(nodeId: '5')] => const [
+            Opened('6', functionId: 'lib/publish.dart#publish'),
+          ],
+          [Opened(nodeId: '5'), Opened(nodeId: '1')] => const [
+            Opened('6', functionId: 'lib/publish.dart#publish'),
+            Opened('2'),
+          ],
+          _ => null,
+        },
+      );
+      const moved = Opened('6', functionId: 'lib/publish.dart#publish');
+      expect(expansions.at(const []), [moved]);
+      expect(expansions.at(const [moved]), [const Opened('2')]);
+      expect(expansions.at(const [publish]), isEmpty);
+    });
+
     test('a node is expanded in the body at one path, and collapsed there', () {
       final expansions = Expansions()..expand(const [], publish);
       expect(expansions.at(const []), [publish]);
