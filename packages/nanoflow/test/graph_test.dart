@@ -17,6 +17,8 @@ Future<String> both((String, int) pair) async => '${pair.$1}${pair.$2}';
 
 int four(int n) => n;
 
+Future<String> three2(String s) async => s;
+
 abstract final class Other {
   static Future<int> one(String s) async => 2;
 }
@@ -87,6 +89,17 @@ void main() {
     expect(node.node, same(sub));
   });
 
+  test('the call of a graph is that graph as a node', () {
+    final g = Graph<int, String>('g', [
+      Graph.start(two).next(sub.call),
+      Graph.part(sub).next(three2),
+    ]);
+    final nodes = shapeOf(g).nodes;
+    expect([for (final n in nodes) n.name], ['two', 'sub', 'three2']);
+    expect(nodes[1].kind, NodeKind.graph);
+    expect(nodes[1].node, same(sub));
+  });
+
   test('a graph is found by its call, which flow.start takes for it', () {
     final g = Graph<String, int>('found', [Graph.start(one)]);
     final Future<int> Function(Flow, String) call = g.call;
@@ -95,10 +108,19 @@ void main() {
   });
 
   group('rejects', () {
-    test('a closure', () {
+    test('a closure, and no more: its start is there', () {
       expect(
         () => Graph<String, int>('g', [Graph.start((String s) => 1)]),
-        rejects('a node is a top-level function or a static method'),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => '${e.message}',
+            'message',
+            allOf(
+              contains('a node is a top-level function or a static method'),
+              isNot(contains('no start')),
+            ),
+          ),
+        ),
       );
     });
 

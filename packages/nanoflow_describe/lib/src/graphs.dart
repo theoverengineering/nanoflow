@@ -375,7 +375,8 @@ final class _GraphBody {
       PropertyAccess(:final propertyName) => propertyName.element,
       _ => null,
     };
-    final graph = _package._graphOf(element);
+    // `judged.call`, as flow.start takes a graph, is the graph too.
+    final graph = _package._graphReferenced(e) ?? _package._graphOf(element);
     final Object? key = graph ?? element?.baseElement;
     if (_made[key] case final known?) return known;
     final place = _graph.place;

@@ -187,6 +187,12 @@ void main() {
               _edge('9', null),
             ],
           ),
+          '$_file#viaCall': _function(
+            'viaCall',
+            110,
+            [_call('1', 'judged', 110)],
+            [_edge(null, '1'), _edge('1', null)],
+          ),
         },
       ),
     );

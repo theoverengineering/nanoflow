@@ -28,9 +28,9 @@ abstract class Exit<T> {
   final T value;
 }
 
-/// A graph of nodes, a workflow of its own: `flow.start(review, input)` runs
-/// it as a session, a workflow function calls it as `review(f, input)`, and it
-/// may be a node of another graph.
+/// A graph of nodes, a workflow of its own: `flow.start(review.call, input)`
+/// runs it as a session, a workflow function calls it as `review(f, input)`,
+/// and it may be a node of another graph.
 ///
 /// ```dart
 /// final review = Graph<String, void>('review', [
@@ -252,7 +252,9 @@ GraphShape _build(String name, List<Part> parts) {
   final named = <String, ShapeNode>{};
   final refused = <Object?>{};
 
-  ShapeNode? node(Object? value) {
+  ShapeNode? node(Object? given) {
+    // The call of a graph, as flow.start takes it, is the graph.
+    final value = given is Function ? graphOfCall(given) ?? given : given;
     if (nodes[value] case final known?) return known;
     if (refused.contains(value)) return null;
     String? problem;
@@ -301,12 +303,14 @@ GraphShape _build(String name, List<Part> parts) {
   }
 
   final starts = <ShapeNode>[];
+  var startsDeclared = false;
   final joins = <_Chain, ShapeJoin>{};
   final routed = <Object>{};
   for (final Part(:_chain) in parts) {
     problems.addAll(_chain.problems);
     switch (_chain.kind) {
       case _Head.start:
+        startsDeclared = true;
         if (node(_chain.nodes.single) case final start?) starts.add(start);
       case _Head.part:
         node(_chain.nodes.single);
@@ -353,7 +357,7 @@ GraphShape _build(String name, List<Part> parts) {
     }
   }
 
-  if (starts.isEmpty) problems.add('the graph has no start');
+  if (!startsDeclared) problems.add('the graph has no start');
   final reached = <ShapeNode>{};
   final queue = <ShapeNode>[];
   void reach(ShapeNode node) {

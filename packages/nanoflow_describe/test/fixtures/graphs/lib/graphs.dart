@@ -106,3 +106,5 @@ Future<String> callsGraph(Flow f, String branch) async {
   final checked = await f.effect('check', () => branch);
   return nested(f, checked);
 }
+
+final viaCall = Graph<String, String>('viaCall', [Graph.start(judged.call)]);
