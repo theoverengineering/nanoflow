@@ -14,19 +14,24 @@ import 'package:analyzer/dart/analysis/session.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 
+part 'graphs.dart';
+
 /// What [extract] read from the sources of a package.
 typedef Extracted = ({
-  /// The ids of the functions passed first to `Flow.start`, `Flow.run` or
-  /// `Flow.resume`, sorted.
+  /// The ids of the functions and graphs passed first to `Flow.start`,
+  /// `Flow.run` or `Flow.resume`, sorted.
   List<String> workflows,
 
-  /// The functions with effects and the workflows by id, sorted by id.
+  /// The functions with effects, the workflows, the graphs and the workflow
+  /// functions that are nodes of graphs, by id, sorted by id.
   Map<String, GraphFunction> functions,
 
-  /// The bodies of [functions], in the same order.
+  /// The bodies of the functions of [functions], in the same order: a graph
+  /// has none.
   List<FunctionBody> bodies,
 
   /// What could not be drawn, each once.
@@ -98,6 +103,13 @@ final class _Package {
   /// The functions with effects, once [_findWithEffects] has found them.
   final _withEffects = <_Declaration>{};
 
+  /// The graphs declared in top-level variables, by the variable.
+  final _graphs = <Element, _GraphDeclaration>{};
+
+  /// The workflow functions that are nodes of graphs, once the graphs are
+  /// drawn.
+  final _nodeFunctions = <_Declaration>{};
+
   /// The functions outside the sources that call effects.
   final _effectsOutside = <ExecutableElement>{};
 
@@ -144,10 +156,22 @@ final class _Package {
     _index();
     _findWithEffects();
     final workflows = <_Declaration>{};
+    final graphWorkflows = <_GraphDeclaration>{};
     for (final unit in _units) {
-      _walk(unit.unit, (node) => _look(node, workflows));
+      _walk(unit.unit, (node) => _look(node, workflows, graphWorkflows));
     }
-    final drawn = {..._withEffects, ...workflows}.toList()
+    // Before the functions: drawing a graph finds the workflow functions
+    // that are its nodes.
+    final graphs = {
+      for (final graph in _graphs.values)
+        graph.id: GraphFunction(
+          id: graph.id,
+          name: graph.name,
+          place: graph.place,
+          body: _GraphBody(this, graph).build(),
+        ),
+    };
+    final drawn = {..._withEffects, ...workflows, ..._nodeFunctions}.toList()
       ..sort((a, b) => a.id.compareTo(b.id));
     final functions = {
       for (final d in drawn)
@@ -158,10 +182,16 @@ final class _Package {
           doc: d.doc,
           body: _Body(this).ofFunction(d.body),
         ),
+      ...graphs,
     };
     return (
-      workflows: [for (final d in workflows) d.id]..sort(),
-      functions: functions,
+      workflows: [
+        for (final d in workflows) d.id,
+        for (final graph in graphWorkflows) graph.id,
+      ]..sort(),
+      functions: {
+        for (final id in functions.keys.toList()..sort()) id: functions[id]!,
+      },
       bodies: [for (final d in drawn) d.body],
       warnings: _warnings.toList(),
     );
@@ -196,6 +226,8 @@ final class _Package {
                 method.body,
               );
             }
+          case TopLevelVariableDeclaration(:final variables):
+            variables.variables.forEach(_declareGraph);
           default:
         }
       });
@@ -241,6 +273,8 @@ final class _Package {
       final calls = callees[declaration] = {};
       _walkRunning(declaration.body, (node) {
         if (node is MethodInvocation && isEffect(node)) effects = true;
+        // A graph's nodes run as effects.
+        if (_graphCalled(node) != null) effects = true;
         calls.addAll(_candidates(node));
       });
       if (effects) _withEffects.add(declaration);
@@ -259,7 +293,11 @@ final class _Package {
 
   /// Takes the workflows and the warnings of the whole sources from [node],
   /// in a function with effects or not.
-  void _look(AstNode node, Set<_Declaration> workflows) {
+  void _look(
+    AstNode node,
+    Set<_Declaration> workflows,
+    Set<_GraphDeclaration> graphWorkflows,
+  ) {
     switch (node) {
       case final FunctionExpression closure
           when closure.parent is! FunctionDeclaration &&
@@ -276,11 +314,14 @@ final class _Package {
         );
       case final MethodInvocation start
           when _isFlow(start, const {'start', 'run', 'resume'}):
-        final workflow = _referenced(
-          start.argumentList.arguments.firstOrNull?.argumentExpression,
-        );
+        final argument =
+            start.argumentList.arguments.firstOrNull?.argumentExpression;
+        final workflow = _referenced(argument);
         if (_declarations[workflow?.baseElement] case final declaration?) {
           workflows.add(declaration);
+        }
+        if (_graphReferenced(argument) case final graph?) {
+          graphWorkflows.add(graph);
         }
       default:
     }
@@ -312,6 +353,7 @@ final class _Package {
   List<String> _callTargets(AstNode node) => [
     for (final d in _candidates(node))
       if (_withEffects.contains(d)) d.id,
+    ?_graphCalled(node)?.id,
   ]..sort();
 
   /// The functions of the sources that [node] can call.
