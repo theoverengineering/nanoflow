@@ -1,14 +1,17 @@
 {
   "format": 3,
   "package": "review_example",
-  "fingerprint": "sha256:47719c73ac8afc74f8270742e5c22e9ab9588eb05e55f4d79566cc850585d9ed",
+  "fingerprint": "sha256:a51d01086869d3e38173b09fe5a351ada4c655f9bbfb307cac5cea1d64a5cff3",
   "sources": {
+    "bin/graph.dart": "sha256:7deb23c19a7aeb81b415c34c90fc38394af8f4f644db1d1259238f51deeaf385",
     "bin/main.dart": "sha256:fc75e28f8b4640e5f5c1441dd0aff0edbee5ba2eb9f67ae9cf835bc3b46d0389",
-    "lib/review.dart": "sha256:259a35289cf7014a1126c5410360f5784bfff03eafb222e7227505ed73ef2615"
+    "lib/review.dart": "sha256:259a35289cf7014a1126c5410360f5784bfff03eafb222e7227505ed73ef2615",
+    "lib/review_graph.dart": "sha256:e726a55445e678312aa948fcc6e8e78ae2f0f6576ae65eda5bb4d298570baa4a"
   },
   "builds": {},
   "workflows": [
-    "lib/review.dart#review"
+    "lib/review.dart#review",
+    "lib/review_graph.dart#reviewGraph"
   ],
   "functions": {
     "lib/review.dart#review": {
@@ -131,6 +134,131 @@
           {
             "from": "8",
             "to": "4",
+            "label": null
+          }
+        ]
+      }
+    },
+    "lib/review_graph.dart#reviewGraph": {
+      "name": "reviewGraph",
+      "place": "lib/review_graph.dart:91",
+      "doc": null,
+      "body": {
+        "nodes": [
+          {
+            "id": "1",
+            "kind": "effect",
+            "name": "collect",
+            "place": "lib/review_graph.dart:91",
+            "doc": null
+          },
+          {
+            "id": "2",
+            "kind": "fork",
+            "label": "switch (collect)",
+            "place": "lib/review_graph.dart:92"
+          },
+          {
+            "id": "3",
+            "kind": "effect",
+            "name": "discard",
+            "place": "lib/review_graph.dart:91",
+            "doc": null
+          },
+          {
+            "id": "4",
+            "kind": "effect",
+            "name": "inspect",
+            "place": "lib/review_graph.dart:91",
+            "doc": null
+          },
+          {
+            "id": "5",
+            "kind": "fork",
+            "label": "switch (inspect)",
+            "place": "lib/review_graph.dart:93"
+          },
+          {
+            "id": "6",
+            "kind": "effect",
+            "name": "publish",
+            "place": "lib/review_graph.dart:91",
+            "doc": null
+          },
+          {
+            "id": "7",
+            "kind": "effect",
+            "name": "notify",
+            "place": "lib/review_graph.dart:91",
+            "doc": null
+          },
+          {
+            "id": "8",
+            "kind": "effect",
+            "name": "fix",
+            "place": "lib/review_graph.dart:91",
+            "doc": null
+          }
+        ],
+        "edges": [
+          {
+            "from": null,
+            "to": "1",
+            "label": null
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "label": null
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "label": "Empty"
+          },
+          {
+            "from": "2",
+            "to": "4",
+            "label": "Found"
+          },
+          {
+            "from": "4",
+            "to": "5",
+            "label": null
+          },
+          {
+            "from": "5",
+            "to": "6",
+            "label": "Clean"
+          },
+          {
+            "from": "5",
+            "to": "7",
+            "label": "Clean"
+          },
+          {
+            "from": "5",
+            "to": "8",
+            "label": "Findings"
+          },
+          {
+            "from": "8",
+            "to": "4",
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "6",
+            "to": null,
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": null,
             "label": null
           }
         ]

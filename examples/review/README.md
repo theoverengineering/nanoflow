@@ -33,6 +33,22 @@ dart run bin/main.dart --resume <id>        # продолжает сессию
 
 Ветка с пустым именем ничего не меняет и уходит в `discard`.
 
+## То же графом из узлов
+
+`lib/review_graph.dart` — тот же ревью графом `reviewGraph`: каждый шаг —
+функция «вход → выход», которая ничего не знает о других, а что за чем —
+говорит объявление графа. `collect` даёт `Empty` или `Found` с изменением,
+`inspect` — `Clean` или `Findings` с отчётом; карта из выхода в узел
+ветвит, `{publish, notify}` идут рядом, `fix` ведёт обратно в `inspect`.
+
+```bash
+dart run bin/graph.dart parseConfig        # печатает id сессии
+dart run bin/graph.dart --resume <id>      # продолжает сессию
+```
+
+Узлы — эффекты сессии с именами функций; их выходы раскодируются при
+`--resume` кодеками `Collected` и `Inspected`, и граф идёт той же дорогой.
+
 ## Файл графа
 
 `nanoflow.graph.json` — граф, прочитанный из кода (`nanoflow_describe` —
@@ -50,5 +66,5 @@ dart run nanoflow_describe stamp build/review   # хэш бинарника в b
 `builds` не сравнивает, так что CI это не ломает; вернуть файл —
 `git checkout nanoflow.graph.json`.
 
-Запуск, граф, хэш кода, Ctrl+C и продолжение проверяет
+Запуск, граф, хэш кода, Ctrl+C и продолжение — и функции, и графа — проверяет
 `tests/e2e/test/review_example_test.dart`.
