@@ -2183,6 +2183,49 @@ void main() {
               ],
             },
           },
+          // A stage of a sealed class with what it carries: `step = Check(next)`
+          // goes straight into `case Check(:final text)`.
+          'lib/stages.dart#carry': {
+            'name': 'carry',
+            'place': 'lib/stages.dart:111',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'drafted',
+                  'place': 'lib/stages.dart:113',
+                },
+                {
+                  'id': '2',
+                  'kind': 'effect',
+                  'name': 'draft',
+                  'place': 'lib/stages.dart:122',
+                },
+                {
+                  'id': '3',
+                  'kind': 'effect',
+                  'name': 'check',
+                  'place': 'lib/stages.dart:126',
+                },
+                {
+                  'id': '4',
+                  'kind': 'fork',
+                  'label': 'ok',
+                  'place': 'lib/stages.dart:127',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '3', 'label': 'true'},
+                {'from': '1', 'to': '2', 'label': 'false'},
+                {'from': '2', 'to': '3', 'label': null},
+                {'from': '3', 'to': '4', 'label': null},
+                {'from': '4', 'to': null, 'label': 'true'},
+                {'from': '4', 'to': '2', 'label': 'false'},
+              ],
+            },
+          },
           // A value no case names goes to default.
           'lib/stages.dart#fallback': {
             'name': 'fallback',
@@ -2254,6 +2297,50 @@ void main() {
                 {'from': '1', 'to': null, 'label': 'Stage.done'},
                 {'from': '2', 'to': '1', 'label': null},
                 {'from': '3', 'to': '3', 'label': null},
+              ],
+            },
+          },
+          // A case that may or may not match a Draft, `Draft(text: '')`: the path
+          // that knows a Draft goes through the fork; the one that knows a Check
+          // passes both Draft cases and goes straight into Check().
+          'lib/stages.dart#refutable': {
+            'name': 'refutable',
+            'place': 'lib/stages.dart:134',
+            'body': {
+              'nodes': [
+                {
+                  'id': '1',
+                  'kind': 'fork',
+                  'label': 'switch (step)',
+                  'place': 'lib/stages.dart:138',
+                },
+                {
+                  'id': '2',
+                  'kind': 'effect',
+                  'name': 'empty',
+                  'place': 'lib/stages.dart:140',
+                },
+                {
+                  'id': '3',
+                  'kind': 'effect',
+                  'name': 'draft',
+                  'place': 'lib/stages.dart:144',
+                },
+                {
+                  'id': '4',
+                  'kind': 'effect',
+                  'name': 'check',
+                  'place': 'lib/stages.dart:147',
+                },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': "Draft(text: '')"},
+                {'from': '1', 'to': '3', 'label': 'Draft()'},
+                {'from': '1', 'to': '4', 'label': 'Check()'},
+                {'from': '2', 'to': '4', 'label': null},
+                {'from': '3', 'to': null, 'label': null},
+                {'from': '4', 'to': null, 'label': null},
               ],
             },
           },

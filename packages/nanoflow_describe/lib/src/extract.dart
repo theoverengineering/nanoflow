@@ -84,6 +84,14 @@ final class _Package {
   /// The methods of the sources that override a method, by the method.
   final _overriders = <ExecutableElement, Set<_Declaration>>{};
 
+  /// Whether a class of the sources extends or implements [element].
+  bool _isExtended(ClassElement element) => _extendedMemo[element] ??= _units
+      .expand((unit) => unit.libraryElement.classes)
+      .any(
+        (c) => c != element && c.allSupertypes.any((t) => t.element == element),
+      );
+  final _extendedMemo = <ClassElement, bool>{};
+
   /// The functions with effects, once [_findWithEffects] has found them.
   final _withEffects = <_Declaration>{};
 
@@ -516,8 +524,9 @@ final class _Exit extends _V {}
 final class _Join extends _V {}
 
 /// Where a variable a `switch` goes by takes a value the path from here on
-/// knows (spec 2026-10-08): a constant, or `null` when it is not known. The
-/// entry of a case is one too: the value is the case's. Not drawn.
+/// knows (spec 2026-10-08): a constant, an instance of exactly one class
+/// ([_Exact]), or `null` when it is not known. The entry of a case is one
+/// too: the value is the case's. Not drawn.
 final class _Set extends _V {
   _Set(this.variable, this.value);
   final Element variable;
@@ -529,23 +538,49 @@ final class _Set extends _V {
   List<_Out>? waiting;
 }
 
+/// What a path knows a variable holds: an instance whose class is exactly
+/// [element], made by one of its generative constructors (`Write(launch)`).
+final class _Exact {
+  const _Exact(this.element);
+  final InterfaceElement element;
+
+  @override
+  bool operator ==(Object other) => other is _Exact && other.element == element;
+
+  @override
+  int get hashCode => element.hashCode;
+}
+
+/// Whether a case matches a value a path knows: surely, surely not, or it
+/// cannot tell.
+enum _Match { yes, no, maybe }
+
+/// A case of a switch, by whether it matches a value a path knows.
+typedef _Matcher = _Match Function(Object? value);
+
 /// A `switch` on a variable the paths into it may know the value of: each
-/// of its bodies, by the constants its cases name, whether one of them
-/// matches all, and the point the body is entered at.
+/// of its bodies, with its cases in order and the point the body is entered
+/// at.
 final class _Threaded {
   _Threaded(this.variable, this.fork);
   final Element variable;
   final _Fork fork;
-  final cases = <(List<(Object?,)> consts, bool any, _Set entry)>[];
+  final cases = <(List<_Matcher> members, _Set entry)>[];
 
-  /// Where a path that knows [value] enters: the first case naming it, else
-  /// the first that matches all; `null` when none does.
+  /// Where a path that knows [value] enters: the body of the first case that
+  /// matches it, as Dart tries them; `null` when a case before it may or may
+  /// not match, or none does.
   _Set? entryFor((Object?,) value) {
-    for (final (consts, _, entry) in cases) {
-      if (consts.contains(value)) return entry;
-    }
-    for (final (_, any, entry) in cases) {
-      if (any) return entry;
+    for (final (members, entry) in cases) {
+      for (final matches in members) {
+        switch (matches(value.$1)) {
+          case _Match.yes:
+            return entry;
+          case _Match.maybe:
+            return null;
+          case _Match.no:
+        }
+      }
     }
     return null;
   }
@@ -786,7 +821,7 @@ final class _Body {
           when _trackedTarget(e) != null:
         return _set(
           _trackedTarget(e)!,
-          e.operator.type == TokenType.EQ ? _constOf(e.rightHandSide) : null,
+          e.operator.type == TokenType.EQ ? _valueOf(e.rightHandSide) : null,
           _expression(e, into, scope),
         );
       case VariableDeclarationStatement(:final variables)
@@ -795,7 +830,7 @@ final class _Body {
         for (final v in variables.variables) {
           if (!_isTrackedDeclaration(v)) continue;
           current = _set(v.declaredFragment!.element, switch (v.initializer) {
-            final i? => _constOf(i),
+            final i? => _valueOf(i),
             null => null,
           }, current);
         }
@@ -1125,31 +1160,11 @@ final class _Body {
     for (final (i, member) in s.members.indexed) {
       pending.add(i);
       if (member.statements.isEmpty && i < s.members.length - 1) continue;
-      final consts = <(Object?,)>[];
-      var any = false;
-      for (final j in pending) {
-        switch (s.members[j]) {
-          case SwitchDefault():
-            any = true;
-          case SwitchPatternCase(:final guardedPattern):
-            if (_matchesAll(guardedPattern)) {
-              any = true;
-            } else if (guardedPattern.whenClause == null &&
-                guardedPattern.pattern is ConstantPattern) {
-              final c = _constOf(
-                (guardedPattern.pattern as ConstantPattern).expression,
-              );
-              if (c != null) consts.add(c);
-            }
-          case SwitchCase(:final expression):
-            final c = _constOf(expression);
-            if (c != null) consts.add(c);
-        }
-      }
+      final members = [for (final j in pending) s.members[j]];
       final entry = _add(
-        _Set(variable, consts.length == 1 && !any ? consts.single : null),
+        _Set(variable, members.length == 1 ? _valueIn(members.single) : null),
       )..waiting = [for (final j in pending) (fork, labels[j])];
-      threaded.cases.add((consts, any, entry));
+      threaded.cases.add(([for (final m in members) _matcher(m)], entry));
       bodies.add((member, entry));
       pending = [];
     }
@@ -1308,6 +1323,97 @@ final class _Body {
     visit(root, false);
     return subjects;
   }
+
+  /// The value [e] gives a variable a path follows: a constant ([_constOf]),
+  /// or an instance of exactly one class, made by a generative constructor
+  /// of a class that is not abstract; `null` otherwise.
+  (Object?,)? _valueOf(Expression e) {
+    if (_constOf(e) case final c?) return c;
+    if (e.unParenthesized case InstanceCreationExpression(
+      :final constructorName,
+    )) {
+      final constructor = constructorName.element;
+      final type = constructorName.type.element;
+      if (constructor != null &&
+          !constructor.isFactory &&
+          type is ClassElement &&
+          !type.isAbstract) {
+        return (_Exact(type),);
+      }
+    }
+    return null;
+  }
+
+  /// Whether [member] matches a value a path knows ([_valueOf]).
+  _Matcher _matcher(SwitchMember member) {
+    _Matcher constant((Object?,)? c) => c == null
+        ? (_) => _Match.maybe
+        : (v) => v is _Exact
+              ? _Match.no
+              : v == c.$1
+              ? _Match.yes
+              : _Match.no;
+    switch (member) {
+      case SwitchDefault():
+        return (_) => _Match.yes;
+      case SwitchCase(:final expression):
+        return constant(_constOf(expression));
+      case SwitchPatternCase(:final guardedPattern):
+        if (_matchesAll(guardedPattern)) return (_) => _Match.yes;
+        if (guardedPattern.whenClause != null) return (_) => _Match.maybe;
+        switch (guardedPattern.pattern) {
+          case ConstantPattern(:final expression):
+            return constant(_constOf(expression));
+          case final ObjectPattern pattern:
+            final type = pattern.type.element;
+            if (type is! InterfaceElement) return (_) => _Match.maybe;
+            // Of another class it surely does not match; of this one, only
+            // when its fields match whatever they hold.
+            final fields = _irrefutableFields(pattern);
+            return (v) => switch (v) {
+              _Exact(:final element)
+                  when element == type ||
+                      element.allSupertypes.any((t) => t.element == type) =>
+                fields ? _Match.yes : _Match.maybe,
+              _Exact() => _Match.no,
+              _ => _Match.maybe,
+            };
+          default:
+            return (_) => _Match.maybe;
+        }
+    }
+  }
+
+  /// The value a path entering the body of [member] knows: the constant it
+  /// names, or the class it names when that class is final and nothing in
+  /// the package extends or implements it; `null` otherwise.
+  (Object?,)? _valueIn(SwitchMember member) => switch (member) {
+    SwitchCase(:final expression) => _constOf(expression),
+    SwitchPatternCase(
+      guardedPattern: GuardedPattern(whenClause: null, :final pattern),
+    ) =>
+      switch (pattern) {
+        ConstantPattern(:final expression) => _constOf(expression),
+        ObjectPattern(:final type)
+            when _irrefutableFields(pattern) &&
+                type.element is ClassElement &&
+                (type.element! as ClassElement).isFinal &&
+                !_package._isExtended(type.element! as ClassElement) =>
+          (_Exact(type.element! as ClassElement),),
+        _ => null,
+      },
+    _ => null,
+  };
+
+  /// Whether every field of [pattern] matches whatever the field holds:
+  /// `:final x`, `x: var y`, `_`, untyped.
+  bool _irrefutableFields(ObjectPattern pattern) => pattern.fields.every(
+    (field) => switch (field.pattern) {
+      DeclaredVariablePattern(type: null) ||
+      WildcardPattern(type: null) => true,
+      _ => false,
+    },
+  );
 
   /// The constant [e] is, as a switch case names it: a `bool`, `int`,
   /// `String` or `null` literal, or a value of an enum; `null` otherwise.

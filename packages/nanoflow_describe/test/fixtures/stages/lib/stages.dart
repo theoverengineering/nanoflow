@@ -95,3 +95,57 @@ Future<void> fallback(Flow f) async {
       await f.effect('other', () => print('other'));
   }
 }
+
+sealed class Step {}
+
+final class Draft extends Step {
+  Draft(this.text);
+  final String text;
+}
+
+final class Check extends Step {
+  Check(this.text);
+  final String text;
+}
+
+Future<void> carry(Flow f, bool drafted) async {
+  Step step;
+  if (drafted) {
+    step = Check('kept');
+  } else {
+    step = Draft('fresh');
+  }
+  loop:
+  while (true) {
+    switch (step) {
+      case Draft(:final text):
+        final next = await f.effect('draft', () => '$text!');
+        step = Check(next);
+        continue loop;
+      case Check(:final text):
+        final ok = await f.effect('check', () => text.isNotEmpty);
+        if (ok) return;
+        step = Draft(text);
+        continue loop;
+    }
+  }
+}
+
+Future<void> refutable(Flow f) async {
+  Step step = Draft('');
+  loop:
+  while (true) {
+    switch (step) {
+      case Draft(text: ''):
+        await f.effect('empty', () => print('empty'));
+        step = Check('filled');
+        continue loop;
+      case Draft():
+        await f.effect('draft', () => print('draft'));
+        return;
+      case Check():
+        await f.effect('check', () => print('check'));
+        return;
+    }
+  }
+}
