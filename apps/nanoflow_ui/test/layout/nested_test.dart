@@ -1214,7 +1214,7 @@ void main() {
     expect(level.bounds.height, lessThanOrEqualTo(1202));
   });
 
-  for (final (seed, base) in [(603, 2436.0), (870, 3087.0)]) {
+  for (final (seed, base) in [(603, 2436.0), (870, 2943.0)]) {
     test('random body $seed nested: it grows taller for nodes standing where '
         'more arrows come in level only by half a tile for each turn saved, '
         'counted twice for an arrow turning twice no more', () {

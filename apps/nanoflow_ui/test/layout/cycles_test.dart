@@ -1,4 +1,5 @@
 import 'package:nanoflow_ui/layout/cycles.dart';
+import 'package:nanoflow_ui/layout/layers.dart';
 import 'package:nanoflow_ui/layout/layout_graph.dart';
 import 'package:test/test.dart';
 
@@ -35,16 +36,22 @@ void main() {
     });
   });
 
-  test('the walk takes exits in order, so that order decides which arrow of '
-      'a cycle is back', () {
-    Map<String, EdgeKind> walk(Map<String, Object?> then) {
+  test('the body\'s order decides which arrow of a cycle is back, whichever '
+      'exit the walk takes first', () {
+    Map<String, EdgeKind> walk(
+      Map<String, Object?> then, {
+      bool yFirst = false,
+    }) {
+      final x = {'command': 'x', 'then': 'y'};
+      final y = {'command': 'y', 'then': 'x'};
       final graph = LayoutGraph.ofBody(
         bodyOf({
           'start': 's',
           'nodes': {
             's': {'decide': 's', 'then': then},
-            'x': {'command': 'x', 'then': 'y'},
-            'y': {'command': 'y', 'then': 'x'},
+            if (yFirst) 'y': y,
+            'x': x,
+            if (!yFirst) 'y': y,
           },
         }),
       );
@@ -52,18 +59,56 @@ void main() {
       return kinds(graph)..remove('$startMarker->s');
     }
 
-    expect(walk({'one': 'x', 'two': 'y'}), {
+    const xFirst = {
       's->x': EdgeKind.forward,
       's->y': EdgeKind.forward,
       'x->y': EdgeKind.forward,
       'y->x': EdgeKind.back,
-    });
+    };
+    expect(walk({'one': 'x', 'two': 'y'}), xFirst);
+    // The walk takes y first, yet x stands first in the body.
     expect(walk({'two': 'y', 'one': 'x'}), {
       's->y': EdgeKind.forward,
       's->x': EdgeKind.forward,
-      'x->y': EdgeKind.back,
-      'y->x': EdgeKind.forward,
+      'x->y': EdgeKind.forward,
+      'y->x': EdgeKind.back,
     });
+    expect(walk({'one': 'x', 'two': 'y'}, yFirst: true), {
+      's->x': EdgeKind.forward,
+      's->y': EdgeKind.forward,
+      'y->x': EdgeKind.forward,
+      'x->y': EdgeKind.back,
+    });
+  });
+
+  test('a fork whose true goes into a cycle after the node its false goes to '
+      'leaves that node first, as `stage = X; continue` back to an earlier '
+      'case does', () {
+    // `if (written) review else write`, then `write → review`, and review
+    // back to write: write stands first in the body.
+    final graph = LayoutGraph.ofBody(
+      bodyOf({
+        'start': 'c',
+        'nodes': {
+          'c': {
+            'decide': 'c',
+            'then': {'true': 'review', 'false': 'write'},
+          },
+          'write': {'command': 'write', 'then': 'review'},
+          'review': {'command': 'review', 'then': 'write'},
+        },
+      }),
+    );
+    findBackEdges(graph);
+    expect(kinds(graph)..remove('$startMarker->c'), {
+      'c->review': EdgeKind.forward,
+      'c->write': EdgeKind.forward,
+      'write->review': EdgeKind.forward,
+      'review->write': EdgeKind.back,
+    });
+    assignLayers(graph);
+    final layer = {for (final n in graph.nodes) n.id: n.layer};
+    expect(layer['write']!, lessThan(layer['review']!));
   });
 
   test('at a fork of true and false the walk takes true first, whichever '
