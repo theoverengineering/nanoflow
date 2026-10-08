@@ -97,6 +97,21 @@ void main() {
     expect(back.points.map((p) => p.y).reduce(min), lessThan(top));
   });
 
+  test('drain of control, a loop\'s if (size == 0) going back with '
+      'continue: the release true goes to stands over size > 100, where '
+      'false goes, and its way back runs over the graph', () {
+    final layout = layoutOf('control', 'drain');
+    expect(checkLayout(layout), isEmpty);
+    expect(falseAbove(layout), isEmpty);
+    expect(countCrossings(layout), lessThanOrEqualTo(1));
+    final release = layout.nodes['8']!;
+    expect(release.tile.bottom, lessThan(layout.nodes['4']!.tile.top));
+    final back = layout.edges.singleWhere((e) => e.from == '8');
+    expect(back.kind, EdgeKind.back);
+    final top = layout.nodes.values.map((n) => n.marks.top).reduce(min);
+    expect(back.points.map((p) => p.y).reduce(min), lessThan(top));
+  });
+
   test('a way back over the graph clears the copies it passes over: their '
       'stacked tiles and badge', () {
     final layout = layoutBody(

@@ -92,8 +92,8 @@ GraphLayout layoutBody(
 ///    before, round the frames as they were.
 /// A level so takes at most one build for its order's best, one for its
 /// early turns, one for its heights and two for its end — besides its
-/// loops' and back arrows' tries and [_untangle] —, and five more round
-/// changed frames.
+/// loops' and back arrows' tries, [_untangle] and the forks' moves of
+/// [_untangleSides] —, and five more round changed frames.
 ///
 /// [endBarHalf] is the least half length of the bar of the end of a body
 /// in a frame ([GNode.leastBarHalf]).
@@ -298,30 +298,14 @@ bool _paidFor(_Counts now, _Counts was) {
       below.remove(node);
     }
   }
-  // A back arrow runs over the graph when that crosses less, breaking no
-  // rule of step 9 more often.
-  var crossings = countCrossings(layout);
-  var broken = checkLevel(layout).length;
-  for (final edge in g.edges) {
-    if (edge.kind != EdgeKind.back) continue;
-    edge.over = true;
-    final over = _build(g, layers, options, below, turnEarly: false);
-    final count = countCrossings(over);
-    final problems = checkLevel(over).length;
-    if (count < crossings && problems <= broken) {
-      layout = over;
-      crossings = count;
-      broken = problems;
-    } else {
-      edge.over = false;
-    }
-  }
+  // A back arrow runs over the graph where that crosses less.
+  layout = _overSides(g, layers, options, below, layout).layout;
   final (:kept, :improved) = _finish(
     g,
     layers,
     options,
     below,
-    _untangle(g, layers, options, below, layout),
+    _untangleSides(g, layers, options, below, layout),
   );
   return (
     kept: kept,
@@ -337,6 +321,105 @@ bool _paidFor(_Counts now, _Counts was) {
       },
     ),
   );
+}
+
+/// Takes back arrows under the graph over it one by one, in the body's
+/// order, where that crosses less in [layout], the layout of [layers] as
+/// they are, breaking no rule of step 9 more often. Returns the layout with
+/// the sides taken.
+({GraphLayout layout, int broken, int crossings}) _overSides(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  LayoutOptions options,
+  Set<GNode> below,
+  GraphLayout layout,
+) {
+  var crossings = countCrossings(layout);
+  var broken = checkLevel(layout).length;
+  for (final edge in g.edges) {
+    if (edge.kind != EdgeKind.back || edge.over) continue;
+    edge.over = true;
+    final over = _build(g, layers, options, below, turnEarly: false);
+    final count = countCrossings(over);
+    final problems = checkLevel(over).length;
+    if (count < crossings && problems <= broken) {
+      layout = over;
+      crossings = count;
+      broken = problems;
+    } else {
+      edge.over = false;
+    }
+  }
+  return (layout: layout, broken: broken, crossings: crossings);
+}
+
+/// [_untangle] of [layout], whose back arrows have their sides; then, for
+/// each fork whose way of `true` goes down past its way of `false`, the
+/// node `true` goes to moved up over the node `false` goes to and more
+/// back arrows taken over the graph ([_overSides]) — kept if that breaks
+/// fewer rules of step 9, or as many and crosses less.
+///
+/// The medians pick the order as if every back arrow ran under the graph:
+/// the node `true` goes to sinks for its way back — `if (…) continue` in a
+/// loop —, and its way down crosses `false`. Up over it, its way back pays
+/// off over the graph.
+({GraphLayout layout, int broken, int crossings}) _untangleSides(
+  LayoutGraph g,
+  List<List<Item>> layers,
+  LayoutOptions options,
+  Set<GNode> below,
+  GraphLayout layout,
+) {
+  var best = _untangle(g, layers, options, below, layout);
+  for (final node in g.nodes) {
+    final (:yes, :no) = node.fork ?? (yes: null, no: null);
+    if (yes == null || no == null) continue;
+    final down = middleArrow(yes);
+    final on = middleArrow(no);
+    if (down.kind != EdgeKind.forward || on.kind != EdgeKind.forward) continue;
+    final paths = best.layout.edges;
+    if (crossingsBetween(paths[down.index].points, paths[on.index].points) ==
+        0) {
+      continue;
+    }
+    final upper = on.segs.first.to;
+    final lower = down.segs.first.to;
+    if (upper.layer != lower.layer || lower.order < upper.order) continue;
+    final layer = layers[lower.layer];
+    final order = [...layer];
+    final sides = {for (final edge in g.edges) edge: edge.over};
+    void place(List<Item> items) {
+      layer
+        ..clear()
+        ..addAll(items);
+      for (final (k, item) in layer.indexed) {
+        item.order = k;
+      }
+    }
+
+    place(
+      [...order]
+        ..remove(lower)
+        ..insert(upper.order, lower),
+    );
+    final moved = _overSides(
+      g,
+      layers,
+      options,
+      below,
+      _build(g, layers, options, below, turnEarly: false),
+    );
+    if (moved.broken < best.broken ||
+        moved.broken == best.broken && moved.crossings < best.crossings) {
+      best = moved;
+    } else {
+      place(order);
+      for (final MapEntry(key: edge, value: over) in sides.entries) {
+        edge.over = over;
+      }
+    }
+  }
+  return best;
 }
 
 /// The order of a layout's layers, by [_key], the nodes whose loops go
