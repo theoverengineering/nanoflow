@@ -67,6 +67,10 @@ void main() {
         _warning(48, 'a graph outside a top-level variable is not drawn'),
         _warning(52, 'graph part not drawn: aPart'),
         _warning(
+          62,
+          'graph name twin is also the name of lib/graph_warnings.dart#twin',
+        ),
+        _warning(
           55,
           'graph node is not a top-level function, a static method or a '
           'graph: (String text) async => text',

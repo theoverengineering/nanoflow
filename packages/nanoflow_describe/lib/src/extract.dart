@@ -174,6 +174,22 @@ final class _Package {
     };
     final drawn = {..._withEffects, ...workflows, ..._nodeFunctions}.toList()
       ..sort((a, b) => a.id.compareTo(b.id));
+    // A session is named after its workflow, and a node's effect is found
+    // by the name of its graph: a graph must not share its name.
+    for (final graph in _graphs.values) {
+      final twins = [
+        for (final d in drawn)
+          if (d.name == graph.name) d.id,
+        for (final other in _graphs.values)
+          if (other != graph && other.name == graph.name) other.id,
+      ]..sort();
+      if (twins.isNotEmpty) {
+        _warn(
+          graph.made,
+          'graph name ${graph.name} is also the name of ${twins.join(', ')}',
+        );
+      }
+    }
     final functions = {
       for (final d in drawn)
         d.id: GraphFunction(

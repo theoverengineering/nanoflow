@@ -54,3 +54,9 @@ final indirect = Graph<String, void>('indirect', [aPart]);
 final closure = Graph<String, String>('closure', [
   Graph.start((String text) async => text),
 ]);
+
+Future<void> twin(Flow f, String branch) async {
+  await f.effect('locate', () => branch);
+}
+
+final twinGraph = Graph<String, void>('twin', [Graph.start(begin)]);
