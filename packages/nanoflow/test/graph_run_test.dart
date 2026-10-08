@@ -332,25 +332,41 @@ void main() {
       final dir = await tempDir();
       final result = await flowIn(dir).run(review.call, 'main');
       expect(result, 'published main! with 0 findings');
-      expect(calls, [
+      // publish and notify run side by side: their bodies run in the order
+      // their effects are written.
+      expect(calls.take(4), [
         'collect main',
         'inspect main',
         'fix main',
         'inspect main!',
-        'publish main!',
-        'notify main!',
-        'report',
       ]);
+      expect(
+        calls.skip(4).take(2),
+        unorderedEquals(['publish main!', 'notify main!']),
+      );
+      expect(calls.last, 'report');
       final effects = await effectsIn(dir);
       expect(
         [for (final e in effects) e.name],
-        ['collect', 'inspect', 'fix', 'inspect', 'publish', 'notify', 'report'],
+        unorderedEquals([
+          'collect',
+          'inspect',
+          'fix',
+          'inspect',
+          'publish',
+          'notify',
+          'report',
+        ]),
       );
-      final byName = {for (final e in effects) e.name: e};
-      expect(effects[3].after, byName['fix']!.key);
-      expect(byName['publish']!.after, effects[3].key);
-      expect(byName['notify']!.after, effects[3].key);
-      expect(byName['report']!.after, byName['publish']!.key);
+      Effect named(String name, {String? after}) => effects.singleWhere(
+        (e) => e.name == name && (after == null || e.after == after),
+      );
+      final fix = named('fix');
+      final again = named('inspect', after: fix.key);
+      expect(fix.after, named('inspect', after: named('collect').key).key);
+      expect(named('publish').after, again.key);
+      expect(named('notify').after, again.key);
+      expect(named('report').after, named('publish').key);
       expect({for (final e in effects) e.key}, hasLength(7));
     });
 
@@ -428,7 +444,9 @@ void main() {
     await failed;
     expect(eventNamesOf(dir, session.id), contains('effect-finished'));
     final effects = await effectsIn(dir);
-    expect([for (final e in effects) e.name], ['shout', 'boom', 'slow']);
+    final names = [for (final e in effects) e.name];
+    expect(names.first, 'shout');
+    expect(names.skip(1), unorderedEquals(['boom', 'slow']));
   });
 
   test('a node whose output has no codec fails as it runs, with a '
