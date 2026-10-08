@@ -114,30 +114,60 @@ final class Codecs {
     bool Function(Object? value) isType,
     Object? value,
   ) {
-    var native = true;
     final String text;
     try {
-      text = jsonEncode(
-        value,
-        toEncodable: (object) {
-          native = false;
-          return _toEncodable(object);
-        },
-      );
+      text = jsonEncode(value, toEncodable: _toEncodable);
     } on JsonUnsupportedObjectError catch (e) {
       throw CodecException(type, _unsupported(e));
     }
     final json = jsonDecode(text);
     if (decoder == null) throw CodecException(type, _noCodec);
-    if (!native && !decoder.usesCodec) {
+    final back = _decodeWith(decoder, type, isType, json);
+    if (_cameBackAsJson(value, back) case final lost?) {
       throw CodecException(
         type,
-        'a ${value.runtimeType} is JSON only through its toJson, and $type '
+        'a ${lost.runtimeType} is JSON only through its toJson, and $type '
         'has no codec that reads it back: declare the type whose codec does',
       );
     }
-    _decodeWith(decoder, type, isType, json);
     return json;
+  }
+
+  /// The first value in [value] that is JSON only through its `toJson`, its
+  /// enum's codec or as a record, and that came back in [back] as JSON as it
+  /// is — a `Report` declared as `Object?`, alone or as a field of a record —;
+  /// `null` when every such value came back as itself.
+  Object? _cameBackAsJson(Object? value, Object? back) {
+    switch (value) {
+      case null || bool() || num() || String():
+        return null;
+      case List():
+        if (back is! List || back.length != value.length) return null;
+        for (var i = 0; i < value.length; i++) {
+          if (_cameBackAsJson(value[i], back[i]) case final lost?) return lost;
+        }
+        return null;
+      case Map():
+        if (back is! Map) return null;
+        for (final MapEntry(:key, value: item) in value.entries) {
+          if (_cameBackAsJson(item, back[key]) case final lost?) return lost;
+        }
+        return null;
+      case (final a, final b):
+        if (back case (final backA, final backB)) {
+          return _cameBackAsJson(a, backA) ?? _cameBackAsJson(b, backB);
+        }
+        return value;
+      default:
+        return back == null ||
+                back is bool ||
+                back is num ||
+                back is String ||
+                back is List ||
+                back is Map
+            ? value
+            : null;
+    }
   }
 
   /// What [json] stands for, through [decoder], as a [type] that [isType]
@@ -167,7 +197,7 @@ final class Codecs {
   /// What `jsonEncode` writes for [object], which is not JSON itself: the
   /// name of a value of an enum with a codec, the fields of a record of two,
   /// or what its `toJson` gives.
-  Object? _toEncodable(Object? object) {
+  Object? _toEncodable(dynamic object) {
     if (object is Enum) {
       for (final codec in _codecs) {
         if (codec.nameOf(object) case final name?) return name;
@@ -214,19 +244,19 @@ final class Codecs {
     if (depth > _maxDepth || fits(const _TypeOf<Never>())) return null;
     for (final codec in _codecs) {
       if (equals(codec.type)) {
-        return (type: codec.type, decode: codec.decode, usesCodec: true);
+        return (type: codec.type, decode: codec.decode);
       }
     }
     if (!fits(const _TypeOf<Object>())) {
       // The hole takes null.
       for (final type in const [_TypeOf<Object?>(), _TypeOf<Null>()]) {
-        if (equals(type)) return (type: type, decode: _same, usesCodec: false);
+        if (equals(type)) return (type: type, decode: _same);
       }
       final value = inner((hole) => hole.nullable);
       return value == null ? null : _nullableOf(value);
     }
     for (final type in _leaves) {
-      if (equals(type)) return (type: type, decode: _same, usesCodec: false);
+      if (equals(type)) return (type: type, decode: _same);
     }
     if (fits(const _TypeOf<List<Object?>>())) {
       final element = inner((hole) => hole.list);
@@ -266,7 +296,7 @@ final class Codecs {
     if (depth > _maxDepth || fits(const _TypeOf<Never>())) return null;
     if (!fits(const _TypeOf<Object>())) {
       if (fits(const _TypeOf<Null>())) {
-        return (type: const _TypeOf<Null>(), decode: _same, usesCodec: false);
+        return (type: const _TypeOf<Null>(), decode: _same);
       }
       final value = inner((hole) => hole.nullable);
       return value == null ? null : _nullableOf(value);
@@ -279,10 +309,10 @@ final class Codecs {
       }
     }
     if (narrowest != null) {
-      return (type: narrowest.type, decode: narrowest.decode, usesCodec: true);
+      return (type: narrowest.type, decode: narrowest.decode);
     }
     for (final type in _leaves.skip(1)) {
-      if (fits(type)) return (type: type, decode: _same, usesCodec: false);
+      if (fits(type)) return (type: type, decode: _same);
     }
     if (fits(const _TypeOf<List<Object?>>())) {
       return _listOf(inner((hole) => hole.list) ?? _raw);
@@ -296,7 +326,7 @@ final class Codecs {
       final second = inner((hole) => _pair(first.type, hole)) ?? _raw;
       return _pairOf(first, second);
     }
-    return (type: const _TypeOf<Object>(), decode: _same, usesCodec: false);
+    return (type: const _TypeOf<Object>(), decode: _same);
   }
 }
 
@@ -342,29 +372,22 @@ const _leaves = [
 Object? _same(Object? json) => json;
 
 /// JSON as it is, as `Object?`.
-const _Decoder _raw = (
-  type: _TypeOf<Object?>(),
-  decode: _same,
-  usesCodec: false,
-);
+const _Decoder _raw = (type: _TypeOf<Object?>(), decode: _same);
 
 /// Why a type has no decoder.
 const _noCodec =
     'it is neither a JSON type nor made of types with a codec: register '
     'their fromJson with addCodec, or their values with addEnum';
 
-/// How a type comes back from JSON: the type, its decoder, and whether the
-/// decoder calls a codec's `fromJson` or reads more than JSON as it is.
+/// How a type comes back from JSON: the type and its decoder.
 typedef _Decoder = ({
   _TypeOf<Object?> type,
   Object? Function(Object? json) decode,
-  bool usesCodec,
 });
 
 _Decoder _nullableOf(_Decoder value) => (
   type: value.type.nullable,
   decode: (json) => json == null ? null : value.decode(json),
-  usesCodec: value.usesCodec,
 );
 
 _Decoder _listOf(_Decoder element) => (
@@ -374,7 +397,6 @@ _Decoder _listOf(_Decoder element) => (
       for (final item in json! as List<Object?>) element.decode(item) as E,
     ],
   ),
-  usesCodec: element.usesCodec,
 );
 
 _Decoder _mapOf(_Decoder value) => (
@@ -386,17 +408,14 @@ _Decoder _mapOf(_Decoder value) => (
         key: value.decode(item) as E,
     },
   ),
-  usesCodec: value.usesCodec,
 );
 
-/// A record of two is written as a list, so it always reads more than JSON.
 _Decoder _pairOf(_Decoder first, _Decoder second) => (
   type: _pair(first.type, second.type),
   decode: (json) {
     final [a, b] = json! as List<Object?>;
     return (first.decode(a), second.decode(b));
   },
-  usesCodec: true,
 );
 
 /// `(A, B)` for [a] of `A` and [b] of `B`.

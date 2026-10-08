@@ -58,6 +58,18 @@ Future<Object> anything(int n) async => 1;
 
 String name(int n) => '$n';
 
+/// A value with a toJson whose type has no codec.
+final class Unregistered {
+  Map<String, Object?> toJson() => {'n': 1};
+}
+
+Future<(Verdict, Unregistered)> judgeUnregistered(String s) async =>
+    (Verdict.pass, Unregistered());
+
+Future<List<(int, Unregistered)>> listUnregistered(int n) async => [
+  (n, Unregistered()),
+];
+
 FutureOr<int> twice(int n) => n * 2;
 
 void main() {
@@ -158,6 +170,31 @@ void main() {
         ['y'],
       ]);
       expect(codecs.resultOf(nothing).encode(null), isNull);
+    });
+
+    test('a field of a record that is JSON only through its toJson, with no '
+        'codec of its type, is a CodecException, as a value of its own is', () {
+      expect(
+        () => codecs.resultOf(judgeUnregistered).encode((
+          Verdict.pass,
+          Unregistered(),
+        )),
+        throwsA(
+          isA<CodecException>().having(
+            (e) => e.reason,
+            'reason',
+            contains('a Unregistered is JSON only through its toJson'),
+          ),
+        ),
+      );
+      expect(
+        () => codecs.resultOf(listUnregistered).encode([(1, Unregistered())]),
+        throwsA(isA<CodecException>()),
+      );
+      expect(
+        () => codecs.encode<(Verdict, Object)>((Verdict.pass, Unregistered())),
+        throwsA(isA<CodecException>()),
+      );
     });
 
     test('a value JSON only through toJson, returned as Object, is a '
