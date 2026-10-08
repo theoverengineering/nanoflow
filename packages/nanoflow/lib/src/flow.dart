@@ -9,6 +9,7 @@ import 'codecs.dart';
 import 'context.dart';
 import 'errors.dart';
 import 'exec.dart';
+import 'graph.dart';
 import 'owner.dart';
 import 'project.dart';
 
@@ -107,7 +108,7 @@ final class Flow {
         code: code,
       ),
     );
-    final session = _Session(this, handle, package, journal);
+    final session = _Session(this, handle, package, journal, graph);
     return FlowSession._(
       handle.session.id,
       session.run(() => workflow(this, input)),
@@ -209,6 +210,7 @@ final class Flow {
         handle,
         await packageOf(directory, graph),
         journal,
+        graph,
       );
       return FlowSession._(sessionId, running.run(() => workflow(this, input)));
     } catch (_) {
@@ -318,6 +320,24 @@ final class Flow {
   /// ended early: the [StorageException] of a failure of its store, or the
   /// [CodecException] of a saved result whose type has no codec.
   Future<T> effect<T>(String name, FutureOr<T> Function() body) {
+    final session = _sessionHere(name);
+    final trace = StackTrace.current;
+    return session.effect(
+      name,
+      body,
+      codec: _codecs.of<T>(),
+      place: () => placeOf(
+        trace,
+        projectDir: session._projectDir,
+        package: session._package,
+      ),
+    );
+  }
+
+  /// The session of this flow the code that calls the effect [name] runs in.
+  ///
+  /// Throws a [StateError] when there is none.
+  _Session _sessionHere(String name) {
     final session = Zone.current[this];
     if (session is! _Session) {
       throw StateError(
@@ -325,8 +345,29 @@ final class Flow {
         'from the code of a workflow that the flow runs',
       );
     }
-    return session.effect(name, body, StackTrace.current);
+    return session;
   }
+}
+
+/// Runs [node], a function of one parameter of the graph [graph], on [input]
+/// as an effect of the session of [flow] this is called in (graph design
+/// §8): named after the node, at the place the graph file gives the node, its
+/// result journaled as the type the function returns.
+///
+/// Throws as [Flow.effect] does.
+Future<Object?> nodeEffect(
+  Flow flow,
+  GraphShape graph,
+  ShapeNode node,
+  Object? input,
+) {
+  final session = flow._sessionHere(node.name);
+  return session.effect<Object?>(
+    node.name,
+    () => (node.node as dynamic)(input) as FutureOr<Object?>,
+    codec: flow._codecs.resultOf(node.node as Function),
+    place: () => session.placeOfNode(graph.name, node.name),
+  );
 }
 
 /// Starts a session of [workflow] as [Flow.start] does, as one whose effects of
@@ -379,7 +420,7 @@ final class _Journal {
 
 /// A session that runs in this process.
 final class _Session {
-  _Session(this._flow, this._handle, this._package, this._journal)
+  _Session(this._flow, this._handle, this._package, this._journal, this._graph)
     : _projectDir = _flow.directory,
       _outside = Zone.current,
       _programs = ExecScope(Zone.current) {
@@ -395,6 +436,35 @@ final class _Session {
 
   /// What the session's journal had of its effects when it started.
   final _Journal _journal;
+
+  /// The graph file as it was when the session started or resumed; `null`
+  /// when there was none.
+  final Map<String, Object?>? _graph;
+
+  /// [_graph] read; `null` when there is none or it cannot be read.
+  late final GraphFile? _graphFile = () {
+    final graph = _graph;
+    if (graph == null) return null;
+    try {
+      return GraphFile.fromJson(graph);
+    } on FormatException {
+      return null;
+    }
+  }();
+
+  /// Where the effect of the node [node] of the graph [graph] is: the place of
+  /// the effect node of that name in the body of the graph of that name in the
+  /// graph file, the place of the graph; `null` when the file has none.
+  String? placeOfNode(String graph, String node) {
+    for (final function
+        in _graphFile?.functions.values ?? const <GraphFunction>[]) {
+      if (function.name != graph) continue;
+      for (final effect in function.body.nodes.whereType<EffectNode>()) {
+        if (effect.name == node) return effect.place;
+      }
+    }
+    return null;
+  }
 
   /// The zone the session was started from. The library's own work for the
   /// session — writing its effects and their logs, turning values into JSON
@@ -477,16 +547,18 @@ final class _Session {
   }
 
   /// Calls the effect [name] in the current context of the session's code;
-  /// [trace] is the stack of the call.
+  /// its result becomes JSON and comes back through [codec], and [place]
+  /// gives where it is when a record of it is made.
   ///
   /// An effect that finished before following the same effect gives its result
   /// and writes nothing, when its result still comes back from JSON as a
   /// [T]; any other runs live.
   Future<T> effect<T>(
     String name,
-    FutureOr<T> Function() body,
-    StackTrace trace,
-  ) {
+    FutureOr<T> Function() body, {
+    required TypeCodec codec,
+    required String? Function() place,
+  }) {
     _checkWritable();
     if (_ended) {
       throw StateError('effect "$name" was called after its session ended');
@@ -497,9 +569,9 @@ final class _Session {
         final saved = _journal.saved[effect.key];
         if (saved != null && saved.after == effect.after) {
           try {
-            return Future.value(_flow._codecs.decode<T>(saved.value));
+            return Future.value(codec.decode(saved.value) as T);
           } on CodecException catch (e) {
-            if (!_flow._codecs.canDecode<T>()) {
+            if (!codec.canDecode) {
               // [T] has no codec: the code that resumes the session has not
               // registered it, and running the effect again would repeat
               // what it did. The session ends as on a failure of its store,
@@ -511,7 +583,7 @@ final class _Session {
             // not. It runs again (spec §4.4).
           }
         }
-        return _live(effect, body, trace);
+        return _live(effect, body, codec, place);
       }),
     );
   }
@@ -522,12 +594,13 @@ final class _Session {
   Future<T> _live<T>(
     KeyedEffect effect,
     FutureOr<T> Function() body,
-    StackTrace trace,
+    TypeCodec codec,
+    String? Function() place,
   ) async {
     final ended = Completer<void>();
     _running.add(ended.future);
     try {
-      final record = await _started(effect, trace);
+      final record = await _started(effect, place);
       final output = _EffectOutput(this, record.id);
       final T value;
       final Object? json;
@@ -537,7 +610,7 @@ final class _Session {
         } finally {
           await output.close();
         }
-        json = _flow._codecs.encode<T>(value);
+        json = codec.encode(value);
       } catch (e, s) {
         await _write(
           () => _handle.appendEvent(
@@ -569,10 +642,10 @@ final class _Session {
     }
   }
 
-  /// Writes that [effect] starts, called from [trace]: `effect-started` in the
-  /// record of its key when the session has one (D2), otherwise in a new
-  /// one; gives the record.
-  Future<Effect> _started(KeyedEffect effect, StackTrace trace) async {
+  /// Writes that [effect] starts: `effect-started` in the record of its key
+  /// when the session has one (D2), otherwise in a new one at [place]; gives
+  /// the record.
+  Future<Effect> _started(KeyedEffect effect, String? Function() place) async {
     final known = _journal.records[effect.key];
     if (known == null) {
       final record = await _write(
@@ -580,7 +653,7 @@ final class _Session {
           name: effect.name,
           key: effect.key,
           after: effect.after,
-          place: placeOf(trace, projectDir: _projectDir, package: _package),
+          place: place(),
         ),
       );
       await _write(
