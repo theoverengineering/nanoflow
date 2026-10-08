@@ -596,6 +596,27 @@ void main() {
       expect(file.workflowNamed('helper'), isNull);
     });
 
+    test('finds a graph by its name, which need not end its id', () {
+      final file = GraphFile(
+        format: 2,
+        package: 'p',
+        fingerprint: 'sha256:00',
+        sources: const {},
+        builds: const {},
+        workflows: const ['lib/g.dart#reviewGraph'],
+        functions: const {
+          'lib/g.dart#reviewGraph': GraphFunction(
+            id: 'lib/g.dart#reviewGraph',
+            name: 'review',
+            place: 'lib/g.dart:3',
+            body: GraphBody(nodes: [], edges: []),
+          ),
+        },
+        warnings: const [],
+      );
+      expect(file.workflowNamed('review')!.id, 'lib/g.dart#reviewGraph');
+    });
+
     test('is null when a workflow has no function', () {
       final file = GraphFile(
         format: 3,

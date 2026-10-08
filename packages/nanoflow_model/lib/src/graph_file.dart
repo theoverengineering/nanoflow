@@ -84,12 +84,17 @@ final class GraphFile {
   /// What the describe tool could not draw.
   final List<GraphWarning> warnings;
 
-  /// The workflow whose id ends with `#name` or `.name`, or `null`.
+  /// The workflow named [name], or `null`: whose `name` is [name] — a graph's
+  /// name need not end its id, which ends with its variable's —, or whose id
+  /// ends with `#name` or `.name`.
   GraphFunction? workflowNamed(String name) {
     for (final id in workflows) {
-      if (id.endsWith('#$name') || id.endsWith('.$name')) {
-        final function = functions[id];
-        if (function != null) return function;
+      final function = functions[id];
+      if (function != null &&
+          (function.name == name ||
+              id.endsWith('#$name') ||
+              id.endsWith('.$name'))) {
+        return function;
       }
     }
     return null;
