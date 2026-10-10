@@ -24,10 +24,17 @@ final class ExecException implements Exception {
 /// the effect `exec` is called in — from the body of `f.effect` or from code
 /// the body calls — and anywhere else to the stderr of this process. A
 /// program that writes to an effect's log faster than the log is written
-/// waits on its pipe. The UI shows the log's ANSI colors, but the pipe is no
-/// terminal: a program that colors only a terminal colors its log when
-/// asked, `--color=always`, `FORCE_COLOR=1` — and its stdout, which `exec`
-/// gives back, then has the escape sequences too.
+/// waits on its pipe.
+///
+/// The UI shows the colors of a log, but most programs color only what
+/// they print to a terminal, and the program prints to pipes. With [color]
+/// it is asked to color anyway: `FORCE_COLOR=1` and `CLICOLOR_FORCE=1` are
+/// added to its environment, under [environment], and the escape sequences
+/// it prints on stdout are cut out of what `exec` gives back. What the
+/// program starts is asked too: one of those whose output it reads —
+/// `$(node version.js)`, a file — then gives that output colored. A program
+/// that follows neither variable is asked its own way: `--color=always`,
+/// `git -c color.ui=always`.
 ///
 /// The program runs in a process group of its own, so that it is stopped
 /// together with every process it started: SIGTERM to the group, then
@@ -82,12 +89,14 @@ Future<String> exec(
   List<String> arguments, {
   String? workingDirectory,
   Map<String, String>? environment,
+  bool color = false,
 }) => execIn(
   _shell,
   executable,
   arguments,
   workingDirectory: workingDirectory,
   environment: environment,
+  color: color,
 );
 
 /// [exec] through [shell].
@@ -97,6 +106,7 @@ Future<String> execIn(
   List<String> arguments, {
   String? workingDirectory,
   Map<String, String>? environment,
+  bool color = false,
 }) {
   final scope = Zone.current[_scopeKey] as ExecScope?;
   final log = Zone.current[_logKey] as ProgramLog?;
@@ -108,6 +118,7 @@ Future<String> execIn(
     arguments,
     workingDirectory: workingDirectory,
     environment: environment,
+    color: color,
     scope: scope,
     log: log,
     stderr: processStderr,
@@ -167,6 +178,19 @@ abstract interface class ProgramLog {
 /// [log].
 Map<Object?, Object?> logZoneValues(ProgramLog log) => {_logKey: log};
 
+/// What asks a program to color what it prints though no terminal shows it:
+/// the conventions of force-color.org and bixense.com/clicolors.
+const _colorEnvironment = {'FORCE_COLOR': '1', 'CLICOLOR_FORCE': '1'};
+
+/// An escape sequence of a terminal: CSI, `ESC [ 1 ; 31 m`; a string up to
+/// BEL or `ESC \`, as OSC, `ESC ] 8 ; ; url ESC \`; or one of a byte or two,
+/// `ESC 7`, `ESC ( B`.
+final _escapeSequence = RegExp(
+  r'\x1b\[[0-?]*[ -/]*[@-~]'
+  r'|\x1b[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)'
+  r'|\x1b[ -/]*[0-~]',
+);
+
 final _scopeKey = Object();
 final _logKey = Object();
 
@@ -184,6 +208,7 @@ Future<String> _exec(
   List<String> arguments, {
   required String? workingDirectory,
   required Map<String, String>? environment,
+  required bool color,
   required ExecScope? scope,
   required ProgramLog? log,
   required IOSink stderr,
@@ -201,7 +226,7 @@ Future<String> _exec(
     shell,
     [executable, ...arguments],
     workingDirectory: workingDirectory,
-    environment: environment,
+    environment: color ? {..._colorEnvironment, ...?environment} : environment,
   );
   final group = Completer<int?>();
   final program = _Program(process, group.future);
@@ -223,7 +248,8 @@ Future<String> _exec(
     await logged;
     if (program.stopped) scope!._refuseWhenStopped();
     if (exitCode != 0) throw ExecException(executable, exitCode);
-    return utf8.decode(printed.takeBytes());
+    final text = utf8.decode(printed.takeBytes());
+    return color ? text.replaceAll(_escapeSequence, '') : text;
   } finally {
     scope?._programs.remove(program);
     // The shell has exited: the pipe it watched has done its work.

@@ -294,6 +294,54 @@ void main() {
     );
   });
 
+  group('with color', () {
+    const variables = r'echo "$FORCE_COLOR $CLICOLOR_FORCE"';
+
+    test('asks the program to color what it prints, though it prints to no '
+        'terminal', () async {
+      expect(await exec('/bin/sh', ['-c', variables], color: true), '1 1\n');
+    });
+
+    test('environment goes over what it asks', () async {
+      expect(
+        await exec(
+          '/bin/sh',
+          ['-c', variables],
+          color: true,
+          environment: {'FORCE_COLOR': '3'},
+        ),
+        '3 1\n',
+      );
+    });
+
+    test('returns stdout without its escape sequences', () async {
+      const colored =
+          r'\033[1;31mred\033[0m '
+          r'\033]8;;https://x.dev\033\\link\033]8;;\033\\ '
+          r'\033[Kdone\n';
+      expect(
+        await exec('/usr/bin/printf', [colored], color: true),
+        'red link done\n',
+      );
+      expect(
+        await exec('/usr/bin/printf', [r'\033[31mred\033[0m']),
+        '\x1b[31mred\x1b[0m',
+      );
+    });
+
+    test('leaves the colors of stderr as they are', () async {
+      final stderr = Captured();
+      await withStderr(
+        stderr,
+        () => exec('/bin/sh', [
+          '-c',
+          r'printf "\033[31mred\033[0m\n" >&2',
+        ], color: true),
+      );
+      expect(stderr.text, '\x1b[31mred\x1b[0m\n');
+    });
+  });
+
   test('runs the program in workingDirectory', () async {
     expect(
       await exec('pwd', [], workingDirectory: temp.path),

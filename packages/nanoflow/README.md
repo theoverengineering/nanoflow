@@ -105,13 +105,28 @@ final report = await f.effect('inspect', () async {
 });
 ```
 
-- **`exec(executable, arguments, {workingDirectory, environment})` отдаёт
-  stdout программы.** Код не 0 — `ExecException`, stdout не UTF-8 —
+- **`exec(executable, arguments, {workingDirectory, environment, color})`
+  отдаёт stdout программы.** Код не 0 — `ExecException`, stdout не UTF-8 —
   `FormatException`. Выход программы проверяет сам код, как сочтёт нужным:
   здесь — `Report.fromJson`.
 - **stderr — в лог эффекта** по мере поступления, если `exec` вызван в теле
   эффекта или в коде, который тело вызывает; вне эффекта — в stderr процесса.
   Программа, которая пишет быстрее, чем пишется лог, ждёт на своей трубе.
+- **Цвета в логе — по просьбе, `color: true`.** UI показывает цвета лога, но
+  большинство программ красит только то, что пишет в терминал, а программа
+  пишет в трубы. С `color: true` её просят красить всё равно: в окружение
+  добавляются `FORCE_COLOR=1` и `CLICOLOR_FORCE=1` (`environment` — поверх
+  них), а escape-последовательности из stdout вырезаются перед тем, как
+  `exec` его отдаст. Просьба достаётся и всему, что программа запускает:
+  то, чей вывод она читает сама, — `$(node version.js)`, файл, — отдаст его
+  цветным, поэтому по умолчанию цвета нет. Программу, которая не слушает
+  этих переменных, просят по-своему: `--color=always`,
+  `git -c color.ui=always`.
+
+  ```dart
+  await exec('npm', ['test'], color: true);
+  ```
+
 - **stdin программы пуст.** `environment` добавляется к окружению процесса.
   `executable` — программа, а не встроенная команда shell: ищется в `PATH`,
   если в нём нет `/`; относительный путь — от `workingDirectory`.
