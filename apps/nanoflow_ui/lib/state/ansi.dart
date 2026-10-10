@@ -256,40 +256,14 @@ bool _within(int char, int from, int to) => char >= from && char <= to;
 /// The colors of the palette, one object each: a log's lines share them.
 final _palette = List.generate(256, PaletteColor.new, growable: false);
 
-/// The numbers of the SGR being read — kept rather than made anew for each,
-/// as a log has an SGR or more on most lines: all of them in order, -1 for
-/// one left empty, and where each parameter's begin, its sub-parameters
-/// after `:` following its first.
-final _numbers = <int>[];
-final _parameters = <int>[];
-
-/// Reads the numbers of the SGR codes from [from] to [to] of [line] into
-/// [_numbers] and [_parameters].
-void _readNumbers(String line, int from, int to) {
-  _numbers.clear();
-  _parameters
-    ..clear()
-    ..add(0);
-  var number = -1;
-  for (var i = from; i < to; i++) {
-    final char = line.codeUnitAt(i);
-    if (char == 0x3A || char == 0x3B) {
-      // : ;
-      _numbers.add(number);
-      number = -1;
-      if (char == 0x3B) _parameters.add(_numbers.length);
-    } else if (_within(char, 0x30, 0x39) && number < 100000) {
-      number = (number < 0 ? 0 : number) * 10 + char - 0x30;
-    }
-  }
-  _numbers.add(number);
-}
-
 /// [style] after the SGR codes from [from] to [to] of [line]: `1;31`,
 /// `38;5;208`, `38:2::255:128:0`. Codes it does not know change nothing. A
 /// style the codes leave as it was is [style] itself, and the plain one
 /// [AnsiStyle.plain]: a log's lines share their styles rather than each
 /// holding its own.
+///
+/// The numbers are read where they are, not cut out first: a log has an SGR
+/// or more on most of its lines.
 AnsiStyle _withCodes(AnsiStyle style, String line, int from, int to) {
   var foreground = style.foreground;
   var background = style.background;
@@ -300,14 +274,14 @@ AnsiStyle _withCodes(AnsiStyle style, String line, int from, int to) {
   var inverse = style.inverse;
   var crossedOut = style.crossedOut;
 
-  _readNumbers(line, from, to);
-  for (var p = 0; p < _parameters.length; p++) {
-    final first = _parameters[p];
-    final end = p + 1 < _parameters.length
-        ? _parameters[p + 1]
-        : _numbers.length;
+  // Each parameter: a code, and sub-parameters after `:`.
+  var i = from;
+  do {
+    final (:value, :end) = _number(line, i, to);
+    i = end;
     // An empty code is 0.
-    final code = math.max(_numbers[first], 0);
+    final code = math.max(value, 0);
+    final colons = i < to && line.codeUnitAt(i) == _colon;
     switch (code) {
       case 0:
         foreground = background = null;
@@ -320,7 +294,7 @@ AnsiStyle _withCodes(AnsiStyle style, String line, int from, int to) {
         italic = true;
       case 4:
         // `4:0` is no underline; `4:3`, a curly one.
-        underline = end - first < 2 || _numbers[first + 1] != 0;
+        underline = !colons || _number(line, i + 1, to).value != 0;
       case 7:
         inverse = true;
       case 9:
@@ -350,16 +324,18 @@ AnsiStyle _withCodes(AnsiStyle style, String line, int from, int to) {
       // A color by its number or by red, green and blue: 58 is that of the
       // underline, which is not shown, but its numbers are not codes.
       case 38 || 48 || 58:
-        final colons = end - first > 1;
-        final (:color, :parameters) = colons
-            ? _color(first + 1, end, colons: true)
-            : _color(p + 1, _parameters.length, colons: false);
-        p += parameters;
+        final (:color, :end) = _color(line, i, to, colons: colons);
+        i = end;
         if (color == null) break;
         if (code == 38) foreground = color;
         if (code == 48) background = color;
     }
-  }
+    // On past the parameter's sub-parameters and its `;`.
+    while (i < to && line.codeUnitAt(i) != _semicolon) {
+      i++;
+    }
+    i++;
+  } while (i <= to);
   if (foreground == style.foreground &&
       background == style.background &&
       bold == style.bold &&
@@ -392,39 +368,59 @@ AnsiStyle _withCodes(AnsiStyle style, String line, int from, int to) {
   );
 }
 
-/// The color the numbers after 38 or 48 name — `5;208`, `2;255;128;0`; with
-/// [colons], `2::255:128:0` too, its color space left empty — `null` when
-/// they name none; and how many parameters they take. With [colons] the
-/// numbers are the sub-parameters [from] to [to] of [_numbers], and they take
-/// no parameters; without, the first numbers of the parameters [from] to
-/// [to] of [_parameters].
-({AnsiColor? color, int parameters}) _color(
-  int from,
+const _colon = 0x3A;
+const _semicolon = 0x3B;
+
+/// The number at [i] of [line], before [to]: -1 when there is none; and
+/// where it ends.
+({int value, int end}) _number(String line, int i, int to) {
+  var value = -1;
+  for (; i < to; i++) {
+    final digit = line.codeUnitAt(i) - 0x30;
+    if (digit < 0 || digit > 9) break;
+    if (value < 100000) value = math.max(value, 0) * 10 + digit;
+  }
+  return (value: value, end: i);
+}
+
+/// The color the numbers after 38 or 48 name, those after [i] of [line],
+/// before [to]: `;5;208`, `;2;255;128;0`; with [colons] `:5:208` and
+/// `:2:255:128:0`, or `:2::255:128:0` with its color space left empty.
+/// `null` when they name none; and where they end. A kind of color other
+/// than 5 and 2 takes no numbers: after a `;` it is the next code.
+({AnsiColor? color, int end}) _color(
+  String line,
+  int i,
   int to, {
   required bool colons,
 }) {
-  int at(int i) => from + i >= to
-      ? -1
-      : colons
-      ? _numbers[from + i]
-      : _numbers[_parameters[from + i]];
-  bool byte(int n) => n >= 0 && n <= 255;
-  switch (at(0)) {
-    case 5:
-      final index = at(1);
-      return (
-        color: byte(index) ? _palette[index] : null,
-        parameters: colons ? 0 : 2,
-      );
-    case 2:
-      final i = colons && to - from > 4 ? 2 : 1;
-      final (red, green, blue) = (at(i), at(i + 1), at(i + 2));
-      return (
-        color: byte(red) && byte(green) && byte(blue)
-            ? RgbColor(red, green, blue)
-            : null,
-        parameters: colons ? 0 : 4,
-      );
+  final start = i;
+  final separator = colons ? _colon : _semicolon;
+  final numbers = <int>[];
+  int wanted() => switch (numbers.firstOrNull) {
+    null => 1,
+    5 => 2,
+    2 => colons ? 5 : 4,
+    _ => 1,
+  };
+  while (numbers.length < wanted() &&
+      i < to &&
+      line.codeUnitAt(i) == separator) {
+    final (:value, :end) = _number(line, i + 1, to);
+    numbers.add(value);
+    i = end;
   }
-  return (color: null, parameters: 0);
+  bool byte(int at) =>
+      at < numbers.length && numbers[at] >= 0 && numbers[at] <= 255;
+  final rgb = numbers.length == 5 ? 2 : 1;
+  return switch (numbers.firstOrNull) {
+    5 => (color: byte(1) ? _palette[numbers[1]] : null, end: i),
+    2 => (
+      color: byte(rgb) && byte(rgb + 1) && byte(rgb + 2)
+          ? RgbColor(numbers[rgb], numbers[rgb + 1], numbers[rgb + 2])
+          : null,
+      end: i,
+    ),
+    _ => (color: null, end: colons ? i : start),
+  };
 }
