@@ -24,7 +24,10 @@ final class ExecException implements Exception {
 /// the effect `exec` is called in — from the body of `f.effect` or from code
 /// the body calls — and anywhere else to the stderr of this process. A
 /// program that writes to an effect's log faster than the log is written
-/// waits on its pipe.
+/// waits on its pipe. The UI shows the log's ANSI colors, but the pipe is no
+/// terminal: a program that colors only a terminal colors its log when
+/// asked, `--color=always`, `FORCE_COLOR=1` — and its stdout, which `exec`
+/// gives back, then has the escape sequences too.
 ///
 /// The program runs in a process group of its own, so that it is stopped
 /// together with every process it started: SIGTERM to the group, then

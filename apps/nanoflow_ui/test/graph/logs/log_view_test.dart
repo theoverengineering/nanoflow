@@ -46,6 +46,95 @@ void main() {
     }
   });
 
+  /// The style of [part] of the line [text].
+  TextStyle? styleOf(WidgetTester tester, String text, String part) {
+    TextStyle? style;
+    var found = false;
+    tester.widget<Text>(line(text)).textSpan!.visitChildren((span) {
+      if (span is TextSpan && span.text == part) {
+        style = span.style;
+        found = true;
+      }
+      return !found;
+    });
+    expect(found, isTrue, reason: '"$part" in "$text"');
+    return style;
+  }
+
+  testWidgets('shows a log in its ANSI colors, without the escapes', (
+    tester,
+  ) async {
+    await pumpLog(
+      tester,
+      'checks: \x1b[1;31mfailed\x1b[0m, \x1b[32m3 passed\x1b[0m\x1b[K\n',
+    );
+
+    const text = 'checks: failed, 3 passed';
+    expect(line(text), findsOneWidget);
+    expect(styleOf(tester, text, 'checks: '), isNull);
+    expect(styleOf(tester, text, 'failed')!.color, AppColors.ansi[1]);
+    expect(styleOf(tester, text, 'failed')!.fontWeight, FontWeight.w700);
+    expect(styleOf(tester, text, '3 passed')!.color, AppColors.ansi[2]);
+  });
+
+  testWidgets('a color goes on to the next lines until it is reset', (
+    tester,
+  ) async {
+    final files = await pumpLog(tester, '\x1b[33mwarning: slow\nretrying');
+    expect(styleOf(tester, 'retrying', 'retrying')!.color, AppColors.ansi[3]);
+
+    files.append('a1b2-notify-5', ' 2\x1b[0m\ndone\n');
+    await tester.pump();
+    await tester.pump();
+    expect(
+      styleOf(tester, 'retrying 2', 'retrying 2')!.color,
+      AppColors.ansi[3],
+    );
+    expect(styleOf(tester, 'done', 'done'), isNull);
+  });
+
+  testWidgets('a color set above the tail shown goes on into it', (
+    tester,
+  ) async {
+    await pumpLog(tester, '\x1b[31m${numbered(1, 1500)}');
+
+    expect(shown(tester, 'line 1500'), isTrue);
+    expect(styleOf(tester, 'line 1500', 'line 1500')!.color, AppColors.ansi[1]);
+  });
+
+  testWidgets('a line is cut by the text it shows, not by its escapes', (
+    tester,
+  ) async {
+    final long = 'x' * previewLineLength;
+    await pumpLog(tester, '\x1b[31m$long\x1b[0m\n');
+
+    expect(find.byKey(MonoLines.cutKey), findsNothing);
+    expect(line(long), findsOneWidget);
+  });
+
+  testWidgets('an escape sequence written in two parts styles the text '
+      'after it', (tester) async {
+    final files = await pumpLog(tester, 'abc\x1b[3');
+    expect(line('abc'), findsOneWidget);
+
+    files.append('a1b2-notify-5', '1mdef\n');
+    await tester.pump();
+    await tester.pump();
+    expect(styleOf(tester, 'abcdef', 'abc'), isNull);
+    expect(styleOf(tester, 'abcdef', 'def')!.color, AppColors.ansi[1]);
+  });
+
+  testWidgets('the tail of a big log is cut by the text it shows, not by its '
+      'escapes', (tester) async {
+    final long = 'x' * previewLineLength;
+    await pumpLog(tester, '${numbered(1, 1500)}\x1b[31m$long\x1b[0m\n');
+
+    expect(
+      textIn(tester, find.byKey(MonoLines.cutKey)),
+      'Showing the last 1,000 of 1,501 lines Show all',
+    );
+  });
+
   testWidgets('follows the tail of a running effect\'s log, and says so', (
     tester,
   ) async {

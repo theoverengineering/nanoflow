@@ -355,10 +355,9 @@ class _JsonViewState extends State<JsonView> {
     final start = _start ??= textStart(lines, all: _all);
     return MonoLines(
       count: start.count,
-      lineAt: (i) => shownLine(lines[i], whole: _all),
+      lineAt: (i) => _spanOf(shownLine(lines[i], whole: _all)),
       widest: shownLine(start.widest, whole: _all),
       style: AppText.jsonLine,
-      spanOf: _spanOf,
       background: AppColors.backdrop,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       cut: switch (start.cut) {

@@ -52,7 +52,7 @@ class _DocumentViewState extends State<DocumentView> {
       final start = _start ??= textStart(lines, all: _all);
       return MonoLines(
         count: start.count,
-        lineAt: (i) => shownLine(lines[i], whole: _all),
+        lineAt: (i) => TextSpan(text: shownLine(lines[i], whole: _all)),
         widest: shownLine(start.widest, whole: _all),
         cut: switch (start.cut) {
           null => null,

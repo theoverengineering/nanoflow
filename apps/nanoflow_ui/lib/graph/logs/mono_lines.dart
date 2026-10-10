@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderSliverFixedExtentList;
 
+import '../../state/ansi.dart';
 import '../../state/texts.dart' show thousands;
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
@@ -62,8 +63,8 @@ typedef TextCut = ({String text, VoidCallback showAll});
 /// not wrap: the text is as wide as its [widest] line and scrolls sideways.
 /// It can be selected and copied.
 ///
-/// The lines are in [style] on [background], [padding] round them; with
-/// [spanOf], each line in its parts' own colors.
+/// The lines are in [style] on [background], [padding] round them; a line's
+/// parts may have styles of their own.
 class MonoLines extends StatefulWidget {
   MonoLines({
     super.key,
@@ -74,7 +75,6 @@ class MonoLines extends StatefulWidget {
     this.cursor = false,
     this.cut,
     TextStyle? style,
-    this.spanOf,
     this.background = AppColors.textArea,
     this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
   }) : style = style ?? AppText.textLine;
@@ -90,7 +90,7 @@ class MonoLines extends StatefulWidget {
       AppText.textLine.fontSize! * AppText.textLine.height!;
 
   final int count;
-  final String Function(int index) lineAt;
+  final InlineSpan Function(int index) lineAt;
 
   /// The longest line.
   final String widest;
@@ -105,9 +105,6 @@ class MonoLines extends StatefulWidget {
   final TextCut? cut;
 
   final TextStyle style;
-
-  /// A line as styled parts.
-  final InlineSpan Function(String line)? spanOf;
 
   final Color background;
   final EdgeInsets padding;
@@ -148,16 +145,8 @@ class _MonoLinesState extends State<MonoLines> {
     return _width;
   }
 
-  /// A line, in its parts' colors when there is [MonoLines.spanOf].
-  Widget _line(String line) => switch (widget.spanOf) {
-    final spanOf? => Text.rich(
-      spanOf(line),
-      style: widget.style,
-      maxLines: 1,
-      softWrap: false,
-    ),
-    null => Text(line, style: widget.style, maxLines: 1, softWrap: false),
-  };
+  Widget _line(InlineSpan line) =>
+      Text.rich(line, style: widget.style, maxLines: 1, softWrap: false);
 
   @override
   Widget build(BuildContext context) {
@@ -295,22 +284,43 @@ class _Cursor extends StatelessWidget {
 /// [line] as shown: tabs to the next multiple of 8 columns, a carriage
 /// return before the end dropped, and cut at [previewLineLength] unless
 /// [whole].
-String shownLine(String line, {required bool whole}) {
-  var text = line.endsWith('\r') ? line.substring(0, line.length - 1) : line;
-  if (text.contains('\t')) {
-    final out = StringBuffer();
-    for (final char in text.split('')) {
-      if (char == '\t') {
-        out.write(' ' * (8 - out.length % 8));
-      } else {
-        out.write(char);
-      }
+String shownLine(String line, {required bool whole}) => shownRuns([
+  (text: line, style: AnsiStyle.plain),
+], whole: whole).map((run) => run.text).join();
+
+/// [runs] of a line as shown, as [shownLine] shows a line: its columns are
+/// those of the text shown, not of the escape sequences it was read from.
+List<AnsiRun> shownRuns(List<AnsiRun> runs, {required bool whole}) {
+  final shown = <AnsiRun>[];
+  var column = 0;
+  for (final (i, run) in runs.indexed) {
+    var text = run.text;
+    if (i == runs.length - 1 && text.endsWith('\r')) {
+      text = text.substring(0, text.length - 1);
     }
-    text = out.toString();
+    if (text.contains('\t')) {
+      final out = StringBuffer();
+      for (final char in text.split('')) {
+        if (char == '\t') {
+          out.write(' ' * (8 - (column + out.length) % 8));
+        } else {
+          out.write(char);
+        }
+      }
+      text = out.toString();
+    }
+    if (!whole && column + text.length > previewLineLength) {
+      final rest = previewLineLength - column;
+      return [
+        ...shown,
+        if (rest > 0) (text: text.substring(0, rest), style: run.style),
+        (text: ' …', style: AnsiStyle.plain),
+      ];
+    }
+    column += text.length;
+    if (text.isNotEmpty) shown.add((text: text, style: run.style));
   }
-  return whole || text.length <= previewLineLength
-      ? text
-      : '${text.substring(0, previewLineLength)} …';
+  return shown;
 }
 
 /// The longest of [lines] from [from] to [to].

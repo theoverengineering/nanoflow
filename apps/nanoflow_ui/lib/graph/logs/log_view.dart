@@ -3,15 +3,18 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../state/ansi.dart';
 import '../../state/effect_details.dart';
 import '../../state/effect_files.dart';
 import '../../state/texts.dart' show thousands;
 import '../../theme.dart';
+import 'ansi_span.dart';
 import 'document_view.dart' show TabNote;
 import 'mono_lines.dart';
 
 /// An effect's log in monospace, as it grows (docs/ui-spec.md «Logs»): its
-/// last [previewLines] lines until `Show all`.
+/// last [previewLines] lines until `Show all`, in the colors its ANSI escape
+/// sequences give it.
 ///
 /// It opens at the end of the log and holds on to it as lines come, until
 /// the user scrolls up; scrolled back down, it holds on again. Whether it
@@ -43,12 +46,21 @@ class _LogViewState extends State<LogView> {
   late final StreamSubscription<String> _log;
   final _scroll = ScrollController();
 
-  /// The complete lines, and what is written after the last of them.
+  /// The complete lines, the style each starts in, and how many characters
+  /// each shows: its escape sequences show none.
   final List<String> _lines = [];
-  String _partial = '';
+  final List<AnsiStyle> _starts = [];
+  final List<int> _widths = [];
 
-  /// The longest complete line.
-  String _longest = '';
+  /// What is written after the last complete line, and the style it starts
+  /// in: that the lines before leave.
+  String _partial = '';
+  AnsiStyle _style = AnsiStyle.plain;
+
+  /// The longest complete line, -1 while there is none, and its text
+  /// without escape sequences.
+  int _longest = -1;
+  String _longestText = '';
 
   /// The first line shown: a long log shows its tail.
   int _start = 0;
@@ -85,8 +97,15 @@ class _LogViewState extends State<LogView> {
     final parts = '$_partial$text'.split('\n');
     _partial = parts.removeLast();
     for (final line in parts) {
+      final (:width, :end) = ansiWidth(line, _style);
       _lines.add(line);
-      if (line.length > _longest.length) _longest = line;
+      _starts.add(_style);
+      _widths.add(width);
+      if (_longest < 0 || width > _widths[_longest]) {
+        _longest = _lines.length - 1;
+        _longestText = withoutEscapes(line);
+      }
+      _style = end;
     }
     final follow = first || widget.following.value;
     setState(() {
@@ -127,9 +146,22 @@ class _LogViewState extends State<LogView> {
     });
   }
 
-  String _lineAt(int index) {
+  InlineSpan _lineAt(int index) {
     final i = _start + index;
-    return shownLine(i < _lines.length ? _lines[i] : _partial, whole: _all);
+    final (line, style) = i < _lines.length
+        ? (_lines[i], _starts[i])
+        : (_partial, _style);
+    return ansiSpan(shownRuns(ansiRuns(line, style).runs, whole: _all));
+  }
+
+  /// The longest complete line from [from], without its escape sequences.
+  String _widestFrom(int from) {
+    if (from == 0) return _longestText;
+    var widest = -1;
+    for (var i = from; i < _lines.length; i++) {
+      if (widest < 0 || _widths[i] > _widths[widest]) widest = i;
+    }
+    return widest < 0 ? '' : withoutEscapes(_lines[widest]);
   }
 
   @override
@@ -146,10 +178,9 @@ class _LogViewState extends State<LogView> {
       return _quiet ? const TabNote(LogView.nothing) : const TabNote('');
     }
     final shown = _count - _start;
-    final longest = _start == 0
-        ? _longest
-        : widestLine(_lines, _start, _lines.length);
-    final widest = _partial.length > longest.length ? _partial : longest;
+    final longest = _widestFrom(_start);
+    final partial = withoutEscapes(_partial);
+    final widest = partial.length > longest.length ? partial : longest;
     final cut = _all
         ? null
         : cutText(

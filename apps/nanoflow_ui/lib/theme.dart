@@ -90,6 +90,30 @@ abstract final class AppColors {
   static const textArea = Color(0xFF1A1B1E);
   static const textAreaText = Color(0xFFC9CACF);
 
+  /// The 16 named colors of a log's ANSI text — black, red, green, yellow,
+  /// blue, magenta, cyan, white, then their bright kind — in the app's own.
+  /// Black is dark, as in a dark terminal: text in it is mostly on a colored
+  /// background, `PASS` on green; bright black is the gray tools print
+  /// secondary text in, legible on [textArea].
+  static const ansi = [
+    panelBorder,
+    failed,
+    finished,
+    running,
+    Color(0xFF5A9CF0),
+    accentLine,
+    Color(0xFF3FC1C9),
+    textAreaText,
+    textFaint,
+    dangerText,
+    finishedText,
+    noteText,
+    jsonLiteral,
+    link,
+    Color(0xFF8FE3E8),
+    textPrimary,
+  ];
+
   // The effect details window (docs/design/step-details.html).
 
   /// Round the window, and its `Output` column.
