@@ -405,21 +405,25 @@ runs/
 
 ```json
 {
-  "format": 2,
+  "format": 3,
   "package": "review_example",
   "fingerprint": "sha256:7d3e…",
   "sources": { "bin/main.dart": "sha256:aa11…", "lib/review.dart": "sha256:9f2c…" },
   "builds": { "review": "sha256:c07e…" },
   "workflows": ["lib/review.dart#review"],
   "functions": {
-    "lib/review.dart#review": { "name": "review", "place": "lib/review.dart:21", "body": { "nodes": [], "edges": [] } }
+    "lib/review.dart#review": { "name": "review", "place": "lib/review.dart:21", "doc": "Reviews the change of [branch].", "body": { "nodes": [], "edges": [] } }
   },
   "warnings": [ { "place": "lib/review.dart:40", "message": "effects in a closure passed on are not drawn" } ]
 }
 ```
 
-- `format` — 2. Файл другого формата не читается: UI говорит о нём, как о
-  любом неверном файле.
+- `format` — 3. Формат 2 — тот же файл без `doc`: читается с `doc: null`,
+  так что снимки сессий, начатых до формата 3, остаются читаемыми
+  ([документация узлов](2026-10-10-node-docs-design.md), §3). Файл другого
+  формата не читается: UI говорит о нём, как о любом неверном файле.
+- `doc` — у функции и у узла `effect`: текст комментария документации
+  (`///`) без `///`, или `null` (§7.1).
 - `functions` — функции с эффектами, по id `путь#имя` (метод — `путь#Класс.имя`;
   метод безымянного расширения — `путь#<extension>.имя`, второго
   безымянного расширения файла — `путь#<extension 2>.имя` и т. д.). Граф
@@ -432,7 +436,7 @@ runs/
 ```json
 {
   "nodes": [
-    { "id": "1", "kind": "effect", "name": "collect",             "place": "lib/review.dart:22" },
+    { "id": "1", "kind": "effect", "name": "collect",             "place": "lib/review.dart:22", "doc": "Takes the change of the branch." },
     { "id": "2", "kind": "fork",   "label": "change.path.isEmpty", "place": "lib/review.dart:23" },
     { "id": "3", "kind": "call",   "functions": ["lib/release.dart#publish"], "place": "lib/release.dart:23" },
     { "id": "4", "kind": "copies", "label": "pkg in packages",     "place": "lib/release.dart:20", "body": { "nodes": [], "edges": [] } }
@@ -521,6 +525,11 @@ dart run nanoflow_describe stamp build/review   # §6.3; копия файла �
   путей с неизвестным значением; `continue` и конец тела `while (true)` над
   таким `switch` — так же ([спецификация](2026-10-08-switch-threading-design.md));
 - `try` — тело и `finally`; ветки `catch` не рисуются (предупреждение).
+
+Документация (`doc`, §6.1): у функции — её комментарий документации; у
+эффекта — `///` прямо перед ним или перед простым оператором, где он
+единственный эффект ([документация узлов](2026-10-10-node-docs-design.md),
+§2).
 
 Предупреждения (`warnings`): имя эффекта — не литерал; эффекты в замыкании,
 переданном дальше; эффекты в локальной функции; вызов функции с эффектами вне
@@ -703,7 +712,11 @@ dart run nanoflow_describe stamp build/review   # §6.3; копия файла �
   эффекта.
 - **Логи** — эффекты сессии по первому `effect-started`; при выбранной копии —
   её эффекты. Строк «унаследовано» и «прогон разделился» нет.
-- **Окно эффекта** — выход, лог, место в коде, ошибка со стеком; входа нет.
+- **Окно эффекта** — документация, выход, лог, место в коде, ошибка со
+  стеком; входа нет.
+- **Документация** (`doc`, §6.1) — в подсказке у плитки эффекта и вызова, у
+  заголовка рамки функции и крошки её уровня; у эффекта — и в окне
+  ([документация узлов](2026-10-10-node-docs-design.md), §4).
 - Уходят: запуск программ графа, `nanoflow check`, поиск `PATH`, выбор
   `.yaml`, переключатель прогонов.
 

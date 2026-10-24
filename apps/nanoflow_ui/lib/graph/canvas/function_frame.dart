@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../layout/layout.dart' as layout;
+import '../../widgets/doc_text.dart';
 import 'canvas_style.dart';
 import 'frame_toggle.dart';
 
@@ -9,7 +10,8 @@ import 'frame_toggle.dart';
 /// tiles' border, with nothing in it but the body of the function — the
 /// same at any depth, so that frames in frames neither darken nor clutter;
 /// the function's name, `publish()`, in its top left corner, and `−` to
-/// collapse it in its top right corner.
+/// collapse it in its top right corner. The title shows the function's
+/// [doc] when the pointer rests on it.
 ///
 /// It fills the frame; the body is drawn over it.
 class FunctionFrameView extends StatelessWidget {
@@ -18,6 +20,7 @@ class FunctionFrameView extends StatelessWidget {
     required this.title,
     required this.onCollapse,
     this.collapseKey,
+    this.doc,
   });
 
   /// `publish()`.
@@ -27,6 +30,9 @@ class FunctionFrameView extends StatelessWidget {
 
   /// The key of the `−`.
   final Key? collapseKey;
+
+  /// The function's doc, in a tooltip over the title; `null` for none.
+  final InlineSpan? doc;
 
   static const _radius = 12.0;
   static const _inset = 16.0;
@@ -68,12 +74,15 @@ class FunctionFrameView extends StatelessWidget {
       Positioned(
         left: _inset,
         top: _titleTop,
-        child: Text(
-          title,
-          style: CanvasText.frameTitle,
-          textScaler: TextScaler.noScaling,
-          maxLines: 1,
-          softWrap: false,
+        child: DocTooltip(
+          message: doc,
+          child: Text(
+            title,
+            style: CanvasText.frameTitle,
+            textScaler: TextScaler.noScaling,
+            maxLines: 1,
+            softWrap: false,
+          ),
         ),
       ),
       Positioned(

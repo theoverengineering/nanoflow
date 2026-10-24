@@ -387,6 +387,21 @@ abstract final class AppText {
   static final factNote = _style(sans, 11.5, color: AppColors.textSubtle);
   static final effectPath = _style(mono, 10.5, color: AppColors.textSubtle);
   static final outputTab = _style(sans, 12, color: AppColors.textMuted);
+
+  // The doc comment of a function or an effect: in a tooltip, in the effect
+  // details window.
+  static final doc = _style(
+    sans,
+    12.5,
+    color: AppColors.textSecondary,
+  ).copyWith(height: 1.45);
+  static final docCode = _style(mono, 11.5, color: AppColors.textPrimary);
+  static final docTitle = _style(
+    mono,
+    11.5,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textPrimary,
+  );
 }
 
 /// The MaterialApp around every screen, in the app's theme; tests show

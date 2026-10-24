@@ -308,14 +308,14 @@ UUID v4 в нижнем регистре.
 
 ```json
 {
-  "format": 2,
+  "format": 3,
   "package": "review_example",
   "fingerprint": "sha256:7d3e…",
   "sources": { "bin/main.dart": "sha256:aa11…", "lib/review.dart": "sha256:9f2c…" },
   "builds": { "review": "sha256:c07e…" },
   "workflows": ["lib/review.dart#review"],
   "functions": {
-    "lib/review.dart#review": { "name": "review", "place": "lib/review.dart:48", "body": { "nodes": [], "edges": [] } }
+    "lib/review.dart#review": { "name": "review", "place": "lib/review.dart:48", "doc": "Reviews the change of [branch].", "body": { "nodes": [], "edges": [] } }
   },
   "warnings": [ { "place": "lib/review.dart:40", "message": "effects in a closure passed on are not drawn" } ]
 }
@@ -329,6 +329,11 @@ UUID v4 в нижнем регистре.
   эффектов.
 - **`warnings`** — что извлечение не нарисовало, с местом.
 - **`place`** — `путь:строка` от корня пакета.
+- **`doc`** — у функции и у эффекта: текст его комментария документации
+  `///` без `///`, Markdown как есть; нет комментария — `null`
+  ([извлечение графа](#извлечение-графа)).
+- **`format`** — 3. Формат 2 — тот же файл без `doc`: его и снимки сессий,
+  начатых до формата 3, UI читает с `doc: null`. `describe` пишет формат 3.
 
 ### Тело
 
@@ -337,7 +342,7 @@ UUID v4 в нижнем регистре.
 ```json
 {
   "nodes": [
-    { "id": "1", "kind": "effect", "name": "collect",             "place": "lib/review.dart:49" },
+    { "id": "1", "kind": "effect", "name": "collect",             "place": "lib/review.dart:49", "doc": "Takes the change of the branch." },
     { "id": "2", "kind": "fork",   "label": "change.path.isEmpty", "place": "lib/review.dart:50" },
     { "id": "3", "kind": "call",   "functions": ["lib/release.dart#publish"], "place": "lib/release.dart:23" },
     { "id": "4", "kind": "copies", "label": "pkg in packages",     "place": "lib/release.dart:20", "body": { "nodes": [], "edges": [] } }
@@ -395,6 +400,19 @@ dart run nanoflow_describe stamp build/review   # хэш бинарника в b
 - **Код не выполняется:** граф потока управления каждой функции с эффектами,
   сведённый к узлам [тела](#тело). Что извлечение понимает, — в README
   пакета.
+- **Документация — `doc` функций и эффектов:** у функции — её комментарий
+  `///` (или `/** */`) над объявлением; у эффекта — `///` прямо над ним,
+  над выражением, которое с него начинается, или над простым оператором
+  (выражение, объявление переменной, `return`, `yield`), где он
+  единственный эффект. Комментарий над оператором с несколькими эффектами,
+  над `if`, циклом и другим составным оператором эффектам не достаётся;
+  документацию функции из своего замыкания эффект не берёт.
+
+  ```dart
+  /// Takes the change of the branch: the one file named after it.
+  var change = await f.effect('collect', () => collect(branch));
+  ```
+
 - **Переход по `switch`:** путь, который знает значение локальной переменной
   `switch`, идёт стрелкой прямо в её случай; `stage = X; continue loop` в
   `while (true) switch (stage)` — стрелка в узел X, без развилки.

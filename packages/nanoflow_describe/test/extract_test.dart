@@ -16,6 +16,42 @@ Future<Map<String, Object?>> describeFixture(String name) async {
   return result.graph!.toJson();
 }
 
+/// [functions] as the file has them: `doc: null` on a function and on an
+/// effect whose expectation gives none, in the place the file has it — the
+/// fixtures document only what their tests say.
+Map<String, Object?> withDocs(Map<String, Object?> functions) => {
+  for (final MapEntry(key: id, value: function) in functions.entries)
+    id: {
+      for (final MapEntry(:key, :value)
+          in (function! as Map<String, Object?>).entries)
+        if (key == 'body') ...{
+          'doc': (function as Map)['doc'],
+          key: _bodyWithDocs(value),
+        } else if (key != 'doc')
+          key: value,
+    },
+};
+
+Object? _bodyWithDocs(Object? body) => {
+  ...body! as Map<String, Object?>,
+  'nodes': [
+    for (final node in (body as Map)['nodes'] as List<Object?>)
+      switch (node) {
+        {'kind': 'effect'} => {
+          for (final MapEntry(:key, :value)
+              in (node as Map<String, Object?>).entries)
+            if (key != 'doc') key: value,
+          'doc': node['doc'],
+        },
+        {'kind': 'copies'} => {
+          ...node as Map<String, Object?>,
+          'body': _bodyWithDocs(node['body']),
+        },
+        _ => node,
+      },
+  ],
+};
+
 /// The graph file the fixture [name] must give: its sources hashed as the
 /// model hashes them, nothing built, the rest as given.
 Future<Map<String, Object?>> expectedFile(
@@ -27,13 +63,13 @@ Future<Map<String, Object?>> expectedFile(
   final dir = fixture(name);
   final sources = await hashSources(dir, await packageSourcePaths(dir));
   return {
-    'format': 2,
+    'format': 3,
     'package': name,
     'fingerprint': fingerprintOf(sources),
     'sources': sources,
     'builds': <String, Object?>{},
     'workflows': workflows,
-    'functions': functions,
+    'functions': withDocs(functions),
     'warnings': warnings,
   };
 }
@@ -146,6 +182,7 @@ void main() {
           'lib/publish.dart#publish': {
             'name': 'publish',
             'place': 'lib/publish.dart:11',
+            'doc': 'Uploads [p] and takes it back when it does not verify.',
             'body': {
               'nodes': [
                 {
@@ -607,6 +644,7 @@ void main() {
           'lib/crawl.dart#crawl': {
             'name': 'crawl',
             'place': 'lib/crawl.dart:22',
+            'doc': 'Fetches a page and visits the pages it links to.',
             'body': {
               'nodes': [
                 {
@@ -640,6 +678,7 @@ void main() {
           'lib/crawl.dart#deploy': {
             'name': 'deploy',
             'place': 'lib/crawl.dart:6',
+            'doc': 'Tries again, a little later each time, until the deploy goes through.',
             'body': {
               'nodes': [
                 {
@@ -674,6 +713,10 @@ void main() {
           'lib/crawl.dart#visit': {
             'name': 'visit',
             'place': 'lib/crawl.dart:31',
+            'doc':
+                'Calls no effect of its own, but crawls a page that is a '
+                'directory: a\nfunction with effects through [crawl], which '
+                'calls it back.',
             'body': {
               'nodes': [
                 {
@@ -720,6 +763,9 @@ void main() {
           'lib/migrate.dart#check': {
             'name': 'check',
             'place': 'lib/migrate.dart:26',
+            'doc':
+                'Its only effects are in a closure passed on: a workflow with '
+                'nothing drawn.',
             'body': {
               'nodes': <Object?>[],
               'edges': [
@@ -2349,6 +2395,48 @@ void main() {
     );
   });
 
+  test('reads the doc comment of a function and of the effect right after '
+      'one', () async {
+    final graph = await describeFixture('docs');
+    final functions = graph['functions']! as Map<String, Object?>;
+    String? docOf(String id) => (functions[id]! as Map)['doc'] as String?;
+    Map<String, Object?> effectDocs(String id) => {
+      for (final node
+          in ((functions[id]! as Map)['body']! as Map)['nodes']! as List)
+        if ((node as Map)['kind'] == 'effect')
+          node['name']! as String: node['doc'],
+    };
+    expect(
+      docOf('lib/docs.dart#release'),
+      'Ships a release.\n\nBuilds it first: see [Shipper.ship].',
+    );
+    expect(
+      docOf('lib/docs.dart#Shipper.ship'),
+      'Ships through a block comment.\n\nSecond paragraph.',
+    );
+    expect(effectDocs('lib/docs.dart#release'), {
+      'version': 'Takes the version to ship.',
+      'build': 'Builds it.',
+      'parts': 'Takes both parts of the version.',
+      'tag': 'Tags the commit.',
+      'notes': 'Writes the notes,\ntwo lines of them.',
+      // Over a statement with two effects, an if, a loop: none of theirs.
+      'mirror': null,
+      'archive': null,
+      'skip': null,
+      'trim': null,
+      'plain': null,
+      'tail': 'Only this line.',
+      'blank': null,
+      'spaced': 'Before a blank line.\nAfter it.',
+      'result': 'Gives the version.',
+    });
+    expect(effectDocs('lib/docs.dart#Shipper.ship'), {'ship': null});
+    // An empty block comment is no doc, and no trouble.
+    expect(docOf('lib/docs.dart#bare'), isNull);
+    expect(effectDocs('lib/docs.dart#bare'), {'bare': null});
+  });
+
   test('writes the same file every time', () async {
     final first = await describePackage(fixture('release'), packageName: 'x');
     final second = await describePackage(fixture('release'), packageName: 'x');
@@ -2384,7 +2472,7 @@ void main() {
         'lib/tiny.dart': sourceHash(utf8.encode('int answer() => 42;\n')),
       };
       expectFile(result.graph!.toJson(), {
-        'format': 2,
+        'format': 3,
         'package': 'tiny_app',
         'fingerprint': fingerprintOf(sources),
         'sources': sources,

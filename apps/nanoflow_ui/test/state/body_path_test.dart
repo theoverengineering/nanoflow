@@ -50,6 +50,35 @@ void main() {
     expect(levels[2].body, inline.functions['lib/inline.dart#publish']!.body);
   });
 
+  test('a level has the doc of its function: the workflow\'s, a called '
+      'one\'s; copies none', () {
+    GraphFunction withDoc(GraphFunction f, String doc) => GraphFunction(
+      id: f.id,
+      name: f.name,
+      place: f.place,
+      doc: doc,
+      body: f.body,
+    );
+    final viaCall = withDoc(functionOf(inline, 'viaCall'), 'Goes via a call.');
+    const publish = 'lib/inline.dart#publish';
+    final functions = {
+      ...inline.functions,
+      publish: withDoc(inline.functions[publish]!, 'Publishes [pkg].'),
+    };
+    final levels = bodyLevels(viaCall, functions, const [
+      Opened('1'),
+      Opened('1', functionId: publish),
+    ]);
+    expect(
+      [for (final level in levels) level.doc],
+      ['Goes via a call.', null, 'Publishes [pkg].'],
+    );
+    expect(
+      bodyLevels(releaseFunction, release.functions, const []).single.doc,
+      isNull,
+    );
+  });
+
   test('a path goes as deep as the graph has what it opens', () {
     List<String> deepest(List<Opened> path) =>
         titles(bodyLevels(releaseFunction, release.functions, path));

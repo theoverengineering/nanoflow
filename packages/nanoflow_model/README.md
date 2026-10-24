@@ -46,10 +46,12 @@
   (`graphFileName`, формат `graphFileFormat`): функции с эффектами
   (`GraphFunction`), их тела (`GraphBody`) из узлов `EffectNode`,
   `ConditionNode`, `CallNode` и `CopiesNode` и рёбер `GraphEdge`, а также
-  `GraphWarning`. `toJson` пишет ключи в порядке спецификации; `fromJson`
-  бросает `FormatException`, начинающийся с пути в JSON
-  (`functions.lib/a.dart#f.body.nodes[2].kind`), и отвергает формат, не
-  равный 2: файл графа до эффектов (формат 1) не читается.
+  `GraphWarning`; у функции и эффекта — `doc`, их документация. `toJson`
+  пишет формат 3 и ключи в порядке спецификации; `fromJson` бросает
+  `FormatException`, начинающийся с пути в JSON
+  (`functions.lib/a.dart#f.body.nodes[2].kind`). Формат 2, до `doc`,
+  читается с `doc: null` — так читаются снимки старых сессий; другой формат
+  отвергается: файл графа до эффектов (формат 1) не читается.
   `workflowNamed(name)` находит workflow-функцию по имени.
 - **Исходники и отпечаток.** `packageSourcePaths`, `sourceHash` (`\r\n` читается
   как `\n`), `bytesHash`, `hashSources` и `fingerprintOf` считают `sources` и

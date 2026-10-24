@@ -46,20 +46,29 @@ class Report {
 
 /// Reviews the change of [branch].
 Future<void> review(Flow f, String branch) async {
+  /// Takes the change of the branch: the one file named after it.
   var change = await f.effect('collect', () => collect(branch));
   if (change.path.isEmpty) {
+    /// Ends the review of a branch that changes nothing.
     await f.effect('discard', () => print('nothing to review'));
     return;
   }
   while (true) {
+    /// Checks the name of the change's file with a program, as a reviewer
+    /// such as `claude -p` would be run.
     final report = await f.effect('inspect', () => inspect(change));
     if (report.findings.isEmpty) {
       await Future.wait([
+        /// Puts the change out.
         f.effect('publish', () => print('published ${report.change.path}')),
+
+        /// Tells the branch's author it is accepted.
         f.effect('notify', () => print('${report.change.id}: accepted')),
       ]);
       return;
     }
+
+    /// Renames the file to lower_snake_case, for inspect to check again.
     change = await f.effect('fix', () => fix(report));
   }
 }

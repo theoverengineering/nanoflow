@@ -7,14 +7,16 @@ import '../../state/visit_details.dart';
 import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
 import '../../widgets/copy_button.dart';
+import '../../widgets/doc_text.dart';
 import '../../widgets/failure_note.dart';
 import '../../widgets/path_bar.dart';
 import 'parts.dart';
 
 /// The effect column of the effect details window (docs/ui-spec.md «Окно
-/// деталей эффекта»; spec §9 «Окно эффекта»): where in the code the effect was
-/// called, `lib/review.dart:49`, with a button that copies it; and the
-/// facts of the effect: `Started`, `Finished`, every start and how it ended.
+/// деталей эффекта»; spec §9 «Окно эффекта»): the effect's doc, when it has
+/// one; where in the code the effect was called, `lib/review.dart:49`, with
+/// a button that copies it; and the facts of the effect: `Started`,
+/// `Finished`, every start and how it ended.
 /// The effect's directory is at the bottom, with `Reveal in Finder` and a
 /// copy button.
 class NodeColumn extends StatelessWidget {
@@ -70,6 +72,12 @@ class NodeColumn extends StatelessWidget {
                   key: descriptionKey,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (details.doc case final doc?) ...[
+                      const SectionLabel('Doc'),
+                      const SizedBox(height: 8),
+                      DocText(doc),
+                      const SizedBox(height: 26),
+                    ],
                     const SectionLabel('Place in code'),
                     const SizedBox(height: 8),
                     _Place(place: place, shell: shell),

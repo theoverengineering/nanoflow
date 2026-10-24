@@ -11,6 +11,7 @@ import 'package:nanoflow_ui/layout/layout.dart'
 import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/theme.dart';
 import 'package:nanoflow_ui/widgets/dashed_border.dart';
+import 'package:nanoflow_ui/widgets/doc_text.dart';
 import 'package:nanoflow_ui/widgets/icons.dart';
 import 'package:nanoflow_ui/widgets/spinner.dart';
 
@@ -72,7 +73,9 @@ void main() {
   Future<void> pumpTile(
     WidgetTester tester,
     String id, {
+    VoidCallback? onTap,
     ValueChanged<Offset>? onDoubleTap,
+    InlineSpan? doc,
     NodeMarks? marks,
     bool allCopies = false,
     String copies = '×n',
@@ -87,7 +90,9 @@ void main() {
             rect: NodeTile.areaOf(node).shift(const Offset(100, 100)),
             child: NodeTile(
               node: node,
+              onTap: onTap,
               onDoubleTap: onDoubleTap,
+              doc: doc,
               marks: marks,
               allCopies: allCopies,
               copies: copies,
@@ -468,6 +473,29 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  testWidgets('a tile with a doc takes a click and a double click as one '
+      'without', (tester) async {
+    var taps = 0;
+    final at = <Offset>[];
+    await pumpTile(
+      tester,
+      'call',
+      onTap: () => taps++,
+      onDoubleTap: at.add,
+      doc: docSpan('Publishes it.'),
+    );
+    expect(find.byType(Tooltip), findsOneWidget);
+    final tile = find.byKey(NodeTile.tileKeyOf('call'));
+    await tester.tap(tile);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(taps, 1);
+    await tester.tap(tile);
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tap(tile);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(at, [tester.getCenter(tile)]);
   });
 
   test('a node\'s area holds its tile, the tiles behind it and its texts', () {

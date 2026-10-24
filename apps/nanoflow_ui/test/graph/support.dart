@@ -82,9 +82,10 @@ final reviewFile =
 /// — then publish done and notify running since 14:13:23, both after the
 /// second inspect, as the library keys effects called side by side; at
 /// [columnNow] it has run for 12m 26s. Once [finished], notify is done at
-/// 14:14:51 and the session a second later.
-Journal reviewSession({bool finished = false}) {
-  final graph = graphFileNamed('review');
+/// 14:14:51 and the session a second later. Its snapshot is [graph], by
+/// default the review example's graph file.
+Journal reviewSession({bool finished = false, GraphFile? graph}) {
+  graph ??= graphFileNamed('review');
   String place(int line) => 'lib/review.dart:$line';
   final j =
       Journal('a1b2-session', graph: graph.toJson(), code: graph.fingerprint)
@@ -280,17 +281,19 @@ Future<GraphModel> pumpReview(
 
 /// The model of the review example's graph file at [reviewFile] with
 /// [reviewSession], [finished] or not, fed [more] after it; the effects'
-/// logs and documents are [files], by default [reviewFiles]. For the screen
-/// to own.
+/// logs and documents are [files], by default [reviewFiles]. The graph file
+/// and the session's snapshot are [graph], by default the example's. For
+/// the screen to own.
 GraphModel reviewModel({
   FakeFiles? files,
   List<Change> more = const [],
   bool finished = false,
+  GraphFile? graph,
 }) => ownedModel(
-  graph: graphFileNamed('review'),
+  graph: graph ?? graphFileNamed('review'),
   file: reviewFile,
   changes: [
-    ...reviewSession(finished: finished).changes,
+    ...reviewSession(finished: finished, graph: graph).changes,
     ...more,
   ],
   documents: reviewDocuments,

@@ -9,7 +9,8 @@ import '../support.dart';
 
 void main() {
   testWidgets("the effect details window on inspect's second visit "
-      '(docs/design/step-details.png, without the input)', (tester) async {
+      '(docs/design/step-details.png, without the input), its doc over its '
+      'place', (tester) async {
     // The window's shadow, which tests leave out unless told; set back
     // before the test ends, or the test fails.
     debugDisableShadows = false;
@@ -25,9 +26,18 @@ void main() {
 /// The graph screen of [reviewSession] with the second effect on `inspect`
 /// at the times of docs/design/step-details.png — started at
 /// 14:09:20.118, interrupted, again at 14:11:47, finished at 14:13:22.406
-/// — and the effect details window open on it.
+/// — and the effect details window open on it. Inspect has a doc of two
+/// paragraphs, with code and a reference in it.
 Future<void> _pumpWindow(WidgetTester tester) async {
-  final graph = graphFileNamed('review');
+  final graph = documented(
+    graphFileNamed('review'),
+    effects: {
+      'lib/review.dart#review/4':
+          "Checks the name of the change's file with a program, as a "
+          'reviewer such as `claude -p` would be run.\n\n'
+          'What it finds goes to [fix] until it finds nothing.',
+    },
+  );
   String place(int line) => 'lib/review.dart:$line';
   final session =
       Journal('a1b2-session', graph: graph.toJson(), code: graph.fingerprint)

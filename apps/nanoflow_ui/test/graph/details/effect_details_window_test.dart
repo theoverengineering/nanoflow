@@ -14,6 +14,7 @@ import 'package:nanoflow_ui/graph/logs/effect_details_pane.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/theme.dart';
+import 'package:nanoflow_ui/widgets/doc_text.dart';
 import 'package:nanoflow_ui/widgets/icons.dart';
 import 'package:nanoflow_ui/widgets/spinner.dart';
 import 'package:path/path.dart' as p;
@@ -364,6 +365,48 @@ void main() {
           matching: find.byType(EffectIcon),
         ),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('says the doc of the effect over its place, with a session '
+        'and on Current graph', (tester) async {
+      final model = await pumpReview(
+        tester,
+        model: reviewModel(
+          graph: documented(
+            graphFileNamed('review'),
+            effects: {
+              'lib/review.dart#review/4':
+                  'Checks the change with a program, as [claude] would.',
+            },
+          ),
+        ),
+      );
+      await doubleClick(tester, '4');
+      expect(
+        textIn(tester, find.byKey(NodeColumn.descriptionKey)),
+        startsWith(
+          'DOC Checks the change with a program, as claude would. '
+          'PLACE IN CODE lib/review.dart:55 THIS EFFECT',
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(NodeColumn),
+          matching: find.byType(DocText),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      model.selection.showCurrentGraph();
+      await tester.pump();
+      await doubleClick(tester, '4');
+      expect(
+        textIn(tester, find.byKey(NodeColumn.descriptionKey)),
+        'DOC Checks the change with a program, as claude would. '
+        'PLACE IN CODE lib/review.dart:55',
       );
     });
 

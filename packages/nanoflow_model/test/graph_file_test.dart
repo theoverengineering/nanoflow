@@ -9,7 +9,7 @@ const String _publish = 'lib/release.dart#publish';
 /// A graph file with every kind of node, `null` in every place that allows
 /// it, and the keys in the order of the spec.
 Map<String, Object?> _fileJson() => {
-  'format': 2,
+  'format': 3,
   'package': 'review_example',
   'fingerprint': 'sha256:7d3e',
   'sources': {'bin/main.dart': 'sha256:aa11', 'lib/review.dart': 'sha256:9f2c'},
@@ -19,6 +19,7 @@ Map<String, Object?> _fileJson() => {
     _review: {
       'name': 'review',
       'place': 'lib/review.dart:21',
+      'doc': 'Reviews the change of [branch].\n\nEnds when it is clean.',
       'body': {
         'nodes': [
           {
@@ -26,6 +27,7 @@ Map<String, Object?> _fileJson() => {
             'kind': 'effect',
             'name': 'collect',
             'place': 'lib/review.dart:22',
+            'doc': 'Takes the change of the branch.',
           },
           {
             'id': '2',
@@ -46,7 +48,13 @@ Map<String, Object?> _fileJson() => {
             'place': 'lib/review.dart:25',
             'body': {
               'nodes': [
-                {'id': '1', 'kind': 'effect', 'name': 'lint', 'place': null},
+                {
+                  'id': '1',
+                  'kind': 'effect',
+                  'name': 'lint',
+                  'place': null,
+                  'doc': null,
+                },
               ],
               'edges': [
                 {'from': null, 'to': '1', 'label': null},
@@ -67,6 +75,7 @@ Map<String, Object?> _fileJson() => {
     _publish: {
       'name': 'publish',
       'place': null,
+      'doc': null,
       'body': {'nodes': <Object?>[], 'edges': <Object?>[]},
     },
   },
@@ -102,6 +111,24 @@ Map<String, Object?> _edited(
   return json;
 }
 
+/// [_fileJson] as format 2 has it, before `doc`: no `doc` on functions and
+/// effects.
+Map<String, Object?> _format2Json() {
+  final json = jsonDecode(jsonEncode(_fileJson())) as Map<String, Object?>;
+  json['format'] = 2;
+  void strip(Object? value) {
+    if (value is Map) {
+      value.remove('doc');
+      value.values.forEach(strip);
+    } else if (value is List) {
+      value.forEach(strip);
+    }
+  }
+
+  strip(json['functions']);
+  return json;
+}
+
 /// The message of the [FormatException] thrown by reading [json].
 String _problem(Map<String, Object?> json) {
   try {
@@ -123,7 +150,7 @@ GraphFile _fileWithWorkflows(List<String> workflows, [List<String>? others]) {
     body: const GraphBody(nodes: [], edges: []),
   );
   return GraphFile(
-    format: 2,
+    format: 3,
     package: 'p',
     fingerprint: 'sha256:00',
     sources: const {},
@@ -139,7 +166,7 @@ GraphFile _fileWithWorkflows(List<String> workflows, [List<String>? others]) {
 void main() {
   test('names the file and its format', () {
     expect(graphFileName, 'nanoflow.graph.json');
-    expect(graphFileFormat, 2);
+    expect(graphFileFormat, 3);
   });
 
   group('GraphFile', () {
@@ -165,6 +192,7 @@ void main() {
       expect((function as Map<String, Object?>).keys, [
         'name',
         'place',
+        'doc',
         'body',
       ]);
       final body = function['body'] as Map<String, Object?>;
@@ -173,7 +201,7 @@ void main() {
       expect(
         [for (final n in nodes) (n as Map<String, Object?>).keys.toList()],
         [
-          ['id', 'kind', 'name', 'place'],
+          ['id', 'kind', 'name', 'place', 'doc'],
           ['id', 'kind', 'label', 'place'],
           ['id', 'kind', 'functions', 'place'],
           ['id', 'kind', 'label', 'place', 'body'],
@@ -196,7 +224,12 @@ void main() {
     test('reads every kind of node', () {
       final body = GraphFile.fromJson(_fileJson()).functions[_review]!.body;
       expect(body.nodes, [
-        const EffectNode(id: '1', place: 'lib/review.dart:22', name: 'collect'),
+        const EffectNode(
+          id: '1',
+          place: 'lib/review.dart:22',
+          name: 'collect',
+          doc: 'Takes the change of the branch.',
+        ),
         const ConditionNode(
           id: '2',
           place: 'lib/review.dart:23',
@@ -231,6 +264,47 @@ void main() {
       expect(file.warnings.last.place, isNull);
     });
 
+    test('reads the doc of a function and of an effect', () {
+      final file = GraphFile.fromJson(_fileJson());
+      final review = file.functions[_review]!;
+      expect(
+        review.doc,
+        'Reviews the change of [branch].\n\nEnds when it is clean.',
+      );
+      expect(file.functions[_publish]!.doc, isNull);
+      expect((review.body.node('1')! as EffectNode).doc, startsWith('Takes'));
+      final copies = review.body.node('4')! as CopiesNode;
+      expect((copies.body.node('1')! as EffectNode).doc, isNull);
+      expect(review.toString(), contains('Reviews the change'));
+      expect(review.body.node('1').toString(), contains('Takes the change'));
+    });
+
+    test('reads format 2, from before docs, with no docs', () {
+      final file = GraphFile.fromJson(_format2Json());
+      final docless = GraphFile.fromJson(
+        _edited(['functions', _review, 'doc'], value: null),
+      );
+      expect(file.format, 3);
+      expect(file.functions[_review]!.doc, isNull);
+      final body = file.functions[_review]!.body;
+      expect((body.node('1')! as EffectNode).doc, isNull);
+      final copies = body.node('4')! as CopiesNode;
+      expect((copies.body.node('1')! as EffectNode).doc, isNull);
+      expect(
+        file.functions[_review]!.body.nodes.skip(1),
+        docless.functions[_review]!.body.nodes.skip(1),
+      );
+      expect(file.warnings, docless.warnings);
+    });
+
+    test('writes format 2 back as format 3, with doc null', () {
+      final json = GraphFile.fromJson(_format2Json()).toJson();
+      expect(json['format'], 3);
+      final function = (json['functions']! as Map)[_review] as Map;
+      expect(function.containsKey('doc'), isTrue);
+      expect(function['doc'], isNull);
+    });
+
     test('finds a node of a body by its id', () {
       final body = GraphFile.fromJson(_fileJson()).functions[_review]!.body;
       expect(body.node('2'), isA<ConditionNode>());
@@ -250,6 +324,8 @@ void main() {
         _edited(['builds', 'review'], value: 'sha256:00'),
         _edited(['workflows', 0], value: _publish),
         _edited([..._body, 'nodes', 0, 'name'], value: 'other'),
+        _edited([..._body, 'nodes', 0, 'doc'], value: 'other'),
+        _edited(['functions', _review, 'doc'], value: null),
         _edited([..._body, 'nodes', 1, 'label'], value: 'other'),
         _edited([..._body, 'nodes', 2, 'functions', 0], value: 'other'),
         _edited([..._body, 'nodes', 3, 'body', 'edges', 0, 'to'], value: '2'),
@@ -272,16 +348,53 @@ void main() {
   });
 
   group('GraphFile.fromJson problems', () {
-    test('rejects a format other than 2', () {
-      expect(_problem(_edited(['format'], value: 3)), startsWith('format:'));
-      expect(_problem(_edited(['format'], value: 0)), startsWith('format:'));
+    test('rejects a format other than 2 and 3', () {
+      expect(
+        _problem(_edited(['format'], value: 4)),
+        'format: expected 3, the file is 4',
+      );
+      expect(
+        _problem(_edited(['format'], value: 0)),
+        'format: expected 3, the file is 0',
+      );
     });
 
     test('refuses a graph file of format 1, from before effects', () {
       expect(
         _problem(_edited(['format'], value: 1)),
-        startsWith('format: expected 2'),
+        'format: expected 3, the file is 1',
       );
+    });
+
+    test('names the doc of format 3 that is missing or mistyped', () {
+      expect(
+        _problem(_edited([..._body, 'nodes', 0, 'doc'], remove: true)),
+        'functions.$_review.body.nodes[0].doc: missing',
+      );
+      expect(
+        _problem(
+          _edited([
+            ..._body,
+            'nodes',
+            3,
+            'body',
+            'nodes',
+            0,
+            'doc',
+          ], remove: true),
+        ),
+        'functions.$_review.body.nodes[3].body.nodes[0].doc: missing',
+      );
+      expect(
+        _problem(_edited(['functions', _review, 'doc'], value: 1)),
+        'functions.$_review.doc: expected a string or null',
+      );
+    });
+
+    test('names the path of a problem in a format-2 file', () {
+      final json = _format2Json();
+      ((json['functions']! as Map)[_review] as Map).remove('name');
+      expect(_problem(json), 'functions.$_review.name: missing');
     });
 
     test('names the top-level field that is missing or mistyped', () {
@@ -485,7 +598,7 @@ void main() {
 
     test('is null when a workflow has no function', () {
       final file = GraphFile(
-        format: 2,
+        format: 3,
         package: 'p',
         fingerprint: 'sha256:00',
         sources: const {},

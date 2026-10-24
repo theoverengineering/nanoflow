@@ -50,6 +50,7 @@ final class VisitDetails {
   VisitDetails._({
     required this.name,
     required this.place,
+    required this.doc,
     required List<Visit> visits,
     this.index,
     this.effect,
@@ -63,6 +64,10 @@ final class VisitDetails {
 
   /// Where the effect was called, or where the node is: `lib/review.dart:49`.
   final String? place;
+
+  /// The doc of the effect's node (node docs design §4.2); `null` without
+  /// one.
+  final String? doc;
 
   /// Every visit to the effect's node among the effects shown, in order.
   final List<Visit> visits;
@@ -116,6 +121,7 @@ VisitDetails visitDetails({
     return VisitDetails._(
       name: node?.name ?? '',
       place: node?.place,
+      doc: node?.doc,
       visits: const [],
     );
   }
@@ -133,6 +139,13 @@ VisitDetails visitDetails({
   return VisitDetails._(
     name: details.name,
     place: details.place,
+    doc:
+        node?.doc ??
+        places
+            .of(session.effects[details.effectId])
+            .map((node) => node.doc)
+            .nonNulls
+            .firstOrNull,
     visits: visits,
     index: index,
     effect: details,

@@ -9,6 +9,7 @@ import '../state/graph_file_source.dart';
 import '../state/graph_model.dart';
 import '../theme.dart';
 import '../widgets/clickable.dart';
+import '../widgets/doc_text.dart';
 import '../widgets/dot.dart';
 import '../widgets/failure_note.dart';
 import '../widgets/icons.dart';
@@ -20,7 +21,8 @@ import '../widgets/icons.dart';
 /// `Open in editor` for the graph file. When Finder or the editor fails, a
 /// note says so for a while.
 ///
-/// A crumb above the body drawn goes back up to its level; the chevron of
+/// A crumb shows the doc of its level's function in a tooltip, and one
+/// above the body drawn goes back up to its level; the chevron of
 /// the workflow's crumb, when there are workflows to choose from, opens the
 /// list of them. Crumbs that do not fit fold into `…` (`_Crumbs`).
 class GraphHeader extends StatelessWidget {
@@ -259,14 +261,19 @@ class _Crumbs extends StatelessWidget {
   );
 
   /// The crumb of the level [i] of [last] + 1, [title]: going up unless it
-  /// is the last.
+  /// is the last; the doc of the level's function in a tooltip.
   Widget _crumb(String title, int i, int last) {
-    final text = Text(
-      title,
-      style: i == last ? AppText.headerTitle : AppText.crumb,
-      maxLines: 1,
-      softWrap: false,
-      overflow: TextOverflow.ellipsis,
+    final levels = model.canvas.levels;
+    final doc = i < levels.length ? levels[i].doc : null;
+    final text = DocTooltip(
+      message: doc == null ? null : docSpan(doc),
+      child: Text(
+        title,
+        style: i == last ? AppText.headerTitle : AppText.crumb,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+      ),
     );
     return i < last
         ? Clickable(onTap: () => model.openLevel(i), child: text)

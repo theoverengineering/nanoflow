@@ -134,6 +134,46 @@ void main() {
       expect(details.result, isNull);
     });
 
+    test('the doc of the effect\'s node, with a session and without', () {
+      final json = copiesGraphFile().toJson();
+      void document(Object? value) {
+        if (value is Map) {
+          if (value['kind'] == 'effect') {
+            value['doc'] = 'Does ${value['name']}.';
+          }
+          value.values.forEach(document);
+        } else if (value is List) {
+          value.forEach(document);
+        }
+      }
+
+      document(json['functions']);
+      final documented = GraphFile.fromJson(json);
+      final workflow = documented.functions['lib/copies.dart#inPlace']!;
+      final places = EffectPlaces.of(workflow, documented.functions);
+      final j = journal();
+      final details = visitDetails(
+        session: j.data,
+        effects: j.data.state.effects,
+        places: places,
+        effectId: j.effects[1].id,
+        now: now,
+      );
+      expect(details.doc, 'Does verify.');
+      final alone = visitDetails(
+        session: null,
+        effects: const [],
+        places: places,
+        effectId: null,
+        node:
+            (workflow.body.node('2')! as CopiesNode).body.node('1')!
+                as EffectNode,
+        now: now,
+      );
+      expect(alone.doc, 'Does upload.');
+      expect(detailsOf(journal(), 1).doc, isNull);
+    });
+
     test('a node of the current graph, without a session', () {
       final details = visitDetails(
         session: null,

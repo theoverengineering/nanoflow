@@ -50,12 +50,15 @@ Future<Extracted> extract(
 
 /// A function or method of the sources that has a body.
 final class _Declaration {
-  _Declaration(this.id, this.name, this.place, this.body);
+  _Declaration(this.id, this.name, this.place, this.doc, this.body);
 
   /// `path#name`, and `path#Class.name` for a method.
   final String id;
   final String name;
   final String place;
+
+  /// Its doc comment ([docText]); `null` without one.
+  final String? doc;
   final FunctionBody body;
 }
 
@@ -152,6 +155,7 @@ final class _Package {
           id: d.id,
           name: d.name,
           place: d.place,
+          doc: d.doc,
           body: _Body(this).ofFunction(d.body),
         ),
     };
@@ -178,13 +182,19 @@ final class _Package {
               _declare(
                 fragment.element,
                 function.name,
+                function.documentationComment,
                 function.functionExpression.body,
               );
             }
           case final MethodDeclaration method
               when !method.isGetter && !method.isSetter && !method.isOperator:
             if (method.declaredFragment case final fragment?) {
-              _declare(fragment.element, method.name, method.body);
+              _declare(
+                fragment.element,
+                method.name,
+                method.documentationComment,
+                method.body,
+              );
             }
           default:
         }
@@ -201,7 +211,12 @@ final class _Package {
     }
   }
 
-  void _declare(ExecutableElement element, Token name, FunctionBody body) {
+  void _declare(
+    ExecutableElement element,
+    Token name,
+    Comment? doc,
+    FunctionBody body,
+  ) {
     if (body is EmptyFunctionBody || body is NativeFunctionBody) return;
     final container = switch (element.enclosingElement) {
       InstanceElement(name: final name?) => '$name.',
@@ -212,6 +227,7 @@ final class _Package {
       '${_paths[body.root]}#$container${name.lexeme}',
       name.lexeme,
       _place(body, offset: name.offset),
+      doc == null ? null : docText(doc.tokens),
       body,
     );
   }
@@ -501,6 +517,106 @@ String oneLine(String code) => code
     .replaceAllMapped(RegExp(r',?\s*\n\s*([)\]}])'), (m) => m[1]!)
     .replaceAll(RegExp(r'\s*\n\s*'), ' ');
 
+// ---- doc comments ----------------------------------------------------------
+
+/// The text of the doc comment whose tokens are [comments] (node docs
+/// design §2): `///` lines without `///` and the space after it, a
+/// `/** */` block without `/**`, `*/` and the `*` its lines start with;
+/// blank lines at either end left out, Markdown as it is. `null` when
+/// nothing is left.
+String? docText(Iterable<Token> comments) {
+  String unspaced(String line) =>
+      line.startsWith(' ') ? line.substring(1) : line;
+  final lines = <String>[];
+  for (final comment in comments) {
+    final text = comment.lexeme;
+    if (text.startsWith('///')) {
+      lines.add(unspaced(text.substring(3)));
+    } else if (text.startsWith('/**') &&
+        text.endsWith('*/') &&
+        // `/**/` is empty, and its `*/` is the end of its `/**`.
+        text.length >= 5) {
+      for (final line in text.substring(3, text.length - 2).split('\n')) {
+        final trimmed = line.trimLeft();
+        lines.add(
+          trimmed.startsWith('*') ? unspaced(trimmed.substring(1)) : trimmed,
+        );
+      }
+    }
+  }
+  final trimmed = [for (final line in lines) line.trimRight()];
+  final first = trimmed.indexWhere((line) => line.isNotEmpty);
+  if (first == -1) return null;
+  final last = trimmed.lastIndexWhere((line) => line.isNotEmpty);
+  return trimmed.sublist(first, last + 1).join('\n');
+}
+
+/// The doc comment right before [token]: the `///` lines after the last
+/// other comment before it, or the `/** */` block that is the last one.
+List<Token> _docBefore(Token token) {
+  var run = <Token>[];
+  for (Token? comment = token.precedingComments; comment != null;) {
+    final text = comment.lexeme;
+    if (!text.startsWith('///')) {
+      run = [if (text.startsWith('/**')) comment];
+    } else {
+      // `///` lines after a block are a doc comment of their own.
+      if (run.isNotEmpty && !run.last.lexeme.startsWith('///')) run = [];
+      run.add(comment);
+    }
+    comment = comment.next;
+  }
+  return run;
+}
+
+/// The doc comment of the effect [e] (node docs design §2): right before
+/// it, or before an expression or a simple statement it begins and is the
+/// only effect of — not before an `if`, a loop or another statement with a
+/// body of its own, nor out of the function it is in.
+String? _effectDoc(MethodInvocation e) {
+  final around = <AstNode>[];
+  for (AstNode? node = e; node != null; node = node.parent) {
+    if (node is FunctionBody || node is ForElement || node is IfElement) break;
+    if (node is Statement) {
+      if (node is ExpressionStatement ||
+          node is VariableDeclarationStatement ||
+          node is PatternVariableDeclarationStatement ||
+          node is ReturnStatement ||
+          node is YieldStatement) {
+        around.add(node);
+      }
+      break;
+    }
+    around.add(node);
+  }
+  for (final node in around) {
+    final doc = _docOf(node);
+    if (doc.isEmpty) continue;
+    // The comment is before all that starts where it ends.
+    final before = around.lastWhere((a) => _start(a) == _start(node));
+    var effects = 0;
+    _walk(before, (n) {
+      if (n is MethodInvocation && isEffect(n)) effects++;
+    });
+    return effects == 1 ? docText(doc) : null;
+  }
+  return null;
+}
+
+/// The first token of [node] past the doc comment and metadata the parser
+/// gave it.
+Token _start(AstNode node) => node is AnnotatedNode
+    ? node.firstTokenAfterCommentAndMetadata
+    : node.beginToken;
+
+/// The doc comment right before [node]: the one the parser gave it — it
+/// gives one to a pattern declaration, `final (a, b) = …` —, or the one
+/// before its first token.
+List<Token> _docOf(AstNode node) => switch (node) {
+  AnnotatedNode(documentationComment: final comment?) => comment.tokens,
+  _ => _docBefore(_start(node)),
+};
+
 /// Calls [visit] on [node] and every node below it.
 void _walk(AstNode node, void Function(AstNode node) visit) {
   visit(node);
@@ -595,11 +711,13 @@ sealed class _Drawn extends _V {
 }
 
 final class _Effect extends _Drawn {
-  _Effect(this.name, super.place);
+  _Effect(this.name, super.place, this.doc);
   final String name;
+  final String? doc;
 
   @override
-  GraphNode node(String id) => EffectNode(id: id, place: place, name: name);
+  GraphNode node(String id) =>
+      EffectNode(id: id, place: place, name: name, doc: doc);
 }
 
 final class _Fork extends _Drawn {
@@ -1686,6 +1804,7 @@ final class _Body {
       _Effect(
         name ?? _source(first),
         _package._place(e, offset: e.methodName.offset),
+        _effectDoc(e),
       ),
     );
   }

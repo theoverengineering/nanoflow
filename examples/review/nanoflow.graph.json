@@ -1,10 +1,10 @@
 {
-  "format": 2,
+  "format": 3,
   "package": "review_example",
-  "fingerprint": "sha256:0da73d26d19cd0b94deed6f51dda42cb9abd4e5596ff41913f80293c38b89e89",
+  "fingerprint": "sha256:47719c73ac8afc74f8270742e5c22e9ab9588eb05e55f4d79566cc850585d9ed",
   "sources": {
     "bin/main.dart": "sha256:fc75e28f8b4640e5f5c1441dd0aff0edbee5ba2eb9f67ae9cf835bc3b46d0389",
-    "lib/review.dart": "sha256:73a0d3c344b4c7b01bfbc6b8f1f587f6cc42a193f74a76444ce219ca35eb0072"
+    "lib/review.dart": "sha256:259a35289cf7014a1126c5410360f5784bfff03eafb222e7227505ed73ef2615"
   },
   "builds": {},
   "workflows": [
@@ -14,55 +14,62 @@
     "lib/review.dart#review": {
       "name": "review",
       "place": "lib/review.dart:48",
+      "doc": "Reviews the change of [branch].",
       "body": {
         "nodes": [
           {
             "id": "1",
             "kind": "effect",
             "name": "collect",
-            "place": "lib/review.dart:49"
+            "place": "lib/review.dart:50",
+            "doc": "Takes the change of the branch: the one file named after it."
           },
           {
             "id": "2",
             "kind": "fork",
             "label": "change.path.isEmpty",
-            "place": "lib/review.dart:50"
+            "place": "lib/review.dart:51"
           },
           {
             "id": "3",
             "kind": "effect",
             "name": "discard",
-            "place": "lib/review.dart:51"
+            "place": "lib/review.dart:53",
+            "doc": "Ends the review of a branch that changes nothing."
           },
           {
             "id": "4",
             "kind": "effect",
             "name": "inspect",
-            "place": "lib/review.dart:55"
+            "place": "lib/review.dart:59",
+            "doc": "Checks the name of the change's file with a program, as a reviewer\nsuch as `claude -p` would be run."
           },
           {
             "id": "5",
             "kind": "fork",
             "label": "report.findings.isEmpty",
-            "place": "lib/review.dart:56"
+            "place": "lib/review.dart:60"
           },
           {
             "id": "6",
             "kind": "effect",
             "name": "publish",
-            "place": "lib/review.dart:58"
+            "place": "lib/review.dart:63",
+            "doc": "Puts the change out."
           },
           {
             "id": "7",
             "kind": "effect",
             "name": "notify",
-            "place": "lib/review.dart:59"
+            "place": "lib/review.dart:66",
+            "doc": "Tells the branch's author it is accepted."
           },
           {
             "id": "8",
             "kind": "effect",
             "name": "fix",
-            "place": "lib/review.dart:63"
+            "place": "lib/review.dart:72",
+            "doc": "Renames the file to lower_snake_case, for inspect to check again."
           }
         ],
         "edges": [

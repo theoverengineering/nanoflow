@@ -11,8 +11,12 @@ const DeepCollectionEquality _deep = DeepCollectionEquality();
 /// The name of the graph file, in the project directory.
 const String graphFileName = 'nanoflow.graph.json';
 
-/// The only format of the graph file there is.
-const int graphFileFormat = 2;
+/// The format of the graph file describe writes.
+const int graphFileFormat = 3;
+
+/// The format before functions and effects had `doc`: still read, as
+/// format 3 with no docs, so that the snapshots of older sessions are.
+const int _withoutDocs = 2;
 
 /// The graph file of a package.
 final class GraphFile {
@@ -32,9 +36,11 @@ final class GraphFile {
   /// Throws a [FormatException] whose message starts with the JSON path of the
   /// field that is missing or of the wrong kind
   /// (`functions.lib/a.dart#f.body.nodes[2].kind: …`), or with `format` when
-  /// the format is not [graphFileFormat].
+  /// the format is neither [graphFileFormat] nor 2, which is read with no
+  /// docs.
   factory GraphFile.fromJson(Map<String, Object?> json) {
     final format = readInt(json, 'format');
+    if (format == _withoutDocs) return GraphFile.fromJson(_withDocs(json));
     if (format != graphFileFormat) {
       throw FormatException(
         'format: expected $graphFileFormat, the file is $format',
@@ -134,12 +140,56 @@ final class GraphFile {
       'workflows: $workflows, functions: $functions, warnings: $warnings)';
 }
 
+/// [json], a graph file of format 2, as format 3: `doc: null` on every
+/// function and effect, in the place format 3 has it. What is not as format 2
+/// has it is left for the reader to report.
+Map<String, Object?> _withDocs(Map<String, Object?> json) => {
+  ...json,
+  'format': graphFileFormat,
+  if (json['functions'] case final Map<String, Object?> functions)
+    'functions': {
+      for (final MapEntry(:key, :value) in functions.entries)
+        key: switch (value) {
+          final Map<String, Object?> function => {
+            for (final MapEntry(:key, :value) in function.entries)
+              if (key == 'body') ...{
+                'doc': null,
+                key: _bodyWithDocs(value),
+              } else
+                key: value,
+          },
+          _ => value,
+        },
+    },
+};
+
+/// [body] of a format-2 file with `doc: null` on its effects, those of
+/// copies in it too.
+Object? _bodyWithDocs(Object? body) => switch (body) {
+  {'nodes': final List<Object?> nodes} => {
+    ...body as Map<String, Object?>,
+    'nodes': [
+      for (final node in nodes)
+        switch (node) {
+          {'kind': 'effect'} => {...node as Map<String, Object?>, 'doc': null},
+          {'kind': 'copies'} => {
+            ...node as Map<String, Object?>,
+            'body': _bodyWithDocs(node['body']),
+          },
+          _ => node,
+        },
+    ],
+  },
+  _ => body,
+};
+
 /// A function with effects and the graph of its body.
 final class GraphFunction {
   const GraphFunction({
     required this.id,
     required this.name,
     required this.place,
+    this.doc,
     required this.body,
   });
 
@@ -150,6 +200,7 @@ final class GraphFunction {
         id: id,
         name: readString(json, 'name'),
         place: readStringOrNull(json, 'place'),
+        doc: readStringOrNull(json, 'doc'),
         body: readNested(json, 'body', GraphBody.fromJson),
       );
 
@@ -163,6 +214,10 @@ final class GraphFunction {
   /// unknown.
   final String? place;
 
+  /// The doc comment of the declaration, without its `///`; `null` when it
+  /// has none.
+  final String? doc;
+
   final GraphBody body;
 
   /// The JSON form, without the [id]: that is the key of the function in the
@@ -170,6 +225,7 @@ final class GraphFunction {
   Map<String, Object?> toJson() => {
     'name': name,
     'place': place,
+    'doc': doc,
     'body': body.toJson(),
   };
 
@@ -179,14 +235,16 @@ final class GraphFunction {
       other.id == id &&
       other.name == name &&
       other.place == place &&
+      other.doc == doc &&
       other.body == body;
 
   @override
-  int get hashCode => Object.hash(id, name, place, body);
+  int get hashCode => Object.hash(id, name, place, doc, body);
 
   @override
   String toString() =>
-      'GraphFunction(id: $id, name: $name, place: $place, body: $body)';
+      'GraphFunction(id: $id, name: $name, place: $place, doc: $doc, '
+      'body: $body)';
 }
 
 /// The graph of one level: nodes and the edges between them.
@@ -239,6 +297,7 @@ sealed class GraphNode {
         id: id,
         place: readStringOrNull(json, 'place'),
         name: readString(json, 'name'),
+        doc: readStringOrNull(json, 'doc'),
       ),
       'fork' => ConditionNode(
         id: id,
@@ -277,11 +336,16 @@ final class EffectNode extends GraphNode {
     required super.id,
     required super.place,
     required this.name,
+    this.doc,
   });
 
   /// The literal name of the effect, or the source of the expression that gives
   /// it.
   final String name;
+
+  /// The doc comment right before the effect, without its `///`; `null` when
+  /// it has none.
+  final String? doc;
 
   @override
   Map<String, Object?> toJson() => {
@@ -289,6 +353,7 @@ final class EffectNode extends GraphNode {
     'kind': 'effect',
     'name': name,
     'place': place,
+    'doc': doc,
   };
 
   @override
@@ -296,13 +361,15 @@ final class EffectNode extends GraphNode {
       other is EffectNode &&
       other.id == id &&
       other.place == place &&
-      other.name == name;
+      other.name == name &&
+      other.doc == doc;
 
   @override
-  int get hashCode => Object.hash(EffectNode, id, place, name);
+  int get hashCode => Object.hash(EffectNode, id, place, name, doc);
 
   @override
-  String toString() => 'EffectNode(id: $id, place: $place, name: $name)';
+  String toString() =>
+      'EffectNode(id: $id, place: $place, name: $name, doc: $doc)';
 }
 
 /// A condition the flow goes one of several ways on; kind `fork`.

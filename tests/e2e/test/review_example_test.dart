@@ -181,11 +181,12 @@ void main() {
     expect(graph['package'], 'review_example');
     expect(graph['workflows'], [reviewId]);
     expect(graph['warnings'], isEmpty);
-    Map<String, Object?> effect(String id, String name) => {
+    Map<String, Object?> effect(String id, String name, String doc) => {
       'id': id,
       'kind': 'effect',
       'name': name,
       'place': placeOf("f.effect('$name'"),
+      'doc': doc,
     };
     Map<String, Object?> fork(String id, String label) => {
       'id': id,
@@ -202,16 +203,35 @@ void main() {
       reviewId: {
         'name': 'review',
         'place': placeOf('Future<void> review('),
+        'doc': 'Reviews the change of [branch].',
         'body': {
           'nodes': [
-            effect('1', 'collect'),
+            effect(
+              '1',
+              'collect',
+              'Takes the change of the branch: the one file named after it.',
+            ),
             fork('2', 'change.path.isEmpty'),
-            effect('3', 'discard'),
-            effect('4', 'inspect'),
+            effect(
+              '3',
+              'discard',
+              'Ends the review of a branch that changes nothing.',
+            ),
+            effect(
+              '4',
+              'inspect',
+              "Checks the name of the change's file with a program, as a "
+                  'reviewer\nsuch as `claude -p` would be run.',
+            ),
             fork('5', 'report.findings.isEmpty'),
-            effect('6', 'publish'),
-            effect('7', 'notify'),
-            effect('8', 'fix'),
+            effect('6', 'publish', 'Puts the change out.'),
+            effect('7', 'notify', "Tells the branch's author it is accepted."),
+            effect(
+              '8',
+              'fix',
+              'Renames the file to lower_snake_case, for inspect to check '
+                  'again.',
+            ),
           ],
           'edges': [
             edge(null, '1'),

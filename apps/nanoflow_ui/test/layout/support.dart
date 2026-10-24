@@ -362,7 +362,13 @@ GraphFile withEffectFirst(GraphFile file, String functionId, String name) {
   ];
   final first = edges.firstWhere((e) => e['from'] == null);
   body['nodes'] = [
-    {'id': '1', 'kind': 'effect', 'name': name, 'place': 'lib/added.dart:1'},
+    {
+      'id': '1',
+      'kind': 'effect',
+      'name': name,
+      'place': 'lib/added.dart:1',
+      'doc': null,
+    },
     ...nodes,
   ];
   body['edges'] = [

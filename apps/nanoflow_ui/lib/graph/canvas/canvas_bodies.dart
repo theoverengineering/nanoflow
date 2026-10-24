@@ -13,6 +13,7 @@ import '../../state/body_path.dart';
 import '../../state/graph_model.dart';
 import '../../state/in_place.dart';
 import '../../state/session_view.dart';
+import '../../widgets/doc_text.dart';
 import '../copy_switcher.dart';
 import 'canvas_marks.dart';
 import 'copies_frame.dart';
@@ -217,10 +218,26 @@ final class BodyDrawer {
                 : () => model.clickNode(node.id, path: path),
             onDoubleTap: _opener(node, path),
             onExpand: _expander(node, bodyPath, id),
+            doc: _docOf(node.node),
           ),
         ),
       );
     }
+  }
+
+  /// What the tile of [node] says in its tooltip (node docs design §4.2):
+  /// an effect's doc, the docs of the functions a call goes to; nothing for
+  /// any other node.
+  InlineSpan? _docOf(GraphNode? node) {
+    final functions = canvas.file?.functions ?? const {};
+    return switch (node) {
+      EffectNode(:final doc?) => docSpan(doc),
+      CallNode(functions: final ids) => functionDocsSpan([
+        for (final id in ids)
+          (title: functionTitle(id), doc: functions[id]?.doc),
+      ]),
+      _ => null,
+    };
   }
 
   /// The frame of the node [node] expanded in place, [frame], with what
@@ -241,6 +258,10 @@ final class BodyDrawer {
         rect: rect,
         child: FunctionFrameView(
           title: frame.level.title,
+          doc: switch (frame.level.doc) {
+            final doc? => docSpan(doc),
+            null => null,
+          },
           onCollapse: collapse,
           collapseKey: key,
         ),

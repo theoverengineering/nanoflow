@@ -77,6 +77,53 @@ void main() {
       expect(inHeader(find.text('publish()')), findsNothing);
     });
 
+    testWidgets('show the doc of their level\'s function, and still go back '
+        'up', (tester) async {
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(
+          file: releaseFile,
+          graph: documented(
+            graphFileNamed('release'),
+            functions: {
+              'lib/release.dart#release': 'Ships every public package.',
+              'lib/publish.dart#publish': 'Uploads [p].',
+            },
+          ),
+        ),
+      );
+      model.open(publish);
+      await tester.pump();
+
+      final mouse = await hover(tester, inHeader(find.text('release')));
+      expect(
+        find.text('Ships every public package.', findRichText: true),
+        findsOneWidget,
+      );
+      await hover(tester, inHeader(find.text('publish()')), mouse);
+      expect(find.text('Uploads p.', findRichText: true), findsOneWidget);
+
+      await tester.tap(inHeader(find.text('release')));
+      await tester.pump();
+      expect(model.canvas.levels, hasLength(1));
+    });
+
+    testWidgets('of a function without a doc have no tooltip', (tester) async {
+      final model = await pumpGraphScreen(tester);
+      model.open(publish);
+      await tester.pump();
+      for (final crumb in ['release', 'publish()']) {
+        expect(
+          find.ancestor(
+            of: inHeader(find.text(crumb)),
+            matching: find.byType(Tooltip),
+          ),
+          findsNothing,
+          reason: crumb,
+        );
+      }
+    });
+
     testWidgets('are none while there is no workflow to draw', (tester) async {
       await pumpGraphScreen(tester, model: ownedModel(noGraph: true));
       expect(inHeader(find.text('›')), findsNothing);

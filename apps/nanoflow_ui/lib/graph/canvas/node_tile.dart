@@ -16,6 +16,7 @@ import '../../layout/layout.dart'
         tilesBehind;
 import '../../state/graph_marks.dart';
 import '../../widgets/dashed_border.dart';
+import '../../widgets/doc_text.dart';
 import '../../widgets/icons.dart';
 import 'canvas_style.dart';
 import 'frame_toggle.dart';
@@ -43,6 +44,9 @@ import 'tile_marks.dart';
 /// A call or copies that can be expanded in place has `+` in its tile's
 /// top right corner: [onExpand], told where on the screen (decision 6).
 ///
+/// An effect or a call with a [doc] shows it when the pointer rests on the
+/// tile (node docs design §4.2).
+///
 /// The canvas places it at [areaOf] the node; of all that, only the tile
 /// and its state's badge are clicked. A click is [onTap], a double click
 /// [onDoubleTap], told where on the screen; a tile with neither is not
@@ -60,6 +64,7 @@ class NodeTile extends StatelessWidget {
     this.onTap,
     this.onDoubleTap,
     this.onExpand,
+    this.doc,
   }) : id = id ?? node.id,
        super(key: keyOf(id ?? node.id));
 
@@ -98,6 +103,10 @@ class NodeTile extends StatelessWidget {
 
   /// Expands the call or copies in place; `null` for a node that does not.
   final ValueChanged<Offset>? onExpand;
+
+  /// What the node's doc says, or the docs of the functions a call goes to,
+  /// in a tooltip over the tile; `null` for none.
+  final InlineSpan? doc;
 
   /// How far round the tile the widget reaches: the tiles stacked behind
   /// copies, the badges, the ring.
@@ -292,7 +301,10 @@ class NodeTile extends StatelessWidget {
         ),
       );
     }
-    return Positioned.fromRect(rect: region, child: shapes);
+    return Positioned.fromRect(
+      rect: region,
+      child: DocTooltip(message: doc, child: shapes),
+    );
   }
 
   Widget _tile(TileLook look) {

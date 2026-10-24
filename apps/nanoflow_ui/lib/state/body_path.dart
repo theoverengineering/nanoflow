@@ -31,7 +31,7 @@ final class Opened {
 
 /// One level of the graph: a body, and what its crumb says.
 final class BodyLevel {
-  const BodyLevel._(this.title, this.body, this.opened);
+  const BodyLevel._(this.title, this.body, this.opened, {this.doc});
 
   /// The crumb: the workflow's name (`review`), a function's with `()`
   /// ([functionTitle]), copies' label (`pkg in packages`).
@@ -41,6 +41,10 @@ final class BodyLevel {
 
   /// How the level above opened it; `null` for the workflow's body.
   final Opened? opened;
+
+  /// The doc of the level's function, the workflow's or a called one's;
+  /// `null` without one, and for copies.
+  final String? doc;
 }
 
 /// The title of the function [id] in a crumb or a choice: what follows `#`
@@ -70,7 +74,9 @@ List<BodyLevel> bodyLevels(
   Map<String, GraphFunction> functions,
   List<Opened> path,
 ) {
-  final levels = [BodyLevel._(workflow.name, workflow.body, null)];
+  final levels = [
+    BodyLevel._(workflow.name, workflow.body, null, doc: workflow.doc),
+  ];
   for (final opened in path) {
     final level = levelOpened(levels.last.body, opened, functions);
     if (level == null) break;
@@ -94,6 +100,7 @@ BodyLevel? levelOpened(
       functionTitle(opened.functionId!),
       functions[opened.functionId]!.body,
       opened,
+      doc: functions[opened.functionId]!.doc,
     ),
   };
 }
