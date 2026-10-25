@@ -1261,8 +1261,8 @@ void main() {
               ],
               'edges': [
                 {'from': null, 'to': '1', 'label': null},
-                {'from': '1', 'to': '2', 'label': 'Disk(:final path)'},
-                {'from': '1', 'to': '3', 'label': 'Bucket(:final name)'},
+                {'from': '1', 'to': '2', 'label': 'Disk'},
+                {'from': '1', 'to': '3', 'label': 'Bucket'},
                 {'from': '2', 'to': null, 'label': null},
                 {'from': '3', 'to': null, 'label': null},
               ],
@@ -1301,8 +1301,8 @@ void main() {
               ],
               'edges': [
                 {'from': null, 'to': '1', 'label': null},
-                {'from': '1', 'to': '2', 'label': 'Disk(:final path)'},
-                {'from': '1', 'to': '3', 'label': 'Bucket()'},
+                {'from': '1', 'to': '2', 'label': 'Disk'},
+                {'from': '1', 'to': '3', 'label': 'Bucket'},
                 {'from': '2', 'to': '4', 'label': null},
                 {'from': '3', 'to': '4', 'label': null},
                 {'from': '4', 'to': null, 'label': null},
@@ -2309,8 +2309,8 @@ void main() {
               'edges': [
                 {'from': null, 'to': '1', 'label': null},
                 {'from': '1', 'to': '2', 'label': "Draft(text: '')"},
-                {'from': '1', 'to': '3', 'label': 'Draft()'},
-                {'from': '1', 'to': '4', 'label': 'Check()'},
+                {'from': '1', 'to': '3', 'label': 'Draft'},
+                {'from': '1', 'to': '4', 'label': 'Check'},
                 {'from': '2', 'to': '4', 'label': null},
                 {'from': '3', 'to': null, 'label': null},
                 {'from': '4', 'to': null, 'label': null},

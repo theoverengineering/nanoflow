@@ -164,7 +164,9 @@ extension on _GraphBody {
         }
         _parallels.add(points);
       case SwitchExpression(:final expression, :final cases):
-        final labels = [for (final c in cases) _source(c.guardedPattern)];
+        final labels = [
+          for (final c in cases) _caseLabel(c.guardedPattern, _source),
+        ];
         final fork = _points._fork(
           'switch (${_source(expression)})',
           expression,

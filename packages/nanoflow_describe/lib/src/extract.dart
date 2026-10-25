@@ -1301,7 +1301,10 @@ final class _Body {
         switch (member) {
           SwitchDefault() => 'default',
           SwitchCase(:final expression) => _source(expression),
-          SwitchPatternCase(:final guardedPattern) => _source(guardedPattern),
+          SwitchPatternCase(:final guardedPattern) => _caseLabel(
+            guardedPattern,
+            _source,
+          ),
         },
     ];
     final matchesAll =
@@ -1714,7 +1717,9 @@ final class _Body {
       case SwitchExpression(:final cases):
         // Exhaustive by the language: no default.
         final value = _expression(e.expression, into, scope);
-        final labels = [for (final c in cases) _source(c.guardedPattern)];
+        final labels = [
+          for (final c in cases) _caseLabel(c.guardedPattern, _source),
+        ];
         final fork = _fork(
           'switch (${_source(e.expression)})',
           e.expression,
@@ -2015,6 +2020,38 @@ const _ifOutcomes = ['true', 'false'];
 bool _isTrue(Expression e) => e is BooleanLiteral && e.value;
 
 /// Whether a case matches every value: `_` or `var x`, untyped, unguarded.
+/// The label of a case of a switch: its pattern by what it matches, not
+/// what it binds — an object pattern by its type and the fields it tests,
+/// `Passed` for `Passed(:final verdict)` and `Draft(text: '')` as it is, a
+/// variable pattern by its type — and its `when` clause as written.
+String _caseLabel(GuardedPattern guarded, String Function(AstNode) source) {
+  /// Whether [pattern] only binds, testing nothing: `final x`, `var x`, `_`.
+  bool binds(DartPattern pattern) => switch (pattern) {
+    WildcardPattern(type: null) => true,
+    DeclaredVariablePattern(type: null) => true,
+    _ => false,
+  };
+  String matched(DartPattern pattern) => switch (pattern) {
+    ObjectPattern(:final type, :final fields) => switch ([
+      for (final field in fields)
+        if (!binds(field.pattern)) source(field),
+    ]) {
+      [] => source(type),
+      final tested => '${source(type)}(${tested.join(', ')})',
+    },
+    DeclaredVariablePattern(:final type?) => source(type),
+    ParenthesizedPattern(:final pattern) => matched(pattern),
+    LogicalOrPattern(:final leftOperand, :final rightOperand) =>
+      '${matched(leftOperand)} || ${matched(rightOperand)}',
+    _ => source(pattern),
+  };
+  final label = matched(guarded.pattern);
+  return switch (guarded.whenClause) {
+    final clause? => '$label ${source(clause)}',
+    null => label,
+  };
+}
+
 bool _matchesAll(GuardedPattern pattern) =>
     pattern.whenClause == null &&
     switch (pattern.pattern) {

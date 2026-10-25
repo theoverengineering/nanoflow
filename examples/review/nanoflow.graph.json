@@ -221,12 +221,12 @@
           {
             "from": "2",
             "to": "3",
-            "label": "Empty(:final branch)"
+            "label": "Empty"
           },
           {
             "from": "2",
             "to": "4",
-            "label": "Found(:final change)"
+            "label": "Found"
           },
           {
             "from": "3",

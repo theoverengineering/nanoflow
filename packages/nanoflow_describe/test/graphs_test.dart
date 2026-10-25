@@ -138,13 +138,9 @@ void main() {
               [
                 _edge(null, '1'),
                 _edge('1', '2'),
-                _edge('2', '3', 'Empty(:final branch)'),
-                _edge(
-                  '2',
-                  '3',
-                  "Found(:final change) when change.path.endsWith('.md')",
-                ),
-                _edge('2', '4', 'Found(:final change)'),
+                _edge('2', '3', 'Empty'),
+                _edge('2', '3', "Found when change.path.endsWith('.md')"),
+                _edge('2', '4', 'Found'),
                 _edge('3', null),
                 _edge('4', '5'),
                 _edge('5', '6', 'true'),

@@ -344,8 +344,8 @@ void main() {
         'edges': [
           edge(null, '1'),
           edge('1', '2'),
-          edge('2', '3', 'Empty(:final branch)'),
-          edge('2', '4', 'Found(:final change)'),
+          edge('2', '3', 'Empty'),
+          edge('2', '4', 'Found'),
           edge('3', null),
           edge('4', '5'),
           // publish and notify side by side.
