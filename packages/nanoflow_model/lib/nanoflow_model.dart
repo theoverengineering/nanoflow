@@ -6,5 +6,6 @@ export 'src/ids.dart';
 export 'src/owner.dart';
 export 'src/replay.dart';
 export 'src/sources.dart';
+export 'src/storage.dart';
 export 'src/storage_layout.dart';
 export 'src/time.dart';

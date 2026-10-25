@@ -3,8 +3,7 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_store/nanoflow_store.dart'
-    show FsStore, StoreCorruptedException;
+import 'package:nanoflow_store/nanoflow_store.dart' show FsStore;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 

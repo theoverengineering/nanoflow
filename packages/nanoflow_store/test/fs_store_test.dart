@@ -162,6 +162,69 @@ void main() {
 
       expect(names(runsDir), [p.basename(handle.dir)]);
     });
+
+    test('takes the id it is given', () async {
+      final runsDir = p.join(await tempDir(), 'runs');
+      final id = newId();
+
+      final handle = await FsStore(runsDir, clock: () => start).createSession(
+        workflow: 'review',
+        graph: null,
+        input: null,
+        code: null,
+        id: id,
+      );
+
+      expect(handle.session.id, id);
+      expect(names(runsDir), ['review-2026-10-03T10-00-00-$id']);
+    });
+
+    test('refuses an id that is not one, writing nothing', () async {
+      final runsDir = p.join(await tempDir(), 'runs');
+
+      await expectLater(
+        FsStore(runsDir).createSession(
+          workflow: 'review',
+          graph: null,
+          input: null,
+          code: null,
+          id: 'ABC',
+        ),
+        throwsArgumentError,
+      );
+      expect(Directory(runsDir).existsSync(), isFalse);
+    });
+
+    test('refuses the id of a session there is, built or being built, '
+        'writing nothing', () async {
+      final runsDir = p.join(await tempDir(), 'runs');
+      final store = FsStore(runsDir);
+      final built = await store.createSession(
+        workflow: 'review',
+        graph: null,
+        input: null,
+        code: null,
+      );
+      await built.release();
+      final building = newId();
+      Directory(p.join(runsDir, '.tmp-$building')).createSync();
+
+      for (final id in [built.session.id, building]) {
+        await expectLater(
+          store.createSession(
+            workflow: 'review',
+            graph: null,
+            input: null,
+            code: null,
+            id: id,
+          ),
+          throwsA(
+            isA<SessionExistsException>().having((e) => e.sessionId, 'id', id),
+          ),
+        );
+      }
+      expect(names(runsDir), [p.basename(built.dir), '.tmp-$building']..sort());
+    });
   });
 
   group('openSession', () {
@@ -362,7 +425,7 @@ void main() {
         runsDir,
         clock: tickingClock(tick: const Duration(minutes: 1)),
       );
-      Future<SessionHandle> create(String workflow) => store.createSession(
+      Future<FsSession> create(String workflow) => store.createSession(
         workflow: workflow,
         graph: null,
         input: null,
@@ -434,7 +497,7 @@ void main() {
         runsDir,
         clock: tickingClock(tick: const Duration(minutes: 1)),
       );
-      Future<SessionHandle> create() => store.createSession(
+      Future<FsSession> create() => store.createSession(
         workflow: 'review',
         graph: null,
         input: null,

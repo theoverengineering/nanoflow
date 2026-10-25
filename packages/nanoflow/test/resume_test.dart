@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_store/nanoflow_store.dart' show FsStore, SessionHandle;
+import 'package:nanoflow_store/nanoflow_store.dart' show FsStore, FsSession;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -78,7 +78,7 @@ Future<String> writeSession(
   String dir,
   String work, {
   String? code,
-  Future<void> Function(SessionHandle handle)? build,
+  Future<void> Function(FsSession handle)? build,
 }) async {
   final handle = await FsStore(runsDirOf(dir)).createSession(
     workflow: 'review',
@@ -95,7 +95,7 @@ Future<String> writeSession(
 /// finished with [value], as following [after]; leaves its `outputId` out of
 /// `effect.json` unless [outputInEffectJson].
 Future<Effect> writeCollect(
-  SessionHandle handle, {
+  FsSession handle, {
   required String? after,
   required Object? value,
   bool outputInEffectJson = true,

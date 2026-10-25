@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow/src/flow.dart' show startWithSaved;
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_store/nanoflow_store.dart' show FsStore;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -458,6 +459,72 @@ void main() {
       });
     });
   }
+
+  group('the store', () {
+    test('a flow given one writes its sessions there, not to runs/ of the '
+        'project, and resumes them from there', () async {
+      final dir = await tempDir();
+      final elsewhere = await tempDir();
+      final store = FsStore(runsDirOf(elsewhere));
+
+      final session = await Flow(
+        directory: dir,
+        store: store,
+      ).start(review, 'main');
+      expect(await session.result, 'change of main: clean');
+
+      expect(Directory(runsDirOf(dir)).existsSync(), isFalse);
+      expect(sessionIds(elsewhere), [session.id]);
+      final resumed = await Flow(
+        directory: dir,
+        store: store,
+      ).resume(review, session.id);
+      expect(await resumed.result, 'change of main: clean');
+    });
+
+    test('start takes the id it is given', () async {
+      final dir = await tempDir();
+      final id = newId();
+
+      final session = await Flow(directory: dir).start(review, 'main', id: id);
+
+      expect(session.id, id);
+      expect(await session.result, 'change of main: clean');
+      expect(sessionIds(dir), [id]);
+    });
+
+    test('start with the id of a session there is fails with '
+        'SessionExistsException, and writes nothing', () async {
+      final dir = await tempDir();
+      final flow = Flow(directory: dir);
+      final first = await flow.start(review, 'main');
+      await first.result;
+      final before = filesUnder(runsDirOf(dir));
+
+      await expectLater(
+        flow.start(review, 'main', id: first.id),
+        throwsA(
+          isA<SessionExistsException>().having(
+            (e) => e.sessionId,
+            'sessionId',
+            first.id,
+          ),
+        ),
+      );
+      expect(filesUnder(runsDirOf(dir)), before);
+    });
+
+    test('start with an id that is not a lowercase UUID is an ArgumentError, '
+        'and writes nothing', () async {
+      final dir = await tempDir();
+
+      await expectLater(
+        Flow(directory: dir).start(review, 'main', id: newId().toUpperCase()),
+        throwsArgumentError,
+      );
+      expect(Directory(runsDirOf(dir)).existsSync(), isFalse);
+    });
+  });
 
   group('f.effect', () {
     test('outside a session is a StateError', () async {

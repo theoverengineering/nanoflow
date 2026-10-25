@@ -87,7 +87,7 @@ String sessionJson(String sessionId, {required String? inputId}) =>
 ''';
 
 /// A new session of workflow `review` in a fresh `runs` directory.
-Future<SessionHandle> newSession({
+Future<FsSession> newSession({
   Clock? clock,
   ({Object? value})? input = const (value: {'branch': 'main'}),
 }) async {
@@ -105,7 +105,7 @@ Future<SessionHandle> newSession({
 
 /// A new effect of [handle] named [name], with a key made of it.
 Future<Effect> newEffect(
-  SessionHandle handle, {
+  FsSession handle, {
   String name = 'collect',
   String? after,
 }) => handle.createEffect(
@@ -116,11 +116,11 @@ Future<Effect> newEffect(
 );
 
 /// The directory of the effect [effectId] in the session of [handle].
-String effectDir(SessionHandle handle, String effectId) =>
+String effectDir(FsSession handle, String effectId) =>
     only(p.join(handle.dir, 'effects'), '.*-($effectId)').path;
 
 /// The journal of the session of [handle].
-String journal(SessionHandle handle) => p.join(handle.dir, 'log.jsonl');
+String journal(FsSession handle) => p.join(handle.dir, 'log.jsonl');
 
 /// What another process that tries to own the session [sessionId] of
 /// [runsDir] finds: `busy` while this one owns it, `opened` when not.

@@ -7,7 +7,6 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_process/nanoflow_process.dart';
 import 'package:path/path.dart' as p;
 
-import 'owners.dart';
 import 'scanner.dart';
 import 'tail.dart';
 
@@ -21,7 +20,7 @@ import 'tail.dart';
 ///
 /// Never run a reader in a process that owns sessions of the same `runs`:
 /// reading a session's `.owner.lock` there drops the lock that process holds.
-final class FsReader {
+final class FsReader implements SessionReader {
   /// A reader of [runsDir] that asks [processes] whether the owners of
   /// sessions are alive. Without [processes] it makes the adapter of this OS,
   /// [Processes.forPlatform], and closes it when the feed is cancelled: the
@@ -84,12 +83,14 @@ final class FsReader {
   /// it: an owner writes the last event before it lets the session go or
   /// exits, so a session that ended comes with its last event and no
   /// `owner-changed` that says its owner is gone.
+  @override
   Stream<Change> changes() => _changes;
 
   /// The value of the document [documentId] of the session [sessionId].
   ///
   /// Throws an [ArgumentError] when [runsDir] has no such session, and a
   /// [PathNotFoundException] when the session has no such document.
+  @override
   Future<Object?> documentValue(String sessionId, String documentId) async =>
       (await readModel(
         p.join(
@@ -106,6 +107,7 @@ final class FsReader {
   /// Gives nothing while there is no log file: it is created when the effect
   /// first prints. Errors with an [ArgumentError] when there is no such
   /// session or effect.
+  @override
   Stream<String> effectLog(String sessionId, String effectId) async* {
     final path = logPath(effectId) ?? await _logOnDisk(sessionId, effectId);
     final tail = Tail(path);
@@ -141,15 +143,19 @@ final class FsReader {
   // before.
 
   /// The directory of the session [sessionId].
+  @override
   String? sessionPath(String sessionId) => _scanner.sessionPath(sessionId);
 
   /// The directory of the effect [effectId].
+  @override
   String? effectPath(String effectId) => _scanner.effectPath(effectId);
 
   /// The log file of the effect [effectId], which may not exist yet.
+  @override
   String? logPath(String effectId) => _scanner.logPath(effectId);
 
   /// The file of the document [documentId] of the session [sessionId].
+  @override
   String? documentPath(String sessionId, String documentId) =>
       _scanner.documentPath(sessionId, documentId);
 

@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_store/nanoflow_store.dart' show FsStore, SessionHandle;
+import 'package:nanoflow_store/nanoflow_store.dart' show FsStore, FsSession;
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -231,7 +231,7 @@ Future<String> writeSession(
   String dir,
   String workflow,
   Object? input, {
-  Future<void> Function(SessionHandle handle)? build,
+  Future<void> Function(FsSession handle)? build,
 }) async {
   final handle = await FsStore(runsDirOf(dir)).createSession(
     workflow: workflow,

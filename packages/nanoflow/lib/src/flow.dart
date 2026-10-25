@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart';
@@ -16,11 +15,11 @@ import 'project.dart';
 /// Runs workflows: ordinary async functions of a [Flow] and an input, whose
 /// effects are calls of [effect].
 ///
-/// Every call of a workflow is a session: the library writes it to `runs/`
-/// in the project [directory] as it goes — the input, every effect that runs
-/// with its result, the workflow's result — so that [resume] can take a
-/// session on after its process ended, taking the effects that finished from
-/// its journal. Each session runs in a zone of its own, which gives each
+/// Every call of a workflow is a session: the library writes it to its store
+/// as it goes — the input, every effect that runs with its result, the
+/// workflow's result — so that [resume] can take a session on after its
+/// process ended, taking the effects that finished from its journal. The
+/// store is `runs/` in the project [directory], or the one the flow is given. Each session runs in a zone of its own, which gives each
 /// effect a key that is the same on every run of the same code (spec §4.3);
 /// several sessions of one flow may run at once.
 ///
@@ -31,22 +30,26 @@ import 'project.dart';
 /// `fromJson` registered for its type with [addCodec]. A value that would
 /// not come back is a [CodecException].
 final class Flow {
-  /// A flow whose sessions go to `runs/` in [directory]; by default the
-  /// project directory: the directory of the binary in a compiled program;
-  /// under `dart run`, which runs a snapshot in
+  /// A flow whose sessions go to [store], by default `runs/` in [directory].
+  ///
+  /// [directory] is the project directory; by default the directory of the
+  /// binary in a compiled program; under `dart run`, which runs a snapshot in
   /// `.dart_tool/pub/bin/<package>/`, the directory of that package;
   /// otherwise the nearest ancestor of the script with a `pubspec.yaml`, or
   /// the script's directory when none has one.
-  Flow({String? directory}) : directory = findProjectDir(directory: directory);
+  Flow({String? directory, SessionStore? store})
+    : this._(findProjectDir(directory: directory), store);
+
+  Flow._(this.directory, SessionStore? store)
+    : _store = store ?? FsStore(runsDirOf(directory));
 
   /// The project directory: the graph file `nanoflow.graph.json` is read from
-  /// it, and the sessions go to `runs/` in it.
+  /// it, and the sessions go to `runs/` in it when the flow is given no
+  /// store.
   final String directory;
 
-  late final FsStore _store = FsStore(
-    runsDirOf(directory),
-    owner: currentOwner(),
-  );
+  /// Where the sessions go. This process owns those it runs.
+  final SessionStore _store;
 
   final _codecs = Codecs();
 
@@ -77,23 +80,31 @@ final class Flow {
   /// Starts a session of [workflow] with [input]: the session is written and
   /// owned by this process, and [workflow] runs.
   ///
-  /// The session records the graph file as it is now and the hash of the
-  /// code. Throws, having written nothing: an [ArgumentError] when
-  /// [workflow] is not a top-level function or a static method, whose name
-  /// names the session; a [CodecException] when [input] would not come back
+  /// The session's id is [id] when given — so that the caller knows it before
+  /// the session is written —, else a new one. The session records the graph
+  /// file as it is now and the hash of the code. Throws, having written
+  /// nothing: an [ArgumentError] when [workflow] is not a top-level function
+  /// or a static method, whose name names the session, or when [id] is not
+  /// a lowercase UUID; a [CodecException] when [input] would not come back
   /// from JSON; a [FlowStoppedException] once the flow is stopped; a
+  /// [SessionExistsException] when the store has a session [id] already; a
   /// [StorageException] when the session cannot be written.
   Future<FlowSession<R>> start<I, R>(
     Future<R> Function(Flow f, I input) workflow,
-    I input,
-  ) => _start(workflow, input, const _Journal());
+    I input, {
+    String? id,
+  }) => _start(workflow, input, const _Journal(), id: id);
 
   /// [start], for a session whose effects in [journal] have run before.
   Future<FlowSession<R>> _start<I, R>(
     Future<R> Function(Flow f, I input) workflow,
     I input,
-    _Journal journal,
-  ) async {
+    _Journal journal, {
+    String? id,
+  }) async {
+    if (id != null && !isId(id)) {
+      throw ArgumentError.value(id, 'id', 'not a lowercase UUID');
+    }
     final name = workflowNameOf(workflow);
     final inputJson = _codecs.encode<I>(input);
     final graph = await graphSnapshotOf(directory);
@@ -106,6 +117,8 @@ final class Flow {
         graph: graph,
         input: (value: inputJson),
         code: code,
+        id: id,
+        owner: currentOwner(),
       ),
     );
     final session = _Session(this, handle, package, journal, graph);
@@ -149,8 +162,8 @@ final class Flow {
   ///
   /// Throws, having written no event: an [ArgumentError] when [workflow] is
   /// not a top-level function or a static method; a [FlowStoppedException]
-  /// once the flow is stopped; a [SessionNotFoundException] when `runs/` has
-  /// no session [sessionId]; a [SessionBusyException] when another process
+  /// once the flow is stopped; a [SessionNotFoundException] when the store
+  /// has no session [sessionId]; a [SessionBusyException] when another process
   /// owns it, or this one runs it already; a [WorkflowMismatchException]
   /// when it is a session of another workflow; a [CodecException] when its
   /// saved input does not come back; a [StorageException] when it cannot be
@@ -162,7 +175,9 @@ final class Flow {
     final name = workflowNameOf(workflow);
     _checkNotStopped();
     final handle =
-        await _stored(() => _store.openSession(sessionId)) ??
+        await _stored(
+          () => _store.openSession(sessionId, owner: currentOwner()),
+        ) ??
         (throw SessionNotFoundException(sessionId));
     try {
       final session = handle.session;
@@ -247,7 +262,7 @@ final class Flow {
   /// First writes to the `effect.json` of each effect that finished the
   /// `outputId` of its last `effect-finished` when it has another: the process
   /// died between the two (D3).
-  Future<_Journal> _journalOf(SessionHandle handle, SessionState state) async {
+  Future<_Journal> _journalOf(OpenSession handle, SessionState state) async {
     final outcomes = {
       for (final effect in state.effects) effect.effectId: effect,
     };
@@ -276,7 +291,7 @@ final class Flow {
   /// first, whether a process runs them or not.
   ///
   /// Throws an [ArgumentError] when [workflow] is not a top-level function
-  /// or a static method; a [StorageException] when `runs/` cannot be read.
+  /// or a static method; a [StorageException] when the store cannot be read.
   Future<List<String>> unfinished(Function workflow) async {
     final name = workflowNameOf(workflow);
     return _stored(() => _store.unfinishedSessions(name));
@@ -428,7 +443,7 @@ final class _Session {
   }
 
   final Flow _flow;
-  final SessionHandle _handle;
+  final OpenSession _handle;
   final String _projectDir;
 
   /// The package of the project, for the places of effects.
@@ -705,16 +720,17 @@ final class _Session {
   }
 }
 
-/// What [io], an operation of the store, gives; a failure of the store is a
-/// [StorageException].
+/// What [io], an operation of the store, gives; a failure of the store — any
+/// exception it throws but [SessionBusyException] and
+/// [SessionExistsException] (storage design §6.2) — is a [StorageException].
 Future<T> _stored<T>(Future<T> Function() io) async {
   try {
     return await io();
-  } on FileSystemException catch (e) {
-    throw StorageException(e);
-  } on StoreCorruptedException catch (e) {
-    throw StorageException(e);
-  } on FormatException catch (e) {
+  } on SessionBusyException {
+    rethrow;
+  } on SessionExistsException {
+    rethrow;
+  } on Exception catch (e) {
     throw StorageException(e);
   }
 }

@@ -1,10 +1,12 @@
 name: nanoflow_process
-description: Asks the OS when a process started and tells when it is gone.
+description: Asks the OS when a process started and tells when it is gone - and so whether the owner of a session is alive.
 publish_to: none
 resolution: workspace
 environment:
   sdk: ^3.13.0
 dependencies:
   ffi: ^2.1.0
+  nanoflow_model:
+    path: ../nanoflow_model
 dev_dependencies:
   test: ^1.25.0

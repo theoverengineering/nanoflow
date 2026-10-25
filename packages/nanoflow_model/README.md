@@ -1,8 +1,9 @@
 # nanoflow_model
 
-Договор между библиотекой и UI: то, что они должны понимать одинаково.
-Единственный пакет, общий для всех частей репозитория; зависит только от
-`path`, `collection` и `crypto`.
+Договор между библиотекой и UI: то, что они должны понимать одинаково, —
+модели и порт хранилища, который реализуют адаптеры. Единственный пакет,
+общий для всех частей репозитория; зависит только от `path`, `collection` и
+`crypto`.
 Подробнее — в [хранении](../../README.md#хранение) и
 [файле графа](../../README.md#файл-графа).
 
@@ -56,6 +57,18 @@
 - **Исходники и отпечаток.** `packageSourcePaths`, `sourceHash` (`\r\n` читается
   как `\n`), `bytesHash`, `hashSources` и `fingerprintOf` считают `sources` и
   `fingerprint` файла графа одним кодом для `describe`, библиотеки и UI.
+- **Порт хранилища** (`storage.dart`) — интерфейсы, которые реализуют
+  адаптеры (файловые `nanoflow_store` и `nanoflow_reader`, `nanoflow_sqlite`)
+  и через которые пишет `nanoflow`, а читают UI и приложения:
+  `SessionStore` (`createSession` с `id` и `owner`, `openSession`,
+  `unfinishedSessions`), `OpenSession` — открытая сессия, которой владеет
+  этот процесс (`events`, `effects`, `documentValue`, `createEffect`,
+  `appendEvent`, `writeDocument`, `setEffectOutput`, `setEffectAfter`,
+  `openLog`, `release`), `EffectLog` — лог эффекта на дописывание, ошибки
+  отдаёт `failed`, а не бросает, — и `SessionReader` (`changes`,
+  `documentValue`, `effectLog`, пути — `null` у хранилища без файлов).
+  Исключения контракта — `SessionBusyException`, `SessionExistsException`,
+  `StoreCorruptedException`; любое другое исключение хранилища — его сбой.
 - **Состояние сессии.** `replaySession(events)` проигрывает журнал сессии и
   возвращает `SessionState`: `status` (`SessionStatus` — по последнему
   событию), `effects` (`EffectState`: `status`, `starts`, `startedAt`,

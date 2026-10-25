@@ -136,7 +136,7 @@ Future<Outcome> run(
 /// The session [sessionId] in the project directory [projectDir], to read:
 /// the handle gives the session's lock up at once, so that a program can
 /// still own the session.
-Future<SessionHandle> sessionIn(String projectDir, String sessionId) async {
+Future<FsSession> sessionIn(String projectDir, String sessionId) async {
   final session = await FsStore(runsDirOf(projectDir)).openSession(sessionId);
   expect(session, isNotNull, reason: 'no session $sessionId in $projectDir');
   await session!.release();
@@ -144,12 +144,12 @@ Future<SessionHandle> sessionIn(String projectDir, String sessionId) async {
 }
 
 /// The names of the events of [session], in order.
-Future<List<String>> eventNames(SessionHandle session) async => [
+Future<List<String>> eventNames(FsSession session) async => [
   for (final event in await session.events()) event.name,
 ];
 
 /// What the log of [effect] of [session] holds; `null` when it has none.
-String? logOf(SessionHandle session, Effect effect) {
+String? logOf(FsSession session, Effect effect) {
   final dir = Directory(p.join(session.dir, effectsDirName))
       .listSync()
       .singleWhere(

@@ -19,19 +19,6 @@ import 'dart:io';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
-/// Another process owns the session, or this one does already: it holds the
-/// session's lock.
-final class SessionBusyException implements Exception {
-  const SessionBusyException(this.sessionId);
-
-  final String sessionId;
-
-  @override
-  String toString() =>
-      'SessionBusyException: another process owns the session $sessionId, '
-      'or this one does already';
-}
-
 /// The ids of the sessions whose lock this isolate holds or is taking.
 final _held = <String>{};
 

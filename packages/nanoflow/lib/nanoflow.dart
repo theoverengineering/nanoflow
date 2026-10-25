@@ -7,7 +7,8 @@
 /// effect, the graph's routes saying what follows what.
 library;
 
-export 'package:nanoflow_store/nanoflow_store.dart' show SessionBusyException;
+export 'package:nanoflow_model/nanoflow_model.dart'
+    show SessionBusyException, SessionExistsException, SessionStore;
 
 export 'src/errors.dart'
     show

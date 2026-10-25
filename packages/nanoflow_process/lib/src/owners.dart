@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_process/nanoflow_process.dart';
+
+import 'processes.dart';
 
 /// What became of the process of an owner that is watched.
 enum _Fate {
@@ -15,9 +13,11 @@ enum _Fate {
   unknown,
 }
 
-/// The owners of the sessions whose journal goes on, as their `.owner.lock`
+/// The owners of the sessions whose journal goes on, as their storage
 /// records them, and whether their processes run: what `owner-changed` tells
-/// (design §5).
+/// (design §5). Each reader of a storage reads the records its own way —
+/// `.owner.lock` of a session directory, a row of a database — and gives
+/// them to [observe].
 ///
 /// An owner is a pid and the time its process started. The exit of a new
 /// owner's process is watched with [Processes.exitOf] before its start is
@@ -47,20 +47,19 @@ final class Owners {
   /// watching it fails.
   Stream<void> get news => _news.stream;
 
-  /// The owner of the session [sessionId] now, from its `.owner.lock` at
-  /// [lockFile], and whether it is alive: the `owner-changed` for [tell] to
-  /// give once the session's journal has been read.
+  /// The owner of the session [sessionId] now, as [record] has it, and
+  /// whether it is alive: the `owner-changed` for [tell] to give once the
+  /// session's journal has been read.
   ///
   /// An owner other than the one told last is watched. The one told last is
   /// not alive once its process has exited, and unknown once watching it
   /// failed.
   ///
-  /// A file that is not there, or empty, records no owner. A file that does
-  /// not hold an owner is being written, its new record over the old one:
+  /// A [record] of `owner: null` says the session has no owner. A `null`
+  /// record is one that is being written, its new owner over the old one:
   /// then it gives `null`, what was told stays, and the next scan reads it
-  /// again. Throws an [IOException] when the file cannot be read.
-  Future<OwnerChanged?> observe(String sessionId, String lockFile) async {
-    final record = await _read(lockFile);
+  /// again.
+  OwnerChanged? observe(String sessionId, ({Owner? owner})? record) {
     if (record == null) return null;
     final told = _sessions[sessionId] ??= _Told();
     final last = told.change;
@@ -121,27 +120,6 @@ final class Owners {
     watch.fate = fate;
     if (!_closed && _sessions[sessionId]?.watch == watch) _news.add(null);
   }
-}
-
-/// The owner the `.owner.lock` at [path] records: none when the file is not
-/// there or empty, and `null` when it does not hold an owner, as while a new
-/// record is written over the old one.
-Future<({Owner? owner})?> _read(String path) async {
-  final Uint8List bytes;
-  try {
-    bytes = await File(path).readAsBytes();
-  } on PathNotFoundException {
-    return (owner: null);
-  }
-  if (bytes.isEmpty) return (owner: null);
-  try {
-    if (jsonDecode(utf8.decode(bytes)) case final Map<String, Object?> json) {
-      return (owner: Owner.fromJson(json));
-    }
-  } on FormatException {
-    // Not JSON, or not an owner.
-  }
-  return null;
 }
 
 /// What has been told of the owner of a session.

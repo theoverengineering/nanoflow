@@ -6,7 +6,6 @@ library;
 
 import 'dart:io';
 
-import 'package:nanoflow/nanoflow.dart' show SessionBusyException;
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';

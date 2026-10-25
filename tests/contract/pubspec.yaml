@@ -1,0 +1,19 @@
+name: contract
+description: The contract of the storage of sessions - one set of tests that every adapter passes, the files of runs/ and SQLite.
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.13.0
+dev_dependencies:
+  nanoflow:
+    path: ../../packages/nanoflow
+  nanoflow_model:
+    path: ../../packages/nanoflow_model
+  nanoflow_process:
+    path: ../../packages/nanoflow_process
+  nanoflow_reader:
+    path: ../../packages/nanoflow_reader
+  nanoflow_store:
+    path: ../../packages/nanoflow_store
+  path: ^1.9.0
+  test: ^1.25.0

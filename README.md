@@ -177,17 +177,22 @@ Pub workspace: общие `pubspec.lock` и `analysis_options.yaml` в корн�
 
 | Каталог                                                              | Что                                                                         | Зависит от                                             |
 | -------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------ |
-| [`packages/nanoflow_model`](packages/nanoflow_model/README.md)       | модели, их JSON-формы, раскладка хранения, проигрывание журнала, файл графа | —                                                      |
-| [`packages/nanoflow_store`](packages/nanoflow_store/README.md)       | запись и чтение своей сессии для `resume`                                   | `nanoflow_model`                                       |
-| [`packages/nanoflow_process`](packages/nanoflow_process/README.md)   | порт ОС: время старта процесса и его выход                                  | `ffi`                                                  |
-| [`packages/nanoflow_reader`](packages/nanoflow_reader/README.md)     | чтение и подписка на все сессии каталога, жив ли владелец сессии            | `nanoflow_model`, `nanoflow_process`                   |
+| [`packages/nanoflow_model`](packages/nanoflow_model/README.md)       | модели, их JSON-формы, порт хранилища, раскладка файлов, проигрывание журнала, файл графа | —                                                      |
+| [`packages/nanoflow_store`](packages/nanoflow_store/README.md)       | файловый адаптер записи: своя сессия в `runs/` и её чтение для `resume`     | `nanoflow_model`                                       |
+| [`packages/nanoflow_process`](packages/nanoflow_process/README.md)   | порт ОС: время старта процесса и его выход; жив ли владелец сессии          | `ffi`, `nanoflow_model`                                |
+| [`packages/nanoflow_reader`](packages/nanoflow_reader/README.md)     | файловый адаптер чтения: все сессии `runs/`, лента и данные по запросу       | `nanoflow_model`, `nanoflow_process`                   |
 | [`packages/nanoflow`](packages/nanoflow/README.md)                   | библиотека воркфлоу: `Flow`, эффекты, графы, кодеки, `exec`                 | `nanoflow_model`, `nanoflow_store`, `nanoflow_process` |
 | [`packages/nanoflow_describe`](packages/nanoflow_describe/README.md) | извлечение графа, команды `describe` и `stamp`                              | `nanoflow_model`, `analyzer`                           |
 | [`apps/nanoflow_ui`](apps/nanoflow_ui/README.md)                     | приложение для macOS                                                        | `nanoflow_model`, `nanoflow_reader`                    |
 | [`examples/review`](examples/review/README.md)                       | граф ревью функцией воркфлоу и графом из узлов                              | `nanoflow`, `nanoflow_describe` (dev)                  |
 | `tests/e2e`                                                          | пример процессом, падение и продолжение, договор хранилища и читателя       | всё, кроме UI                                          |
+| `tests/contract`                                                     | контракт хранилища: один набор тестов на каждый адаптер                     | `nanoflow`, адаптеры                                   |
 
 - **Пакеты не зависят от программ.** Общий у всех только `nanoflow_model`.
+- **Хранилище — порт с адаптерами.** Интерфейсы записи и чтения — в
+  `nanoflow_model`, рядом с моделями, которые они принимают и отдают. Адаптер
+  зависит от контракта, но не от `nanoflow` и не от другого адаптера;
+  `nanoflow` пишет через порт, по умолчанию — файловым адаптером.
 - **`nanoflow_store` и `nanoflow_reader` друг друга не импортируют.** Что
   записанное одним читается другим, проверяет `tests/e2e`.
 - **Хранилище не спрашивает ОС.** Кто владелец сессии, `nanoflow` узнаёт
@@ -235,6 +240,7 @@ final flow = Flow()
   ..addCodec(Report.fromJson);
 
 final session = await flow.start(review, 'feature/parse-config');
+await flow.start(review, 'main', id: sessionId);    // id сессии от вызывающего
 final result = await session.result;                // результат воркфлоу
 await flow.run(review, 'feature/parse-config');     // start, потом result
 await flow.resume(review, sessionId);               // после падения
@@ -296,10 +302,14 @@ await flow.run(reviewGraph.run, 'main');            // граф — так же,
 
 ## Хранение
 
-Формат один для любого языка: что пишет библиотека, читает UI. Модели и
-раскладка — в [`nanoflow_model`](packages/nanoflow_model/README.md), запись —
-[`nanoflow_store`](packages/nanoflow_store/README.md), чтение —
-[`nanoflow_reader`](packages/nanoflow_reader/README.md).
+Формат один для любого языка: что пишет библиотека, читает UI. Модели,
+порт хранилища и раскладка файлов — в
+[`nanoflow_model`](packages/nanoflow_model/README.md): `SessionStore` и
+открытая сессия `OpenSession` — запись, `SessionReader` — чтение. Файловые
+адаптеры: запись — [`nanoflow_store`](packages/nanoflow_store/README.md),
+чтение — [`nanoflow_reader`](packages/nanoflow_reader/README.md); хранилище
+`Flow` по умолчанию. Контракт, общий для адаптеров, проверяет
+`tests/contract`.
 
 ### Файлы
 

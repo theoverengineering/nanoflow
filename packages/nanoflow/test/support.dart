@@ -77,27 +77,27 @@ Future<void> until(
 
 /// The session [sessionId] of [projectDir] opened for reading; let go after
 /// the test.
-Future<SessionHandle> openSession(String projectDir, String sessionId) async {
+Future<FsSession> openSession(String projectDir, String sessionId) async {
   final handle = await FsStore(runsDirOf(projectDir)).openSession(sessionId);
   addTearDown(() => handle?.release());
   return handle!;
 }
 
 /// The only session of [projectDir], opened for reading.
-Future<SessionHandle> onlySession(String projectDir) async {
+Future<FsSession> onlySession(String projectDir) async {
   final ids = sessionIds(projectDir);
   expect(ids, hasLength(1));
   return openSession(projectDir, ids.single);
 }
 
 /// The known events of the session of [handle], in order.
-Future<List<KnownEvent>> eventsOf(SessionHandle handle) async => [
+Future<List<KnownEvent>> eventsOf(FsSession handle) async => [
   for (final event in await handle.events()) event as KnownEvent,
 ];
 
 /// What the log of the effect [name] of the session of [handle] holds; `null`
 /// when the effect has no log file.
-Future<String?> logOfEffect(SessionHandle handle, String name) async {
+Future<String?> logOfEffect(FsSession handle, String name) async {
   final effect = (await handle.effects()).singleWhere((s) => s.name == name);
   final dir = Directory(p.join(handle.dir, effectsDirName))
       .listSync()

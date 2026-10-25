@@ -2,6 +2,7 @@
 // session's id — as a process that resumes it does, and prints `busy` when
 // another process owns it, `opened` when it could own it. test/flow_test.dart
 // runs it.
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart';
 
 Future<void> main(List<String> args) async {

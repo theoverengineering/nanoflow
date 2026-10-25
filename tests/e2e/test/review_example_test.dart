@@ -6,7 +6,6 @@ library;
 
 import 'dart:io';
 
-import 'package:nanoflow/nanoflow.dart' show SessionBusyException;
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_process/nanoflow_process.dart';
 import 'package:nanoflow_reader/nanoflow_reader.dart';

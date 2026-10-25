@@ -20,7 +20,7 @@ final class CodecException implements Exception {
   String toString() => 'CodecException: $type: $reason';
 }
 
-/// `Flow.resume` was asked for a session that `runs/` does not have.
+/// `Flow.resume` was asked for a session that the store does not have.
 final class SessionNotFoundException implements Exception {
   const SessionNotFoundException(this.sessionId);
 
@@ -58,9 +58,9 @@ final class WorkflowMismatchException implements Exception {
 final class StorageException implements Exception {
   const StorageException(this.cause);
 
-  /// What the store threw: a `FileSystemException`, a
-  /// `StoreCorruptedException`, or a `FormatException` for a file that is not
-  /// the JSON it should be.
+  /// What the store threw: of the files of `runs/`, a `FileSystemException`,
+  /// a `StoreCorruptedException`, or a `FormatException` for a file that is
+  /// not the JSON it should be; of another store, what it throws.
   final Object cause;
 
   @override

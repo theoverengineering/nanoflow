@@ -4,9 +4,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_process/nanoflow_process.dart';
 import 'package:path/path.dart' as p;
 
-import 'owners.dart';
 import 'tail.dart';
 
 /// The sessions of a `runs` directory as far as the feed has given them.
@@ -124,7 +124,7 @@ final class Scanner {
         : await _attempt(
             lockFile,
             out,
-            () => owners.observe(sessionId, lockFile),
+            () async => owners.observe(sessionId, await _ownerRecord(lockFile)),
           );
     final journal = session.journal;
     final lines = await _attempt(journal.path, out, journal.readLines);
@@ -259,6 +259,28 @@ Future<T> readModel<T>(
   } on FormatException catch (e) {
     throw FormatException('$path: ${e.message}');
   }
+}
+
+/// The owner the `.owner.lock` at [path] records: none when the file is not
+/// there or empty, and `null` when it does not hold an owner, as while a new
+/// record is written over the old one. Throws an [IOException] when the file
+/// cannot be read.
+Future<({Owner? owner})?> _ownerRecord(String path) async {
+  final Uint8List bytes;
+  try {
+    bytes = await File(path).readAsBytes();
+  } on PathNotFoundException {
+    return (owner: null);
+  }
+  if (bytes.isEmpty) return (owner: null);
+  try {
+    if (jsonDecode(utf8.decode(bytes)) case final Map<String, Object?> json) {
+      return (owner: Owner.fromJson(json));
+    }
+  } on FormatException {
+    // Not JSON, or not an owner.
+  }
+  return null;
 }
 
 /// The time to the second in the name of the session directory [dir]:

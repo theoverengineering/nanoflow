@@ -20,13 +20,14 @@ const _ownerText = '{"pid":42,"started":"2026-10-03T07:43:34.651Z"}';
 /// A record longer than any of [_owner] and the owners below.
 const _longerText = '{"pid":123456789,"started":"2026-10-03T07:43:34.651Z"}';
 
-String _lockPath(SessionHandle handle) => p.join(handle.dir, ownerLockFileName);
+String _lockPath(FsSession handle) => p.join(handle.dir, ownerLockFileName);
 
-Future<SessionHandle> _create(FsStore store) => store.createSession(
+Future<FsSession> _create(FsStore store, {Owner? owner}) => store.createSession(
   workflow: 'review',
   graph: null,
   input: null,
   code: null,
+  owner: owner,
 );
 
 /// A process that holds an exclusive lock on [path]: the byte at [offset],
@@ -55,27 +56,27 @@ Future<void> _holdLock(String path, {int? offset}) async {
 
 void main() {
   group('the owner record', () {
-    test('a session created by a store with an owner holds the owner as JSON, '
-        'without a newline, while its handle is open', () async {
+    test('a session created with an owner holds the owner as JSON, without a '
+        'newline, while it is open', () async {
       final runsDir = p.join(await tempDir(), 'runs');
 
-      final handle = await _create(FsStore(runsDir, owner: _owner));
+      final handle = await _create(FsStore(runsDir), owner: _owner);
 
       expect(read(_lockPath(handle)), _ownerText);
       expect(read(_lockPath(handle)), jsonEncode(_owner.toJson()));
       await handle.release();
     });
 
-    test('is empty once the handle lets the session go', () async {
+    test('is empty once the session is let go', () async {
       final runsDir = p.join(await tempDir(), 'runs');
-      final handle = await _create(FsStore(runsDir, owner: _owner));
+      final handle = await _create(FsStore(runsDir), owner: _owner);
 
       await handle.release();
 
       expect(read(_lockPath(handle)), isEmpty);
     });
 
-    test('is empty while held by a store without an owner', () async {
+    test('is empty while held without an owner', () async {
       final runsDir = p.join(await tempDir(), 'runs');
 
       final handle = await _create(FsStore(runsDir));
@@ -85,16 +86,14 @@ void main() {
       await handle.release();
     });
 
-    test('is the store\'s owner in a session it opens, and empty once it lets '
-        'the session go', () async {
+    test('is the owner a session is opened with, and empty once the session '
+        'is let go', () async {
       final runsDir = p.join(await tempDir(), 'runs');
       final created = await _create(FsStore(runsDir));
       await created.release();
 
-      final opened = (await FsStore(
-        runsDir,
-        owner: _owner,
-      ).openSession(created.session.id))!;
+      final opened = (await FsStore(runsDir)
+          .openSession(created.session.id, owner: _owner))!;
 
       expect(read(_lockPath(opened)), _ownerText);
       await opened.release();
@@ -105,7 +104,8 @@ void main() {
       final runsDir = p.join(await tempDir(), 'runs');
 
       final handle = await _create(
-        FsStore(runsDir, owner: const Owner(pid: 42, started: null)),
+        FsStore(runsDir),
+        owner: const Owner(pid: 42, started: null),
       );
 
       expect(read(_lockPath(handle)), '{"pid":42,"started":null}');
@@ -124,18 +124,16 @@ void main() {
         const shorterText = '{"pid":42,"started":null}';
         expect(shorterText.length, lessThan(_longerText.length));
 
-        final opened = (await FsStore(
-          runsDir,
-          owner: shorter,
-        ).openSession(created.session.id))!;
+        final opened = (await FsStore(runsDir)
+            .openSession(created.session.id, owner: shorter))!;
 
         expect(read(_lockPath(opened)), shorterText);
         await opened.release();
       },
     );
 
-    test('is cleared, not left as the old record, by a store without an owner '
-        'that opens the session', () async {
+    test('is cleared, not left as the old record, when the session is opened '
+        'without an owner', () async {
       final runsDir = p.join(await tempDir(), 'runs');
       final created = await _create(FsStore(runsDir));
       await created.release();
@@ -155,16 +153,19 @@ void main() {
       final sessionFile = File(p.join(created.dir, 'session.json'));
       final saved = sessionFile.readAsStringSync();
       sessionFile.deleteSync();
-      final store = FsStore(runsDir, owner: _owner);
+      final store = FsStore(runsDir);
 
       await expectLater(
-        store.openSession(created.session.id),
+        store.openSession(created.session.id, owner: _owner),
         throwsA(isA<FileSystemException>()),
       );
 
       expect(read(_lockPath(created)), isEmpty);
       sessionFile.writeAsStringSync(saved);
-      final opened = (await store.openSession(created.session.id))!;
+      final opened = (await store.openSession(
+        created.session.id,
+        owner: _owner,
+      ))!;
       expect(read(_lockPath(opened)), _ownerText);
       await opened.release();
     });
@@ -174,12 +175,12 @@ void main() {
     test('is the byte at ownerLockOffset: a process that holds it makes '
         'openSession busy', () async {
       final runsDir = p.join(await tempDir(), 'runs');
-      final created = await _create(FsStore(runsDir, owner: _owner));
+      final created = await _create(FsStore(runsDir), owner: _owner);
       await created.release();
       await _holdLock(_lockPath(created), offset: ownerLockOffset);
 
       await expectLater(
-        FsStore(runsDir, owner: _owner).openSession(created.session.id),
+        FsStore(runsDir).openSession(created.session.id, owner: _owner),
         throwsA(isA<SessionBusyException>()),
       );
       // It does not touch what the other process holds.
@@ -189,14 +190,12 @@ void main() {
     test('is not the first byte: a process that holds it does not make '
         'openSession busy', () async {
       final runsDir = p.join(await tempDir(), 'runs');
-      final created = await _create(FsStore(runsDir, owner: _owner));
+      final created = await _create(FsStore(runsDir), owner: _owner);
       await created.release();
       await _holdLock(_lockPath(created), offset: 0);
 
-      final opened = (await FsStore(
-        runsDir,
-        owner: _owner,
-      ).openSession(created.session.id))!;
+      final opened = (await FsStore(runsDir)
+          .openSession(created.session.id, owner: _owner))!;
 
       expect(read(_lockPath(opened)), _ownerText);
       await opened.release();
@@ -205,12 +204,12 @@ void main() {
     test('is excluded by the lock of the whole file that an earlier version '
         'takes', () async {
       final runsDir = p.join(await tempDir(), 'runs');
-      final created = await _create(FsStore(runsDir, owner: _owner));
+      final created = await _create(FsStore(runsDir), owner: _owner);
       await created.release();
       await _holdLock(_lockPath(created));
 
       await expectLater(
-        FsStore(runsDir, owner: _owner).openSession(created.session.id),
+        FsStore(runsDir).openSession(created.session.id, owner: _owner),
         throwsA(isA<SessionBusyException>()),
       );
     });
@@ -218,7 +217,7 @@ void main() {
     test('keeps another owner out of a session this process owns, and lets '
         'it in once the owner lets go', () async {
       final runsDir = p.join(await tempDir(), 'runs');
-      final created = await _create(FsStore(runsDir, owner: _owner));
+      final created = await _create(FsStore(runsDir), owner: _owner);
       final id = created.session.id;
 
       expect(await ownerCheck(runsDir, id), 'busy');

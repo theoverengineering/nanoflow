@@ -14,21 +14,22 @@ const _newline = 0x0a;
 /// One session on disk: what the process that runs it writes, and what it
 /// reads back to continue it after a crash.
 ///
-/// Only one process works with a session at a time: the handle holds the
-/// session's lock until [release] or the end of the process.
-final class SessionHandle {
-  SessionHandle._(this.session, this.dir, this._clock, this._lock)
+/// Only one process works with a session at a time: this holds the session's
+/// lock until [release] or the end of the process.
+final class FsSession implements OpenSession {
+  FsSession._(this.session, this.dir, this._clock, this._lock)
     : _effectTimes = _IncreasingTimes();
 
   /// [from] after its directory was renamed to [dir]. The times it has given
   /// its effects stay taken, and it keeps its lock.
-  SessionHandle._moved(SessionHandle from, this.dir)
+  FsSession._moved(FsSession from, this.dir)
     : session = from.session,
       _clock = from._clock,
       _lock = from._lock,
       _effectTimes = from._effectTimes;
 
   /// The session's fields, as in `session.json`.
+  @override
   final Session session;
 
   /// The session's directory.
@@ -60,6 +61,7 @@ final class SessionHandle {
   /// Throws a [StoreCorruptedException] for a complete line that is not a JSON
   /// object; an object that is not an event this version knows is an
   /// [UnknownEvent].
+  @override
   Future<List<Event>> events() => readJournal(p.join(dir, eventsFileName));
 
   /// The records of the session's effects, ordered by directory name: in the
@@ -68,6 +70,7 @@ final class SessionHandle {
   /// Their directories are kept, as [createEffect] keeps the one it builds: an
   /// effect whose directory is removed later fails as a write into it does,
   /// and [openLog] gives its log, which fails.
+  @override
   Future<List<Effect>> effects() async {
     final effects = <Effect>[];
     for (final dir in _builtDirs(_effectsDir)) {
@@ -80,6 +83,7 @@ final class SessionHandle {
   }
 
   /// The value of the document [documentId].
+  @override
   Future<Object?> documentValue(String documentId) async => (await readModel(
     p.join(dir, documentsDirName, documentFileName(documentId)),
     Document.fromJson,
@@ -95,6 +99,7 @@ final class SessionHandle {
   ///
   /// Throws a [FileSystemException], having built nothing, when the
   /// session's directory is gone.
+  @override
   Future<Effect> createEffect({
     required String name,
     required String key,
@@ -137,6 +142,7 @@ final class SessionHandle {
   /// by `rm -rf`, which removes it depth first while the process still
   /// writes to what it has not reached yet: the process learns of it within
   /// one event.
+  @override
   Future<void> appendEvent(KnownEvent event) {
     final appended = _appended.then((_) async {
       await _appendToJournal(p.join(dir, eventsFileName), event);
@@ -150,11 +156,13 @@ final class SessionHandle {
   }
 
   /// Writes a new document holding [value]; returns its id.
+  @override
   Future<String> writeDocument(Object? value) =>
       writeDocumentAt(dir, session.id, value);
 
   /// Rewrites `effect.json` of [effect] with [outputId]; returns the effect
   /// as it is now.
+  @override
   Future<Effect> setEffectOutput(Effect effect, String outputId) async {
     final changed = effect.withOutput(outputId);
     await writeJsonAtomically(
@@ -166,6 +174,7 @@ final class SessionHandle {
 
   /// Rewrites `effect.json` of [effect] with [after]; returns the effect as it
   /// is now.
+  @override
   Future<Effect> setEffectAfter(Effect effect, String? after) async {
     final changed = effect.withAfter(after);
     await writeJsonAtomically(
@@ -178,17 +187,19 @@ final class SessionHandle {
   /// Opens the log of the effect [effectId] for appending: an effect that runs
   /// again adds to the log it has.
   ///
-  /// The log throws no error of its file: [EffectLog.failed] gives it, also
-  /// for an effect whose directory, built by [createEffect] or listed by
+  /// The log throws no error of its file: [FsEffectLog.failed] gives it,
+  /// also for an effect whose directory, built by [createEffect] or listed by
   /// [effects], is gone. Throws an [ArgumentError] for an effect the session
   /// does not have.
-  EffectLog openLog(String effectId) =>
-      EffectLog._(File(p.join(_effectDir(effectId), logFileName)));
+  @override
+  FsEffectLog openLog(String effectId) =>
+      FsEffectLog._(File(p.join(_effectDir(effectId), logFileName)));
 
   /// Gives up the session's lock, having emptied the lock file, which no
   /// longer names an owner: another process may own the session from now on.
   /// Reading through the handle still works; writing through it must not be
   /// done any more.
+  @override
   Future<void> release() async {
     final lock = _lock;
     _lock = null;
@@ -213,8 +224,8 @@ final class SessionHandle {
 /// now or later: when the file cannot be opened, written or closed — its
 /// directory is gone, the disk is full — [failed] completes with why, and
 /// the log writes nothing more.
-final class EffectLog {
-  EffectLog._(File file) {
+final class FsEffectLog implements EffectLog {
+  FsEffectLog._(File file) {
     _writing = _guarded(() async {
       _file = await file.open(mode: FileMode.append);
     });
@@ -234,20 +245,23 @@ final class EffectLog {
 
   int _unwritten = 0;
 
-  final _failed = Completer<FileSystemException>();
+  final _failed = Completer<Exception>();
 
   bool _closed = false;
 
   /// Completes with the error of the first open, write or close of the file
-  /// that failed.
-  Future<FileSystemException> get failed => _failed.future;
+  /// that failed: a [FileSystemException].
+  @override
+  Future<Exception> get failed => _failed.future;
 
   /// How many of the bytes added so far are not written yet: 0 once the log
   /// has failed, as it drops them.
+  @override
   int get unwritten => _unwritten;
 
   /// Adds [bytes] to the end of the log. They are not copied: [bytes] must
   /// not change afterwards.
+  @override
   void add(List<int> bytes) {
     if (_closed) throw StateError('the log is closed');
     if (_failed.isCompleted || bytes.isEmpty) return;
@@ -274,9 +288,11 @@ final class EffectLog {
 
   /// Completes once everything added so far is written to the file, or the
   /// log has failed.
+  @override
   Future<void> flush() => _writing;
 
   /// Writes what is left and closes the log.
+  @override
   Future<void> close() {
     if (!_closed) {
       _closed = true;
@@ -299,34 +315,19 @@ final class EffectLog {
   }
 }
 
-/// A journal has a complete line that is not a JSON object.
-final class StoreCorruptedException implements Exception {
-  const StoreCorruptedException({required this.path, required this.line});
-
-  /// The journal's path.
-  final String path;
-
-  /// The number of the line, from 1.
-  final int line;
-
-  @override
-  String toString() =>
-      'StoreCorruptedException: line $line of $path is not a JSON object';
-}
-
 /// A handle of the session [session] in [dir], for the store that is building
 /// it and holds its [lock]. Not exported.
-SessionHandle sessionHandleAt(
+FsSession fsSessionAt(
   String dir,
   Session session,
   Clock clock,
   RandomAccessFile lock,
-) => SessionHandle._(session, dir, clock, lock);
+) => FsSession._(session, dir, clock, lock);
 
 /// [handle] once its session's directory has been renamed to [dir], for the
 /// store that has built it. Not exported.
-SessionHandle movedSessionHandle(SessionHandle handle, String dir) =>
-    SessionHandle._moved(handle, dir);
+FsSession movedFsSession(FsSession handle, String dir) =>
+    FsSession._moved(handle, dir);
 
 /// A handle of the session [sessionId] in [dir], for the store that is
 /// opening it.
@@ -336,7 +337,7 @@ SessionHandle movedSessionHandle(SessionHandle handle, String dir) =>
 /// the lock file, as [lockSession] does. Then cuts an incomplete last line
 /// off the journal: the process that owned the session died while writing it,
 /// and the next event must start on a line of its own. Not exported.
-Future<SessionHandle> loadSessionHandle(
+Future<FsSession> loadFsSession(
   String dir,
   String sessionId,
   Clock clock,
@@ -349,7 +350,7 @@ Future<SessionHandle> loadSessionHandle(
       Session.fromJson,
     );
     await _cutIncompleteLine(p.join(dir, eventsFileName));
-    return SessionHandle._(session, dir, clock, lock);
+    return FsSession._(session, dir, clock, lock);
   } catch (_) {
     await unlockSession(sessionId, lock);
     rethrow;

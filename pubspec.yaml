@@ -11,5 +11,6 @@ workspace:
   - packages/nanoflow_describe
   - examples/review
   - tests/e2e
+  - tests/contract
 dev_dependencies:
   lints: ^6.1.0

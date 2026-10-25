@@ -4,63 +4,69 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
 import 'atomic.dart';
+import 'fs_session.dart';
 import 'owner_lock.dart';
-import 'session_handle.dart';
 
 /// The sessions in a `runs` directory, as the process that runs them keeps
 /// them.
-final class FsStore {
-  FsStore(this.runsDir, {this._owner, this._clock = systemClock});
+final class FsStore implements SessionStore {
+  FsStore(this.runsDir, {this._clock = systemClock});
 
   /// The `runs` directory in the project directory.
   final String runsDir;
-
-  /// The process that runs the sessions the store holds: written into the
-  /// lock file of each, `.owner.lock`, while the store holds it, and cleared
-  /// when the handle lets the session go. `null` writes none: the file stays
-  /// empty.
-  final Owner? _owner;
 
   final Clock _clock;
 
   /// Creates a session of the workflow [workflow]: one call of it.
   ///
   /// The session's lock is taken before anything is written to it: the
-  /// handle holds it, so no other process can open the session (see
-  /// [openSession]). The store's owner is written into the lock file. Builds
-  /// the whole session under `runs/.tmp-<id>/` and renames it into place:
-  /// `session.json` with [graph], the `documents` directory with the input
-  /// document (when [input] is given), the empty `effects` directory and
-  /// `log.jsonl` with `session-started` and [code]. The session directory's
-  /// name and the time of `session-started` are the time the session is
-  /// created; creates [runsDir] when there is none.
-  Future<SessionHandle> createSession({
+  /// session holds it, so no other process can open the session (see
+  /// [openSession]). [owner] is written into the lock file, `.owner.lock`,
+  /// and cleared when the session is let go; `null` writes none: the file
+  /// stays empty. Builds the whole session under `runs/.tmp-<id>/` and
+  /// renames it into place: `session.json` with [graph], the `documents`
+  /// directory with the input document (when [input] is given), the empty
+  /// `effects` directory and `log.jsonl` with `session-started` and [code].
+  /// The session directory's name and the time of `session-started` are the
+  /// time the session is created; creates [runsDir] when there is none.
+  ///
+  /// The id is [id] when given: an [ArgumentError] when it is not an id
+  /// ([isId]), and a [SessionExistsException] when [runsDir] has a directory
+  /// with it, one being built too.
+  @override
+  Future<FsSession> createSession({
     required String workflow,
     required Map<String, Object?>? graph,
     required ({Object? value})? input,
     required String? code,
+    String? id,
+    Owner? owner,
   }) async {
-    final id = newId();
+    if (id != null) {
+      if (!isId(id)) throw ArgumentError.value(id, 'id', 'not an id');
+      if (await _hasDirOf(id)) throw SessionExistsException(id);
+    }
+    final sessionId = id ?? newId();
     final createdAt = _clock();
-    late final SessionHandle built;
+    late final FsSession built;
     RandomAccessFile? lock;
     final String dir;
     try {
       dir = await buildDirAtomically(
         runsDir,
-        id: id,
-        name: sessionDirName(workflow, createdAt, id),
+        id: sessionId,
+        name: sessionDirName(workflow, createdAt, sessionId),
         createParent: true,
         build: (dir) async {
           // A lock on an open file outlives the rename of its directory.
-          final taken = lock = await lockSession(dir, id, owner: _owner);
+          final taken = lock = await lockSession(dir, sessionId, owner: owner);
           await Directory(p.join(dir, documentsDirName)).create();
           await Directory(p.join(dir, effectsDirName)).create();
           final inputId = input == null
               ? null
-              : await writeDocumentAt(dir, id, input.value);
+              : await writeDocumentAt(dir, sessionId, input.value);
           final session = Session(
-            id: id,
+            id: sessionId,
             workflow: workflow,
             graph: graph,
             inputId: inputId,
@@ -73,35 +79,36 @@ final class FsStore {
             p.join(dir, eventsFileName),
             SessionStarted(time: createdAt, code: code),
           );
-          built = sessionHandleAt(dir, session, _clock, taken);
+          built = fsSessionAt(dir, session, _clock, taken);
         },
       );
     } catch (_) {
-      if (lock case final taken?) await unlockSession(id, taken);
+      if (lock case final taken?) await unlockSession(sessionId, taken);
       rethrow;
     }
-    return movedSessionHandle(built, dir);
+    return movedFsSession(built, dir);
   }
 
   /// The session [sessionId], or `null` when [runsDir] has none.
   ///
   /// The session's directory is the one whose name ends with the id; a name
   /// that starts with `.` belongs to a session that was never finished being
-  /// created. Takes the session's lock, which the handle holds, writes the
-  /// store's owner into the lock file in place of the owner before, and then
-  /// cuts an incomplete last line off the journal.
+  /// created. Takes the session's lock, which the session holds, writes
+  /// [owner] into the lock file in place of the owner before, and then cuts
+  /// an incomplete last line off the journal.
   ///
   /// Throws a [SessionBusyException], having changed nothing, when another
   /// process holds the lock: one that created or opened the session and
   /// still runs. The system drops the lock of a process that dies. Throws it
-  /// too when this isolate holds the session already, through a handle not
+  /// too when this isolate holds the session already, through a session not
   /// yet let go. A session it cannot read is a [FileSystemException].
-  Future<SessionHandle?> openSession(String sessionId) async {
+  @override
+  Future<FsSession?> openSession(String sessionId, {Owner? owner}) async {
     final dirs = await _sessionDirs();
     final dir = dirs.where((dir) => dir.id == sessionId).firstOrNull;
     return dir == null
         ? null
-        : loadSessionHandle(dir.path, sessionId, _clock, _owner);
+        : loadFsSession(dir.path, sessionId, _clock, owner);
   }
 
   /// Ids of the sessions of [workflow] whose journal has no
@@ -110,6 +117,7 @@ final class FsStore {
   ///
   /// Takes no lock: a session another process owns is listed too. A
   /// session whose `session.json` or journal cannot be read is left out.
+  @override
   Future<List<String>> unfinishedSessions(String workflow) async {
     final found = <({String id, DateTime startedAt, String name})>[];
     for (final dir in await _sessionDirs()) {
@@ -143,6 +151,17 @@ final class FsStore {
       return byTime != 0 ? byTime : b.name.compareTo(a.name);
     });
     return [for (final session in found) session.id];
+  }
+
+  /// Whether [runsDir] has a directory, built or being built, whose name
+  /// ends with [id].
+  Future<bool> _hasDirOf(String id) async {
+    final runs = Directory(runsDir);
+    if (!await runs.exists()) return false;
+    return runs.list().any(
+      (entity) =>
+          entity is Directory && p.basename(entity.path).endsWith('-$id'),
+    );
   }
 
   /// The built session directories in [runsDir]; none when there is no
