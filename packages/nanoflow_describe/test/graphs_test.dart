@@ -235,6 +235,14 @@ void main() {
         94,
         'graph name twin is also the name of lib/graph_warnings.dart#twin',
       ),
+      _warning(
+        97,
+        'route is async or a generator: (change) async => check(change)',
+      ),
+      _warning(
+        98,
+        'route is async or a generator: (report) sync* {yield done(report);}',
+      ),
     ]);
     // A name that is not a literal is the name of the variable.
     final named = _functionOf(graph, 'lib/graph_warnings.dart#namedGraph');

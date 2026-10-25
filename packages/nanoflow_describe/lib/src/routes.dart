@@ -3,7 +3,8 @@
 // body is. Its `if`, `switch` and `?:` are forks labelled as there; each node
 // or graph called in what it returns is an edge to that node, a set an edge
 // to each of its nodes, and `null` or the end of its body an edge to the end
-// of the graph. A `throw` ends its way: the branch fails.
+// of the graph. A `throw` ends its way: the branch fails. A route that is
+// async or a generator is not read: it gives a Future or an Iterable, no Next.
 
 part of 'extract.dart';
 
@@ -26,6 +27,13 @@ extension on _GraphBody {
     };
     if (body == null) {
       _notRead(route, 'route not drawn: ${_source(route)}');
+      return null;
+    }
+    // An async route gives a Future, a generator an Iterable, and neither is
+    // a Next, a set of them or null: the graph fails as it runs, and there
+    // is nothing to draw.
+    if (body.isAsynchronous || body.isGenerator) {
+      _notRead(route, 'route is async or a generator: ${_source(route)}');
       return null;
     }
     routes.add(body);

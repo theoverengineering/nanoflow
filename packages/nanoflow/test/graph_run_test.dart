@@ -220,6 +220,31 @@ final ticking = Graph<int, int>('ticking', [
   Graph.part(sum).next((n) => tick(n)),
 ]);
 
+/// A join with no route: its record is where the graph ends.
+final joinEnds = Graph<String, (String, String)>('joinEnds', [
+  Graph.start(shout).next((text) => {left(text), right(text)}),
+  Graph.join([left, right]),
+]);
+
+/// A join whose route gives null: its record is where the graph ends too.
+final joinGivesNull = Graph<String, (String, String)>('joinGivesNull', [
+  Graph.start(shout).next((text) => {left(text), right(text)}),
+  Graph.join([left, right]).next(((String, String) both) => null),
+]);
+
+/// A join whose route throws while [slow] still runs.
+final joinRouteThrows = Graph<String, Object?>('joinRouteThrows', [
+  Graph.start(shout).next((text) => {left(text), right(text), slow(text)}),
+  Graph.join([left, right])
+      .next(((String, String) both) => throw StateError('boom')),
+]);
+
+/// A join whose route takes another record than its nodes give.
+final joinWrongRecord = Graph<String, Object?>('joinWrongRecord', [
+  Graph.start(shout).next((text) => {left(text), right(text)}),
+  Graph.join([left, right]).next(((int, int) both) => null),
+]);
+
 final isOn = node('isOn', (bool yes) async => yes);
 
 final on = node('on', (bool yes) async => 'on');
@@ -530,23 +555,29 @@ void main() {
       );
     });
 
-    test('a List of transitions is a StateError naming the node', () async {
-      final dir = await tempDir();
-      await expectLater(
-        flowIn(dir).run(listing.run, 'x'),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            allOf(
-              contains('the route of shout gave [Next(left), Next(right)]'),
-              contains('a route gives a Next, a set of them or null'),
+    test(
+      'a List of transitions is a StateError naming the graph and the node',
+      () async {
+        final dir = await tempDir();
+        await expectLater(
+          flowIn(dir).run(listing.run, 'x'),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              allOf(
+                contains(
+                  'graph "listing": the route of shout gave '
+                  '[Next(left), Next(right)]',
+                ),
+                contains('a route gives a Next, a set of them or null'),
+              ),
             ),
           ),
-        ),
-      );
-      expect(calls, isEmpty);
-    });
+        );
+        expect(calls, isEmpty);
+      },
+    );
 
     test('a route that throws fails the session once the other branch has '
         'ended', () async {
@@ -625,6 +656,53 @@ void main() {
       final dir = await tempDir();
       expect(await flowIn(dir).run(halfJoined.run, true), isNull);
       expect(calls, isNot(contains('joined')));
+    });
+
+    test('a join without a route, or whose route gives null, gives its '
+        'record as the graph\'s result', () async {
+      expect(await flowIn(await tempDir()).run(joinEnds.run, 'x'), (
+        'left',
+        'right',
+      ));
+      expect(await flowIn(await tempDir()).run(joinGivesNull.run, 'x'), (
+        'left',
+        'right',
+      ));
+    });
+
+    test('a join route that throws fails the session with its error, and '
+        'does not hang', () async {
+      final dir = await tempDir();
+      slowGate = Completer();
+      final session = await flowIn(dir).start(joinRouteThrows.run, 'x');
+      final failed = expectLater(
+        session.result.timeout(const Duration(seconds: 5)),
+        throwsA(isA<StateError>().having((e) => e.message, 'message', 'boom')),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      slowGate.complete();
+      await failed;
+    });
+
+    test('a join route that takes another record than its nodes give is a '
+        'StateError naming the graph and the join', () async {
+      await expectLater(
+        flowIn(await tempDir())
+            .run(joinWrongRecord.run, 'x')
+            .timeout(const Duration(seconds: 5)),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              startsWith('graph "joinWrongRecord": '),
+              contains('the route of the join of left, right'),
+              contains('(String, String)'),
+              contains('is not a subtype'),
+            ),
+          ),
+        ),
+      );
     });
 
     test(

@@ -2,7 +2,7 @@
 // variable, names that are not literals or are taken, routes and values that
 // cannot be read, a node no way reaches, a join whose route takes another
 // record, a side effect in a route, graphs that are nodes and can end in
-// several ends at once, and parts that cannot be read.
+// several ends at once, parts that cannot be read, async or generator routes.
 import 'package:nanoflow/nanoflow.dart';
 
 final class Change {
@@ -92,3 +92,10 @@ Future<void> twin(Flow f, String branch) async {
 }
 
 final twinGraph = Graph<String, void>('twin', [Graph.start(begin)]);
+
+final awaited = Graph<String, void>('awaited', [
+  Graph.start(begin).next((change) async => check(change)),
+  Graph.part(check).next((report) sync* {
+    yield done(report);
+  }),
+]);

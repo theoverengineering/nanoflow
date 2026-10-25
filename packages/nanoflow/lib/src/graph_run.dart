@@ -111,9 +111,9 @@ final class _Run {
   /// [route] gives them: none when there is no route, or it gives `null` or
   /// an empty set.
   ///
-  /// Throws a [StateError] when the route gives anything else than a [Next],
-  /// a set of them or `null`, or a node whose name another node of the graph
-  /// has; and what the route throws.
+  /// Throws a [StateError] naming the graph when the route gives anything
+  /// else than a [Next], a set of them or `null`, or a node whose name another
+  /// node of the graph has; and what the route throws.
   List<(ShapeNode, Object?)> _next(
     String from,
     Object? Function(Object? output)? route,
@@ -129,8 +129,8 @@ final class _Run {
           (_shape.nodeFor(next.target), next.input),
       ],
       _ => throw StateError(
-        'the route of $from gave $given: a route gives a Next, a set of them '
-        'or null',
+        'graph "${_shape.name}": the route of $from gave $given: a route '
+        'gives a Next, a set of them or null',
       ),
     };
   }
@@ -143,7 +143,19 @@ final class _Run {
     if (outputs == null) return;
     final List<Future<void>> started;
     try {
-      final next = _next(state.join.name, state.join.route, outputs);
+      final List<(ShapeNode, Object?)> next;
+      try {
+        next = _next(state.join.name, state.join.route, outputs);
+      } on TypeError catch (error) {
+        // A join's route declares the type of the record it takes, which the
+        // compiler cannot check against its nodes: the dynamic call in
+        // `Part.next` does, here.
+        throw StateError(
+          'graph "${_shape.name}": the route of ${state.join.name} threw a '
+          'TypeError on the record ${outputs.runtimeType} of their outputs: it '
+          'takes another record, or has a type error of its own: $error',
+        );
+      }
       if (next.isEmpty) _result = (value: outputs);
       started = [for (final (node, input) in next) _branch(node, input)];
     } finally {
