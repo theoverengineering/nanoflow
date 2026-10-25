@@ -91,15 +91,15 @@ final _staticFunction = RegExp(r" from Function '([^']+)': static\.$");
 String? staticNameOf(Function function) =>
     _staticFunction.firstMatch('$function')?.group(1);
 
-/// The name of [workflow]: the name of the graph whose `call` it is, or of
+/// The name of [workflow]: the name of the graph whose `run` it is, or of
 /// the function, as its `toString()` gives it — a static method's without its
 /// class.
 ///
-/// Throws an [ArgumentError] when [workflow] is neither a graph's `call` nor
+/// Throws an [ArgumentError] when [workflow] is neither a graph's `run` nor
 /// a top-level function or a static method: a closure's or an instance
 /// method's name cannot be found.
 String workflowNameOf(Function workflow) =>
-    graphOfCall(workflow)?.name ??
+    graphOfRun(workflow)?.name ??
     staticNameOf(workflow) ??
     (throw ArgumentError.value(
       workflow,

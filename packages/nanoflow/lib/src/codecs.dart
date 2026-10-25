@@ -16,15 +16,7 @@
 // `Report?`, `List<Report>`, `Map<String, Report>` and any nesting of them,
 // and `List<List<String>>` comes back as a `List<List<String>>`, not as the
 // `List<dynamic>` `jsonDecode` gives.
-//
-// The type a function returns is found the same way, by asking whether the
-// function is a `FutureOr<X> Function(Never)` (graph design §8): only that
-// way round, as a function's type is never on the right of `is`, so the
-// narrowest type that fits is taken. That is how a graph's node, a function
-// of one parameter, has its result journaled without its type written
-// twice.
 
-import 'dart:async';
 import 'dart:convert';
 
 import 'errors.dart';
@@ -38,9 +30,6 @@ final class Codecs {
   /// The decoder of each type asked for so far; `null` for a type with none.
   final _decoders = <Type, _Decoder?>{};
 
-  /// The decoder of the result of each function asked for so far.
-  final _results = <Function, _Decoder>{};
-
   /// Registers [fromJson], which makes a [T] of the JSON its `toJson` gave.
   void add<T>(T Function(Map<String, Object?> json) fromJson) =>
       _register(_Codec<T>.ofJson(fromJson));
@@ -53,7 +42,6 @@ final class Codecs {
   void _register(_Codec<Object?> codec) {
     _codecs.insert(0, codec);
     _decoders.clear();
-    _results.clear();
   }
 
   /// [value], declared as a [T], as JSON: lists, maps with `String` keys,
@@ -80,31 +68,6 @@ final class Codecs {
 
   /// How values declared as [T] become JSON and come back.
   TypeCodec of<T>() => TypeCodec._(this, _decoderOf<T>(), T, (v) => v is T);
-
-  /// How what [node], a function of one parameter, returns becomes JSON and
-  /// comes back: as the narrowest type made of JSON types and types with a
-  /// codec that the function's result is one of — `Shape` for a function that
-  /// returns a `Future<Shape>`, the codec of `Shape` for one that returns a
-  /// `Future<Circle>` when `Circle` has none —, or, when there is none, as
-  /// JSON as it is.
-  TypeCodec resultOf(Function node) {
-    final decoder = _results[node] ??= () {
-      // A `Future` is an `Object` itself, so a function that returns one is
-      // asked about the future's value: `FutureOr<Object>` would take any
-      // future, of a nullable value too.
-      final bool Function(_TypeOf<Object?> type) returns =
-          node is Future<Object?> Function(Never)
-          ? (type) => type.pass(<T>() => node is Future<T> Function(Never))
-          : (type) => type.pass(<T>() => node is FutureOr<T> Function(Never));
-      return _fitting(returns, (hole) => hole, 0) ?? _raw;
-    }();
-    return TypeCodec._(
-      this,
-      decoder,
-      decoder.type.pass(<T>() => T),
-      (_) => true,
-    );
-  }
 
   /// [value] as JSON, checked to come back through [decoder] as a [type],
   /// one that [isType] takes.
@@ -279,60 +242,10 @@ final class Codecs {
     }
     return null;
   }
-
-  /// The decoder of the narrowest type made of JSON types and types with a
-  /// codec that [returns] says a function's result is a subtype of, put in
-  /// the hole of [context]; `null` when there is none narrower than
-  /// `Object?`.
-  _Decoder? _fitting(
-    bool Function(_TypeOf<Object?> type) returns,
-    _TypeOf<Object?> Function(_TypeOf<Object?> hole) context,
-    int depth,
-  ) {
-    bool fits(_TypeOf<Object?> hole) => returns(context(hole));
-    _Decoder? inner(_TypeOf<Object?> Function(_TypeOf<Object?> hole) around) =>
-        _fitting(returns, (hole) => context(around(hole)), depth + 1);
-
-    if (depth > _maxDepth || fits(const _TypeOf<Never>())) return null;
-    if (!fits(const _TypeOf<Object>())) {
-      if (fits(const _TypeOf<Null>())) {
-        return (type: const _TypeOf<Null>(), decode: _same);
-      }
-      final value = inner((hole) => hole.nullable);
-      return value == null ? null : _nullableOf(value);
-    }
-    _Codec<Object?>? narrowest;
-    for (final codec in _codecs) {
-      if (fits(codec.type) &&
-          (narrowest == null || codec.type.isSubtypeOf(narrowest.type))) {
-        narrowest = codec;
-      }
-    }
-    if (narrowest != null) {
-      return (type: narrowest.type, decode: narrowest.decode);
-    }
-    for (final type in _leaves.skip(1)) {
-      if (fits(type)) return (type: type, decode: _same);
-    }
-    if (fits(const _TypeOf<List<Object?>>())) {
-      return _listOf(inner((hole) => hole.list) ?? _raw);
-    }
-    if (fits(const _TypeOf<Map<String, Object?>>())) {
-      return _mapOf(inner((hole) => hole.map) ?? _raw);
-    }
-    if (fits(const _TypeOf<(Object?, Object?)>())) {
-      final first =
-          inner((hole) => _pair(hole, const _TypeOf<Object?>())) ?? _raw;
-      final second = inner((hole) => _pair(first.type, hole)) ?? _raw;
-      return _pairOf(first, second);
-    }
-    return (type: const _TypeOf<Object>(), decode: _same);
-  }
 }
 
 /// How the values of one type become JSON and come back: the type a
-/// workflow or an effect declares ([Codecs.of]), or the one a function
-/// returns ([Codecs.resultOf]).
+/// workflow, an effect or a graph's node declares ([Codecs.of]).
 final class TypeCodec {
   TypeCodec._(this._codecs, this._decoder, this.type, this._isType);
 
@@ -370,9 +283,6 @@ const _leaves = [
 ];
 
 Object? _same(Object? json) => json;
-
-/// JSON as it is, as `Object?`.
-const _Decoder _raw = (type: _TypeOf<Object?>(), decode: _same);
 
 /// Why a type has no decoder.
 const _noCodec =

@@ -349,24 +349,24 @@ final class Flow {
   }
 }
 
-/// Runs [node], a function of one parameter of the graph [graph], on [input]
-/// as an effect of the session of [flow] this is called in (graph design
-/// §8): named after the node, at the place the graph file gives the node, its
-/// result journaled as the type the function returns.
+/// Runs [node] of the graph named [graph] on [input] as an effect of the
+/// session of [flow] this is called in (graph node objects design §3): named
+/// after the node, at the place the graph file gives the node in that graph,
+/// its result journaled with the codec of the node's output type.
 ///
 /// Throws as [Flow.effect] does.
 Future<Object?> nodeEffect(
   Flow flow,
-  GraphShape graph,
-  ShapeNode node,
+  String graph,
+  Node<Object?, Object?> node,
   Object? input,
 ) {
   final session = flow._sessionHere(node.name);
   return session.effect<Object?>(
     node.name,
-    () => (node.node as dynamic)(input) as FutureOr<Object?>,
-    codec: flow._codecs.resultOf(node.node as Function),
-    place: () => session.placeOfNode(graph.name, node.name),
+    () => node.runWith(input),
+    codec: node.outputCodec(flow._codecs),
+    place: () => session.placeOfNode(graph, node.name),
   );
 }
 

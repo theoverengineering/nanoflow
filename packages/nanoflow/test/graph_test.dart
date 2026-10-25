@@ -1,154 +1,113 @@
-// Declaring a graph of nodes (graph design §3, §4, §7): the shape it is
-// built into, and what is not a graph.
+// Declaring a graph of nodes (graph node objects design §3, §4, §6): the
+// shape it is built into, what a call of a node or a graph gives, and what is
+// not a graph.
 
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow/src/graph.dart';
+import 'package:nanoflow/src/project.dart';
 import 'package:test/test.dart';
 
-Future<int> one(String s) async => 1;
+final a = node('a', (String s) async => s.length);
 
-Future<int> two(int n) async => n + 1;
+final b = node('b', (int n) async => '$n');
 
-Future<String> three(int n) async => '$n';
+final c = node('c', (String s) async => s);
 
-Future<int> wf(Flow f, int n) async => n;
+/// Another node named as [a].
+final otherA = node('a', (String s) async => 0);
 
-Future<String> both((String, int) pair) async => '${pair.$1}${pair.$2}';
-
-int four(int n) => n;
-
-Future<String> three2(String s) async => s;
-
-abstract final class Other {
-  static Future<int> one(String s) async => 2;
-}
-
-final sub = Graph<int, String>('sub', [Graph.start(three)]);
+Future<String> workflow(Flow f, String s) async => s;
 
 Matcher rejects(String part) => throwsA(
   isA<ArgumentError>().having((e) => '${e.message}', 'message', contains(part)),
 );
 
 void main() {
-  test('builds the shape: nodes by their names and kinds, starts, routes and '
-      'joins', () {
-    final g = Graph<String, String>('g', [
-      Graph.start(one).next({1: two}, otherwise: three),
-      Graph.part(two).next({three, wf}),
-      Graph.join([three, wf]).next(both),
+  test('builds the shape: starts, nodes by name, a route on each part', () {
+    final g = Graph<String, Object?>('g', [
+      Graph.start(a).next((x) => b(x)),
+      Graph.part(b).next((x) => null),
     ]);
     final shape = shapeOf(g);
     expect(shape.name, 'g');
+    expect([for (final n in shape.starts) n.name], ['a']);
+    expect([for (final n in shape.nodes) n.name], ['a', 'b']);
+    expect(shape.nodes[0].node, same(a));
     expect(
-      [for (final n in shape.nodes) n.name],
-      ['one', 'two', 'three', 'wf', 'both'],
+      shape.nodes[0].route!(3),
+      isA<Next>()
+          .having((n) => n.target, 'target', same(b))
+          .having((n) => n.input, 'input', 3),
     );
-    expect(
-      [for (final n in shape.nodes) n.kind],
-      [
-        NodeKind.function,
-        NodeKind.function,
-        NodeKind.function,
-        NodeKind.workflow,
-        NodeKind.function,
-      ],
-    );
-    expect(shape.starts.single.name, 'one');
-    final routes = shape.nodes[0].routes! as CaseRoutes;
-    expect(routes.cases.single.key, 1);
-    expect(routes.cases.single.targets.single.name, 'two');
-    expect(routes.otherwise.single.name, 'three');
-    final parallel = shape.nodes[1].routes! as AllRoutes;
-    expect([for (final n in parallel.targets) n.name], ['three', 'wf']);
-    expect(shape.nodes[2].routes, isNull);
-    final join = shape.nodes[2].joins.single;
-    expect(shape.nodes[3].joins.single, same(join));
-    expect([for (final n in join.sources) n.name], ['three', 'wf']);
-    expect(join.targets.single.name, 'both');
+    expect(shape.nodes[1].route!('3'), isNull);
   });
 
-  test('a chain goes on from each single node; the same function is one node, '
-      'which makes a loop', () {
-    final g = Graph<int, int>('g', [
-      Graph.start(two).next(four).next({1: two}),
+  test('a join knows its nodes, in order, and its route', () {
+    final g = Graph<String, Object?>('g', [
+      Graph.start(c).next((x) => {a(x), c(x)}),
+      Graph.join([a, c]).next(((int, String) both) => null),
     ]);
+    final [first, second] = shapeOf(g).nodes;
+    expect([first.name, second.name], ['c', 'a']);
+    final join = first.joins.single;
+    expect(second.joins.single, same(join));
+    expect([for (final n in join.sources) n.name], ['a', 'c']);
+    expect(join.route!((1, 'x')), isNull);
+    expect(second.route, isNull);
+  });
+
+  test('a node only a route reaches is not declared up front', () {
+    final g = Graph<String, Object?>('g', [Graph.start(a).next((x) => b(x))]);
     final shape = shapeOf(g);
-    expect([for (final n in shape.nodes) n.name], ['two', 'four']);
-    expect((shape.nodes[0].routes! as AllRoutes).targets.single.name, 'four');
+    expect([for (final n in shape.nodes) n.name], ['a']);
+    final reached = shape.nodeFor(b);
+    expect(shape.nodeFor(b), same(reached));
+    expect([for (final n in shape.nodes) n.name], ['a', 'b']);
     expect(
-      (shape.nodes[1].routes! as CaseRoutes).cases.single.targets.single,
-      same(shape.nodes[0]),
+      () => shape.nodeFor(otherA),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          'graph "g": two nodes are named a',
+        ),
+      ),
     );
   });
 
-  test('a graph is a node, named by its name', () {
-    final g = Graph<int, String>('g', [Graph.start(two).next(sub)]);
-    final node = shapeOf(g).nodes[1];
-    expect(node.name, 'sub');
-    expect(node.kind, NodeKind.graph);
-    expect(node.node, same(sub));
+  test('call gives a Next, it runs nothing', () {
+    var ran = 0;
+    final counted = node('counted', (String s) {
+      ran++;
+      return s;
+    });
+    final next = counted('in');
+    expect(next.target, same(counted));
+    expect(next.input, 'in');
+    final graph = Graph<String, String>('graph', [Graph.start(counted)]);
+    final nextGraph = graph('in');
+    expect(nextGraph.target, same(graph));
+    expect(nextGraph.input, 'in');
+    expect(ran, 0);
+    expect(counted.body('x'), 'x');
+    expect(ran, 1);
   });
 
-  test('the call of a graph is that graph as a node', () {
-    final g = Graph<int, String>('g', [
-      Graph.start(two).next(sub.call),
-      Graph.part(sub).next(three2),
-    ]);
-    final nodes = shapeOf(g).nodes;
-    expect([for (final n in nodes) n.name], ['two', 'sub', 'three2']);
-    expect(nodes[1].kind, NodeKind.graph);
-    expect(nodes[1].node, same(sub));
-  });
-
-  test('a graph is found by its call, which flow.start takes for it', () {
-    final g = Graph<String, int>('found', [Graph.start(one)]);
-    final Future<int> Function(Flow, String) call = g.call;
-    expect(graphOfCall(call), same(g));
-    expect(graphOfCall(one), isNull);
+  test('graphOfRun finds a graph by its run', () {
+    final g = Graph<String, Object?>('g', [Graph.start(a)]);
+    expect(graphOfRun(g.run), same(g));
+    expect(graphOfRun(workflow), isNull);
+    expect(workflowNameOf(g.run), 'g');
   });
 
   group('rejects', () {
-    test('a closure, and no more: its start is there', () {
-      expect(
-        () => Graph<String, int>('g', [Graph.start((String s) => 1)]),
-        throwsA(
-          isA<ArgumentError>().having(
-            (e) => '${e.message}',
-            'message',
-            allOf(
-              contains('a node is a top-level function or a static method'),
-              isNot(contains('no start')),
-            ),
-          ),
-        ),
-      );
-    });
-
-    test('what is not a node', () {
-      expect(
-        () => Graph<Object?, Object?>('g', [Graph.start(42)]),
-        rejects('42 is not a node'),
-      );
-      expect(
-        () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next({1: 'x'}),
-        ]),
-        rejects('x is not a node'),
-      );
-    });
-
-    test('two nodes of one name', () {
-      expect(
-        () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next({1: Other.one}),
-        ]),
-        rejects('two nodes are named one'),
-      );
-    });
-
     test('a graph without a start', () {
       expect(
         () => Graph<Object?, Object?>('g', []),
+        rejects('the graph has no start'),
+      );
+      expect(
+        () => Graph<Object?, Object?>('g', [Graph.part(a)]),
         rejects('the graph has no start'),
       );
     });
@@ -156,87 +115,68 @@ void main() {
     test('arrows of a node declared twice', () {
       expect(
         () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next(two),
-          Graph.part(one).next(three),
+          Graph.start(a).next((x) => b(x)),
+          Graph.part(a).next((x) => null),
         ]),
-        rejects('the arrows of one are declared twice'),
+        rejects('the arrows of a are declared twice'),
+      );
+      expect(
+        () => Graph<Object?, Object?>('g', [
+          Graph.start(a).next((x) => b(x)).next((x) => null),
+        ]),
+        rejects('the arrows of a are declared twice'),
+      );
+      expect(
+        () => Graph<Object?, Object?>('g', [
+          Graph.start(c).next((x) => {a(x), c(x)}),
+          Graph.join([a, c]).next((Object? x) => null).next((x) => null),
+        ]),
+        rejects('the arrows of the join of a, c are declared twice'),
       );
     });
 
-    test('a node that cannot be reached', () {
+    test('two nodes of one name', () {
       expect(
         () => Graph<Object?, Object?>('g', [
-          Graph.start(one),
-          Graph.part(two).next(three),
+          Graph.start(a).next((x) => b(x)),
+          Graph.part(otherA),
         ]),
-        rejects('two cannot be reached'),
-      );
-      expect(
-        () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next(two),
-          Graph.join([two, three]).next(four),
-        ]),
-        rejects('four cannot be reached'),
+        rejects('two nodes are named a'),
       );
     });
 
     test('a join of too few, too many or repeated nodes', () {
+      final nodes = [
+        for (var i = 0; i < 7; i++) node('n$i', (String s) async => s),
+      ];
+      for (final join in [
+        [c],
+        [c, c],
+        nodes,
+      ]) {
+        expect(
+          () => Graph<Object?, Object?>('g', [
+            Graph.start(c),
+            Graph.join(join).next((Object? x) => null),
+          ]),
+          rejects('a join takes 2 to 6 different nodes'),
+        );
+      }
       expect(
-        () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next(two),
-          Graph.join([two]).next(three),
+        Graph<Object?, Object?>('g', [
+          Graph.start(c),
+          Graph.join(nodes.take(6).toList()),
         ]),
-        rejects('a join takes 2 to 6 different nodes'),
-      );
-      expect(
-        () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next(two),
-          Graph.join([two, two]).next(three),
-        ]),
-        rejects('a join takes 2 to 6 different nodes'),
-      );
-    });
-
-    test('a map after a join', () {
-      expect(
-        () => Graph<Object?, Object?>('g', [
-          Graph.start(two).next({three, four}),
-          Graph.join([three, four]).next({1: two}),
-        ]),
-        rejects('a join leads to a node or a set'),
-      );
-    });
-
-    test('otherwise without a map', () {
-      expect(
-        () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next(two, otherwise: three),
-        ]),
-        rejects('otherwise goes with a map'),
-      );
-    });
-
-    test('next after a set or a map', () {
-      expect(
-        () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next({two}).next(three),
-        ]),
-        rejects('next after a set or a map'),
-      );
-    });
-
-    test('an empty set of targets', () {
-      expect(
-        () => Graph<Object?, Object?>('g', [Graph.start(one).next(<Object>{})]),
-        rejects('a set of targets is empty'),
+        isA<Graph<Object?, Object?>>(),
       );
     });
 
     test('several problems at once, each on its line', () {
       expect(
         () => Graph<Object?, Object?>('g', [
-          Graph.start(one).next(two, otherwise: three),
-          Graph.part(four),
+          Graph.part(a).next((x) => b(x)).next((x) => null),
+          Graph.part(otherA),
+          Graph.join([b]),
         ]),
         throwsA(
           isA<ArgumentError>().having(
@@ -244,8 +184,10 @@ void main() {
             'message',
             allOf(
               startsWith('graph "g":\n- '),
-              contains('\n- otherwise goes with a map'),
-              contains('\n- four cannot be reached'),
+              contains('\n- the arrows of a are declared twice'),
+              contains('\n- two nodes are named a'),
+              contains('\n- a join takes 2 to 6 different nodes'),
+              contains('\n- the graph has no start'),
             ),
           ),
         ),

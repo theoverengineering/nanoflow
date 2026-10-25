@@ -1,17 +1,20 @@
-// Runs a graph's shape in the session it is called in (graph design §5–§8).
+// Runs a graph's shape in the session it is called in (graph node objects
+// design §4–§7).
 //
 // The graph is run by code that awaits its nodes as a hand-written workflow
-// function would: a branch awaits a node — a node that is a function of one
-// parameter is an effect —, goes on in place while one node follows, and
-// starts the nodes that follow side by side with `Future.wait` when several
-// do. So the effects of a graph get keys and `after`s as those of a function
-// do: the same on every run, whatever the timing (spec §4.3).
+// function would: a branch awaits a node — a node is an effect, a graph runs
+// its own nodes —, calls its route on the output, goes on in place while one
+// node follows, and starts the nodes that follow side by side with
+// `Future.wait` when several do. So the effects of a graph get keys and
+// `after`s as those of a function do: the same on every run, whatever the
+// timing (spec §4.3); and a route runs again on resume, on the output from
+// the journal.
 //
 // A join goes on from the branch of its first node, once every other node of
-// it has given an output: its targets so run in the context of the first
-// node's effect, whichever node gave its output last. A join that never fills
-// up would hold its branch for ever; once no branch runs, nothing can fill it
-// any more, and the branches waiting at joins end.
+// it has given an output: its route so leads on in the context of the first
+// node's effect, whichever node gave its output last. A join that never
+// fills up would hold its branch for ever; once no branch runs, nothing can
+// fill it any more, and the branches waiting at joins end.
 
 import 'dart:async';
 
@@ -21,7 +24,7 @@ import 'graph.dart';
 /// Runs [shape] with [input] in the session of [flow] this is called in;
 /// gives the output that went nowhere last, `null` when none did.
 ///
-/// Throws what a node threw, once every branch has ended.
+/// Throws what a node or a route threw, once every branch has ended.
 Future<Object?> runGraph(GraphShape shape, Flow flow, Object? input) =>
     _Run(shape, flow).run(input);
 
@@ -58,7 +61,7 @@ final class _Run {
       var value = input;
       while (true) {
         final output = await _call(node, value);
-        final next = _routes(node, output);
+        final next = _next(node.name, node.route, output);
         final leads = <_JoinState>[];
         for (final join in node.joins) {
           final state = _joins[join] ??= _JoinState(this, join);
@@ -68,7 +71,11 @@ final class _Run {
             state.deposit(node, output);
           }
         }
-        if (next.isEmpty && node.joins.isEmpty) _result = (value: output);
+        // A node of a join without arrows of its own gave its output to the
+        // join: it is no end of the graph.
+        if (next.isEmpty && (node.route != null || node.joins.isEmpty)) {
+          _result = (value: output);
+        }
         if (leads.isEmpty && next.length == 1) {
           (node, value) = next.single;
           continue;
@@ -88,53 +95,62 @@ final class _Run {
     }
   }
 
-  /// Runs [node] on [value]: an effect for a function of one parameter, a
-  /// call for a workflow function or a graph.
-  Future<Object?> _call(ShapeNode node, Object? value) => switch (node.kind) {
-    NodeKind.function => nodeEffect(_flow, _shape, node, value),
-    NodeKind.workflow || NodeKind.graph => switch ((node.node as dynamic)(
+  /// Runs the node of [at] on [value]: an effect for a node, the graph's own
+  /// nodes for a graph.
+  Future<Object?> _call(ShapeNode at, Object? value) => switch (at.node) {
+    final Node<Object?, Object?> node => nodeEffect(
       _flow,
+      _shape.name,
+      node,
       value,
-    )) {
-      final Future<Object?> future => future,
-      final other => Future.value(other),
-    },
+    ),
+    final Graph<Object?, Object?> graph => graph.runWith(_flow, value),
   };
 
-  /// Where [output], given by [node], goes, and what each target gets.
-  List<(ShapeNode, Object?)> _routes(ShapeNode node, Object? output) {
-    switch (node.routes) {
-      case null:
-        return const [];
-      case AllRoutes(:final targets):
-        return [for (final target in targets) (target, output)];
-      case CaseRoutes(:final cases, :final otherwise):
-        final (subject, payload) = switch (output) {
-          (final key, final payload) => (key, payload),
-          Exit(:final value) => (output, value),
-          _ => (output, output),
-        };
-        for (final (:key, :targets) in cases) {
-          if (key is Type ? subject.runtimeType == key : subject == key) {
-            return [for (final target in targets) (target, payload)];
-          }
-        }
-        return [for (final target in otherwise) (target, output)];
-    }
+  /// The nodes that follow [output] of [from], each with its input, as
+  /// [route] gives them: none when there is no route, or it gives `null` or
+  /// an empty set.
+  ///
+  /// Throws a [StateError] when the route gives anything else than a [Next],
+  /// a set of them or `null`, or a node whose name another node of the graph
+  /// has; and what the route throws.
+  List<(ShapeNode, Object?)> _next(
+    String from,
+    Object? Function(Object? output)? route,
+    Object? output,
+  ) {
+    if (route == null) return const [];
+    final given = route(output);
+    return switch (given) {
+      null => const [],
+      final Next next => [(_shape.nodeFor(next.target), next.input)],
+      final Set<Object?> set when set.every((next) => next is Next) => [
+        for (final next in set.whereType<Next>())
+          (_shape.nodeFor(next.target), next.input),
+      ],
+      _ => throw StateError(
+        'the route of $from gave $given: a route gives a Next, a set of them '
+        'or null',
+      ),
+    };
   }
 
   /// Goes on from [state] after its first node gave [output]: once every other
-  /// node of the join has given an output, runs its targets on the record of
-  /// them; ends when the join can no longer fill up.
+  /// node of the join has given an output, its route leads on from the record
+  /// of them; ends when the join can no longer fill up.
   Future<void> _lead(_JoinState state, Object? output) async {
     final outputs = await state.arrive(output);
     if (outputs == null) return;
-    final started = [
-      for (final target in state.join.targets) _branch(target, outputs),
-    ];
-    // Counted as running from when it filled up, so that no other branch
-    // ending in between gives up the joins this one may fill.
-    _ran();
+    final List<Future<void>> started;
+    try {
+      final next = _next(state.join.name, state.join.route, outputs);
+      if (next.isEmpty) _result = (value: outputs);
+      started = [for (final (node, input) in next) _branch(node, input)];
+    } finally {
+      // Counted as running from when it filled up, so that no other branch
+      // ending in between gives up the joins this one may fill.
+      _ran();
+    }
     await Future.wait(started);
   }
 
