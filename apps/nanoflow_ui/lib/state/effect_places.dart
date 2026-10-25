@@ -45,6 +45,7 @@ final class EffectPlaces {
 
   final Map<(String, String), Set<EffectNode>> _of = {};
   final Map<GraphNode, Set<EffectNode>> _within = Map.identity();
+  final Map<String, Set<EffectNode>> _withinFunction = {};
 
   /// The effect nodes [effect] is on: of those at its place, the ones of its
   /// name, or all of them when none is; none for no effect, an effect without a
@@ -122,6 +123,24 @@ final class EffectPlaces {
   bool isIn(Effect? effect, GraphNode node) {
     final at = of(effect);
     return at.isNotEmpty && within(node).any(at.contains);
+  }
+
+  /// The effect nodes of the body of the function [id] and of all it
+  /// reaches: what a call of it alone holds, where [within] a call holds
+  /// every function it may go to; none for a function the graph does not
+  /// have.
+  Set<EffectNode> withinFunction(String id) =>
+      _withinFunction[id] ??= switch (_functions[id]) {
+        final function? => _inBody(function.body, {id}),
+        null => const {},
+      };
+
+  /// Whether [effect] is in the body of the function [id] or in what it
+  /// calls: on a node [withinFunction] holds. The effects are found among
+  /// those of the workflow, so a function it does not reach holds none.
+  bool isInFunction(Effect? effect, String id) {
+    final at = of(effect);
+    return at.isNotEmpty && withinFunction(id).any(at.contains);
   }
 
   /// The effect nodes in [body] and all it reaches; a function in [entered]

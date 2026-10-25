@@ -26,8 +26,10 @@ class FrameToggle extends StatelessWidget {
   /// The key of the `−` on the frame of the node [id] of the canvas.
   static Key collapseKeyOf(String id) => ValueKey(('collapse', id));
 
-  static const _color = Color(0xFF8E8E96);
-  static const _hover = Color(0xFFD6D6DC);
+  /// The colour of the sign, and under the pointer: the buttons on a tile
+  /// share them.
+  static const color = Color(0xFF8E8E96);
+  static const hoverColor = Color(0xFFD6D6DC);
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -44,7 +46,7 @@ class FrameToggle extends StatelessWidget {
               fontFamily: AppText.sans,
               fontSize: 15,
               height: 1,
-              color: hovered ? _hover : _color,
+              color: hovered ? hoverColor : color,
             ),
             textScaler: TextScaler.noScaling,
           ),

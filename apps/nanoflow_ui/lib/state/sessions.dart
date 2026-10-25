@@ -23,6 +23,7 @@ final class SessionSummary {
     required this.firstLine,
     required this.code,
     required this.changedOnResume,
+    required this.from,
     required List<String> problems,
   }) : problems = List.unmodifiable(problems);
 
@@ -67,6 +68,14 @@ final class SessionSummary {
   /// [resumedOnChangedCode] on the card and the session bar when the
   /// session [changedOnResume]; `null` when not.
   String? get resumedNote => changedOnResume ? resumedOnChangedCode : null;
+
+  /// The workflow of a parent's session — of a workflow that calls the
+  /// called graph opened (open-as-graph design §4); `null` for any other
+  /// session.
+  final String? from;
+
+  /// `from chain` on the card of a parent's session; `null` for any other.
+  String? get fromText => from == null ? null : 'from $from';
 
   /// Why the session's journal was read incompletely
   /// (`SessionData.problems`); empty when it was read whole.
@@ -133,13 +142,15 @@ final class SessionSummary {
   };
 }
 
-/// The summary of [session] at [now], [code] the check of its code; `null`
-/// while its `session-started` has not been read: a session has no start
-/// time before that.
+/// The summary of [session] at [now], [code] the check of its code, [from]
+/// the workflow of a parent's session (`SessionSummary.from`); `null` while
+/// its `session-started` has not been read: a session has no start time
+/// before that.
 SessionSummary? summarize(
   SessionData session,
   DateTime now, {
   CodeCheck? code,
+  String? from,
 }) {
   final state = session.state;
   final start = state.startedAt;
@@ -162,6 +173,7 @@ SessionSummary? summarize(
       ),
       _ => false,
     },
+    from: from,
     problems: session.problems,
   );
 }
@@ -193,14 +205,21 @@ String noSessionsHint(String graphFile) =>
     'they are read from runs/ next to ${p.basename(graphFile)}.';
 
 /// The summaries of [sessions] that have started, newest first; [codeOf]
-/// checks the code of each.
+/// checks the code of each, [fromOf] tells the workflow of a parent's
+/// session (`SessionSummary.from`).
 List<SessionSummary> sessionSummaries(
   Iterable<SessionData> sessions,
   DateTime now, {
   CodeCheck? Function(SessionData session)? codeOf,
+  String? Function(SessionData session)? fromOf,
 }) => [
   for (final session in sessionsNewestFirst(sessions))
-    summarize(session, now, code: codeOf?.call(session))!,
+    summarize(
+      session,
+      now,
+      code: codeOf?.call(session),
+      from: fromOf?.call(session),
+    )!,
 ];
 
 /// Those of [sessions] that have started, newest first (ui-spec «Сессии»).
@@ -218,9 +237,16 @@ List<SessionData> sessionsNewestFirst(Iterable<SessionData> sessions) {
 
 /// A workflow whose sessions the screen can show: one of the graph file's,
 /// or one that sessions ran which the graph file does not have — run
-/// before the graph file was written again, or renamed or removed since.
+/// before the graph file was written again, or renamed or removed since;
+/// or a function the workflows call, opened as the main graph (open-as-graph
+/// design §3).
 final class WorkflowChoice {
-  const WorkflowChoice._(this.id, this.name, this.function);
+  const WorkflowChoice._(
+    this.id,
+    this.name,
+    this.function, {
+    this.called = false,
+  });
 
   /// Its function's id in the graph file; for a workflow the graph file
   /// does not have, its name.
@@ -233,6 +259,10 @@ final class WorkflowChoice {
   final GraphFunction? function;
 
   bool get inGraphFile => function != null;
+
+  /// Whether it is a function the workflows call, no workflow of the graph
+  /// file, opened as the main graph: listed first while it is open.
+  final bool called;
 }
 
 /// The id the sessions of the workflow [name] are listed under: its
@@ -241,11 +271,17 @@ String workflowIdOf(GraphFile graph, String name) =>
     graph.workflowNamed(name)?.id ?? name;
 
 /// The workflows of [graph] in its order, then by name those [sessions] ran
-/// that it does not have.
+/// that it does not have; first the function [called] of [graph] opened as
+/// the main graph, unless it is a workflow of [graph] — listed as one — or
+/// [graph] does not have it.
 List<WorkflowChoice> workflowChoices(
   GraphFile graph,
-  Iterable<SessionData> sessions,
-) => [
+  Iterable<SessionData> sessions, {
+  String? called,
+}) => [
+  if (graph.functions[called] case final function?
+      when !graph.workflows.contains(called))
+    WorkflowChoice._(function.id, function.name, function, called: true),
   for (final id in graph.workflows)
     if (graph.functions[id] case final function?)
       WorkflowChoice._(id, function.name, function),

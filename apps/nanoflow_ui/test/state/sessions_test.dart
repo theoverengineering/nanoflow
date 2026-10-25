@@ -95,6 +95,21 @@ line 5 is not an event: {
 and 2 more''');
     });
 
+    test('of a workflow that calls the called graph opened says from which '
+        '(open-as-graph design §4)', () {
+      final session = running().data;
+      expect(summarize(session, now)!.fromText, isNull);
+      expect(summarize(session, now, from: 'chain')!.fromText, 'from chain');
+      expect(
+        sessionSummaries(
+          [session],
+          now,
+          fromOf: (s) => s.session.workflow,
+        ).single.fromText,
+        'from review',
+      );
+    });
+
     test('starts at its session-started', () {
       final session = Journal('a1b2-session', startedAt: 5)..resume(30);
       expect(summarize(session.data, now)!.startedAt, at(5));
@@ -336,6 +351,41 @@ and 2 more''');
       );
       expect(choices.first.function, reviewGraphFile().functions.values.first);
       expect(choices.last.function, isNull);
+    });
+
+    test('have a called graph opened first, marked so; a workflow opened as '
+        'one stays where it is', () {
+      final graph = GraphFile.fromJson({
+        ...graphFileJson(),
+        'workflows': ['lib/review.dart#review'],
+      });
+      final choices = workflowChoices(
+        graph,
+        sessions.take(1),
+        called: 'lib/release.dart#release',
+      );
+      expect(
+        [for (final w in choices) (w.id, w.name, w.called, w.inGraphFile)],
+        [
+          ('lib/release.dart#release', 'release', true, true),
+          ('lib/review.dart#review', 'review', false, true),
+        ],
+      );
+      expect(
+        [
+          for (final w in workflowChoices(
+            reviewGraphFile(),
+            sessions.take(1),
+            called: 'lib/release.dart#release',
+          ))
+            (w.name, w.called),
+        ],
+        [('review', false), ('release', false)],
+      );
+      expect(
+        workflowChoices(graph, sessions.take(1), called: 'lib/gone.dart#gone'),
+        hasLength(1),
+      );
     });
 
     test('count the sessions of workflows the graph file does not have', () {

@@ -25,7 +25,8 @@ import 'layout_geometry.dart';
 import 'node_tile.dart';
 
 /// What a double click on [node], a node of the body at [path], opens, at
-/// [position] on the screen.
+/// [position] on the screen; or its ↗, opening its function as the main
+/// graph.
 typedef OpenNode = void Function(
   List<Opened> path,
   GraphNode node,
@@ -115,8 +116,9 @@ bool sameExpanded(
 /// [layers]: the body drawn, and in each frame drawn in place the body of
 /// its call or copies, with what [view] shows of the session on them. A
 /// node in a frame works as one on the level drawn — a click, a double
-/// click ([onOpenNode], [onOpenEffect]), its `+` ([onExpandNode]) — and its
-/// id on the canvas is the path of ids to it, `5/2`.
+/// click ([onOpenNode], [onOpenEffect]), its `+` ([onExpandNode]), a call's
+/// ↗ ([onOpenAsGraph]) — and its id on the canvas is the path of ids to it,
+/// `5/2`.
 ///
 /// A node about to be expanded or collapsed is [anchor]ed, so that it stays
 /// where it is on the screen; [unanchor] lets go of it when it is not.
@@ -130,6 +132,7 @@ final class BodyDrawer {
     this.onOpenNode,
     this.onOpenEffect,
     this.onExpandNode,
+    this.onOpenAsGraph,
   });
 
   final GraphModel model;
@@ -140,6 +143,7 @@ final class BodyDrawer {
   final OpenNode? onOpenNode;
   final OpenEffect? onOpenEffect;
   final ExpandNode? onExpandNode;
+  final OpenNode? onOpenAsGraph;
 
   /// What is drawn, bottom to top: the frames drawn in place, the ring of
   /// the selected effect's node, the arrows and exits, the tiles. The
@@ -218,6 +222,7 @@ final class BodyDrawer {
                 : () => model.clickNode(node.id, path: path),
             onDoubleTap: _opener(node, path),
             onExpand: _expander(node, bodyPath, id),
+            onOpenAsGraph: _graphOpener(node, bodyPath),
             doc: _docOf(node.node),
           ),
         ),
@@ -322,5 +327,17 @@ final class BodyDrawer {
       anchor(id);
       if (!await expand(path, graphNode, position)) unanchor();
     };
+  }
+
+  /// What the ↗ of [node], a node of the body at [path], does: opens the
+  /// function of a call as the main graph, when the call opens any; none
+  /// for any other node (open-as-graph design §2).
+  ValueChanged<Offset>? _graphOpener(layout.NodeBox node, List<Opened> path) {
+    final graphNode = node.node;
+    final open = onOpenAsGraph;
+    if (graphNode is! CallNode || open == null) return null;
+    final functions = canvas.file?.functions ?? const {};
+    if (openings(graphNode, functions).isEmpty) return null;
+    return (position) => open(path, graphNode, position);
   }
 }

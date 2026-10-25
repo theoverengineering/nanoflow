@@ -378,6 +378,258 @@ void main() {
     });
   });
 
+  group('a called graph opened as the main graph (open-as-graph design)', () {
+    // chain calls carry from implement, and task's body is one call of it.
+    final chain = loadGraphFile('chain');
+    const carry = 'lib/task_graph.dart#carry';
+    const lead = Opened('1', functionId: 'lib/chain.dart#lead');
+    const implement = Opened('9', functionId: 'lib/chain.dart#implement');
+    const work = Opened('3', functionId: 'lib/task_graph.dart#work');
+
+    List<String> titles() => [
+      for (final level in model.canvas.levels) level.title,
+    ];
+
+    List<String> names() => [for (final w in model.workflows) w.name];
+
+    /// The sessions listed, newest first, with whose they are.
+    List<(String, String?)> listed() => [
+      for (final s in model.sessions(at(746))) (s.id, s.fromText),
+    ];
+
+    /// Sessions on chain's graph: chain c1c1 ran carry — status in admit,
+    /// coder in work —, chain c2c2 did not, and task t1t1 did.
+    List<Change> sessions() => changesOf([
+      Journal('c1c1-session', workflow: 'chain', graph: chain.toJson())
+        ..effect('workspace', 1, end: 2, place: 'lib/chain.dart:36')
+        ..effect('next task', 2, end: 3, place: 'lib/chain.dart:570')
+        ..effect('status', 3, end: 4, place: 'lib/task_graph.dart:66')
+        ..effect('coder', 4, end: 5, place: 'lib/task_graph.dart:139')
+        ..effect('next task', 5, end: 6, place: 'lib/chain.dart:570'),
+      Journal(
+        'c2c2-session',
+        workflow: 'chain',
+        graph: chain.toJson(),
+        startedAt: 10,
+      )..effect('workspace', 11, end: 12, place: 'lib/chain.dart:36'),
+      Journal(
+        't1t1-session',
+        workflow: 'task',
+        graph: chain.toJson(),
+        startedAt: 20,
+      )..effect('status', 21, end: 22, place: 'lib/task_graph.dart:66'),
+    ]);
+
+    /// The release fixture with publish, which release calls, a workflow
+    /// too.
+    final both = GraphFile.fromJson({
+      ...loadGraphFile('release').toJson(),
+      'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
+    });
+    const publish = 'lib/publish.dart#publish';
+
+    /// Sessions on [both]: publish p1p1, release r1r1 that ran publish,
+    /// release r2r2 that did not.
+    List<Change> publishSessions() => changesOf([
+      Journal('p1p1-session', workflow: 'publish', graph: both.toJson())
+        ..effect('upload', 1, end: 2, place: 'lib/publish.dart:12'),
+      Journal(
+          'r1r1-session',
+          workflow: 'release',
+          graph: both.toJson(),
+          startedAt: 10,
+        )
+        ..effect('plan', 11, end: 12, place: 'lib/release.dart:16')
+        ..effect('upload', 12, end: 13, place: 'lib/publish.dart:12'),
+      Journal(
+        'r2r2-session',
+        workflow: 'release',
+        graph: both.toJson(),
+        startedAt: 20,
+      )..effect('plan', 21, end: 22, place: 'lib/release.dart:16'),
+    ]);
+
+    test('is drawn from its top, its name the first crumb, listed first '
+        'among the workflows and drawn; the levels opened and the nodes '
+        'expanded go', () {
+      run((async) {
+        graphFile.graph = chain;
+        model.open(lead);
+        model.open(implement);
+        notified = 0;
+        model.openAsGraph(carry);
+        expect(notified, greaterThan(0));
+        expect(model.workflow!.id, carry);
+        expect(model.workflow!.called, isTrue);
+        expect(model.calledGraph!.id, carry);
+        expect(names(), ['carry', 'chain', 'task']);
+        expect(titles(), ['carry']);
+        expect(model.canvas.body, chain.functions[carry]!.body);
+
+        model.open(work);
+        expect(titles(), ['carry', 'work()']);
+        model.openLevel(0);
+        model.expandNode(const [], work);
+        expect(model.canvas.frames, hasLength(1));
+        model.selectWorkflow('lib/chain.dart#chain');
+        expect(model.calledGraph, isNull);
+        model.openAsGraph(carry);
+        expect(model.canvas.frames, isEmpty);
+      });
+    });
+
+    test('lists every session it ran in, newest first: those of workflows '
+        'that call it in which an effect is in its body, saying from '
+        'which, and not those in which none is', () {
+      run((async) {
+        graphFile.graph = chain;
+        give(async, sessions());
+        model.openAsGraph(carry);
+        expect(listed(), [
+          ('t1t1-session', 'from task'),
+          ('c1c1-session', 'from chain'),
+        ]);
+      });
+    });
+
+    test('a workflow opened as a called graph lists its own sessions too, '
+        'which say nothing of whose they are, and stays where it is among '
+        'the workflows', () {
+      run((async) {
+        graphFile.graph = both;
+        give(async, publishSessions());
+        model.openAsGraph(publish);
+        expect(names(), ['release', 'publish']);
+        expect(model.workflow!.id, publish);
+        expect(listed(), [
+          ('r1r1-session', 'from release'),
+          ('p1p1-session', null),
+        ]);
+        model.showSession('p1p1-session');
+        expect(model.canvas.workflow!.id, publish);
+        expect(model.canvas.places.isWorkflow(model.canvas.body!), isTrue);
+
+        // Chosen in the workflow picker, it is the workflow again.
+        model.selectWorkflow(publish);
+        expect(listed(), [('p1p1-session', null)]);
+        expect(model.workflow!.called, isFalse);
+        expect(model.selection.sessionId, 'p1p1-session');
+      });
+    });
+
+    test('in a parent\'s session: its body from the session\'s snapshot, '
+        'the session\'s effects on it found by the places of the session\'s '
+        'workflow — a called body —, Logs listing those in it alone, the '
+        'last of them selected', () {
+      run((async) {
+        graphFile.graph = chain;
+        give(async, sessions());
+        model.openAsGraph(carry);
+        model.showSession('c1c1-session');
+        final canvas = model.canvas;
+        expect(canvas.ofSession, isTrue);
+        expect(canvas.calledGraph, carry);
+        expect(canvas.workflow!.id, carry);
+        expect(canvas.body, same(canvas.file!.functions[carry]!.body));
+        expect(canvas.file, isNot(same(chain)));
+        expect(canvas.places.isCalled(canvas.body!), isTrue);
+        expect(canvas.notes, [
+          const GraphNote(sessionRanOnOtherCode, text: otherCodeDetail),
+        ]);
+        expect(model.selection.effectId, 'c1c1-coder-3');
+
+        final view = model.sessionView(at(746))!;
+        expect(view.marks!.of('1')!.state, NodeState.visited);
+        expect(view.marks!.of('3')!.state, NodeState.visited);
+        expect(view.marks!.of('5')!.state, NodeState.notVisited);
+        expect(view.logs.header.text, '2 effects');
+        expect(
+          [for (final row in view.logs.rows.whereType<EffectRow>()) row.name],
+          ['status', 'coder'],
+        );
+      });
+    });
+
+    test('Current graph draws it from the graph file', () {
+      run((async) {
+        graphFile.graph = chain;
+        give(async, sessions());
+        model.openAsGraph(carry);
+        model.selection.showCurrentGraph();
+        expect(model.canvas.ofSession, isFalse);
+        expect(model.canvas.calledGraph, isNull);
+        expect(model.canvas.body, same(chain.functions[carry]!.body));
+      });
+    });
+
+    test('keeps the selected session while it ran in it; another gives way '
+        'as on another workflow', () {
+      run((async) {
+        graphFile.graph = chain;
+        give(async, sessions());
+        model.showSession('c1c1-session');
+        model.openAsGraph(carry);
+        expect(model.selection.sessionId, 'c1c1-session');
+
+        model.selectWorkflow('lib/chain.dart#chain');
+        expect(model.selection.sessionId, 'c1c1-session');
+        model.showSession('c2c2-session');
+        model.openAsGraph(carry);
+        expect(model.selection.sessionId, 't1t1-session');
+      });
+    });
+
+    test('goes once a workflow is chosen: it leaves the list; chosen itself, '
+        'it is drawn from its top', () {
+      run((async) {
+        graphFile.graph = chain;
+        give(async, sessions());
+        model.openAsGraph(carry);
+        model.open(work);
+        model.selectWorkflow(carry);
+        expect(model.workflow!.id, carry);
+        expect(titles(), ['carry']);
+
+        model.selectWorkflow('lib/task_graph.dart#task');
+        expect(model.workflow!.name, 'task');
+        expect(names(), ['chain', 'task']);
+        expect(titles(), ['task']);
+        expect(listed(), [('t1t1-session', null)]);
+      });
+    });
+
+    test('lists a parent\'s session resumed with a snapshot once the snapshot '
+        'is read', () {
+      run((async) {
+        graphFile.graph = chain;
+        documents['snapshot'] = chain.toJson();
+        give(
+          async,
+          changesOf([
+            Journal('c1c1-session', workflow: 'chain', graph: chain.toJson())
+              ..resume(1, graphId: 'snapshot')
+              ..effect('status', 3, end: 4, place: 'lib/task_graph.dart:66'),
+          ]),
+        );
+        model.selection.showCurrentGraph();
+        model.openAsGraph(carry);
+        expect(listed(), isEmpty);
+        async.elapse(const Duration(milliseconds: 100));
+        expect(read, contains('snapshot'));
+        expect(listed(), [('c1c1-session', 'from chain')]);
+      });
+    });
+
+    test('opens nothing the graph file does not have', () {
+      run((async) {
+        graphFile.graph = chain;
+        model.openAsGraph('lib/task_graph.dart#gone');
+        expect(model.workflow!.name, 'chain');
+        expect(names(), ['chain', 'task']);
+      });
+    });
+  });
+
   test('without sessions selects Current graph', () {
     run((async) {
       async.elapse(const Duration(milliseconds: 100));

@@ -324,8 +324,9 @@ RelativeRect _below(BuildContext context) {
 }
 
 /// The chevron of the workflow's crumb: a click lists the workflows to
-/// choose from, those of the graph file and then those only sessions ran,
-/// marked; the workflow chosen is drawn from its top level.
+/// choose from — the called graph open first, then those of the graph file
+/// and those only sessions ran, marked —, the one drawn in the accent; the
+/// workflow chosen is drawn from its top level, and the called graph goes.
 class _WorkflowPicker extends StatelessWidget {
   const _WorkflowPicker({required this.model});
 

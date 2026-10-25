@@ -95,7 +95,8 @@ class SessionsColumn extends StatelessWidget {
 
 /// A session in the column: the day and time it started and its short id;
 /// its status with the time — `Interrupted`, why in a tooltip, when its
-/// process is gone — and how many effects it has; under them, `1 failed`
+/// process is gone — and how many effects it has; under them, `from chain`
+/// for a parent's session of the called graph open; then `1 failed`
 /// while it runs with failed effects, `other code` or `not checked` when its
 /// code is not its graph's, `resumed on changed code`, and `Log read
 /// incompletely` when its journal was read incompletely, why in a tooltip.
@@ -130,6 +131,7 @@ class _SessionCard extends StatelessWidget {
     status: summary.statusText,
     statusWhy: summary.statusWhy,
     statusStyle: AppText.sessionStatus.copyWith(color: summary.statusTextColor),
+    from: summary.fromText,
     badge: summary.failedBadge,
     note: summary.codeNote,
     noteMuted: summary.code == CodeCheck.notChecked,
@@ -159,7 +161,8 @@ class _CurrentGraphItem extends StatelessWidget {
 
 /// A card of the column, a status [bar] on its left edge, the accent when
 /// [selected]: the [title] and the [id] on its first line; the [status],
-/// [statusWhy] in its tooltip, and the [end] on its second; a red [badge],
+/// [statusWhy] in its tooltip, and the [end] on its second; [from], muted,
+/// on its third; a red [badge],
 /// an amber [note] — muted when [noteMuted] — the amber [resumedNote] and
 /// the `Log read incompletely` mark, [incompleteWhy] in its tooltip, on a
 /// line of their own, so that the status keeps its room; a mark goes under
@@ -175,6 +178,7 @@ class _Item extends StatelessWidget {
     required this.statusStyle,
     this.statusWhy,
     this.id,
+    this.from,
     this.badge,
     this.note,
     this.noteMuted = false,
@@ -194,6 +198,7 @@ class _Item extends StatelessWidget {
   final String status;
   final TextStyle statusStyle;
   final String? statusWhy;
+  final String? from;
   final String? badge;
   final String? note;
   final bool noteMuted;
@@ -258,6 +263,7 @@ class _Item extends StatelessWidget {
                   ),
                   null => _text(status, statusStyle),
                 }, end),
+                if (from case final text?) _text(text, AppText.hint),
                 if (badge != null ||
                     note != null ||
                     resumedNote != null ||

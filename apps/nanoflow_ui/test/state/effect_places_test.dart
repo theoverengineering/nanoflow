@@ -245,6 +245,31 @@ void main() {
       expect(places.isIn(effectAt(null), nodeOf(body, '1')), isFalse);
       expect(places.isIn(null, nodeOf(body, '1')), isFalse);
     });
+
+    test('isInFunction: whether an effect is in the body of a function the '
+        'workflow reaches, or in what it calls', () {
+      const publish = 'lib/copies.dart#publish';
+      final places = effectPlacesOf('viaCall');
+      expect(places.isInFunction(effectAt(copiesAt(20)), publish), isTrue);
+      expect(
+        places.isInFunction(effectAt(copiesAt(17), 'announce'), publish),
+        isFalse,
+      );
+      expect(places.isInFunction(effectAt(null), publish), isFalse);
+      expect(places.isInFunction(null, publish), isFalse);
+      expect(
+        places.isInFunction(effectAt(copiesAt(20)), 'lib/copies.dart#gone'),
+        isFalse,
+      );
+      // inPlace does not call publish: none of its effects are in it.
+      expect(
+        effectPlacesOf('inPlace').isInFunction(effectAt(copiesAt(20)), publish),
+        isFalse,
+      );
+      expect(places.withinFunction(publish), {
+        ...file.functions[publish]!.body.nodes.whereType<EffectNode>(),
+      });
+    });
   });
 
   test('effectsNotOnGraph: the effects without a place or at no node, in '

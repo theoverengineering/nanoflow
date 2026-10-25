@@ -8,6 +8,7 @@ library;
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'body_path.dart';
+import 'called_graph.dart';
 import 'copies.dart';
 import 'effect_details.dart';
 import 'effect_places.dart';
@@ -167,6 +168,10 @@ final class SessionView {
   /// body would opened, the copies chosen down to it [copiesIn] the path
   /// to it. `Logs` follow the frame at [follow], as they would its body
   /// opened; the level drawn without it.
+  ///
+  /// [calledGraph] is the id of the called graph opened when [levels] are
+  /// of it in a parent's session (`CanvasGraph.calledGraph`): `Logs` list
+  /// the effects in it alone, without the session's end.
   factory SessionView.of(
     SessionData session, {
     required DateTime now,
@@ -175,6 +180,7 @@ final class SessionView {
     String? effectId,
     List<BodyLevel> levels = const [],
     EffectPlaces? places,
+    String? calledGraph,
     Map<int, String> copies = const {},
     List<InPlaceFrame> frames = const [],
     Map<int, String> Function(List<Opened> path) copiesIn = _noCopies,
@@ -221,6 +227,9 @@ final class SessionView {
     final followed = follow == null ? null : scopes[levelKey(follow)];
     final logs = followed?.shown ?? shown;
     final copy = logs.copy;
+    final listed = calledGraph == null
+        ? logs.effects
+        : effectsIn(session, logs.effects, places, calledGraph);
     // The title names the copies chosen down to the level Logs show; those
     // chosen in frames in it, the rows do.
     final depth = (followed?.frame.levels.length ?? levels.length) - 1;
@@ -239,14 +248,14 @@ final class SessionView {
       places: places,
       shown: shown,
       logs: (
-        header: LogsHeader(logs.effects.length, copy: copy),
+        header: LogsHeader(listed.length, copy: copy),
         rows: logRows(
           session,
-          effects: logs.effects,
+          effects: listed,
           places: places,
           now: now,
           copyOf: tagOf,
-          end: copy == null,
+          end: copy == null && calledGraph == null,
         ),
         scale: timeScale(session, now),
       ),

@@ -21,6 +21,7 @@ import '../../widgets/icons.dart';
 import 'canvas_style.dart';
 import 'frame_toggle.dart';
 import 'layout_geometry.dart';
+import 'open_as_graph_button.dart';
 import 'tile_marks.dart';
 
 /// A node on the canvas (docs/ui-spec.md «Граф», spec §9 «Граф», «Эффекты на
@@ -42,7 +43,10 @@ import 'tile_marks.dart';
 /// is not the tile's: the canvas draws it under the arrows ([ringOf]).
 ///
 /// A call or copies that can be expanded in place has `+` in its tile's
-/// top right corner: [onExpand], told where on the screen (decision 6).
+/// top right corner: [onExpand], told where on the screen (decision 6). A
+/// call whose function can be opened as the main graph has ↗ left of it —
+/// in the corner without `+`: [onOpenAsGraph], told the same (open-as-graph
+/// design §2).
 ///
 /// An effect or a call with a [doc] shows it when the pointer rests on the
 /// tile (node docs design §4.2).
@@ -64,6 +68,7 @@ class NodeTile extends StatelessWidget {
     this.onTap,
     this.onDoubleTap,
     this.onExpand,
+    this.onOpenAsGraph,
     this.doc,
   }) : id = id ?? node.id,
        super(key: keyOf(id ?? node.id));
@@ -104,6 +109,10 @@ class NodeTile extends StatelessWidget {
   /// Expands the call or copies in place; `null` for a node that does not.
   final ValueChanged<Offset>? onExpand;
 
+  /// Opens the call's function as the main graph; `null` for a node that
+  /// does not.
+  final ValueChanged<Offset>? onOpenAsGraph;
+
   /// What the node's doc says, or the docs of the functions a call goes to,
   /// in a tooltip over the tile; `null` for none.
   final InlineSpan? doc;
@@ -127,8 +136,8 @@ class NodeTile extends StatelessWidget {
   /// How far in from the tile's top right corner the `+` is.
   static const _toggleInset = 4.0;
 
-  /// Where on the screen the `+` built in [context] ends: the menu of a
-  /// call's functions opens there.
+  /// Where on the screen the `+` or ↗ built in [context] ends: the menu of
+  /// a call's functions opens there.
   static Offset _globalOf(BuildContext context) {
     final box = context.findRenderObject()! as RenderBox;
     return box.localToGlobal(Offset(FrameToggle.size, FrameToggle.size));
@@ -212,6 +221,21 @@ class NodeTile extends StatelessWidget {
               builder: (context) => FrameToggle.expand(
                 key: FrameToggle.expandKeyOf(id),
                 onTap: () => expand(_globalOf(context)),
+              ),
+            ),
+          ),
+        if (onOpenAsGraph case final open?)
+          Positioned(
+            left:
+                tile.right -
+                _toggleInset -
+                (onExpand == null ? 0 : FrameToggle.size) -
+                OpenAsGraphButton.size,
+            top: tile.top + _toggleInset,
+            child: Builder(
+              builder: (context) => OpenAsGraphButton(
+                key: OpenAsGraphButton.keyOf(id),
+                onTap: () => open(_globalOf(context)),
               ),
             ),
           ),

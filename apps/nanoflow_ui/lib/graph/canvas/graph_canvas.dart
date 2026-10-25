@@ -60,7 +60,9 @@ class GraphCanvasController {
 /// it; in a frame, everything works as on the level drawn, and a copies
 /// frame has its switcher and how its copies stand. Expanding or
 /// collapsing keeps the node where it is on the screen — or fits the graph
-/// again while the view is as fitting left it.
+/// again while the view is as fitting left it. The ↗ on a call is
+/// [onOpenAsGraph]: its function becomes the main graph (open-as-graph
+/// design).
 class GraphCanvas extends StatefulWidget {
   const GraphCanvas({
     super.key,
@@ -70,6 +72,7 @@ class GraphCanvas extends StatefulWidget {
     this.onOpenNode,
     this.onOpenEffect,
     this.onExpandNode,
+    this.onOpenAsGraph,
     this.topInset = sessionBarRoom,
   });
 
@@ -92,6 +95,10 @@ class GraphCanvas extends StatefulWidget {
 
   /// Expands a call or copies in place: on its `+`; without it, no `+`.
   final ExpandNode? onExpandNode;
+
+  /// Opens the function of a call as the main graph: on its ↗; without it,
+  /// no ↗.
+  final OpenNode? onOpenAsGraph;
 
   /// The room over the graph that fitting keeps free, for what floats over
   /// the top of the canvas; at most half the canvas. When it changes, the
@@ -560,6 +567,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
       onOpenNode: widget.onOpenNode,
       onOpenEffect: widget.onOpenEffect,
       onExpandNode: widget.onExpandNode,
+      onOpenAsGraph: widget.onOpenAsGraph,
     )..draw(graph, _marks, frames: _canvas.frames)).layers;
     return RepaintBoundary(
       child: SizedBox(

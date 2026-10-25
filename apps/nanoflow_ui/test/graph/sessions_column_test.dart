@@ -2,7 +2,8 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show LogCorrupted;
+import 'package:nanoflow_model/nanoflow_model.dart'
+    show GraphFile, LogCorrupted;
 import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
@@ -347,6 +348,46 @@ void main() {
       inCard('f0a5-session', find.text(logReadIncompletely)),
       findsOneWidget,
     );
+  });
+
+  testWidgets('with a called graph open, a session of a workflow that calls '
+      'it says from which; one of its own does not', (tester) async {
+    final both = GraphFile.fromJson({
+      ...graphFileNamed('release').toJson(),
+      'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
+    });
+    final model = await pumpGraphScreen(
+      tester,
+      model: ownedModel(
+        graph: both,
+        changes: changesOf([
+          Journal('p1p1-session', workflow: 'publish', graph: both.toJson())
+            ..effect('upload', 1, end: 2, place: 'lib/publish.dart:12'),
+          Journal(
+              'r1r1-session',
+              workflow: 'release',
+              graph: both.toJson(),
+              startedAt: 10,
+            )
+            ..effect('plan', 11, end: 12, place: 'lib/release.dart:16')
+            ..effect('upload', 12, end: 13, place: 'lib/publish.dart:12'),
+        ]),
+      ),
+    );
+    expect(inColumn(find.text('from release')), findsNothing);
+    model.openAsGraph('lib/publish.dart#publish');
+    await tester.pump();
+    final from = inCard('r1r1-session', find.text('from release'));
+    expect(from, findsOneWidget);
+    expect(inCard('p1p1-session', find.textContaining('from ')), findsNothing);
+    // Under the status line, muted.
+    expect(
+      tester.getTopLeft(from).dy,
+      greaterThan(
+        tester.getBottomLeft(inCard('r1r1-session', find.text('2 effects'))).dy,
+      ),
+    );
+    expect(colorOf(tester, from), AppText.hint.color);
   });
 
   testWidgets('counts the effects of each session', (tester) async {

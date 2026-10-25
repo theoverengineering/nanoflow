@@ -33,7 +33,8 @@ typedef OpenModel = GraphModel Function(String file);
 /// of a copy (`openings`); a call of an interface method first offers its
 /// implementations. The `+` on a call or copies draws that body in place,
 /// in a frame (decision 6), the same way; the model keeps what is expanded
-/// for any session of the workflow.
+/// for any session of the workflow. The ↗ on a call opens its function as
+/// the main graph, chosen the same way (open-as-graph design).
 ///
 /// `Open` in `Logs` opens the effect details window over it all on the
 /// selected effect; a double click on an effect node, on the node's last effect
@@ -150,6 +151,20 @@ class _GraphScreenState extends State<GraphScreen> {
     if (opened == null) return false;
     _model.expandNode(path, opened);
     return true;
+  }
+
+  /// The ↗ on [node], a call of the body at [path], at [position]: opens
+  /// its function as the main graph; for a call of several functions, the
+  /// one chosen from a menu there.
+  Future<void> _openAsGraph(
+    List<Opened> path,
+    GraphNode node,
+    Offset position,
+  ) async {
+    final opened = await _opening(node, position);
+    if (opened?.functionId case final functionId?) {
+      _model.openAsGraph(functionId);
+    }
   }
 
   /// How [node] opens: as it alone can, or as chosen from a menu at
@@ -309,6 +324,7 @@ class _GraphScreenState extends State<GraphScreen> {
             onOpenNode: _openNode,
             onOpenEffect: _openEffectNode,
             onExpandNode: _expandNode,
+            onOpenAsGraph: _openAsGraph,
             topInset: _notesHeight == 0
                 ? GraphCanvas.sessionBarRoom
                 : math.max(

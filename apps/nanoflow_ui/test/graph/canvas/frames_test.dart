@@ -12,7 +12,9 @@ import 'package:nanoflow_ui/graph/canvas/function_frame.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
+import 'package:nanoflow_ui/graph/canvas/open_as_graph_button.dart';
 import 'package:nanoflow_ui/graph/copy_switcher.dart';
+import 'package:nanoflow_ui/graph/header.dart';
 import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/graph/logs/logs_panel.dart';
 import 'package:nanoflow_ui/layout/layout.dart' as layout;
@@ -31,13 +33,19 @@ import 'support.dart';
 void main() {
   final controller = GraphCanvasController();
 
-  /// The canvas of [model]; a `+` expands as its node alone opens.
-  Future<void> pumpCanvas(WidgetTester tester, GraphModel model) async {
+  /// The canvas of [model]; a `+` expands as its node alone opens, a ↗
+  /// is [onOpenAsGraph].
+  Future<void> pumpCanvas(
+    WidgetTester tester,
+    GraphModel model, {
+    OpenNode? onOpenAsGraph,
+  }) async {
     await pumpScreen(
       tester,
       GraphCanvas(
         model: model,
         controller: controller,
+        onOpenAsGraph: onOpenAsGraph,
         onExpandNode: (path, node, _) async {
           model.expandNode(
             path,
@@ -55,6 +63,7 @@ void main() {
   Finder tile(String id) => find.byKey(NodeTile.tileKeyOf(id));
   Finder expand(String id) => find.byKey(FrameToggle.expandKeyOf(id));
   Finder collapse(String id) => find.byKey(FrameToggle.collapseKeyOf(id));
+  Finder openAsGraph(String id) => find.byKey(OpenAsGraphButton.keyOf(id));
 
   Future<void> tap(WidgetTester tester, Finder finder) async {
     await tester.tap(finder);
@@ -107,6 +116,33 @@ void main() {
     expect(find.byType(FunctionFrameView), findsNothing);
     expect(tile('5'), findsOneWidget);
     expect(tile('5/1'), findsNothing);
+  });
+
+  testWidgets('↗ is on calls alone, not on effects, forks or copies; in a '
+      'frame too, opening from there', (tester) async {
+    final opened = <(String, String)>[];
+    await pumpCanvas(
+      tester,
+      modelOf(
+        graph: GraphFile.fromJson({
+          ...graphFileNamed('inline').toJson(),
+          'workflows': ['lib/inline.dart#viaCall'],
+        }),
+      ),
+      onOpenAsGraph: (path, node, _) => opened.add((levelKey(path), node.id)),
+    );
+    expect(openAsGraph('1'), findsNothing, reason: 'copies');
+    await tap(tester, expand('1'));
+    expect(openAsGraph('1/1'), findsOneWidget);
+    await tap(tester, openAsGraph('1/1'));
+    expect(opened, [
+      (levelKey(const [Opened('1')]), '1'),
+    ]);
+
+    await pumpCanvas(tester, modelOf(), onOpenAsGraph: (_, _, _) {});
+    expect(openAsGraph('5'), findsOneWidget);
+    expect(openAsGraph('1'), findsNothing, reason: 'an effect');
+    expect(openAsGraph('2'), findsNothing, reason: 'a fork');
   });
 
   testWidgets('the end of a function in place is a bar on the frame\'s right '
@@ -398,6 +434,38 @@ void main() {
       expect(model.canvas.frames.single.path, const [
         Opened('2', functionId: 'lib/deploy.dart#MailNotifier.notify'),
       ]);
+    });
+
+    testWidgets('↗ on a call opens its function as the main graph: the '
+        'crumbs start at it', (tester) async {
+      final model = await pumpGraphScreen(tester);
+      await tap(tester, openAsGraph('5'));
+      expect(model.workflow!.id, 'lib/publish.dart#publish');
+      expect(
+        find.descendant(
+          of: find.byType(GraphHeader),
+          matching: find.text('publish'),
+        ),
+        findsOneWidget,
+      );
+      expect(tile('1'), findsOneWidget);
+      expect(find.text('upload'), findsOneWidget);
+    });
+
+    testWidgets('↗ on a call of an interface method offers its '
+        'implementations; the one chosen opens', (tester) async {
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(
+          file: releaseFile,
+          graph: graphFileNamed('interfaces'),
+        ),
+      );
+      await tap(tester, openAsGraph('2'));
+      await tester.tap(find.text('MailNotifier.notify()').last);
+      await tester.pumpAndSettle();
+      expect(model.workflow!.id, _mail);
+      expect(find.text('send-mail'), findsOneWidget);
     });
 
     testWidgets('a + whose menu is left without a choice expands nothing, '

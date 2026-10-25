@@ -318,6 +318,39 @@ void main() {
       expect(inHeader(find.text('publish')), findsOneWidget);
     });
 
+    testWidgets('with a called graph open: the crumbs start at it, the '
+        'picker lists it first, marked as drawn; a workflow chosen goes back '
+        'to it, and the called graph leaves the list', (tester) async {
+      final model = await pumpGraphScreen(tester);
+      model.openAsGraph('lib/publish.dart#publish');
+      await tester.pump();
+      expect(inHeader(find.text('publish')), findsOneWidget);
+      expect(inHeader(find.text('release')), findsNothing);
+
+      await tester.tap(inHeader(find.byKey(GraphHeader.workflowKey)));
+      await tester.pumpAndSettle();
+      final menu = find.byType(PopupMenuItem<String>);
+      expect(menu, findsNWidgets(2));
+      final names = find.descendant(of: menu, matching: find.byType(Text));
+      expect(
+        [for (final text in tester.widgetList<Text>(names)) text.data],
+        ['publish', 'release'],
+      );
+      expect(
+        tester.widget<Text>(names.first).style!.color,
+        AppColors.accentText,
+      );
+
+      await tester.tap(
+        find.descendant(of: menu, matching: find.text('release')),
+      );
+      await tester.pumpAndSettle();
+      expect(model.workflow!.name, 'release');
+      expect(model.calledGraph, isNull);
+      expect(inHeader(find.text('release')), findsOneWidget);
+      expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsNothing);
+    });
+
     testWidgets('the workflow drawn chosen again draws its top level', (
       tester,
     ) async {

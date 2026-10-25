@@ -1,6 +1,7 @@
 /// The graph the canvas of a graph screen shows: a workflow of the graph
-/// file, or a session's own graph, one level at a time, and what to know
-/// of it over the canvas (spec §9 «Граф», «Свежесть», «Сессия»). Pure.
+/// file — or a function the workflows call, opened as the main graph —, or
+/// a session's own graph, one level at a time, and what to know of it over
+/// the canvas (spec §9 «Граф», «Свежесть», «Сессия»). Pure.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -67,6 +68,11 @@ const noWorkflows = 'The graph file has no workflows';
 /// of it: a workflow the graph file does not have, or a session whose
 /// snapshot does not.
 String noWorkflowNamed(String name) => 'The graph has no workflow $name';
+
+/// What the canvas says for a parent's session whose snapshot has no
+/// function [functionId], the called graph opened.
+String noFunctionOf(String functionId) =>
+    'The graph has no function ${functionTitle(functionId)}';
 
 /// The graph file is gone: the last graph read from it stays.
 const fileUnavailable = 'File unavailable';
@@ -141,12 +147,15 @@ const notInGraphFileDetail =
 
 /// The graph the canvas shows (spec §9 «Граф», «Сессия»): a workflow of the
 /// graph file for `Current graph`, the session's own graph for a session;
-/// one level of it at a time.
+/// one level of it at a time. With a function the workflows call opened as
+/// the main graph (open-as-graph design), its body is the top level: of the
+/// graph file, or of the snapshot of the session.
 final class CanvasGraph {
   CanvasGraph._({
     required this.file,
     required this.workflow,
     required this.ofSession,
+    this.calledGraph,
     required List<Opened> path,
     Expansions? expansions,
     EffectPlaces? places,
@@ -166,13 +175,20 @@ final class CanvasGraph {
   /// the session's snapshot of it; `null` when there is none to draw.
   final GraphFile? file;
 
-  /// The workflow whose body is the top level of the canvas; `null` when
-  /// there is none to draw.
+  /// The function whose body is the top level of the canvas: the workflow,
+  /// or the called graph opened; `null` when there is none to draw.
   final GraphFunction? workflow;
 
   /// Whether the graph is the selected session's own: then the session's
   /// effects go on it. For `Current graph` they do not.
   final bool ofSession;
+
+  /// The id of the called graph opened, when the canvas draws it in a
+  /// parent's session — of a workflow that calls it: its body is then the
+  /// top level, the [places] those of the session's workflow, so that it is
+  /// a called body, and `Logs` list the effects in it alone; `null`
+  /// otherwise.
+  final String? calledGraph;
 
   /// What the canvas says instead of a graph: [noValidGraphYet],
   /// [noWorkflows], [unreadableSessionGraph], [noWorkflowNamed].
@@ -193,8 +209,8 @@ final class CanvasGraph {
   /// (decision 6).
   late final List<InPlaceFrame> frames;
 
-  /// The places of the effect nodes of the [workflow]: which nodes a
-  /// session's effects are on.
+  /// The places of the effect nodes of the [workflow] — of the session's
+  /// workflow for a [calledGraph] —: which nodes a session's effects are on.
   final EffectPlaces places;
 
   /// The levels opened under the [workflow]'s body, as far as the graph has
@@ -267,13 +283,16 @@ CanvasGraph fileCanvas({
   );
 }
 
-/// The canvas of [session], shown on [graph]: its workflow on it, down
-/// [path], the nodes [expansions] has expanded in place; noted when the
-/// session has no snapshot, when its code is not that of the graph or was
-/// not recorded, then [extraNotes] ([workflowNotes]).
+/// The canvas of [session], shown on [graph]: its workflow on it — or, in a
+/// parent's session, the function [calledGraph] its workflow calls, the
+/// called graph opened (`CanvasGraph.calledGraph`) —, down [path], the nodes
+/// [expansions] has expanded in place; noted when the session has no
+/// snapshot, when its code is not that of the graph or was not recorded,
+/// then [extraNotes] ([workflowNotes]).
 CanvasGraph sessionCanvas(
   SessionData session,
   SessionGraph graph, {
+  String? calledGraph,
   List<Opened> path = const [],
   Expansions? expansions,
   List<GraphNote> extraNotes = const [],
@@ -282,15 +301,18 @@ CanvasGraph sessionCanvas(
   final name = session.session.workflow;
   final workflow = file?.workflowNamed(name);
   final places = EffectPlaces.of(workflow, file?.functions ?? const {});
+  final top = calledGraph == null ? workflow : file?.functions[calledGraph];
   // Without a workflow there is no graph to put the effects on: the canvas
-  // says so instead.
-  final offGraph = workflow == null
+  // says so instead. Of a called graph, `Logs` list the effects in it
+  // alone, and those on no node are not known to be.
+  final offGraph = workflow == null || calledGraph != null
       ? const <Effect>[]
       : effectsNotOnGraph(session.effectsInOrder, places);
   return CanvasGraph._(
     file: file,
-    workflow: workflow,
+    workflow: top,
     ofSession: true,
+    calledGraph: calledGraph,
     path: path,
     expansions: expansions,
     places: places,
@@ -300,6 +322,8 @@ CanvasGraph sessionCanvas(
         ? (graph.noSnapshot ? noValidGraphYet : null)
         : workflow == null
         ? noWorkflowNamed(name)
+        : top == null
+        ? noFunctionOf(calledGraph!)
         : null,
     notes: List.unmodifiable([
       if (graph.noSnapshot)

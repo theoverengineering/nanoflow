@@ -5,6 +5,7 @@ import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
 import 'package:nanoflow_ui/graph/canvas/frame_toggle.dart';
 import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
+import 'package:nanoflow_ui/graph/canvas/open_as_graph_button.dart';
 import 'package:nanoflow_ui/graph/canvas/tile_marks.dart';
 import 'package:nanoflow_ui/layout/layout.dart'
     show LayoutOptions, NodeBox, endMarker, layoutBody, startMarker;
@@ -80,6 +81,7 @@ void main() {
     bool allCopies = false,
     String copies = '×n',
     ValueChanged<Offset>? onExpand,
+    ValueChanged<Offset>? onOpenAsGraph,
   }) {
     final node = layout.nodes[id]!;
     return pumpScreen(
@@ -97,6 +99,7 @@ void main() {
               allCopies: allCopies,
               copies: copies,
               onExpand: onExpand,
+              onOpenAsGraph: onOpenAsGraph,
             ),
           ),
         ],
@@ -190,6 +193,39 @@ void main() {
     expect(toggle.top, moreOrLessEquals(tile.top + 4));
     expect(toggle.overlaps(icon), isFalse);
     expect(find.text('f()'), findsOneWidget);
+  });
+
+  testWidgets('a call opens as the main graph from ↗, Open as graph, left of '
+      'its + in its corner, as large as it and clear of ƒ', (tester) async {
+    Offset? at;
+    await pumpTile(
+      tester,
+      'call',
+      onExpand: (_) {},
+      onOpenAsGraph: (position) => at = position,
+    );
+    final icon = tester.getRect(find.byType(FunctionIcon));
+    final toggle = tester.getRect(find.byKey(FrameToggle.expandKeyOf('call')));
+    final button = find.byKey(OpenAsGraphButton.keyOf('call'));
+    final open = tester.getRect(button);
+    expect(open.size, toggle.size);
+    expect(open.top, moreOrLessEquals(toggle.top));
+    expect(open.right, moreOrLessEquals(toggle.left));
+    // The strokes of ƒ keep 5.5 of its 28 units in from its box.
+    expect(open.overlaps(icon.deflate(5.5)), isFalse);
+    expect(find.byTooltip('Open as graph'), findsOneWidget);
+    expect(find.byType(OpenOutIcon), findsOneWidget);
+
+    await tester.tap(button);
+    expect(at, isNotNull);
+  });
+
+  testWidgets('without a +, ↗ takes its place in the corner', (tester) async {
+    await pumpTile(tester, 'call', onOpenAsGraph: (_) {});
+    final tile = tileOf(tester, 'call');
+    final open = tester.getRect(find.byKey(OpenAsGraphButton.keyOf('call')));
+    expect(open.right, moreOrLessEquals(tile.right - 4));
+    expect(open.top, moreOrLessEquals(tile.top + 4));
   });
 
   testWidgets('copies: two tiles stacked behind, ƒ on them with the effects '

@@ -209,6 +209,33 @@ class CloseIcon extends StatelessWidget {
   );
 }
 
+/// An arrow out to the top right, ↗: open a called graph as the main graph.
+/// 10 units, as the cross.
+class OpenOutIcon extends StatelessWidget {
+  const OpenOutIcon({super.key, required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => _LineIcon(
+    kind: 'open out',
+    units: 10,
+    size: size,
+    color: color,
+    strokeWidth: 1.4,
+    draw: (canvas, stroke) => canvas.drawPath(
+      Path()
+        ..moveTo(2, 8)
+        ..lineTo(8, 2)
+        ..moveTo(3.6, 2)
+        ..lineTo(8, 2)
+        ..lineTo(8, 6.4),
+      stroke,
+    ),
+  );
+}
+
 /// Two upright bars, a pause: an effect or a copy interrupted — its process
 /// stopped, a resume goes on with it. 10 units, as wide as the cross of a
 /// failed effect.
