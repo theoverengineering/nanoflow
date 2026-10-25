@@ -154,23 +154,32 @@ class _GraphScreenState extends State<GraphScreen> {
   }
 
   /// The ↗ on [node], a call of the body at [path], at [position]: opens
-  /// its function as the main graph; for a call of several functions, the
-  /// one chosen from a menu there.
+  /// its function as the main graph; for a call of several functions the
+  /// graph file has, the one chosen from a menu there.
   Future<void> _openAsGraph(
     List<Opened> path,
     GraphNode node,
     Offset position,
   ) async {
-    final opened = await _opening(node, position);
+    final opened = await _opening(
+      node,
+      position,
+      choices: _model.graphOpenings(node),
+    );
     if (opened?.functionId case final functionId?) {
       _model.openAsGraph(functionId);
     }
   }
 
-  /// How [node] opens: as it alone can, or as chosen from a menu at
-  /// [position]; `null` when it opens nothing or nothing is chosen.
-  Future<Opened?> _opening(GraphNode node, Offset position) async {
-    final choices = openings(node, _model.canvas.file?.functions ?? const {});
+  /// How [node] opens — of [choices], by default what it opens on the graph
+  /// drawn: as it alone can, or as chosen from a menu at [position]; `null`
+  /// when it opens nothing or nothing is chosen.
+  Future<Opened?> _opening(
+    GraphNode node,
+    Offset position, {
+    List<Opened>? choices,
+  }) async {
+    choices ??= openings(node, _model.canvas.file?.functions ?? const {});
     if (choices.isEmpty) return null;
     if (choices.length == 1) return choices.single;
     final overlay =

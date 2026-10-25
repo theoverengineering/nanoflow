@@ -238,6 +238,14 @@ final class ShownEffects {
   /// The effects shown, in the order of their first `effect-started`.
   final List<EffectState> effects;
 
+  /// These with only those of the [effects] [test] keeps: the same frames
+  /// and copies, fewer effects shown.
+  ShownEffects where(bool Function(EffectState effect) test) => ShownEffects._(
+    frames,
+    levelCopies,
+    List.unmodifiable(effects.where(test)),
+  );
+
   /// The names of the copies each effect is in, frame by frame, with the
   /// depth of the frame where it is the copy shown; `null` for any other.
   final Map<String, List<_Part>> _paths;

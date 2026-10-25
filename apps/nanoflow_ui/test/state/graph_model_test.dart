@@ -547,6 +547,11 @@ void main() {
           [for (final row in view.logs.rows.whereType<EffectRow>()) row.name],
           ['status', 'coder'],
         );
+        // What the effect details window takes for the effects of `Logs`.
+        expect(
+          [for (final effect in view.logsShown.effects) effect.effectId],
+          ['c1c1-status-2', 'c1c1-coder-3'],
+        );
       });
     });
 
@@ -576,6 +581,60 @@ void main() {
         model.showSession('c2c2-session');
         model.openAsGraph(carry);
         expect(model.selection.sessionId, 't1t1-session');
+      });
+    });
+
+    test('keeps the session selected as the graph opened while it ran in '
+        'it', () {
+      run((async) {
+        graphFile.graph = chain;
+        give(
+          async,
+          changesOf([
+            Journal('c1c1-session', workflow: 'chain', graph: chain.toJson())
+              ..effect('status', 3, end: 4, place: 'lib/task_graph.dart:66'),
+            Journal(
+              't1t1-session',
+              workflow: 'task',
+              graph: chain.toJson(),
+              startedAt: 20,
+            )..effect('status', 21, end: 22, place: 'lib/task_graph.dart:66'),
+          ]),
+        );
+        expect(model.selection.sessionId, 'c1c1-session');
+        model.openAsGraph(carry);
+        expect(model.selection.sessionId, 'c1c1-session');
+      });
+    });
+
+    test('keeps the session selected as it opens, going back to the '
+        'workflow of the session', () {
+      run((async) {
+        graphFile.graph = chain;
+        give(
+          async,
+          changesOf([
+            Journal('t1t1-session', workflow: 'task', graph: chain.toJson())
+              ..effect('status', 1, end: 2, place: 'lib/task_graph.dart:66'),
+            Journal(
+              'c1c1-session',
+              workflow: 'chain',
+              graph: chain.toJson(),
+              startedAt: 20,
+            )..effect('status', 21, end: 22, place: 'lib/task_graph.dart:66'),
+            Journal(
+              'c2c2-session',
+              workflow: 'chain',
+              graph: chain.toJson(),
+              startedAt: 30,
+            ),
+          ]),
+        );
+        expect(model.selection.sessionId, 'c2c2-session');
+        model.openAsGraph(carry);
+        expect(model.selection.sessionId, 'c1c1-session');
+        model.selectWorkflow('lib/chain.dart#chain');
+        expect(model.selection.sessionId, 'c1c1-session');
       });
     });
 

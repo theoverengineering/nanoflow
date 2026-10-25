@@ -330,14 +330,15 @@ final class BodyDrawer {
   }
 
   /// What the ↗ of [node], a node of the body at [path], does: opens the
-  /// function of a call as the main graph, when the call opens any; none
-  /// for any other node (open-as-graph design §2).
+  /// function of a call as the main graph, when the graph file has one of
+  /// its functions (`GraphModel.graphOpenings`) — a session's snapshot may
+  /// call one renamed since; none for any other node (open-as-graph design
+  /// §2).
   ValueChanged<Offset>? _graphOpener(layout.NodeBox node, List<Opened> path) {
     final graphNode = node.node;
     final open = onOpenAsGraph;
-    if (graphNode is! CallNode || open == null) return null;
-    final functions = canvas.file?.functions ?? const {};
-    if (openings(graphNode, functions).isEmpty) return null;
+    if (graphNode == null || open == null) return null;
+    if (model.graphOpenings(graphNode).isEmpty) return null;
     return (position) => open(path, graphNode, position);
   }
 }

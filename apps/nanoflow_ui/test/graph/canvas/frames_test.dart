@@ -145,6 +145,42 @@ void main() {
     expect(openAsGraph('2'), findsNothing, reason: 'a fork');
   });
 
+  testWidgets('↗ is on a call only while the graph file has its function: '
+      'not on a session\'s snapshot of one renamed since', (tester) async {
+    final release = graphFileNamed('release');
+    final json = release.toJson();
+    final functions = json['functions']! as Map<String, Object?>;
+    final publish =
+        functions.remove('lib/publish.dart#publish')! as Map<String, Object?>;
+    functions['lib/publish.dart#ship'] = {...publish, 'name': 'ship'};
+    final body =
+        (functions['lib/release.dart#release']!
+                as Map<String, Object?>)['body']!
+            as Map<String, Object?>;
+    final call =
+        (body['nodes']! as List<Object?>).firstWhere(
+              (node) => (node! as Map<String, Object?>)['id'] == '5',
+            )!
+            as Map<String, Object?>;
+    call['functions'] = ['lib/publish.dart#ship'];
+    final model = modelOf(
+      graph: GraphFile.fromJson(json),
+      changes: Journal(
+        'r1r1-session',
+        workflow: 'release',
+        graph: release.toJson(),
+      ).changes,
+    );
+    await pumpCanvas(tester, model, onOpenAsGraph: (_, _, _) {});
+    expect(model.canvas.ofSession, isTrue);
+    expect(expand('5'), findsOneWidget);
+    expect(openAsGraph('5'), findsNothing);
+
+    model.selection.showCurrentGraph();
+    await settle(tester);
+    expect(openAsGraph('5'), findsOneWidget);
+  });
+
   testWidgets('the end of a function in place is a bar on the frame\'s right '
       'side, outlined as a tile\'s bar: the arrows that end the body point '
       'at it, the frame has no exit dot; a tile keeps its dot', (tester) async {
@@ -466,6 +502,31 @@ void main() {
       await tester.pumpAndSettle();
       expect(model.workflow!.id, _mail);
       expect(find.text('send-mail'), findsOneWidget);
+    });
+
+    testWidgets('↗ on a call of an interface method offers only the '
+        'implementations the graph file has', (tester) async {
+      final interfaces = graphFileNamed('interfaces');
+      final json = interfaces.toJson();
+      (json['functions']! as Map<String, Object?>).remove(
+        'lib/deploy.dart#ChatNotifier.notify',
+      );
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(
+          file: releaseFile,
+          graph: GraphFile.fromJson(json),
+          changes: Journal(
+            'd1d1-session',
+            workflow: 'deploy',
+            graph: interfaces.toJson(),
+          ).changes,
+        ),
+      );
+      expect(model.canvas.ofSession, isTrue);
+      await tap(tester, openAsGraph('2'));
+      expect(find.text('ChatNotifier.notify()'), findsNothing);
+      expect(model.workflow!.id, _mail);
     });
 
     testWidgets('a + whose menu is left without a choice expands nothing, '

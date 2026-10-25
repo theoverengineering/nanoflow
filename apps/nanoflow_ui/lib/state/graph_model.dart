@@ -105,8 +105,8 @@ class GraphModel extends ChangeNotifier {
   String? _called;
 
   /// Whether each session ran the called graph opened, by the session's
-  /// id, with what that was told from: the session as it was, its snapshot
-  /// read, the graph file, the function (`_ranCalled`).
+  /// id, with what that was told from (`_ranCalled`); forgotten as the
+  /// called graph closes, or another opens.
   final Map<String, _RanCalled> _ranCalledOf = {};
 
   /// The levels opened under the workflow's body: the canvas goes down them
@@ -189,6 +189,7 @@ class GraphModel extends ChangeNotifier {
       final drawn = workflow?.id;
       final wasCalled = calledGraph != null;
       _called = null;
+      _ranCalledOf.clear();
       _chosen = (id: choice.id, name: choice.name);
       if (id != drawn) _expansions.clear();
       if (id != drawn || wasCalled) _mainGraphChanged();
@@ -204,6 +205,7 @@ class GraphModel extends ChangeNotifier {
   /// while the graph file does not have the function.
   void openAsGraph(String functionId) {
     if (graphFile.graph?.functions[functionId] == null) return;
+    if (functionId != _called) _ranCalledOf.clear();
     _called = functionId;
     _path = const [];
     _wanted = null;
@@ -212,13 +214,24 @@ class GraphModel extends ChangeNotifier {
     _changed();
   }
 
+  /// What the ↗ on [node] opens as the main graph: the functions of a call
+  /// that the graph file has (`openings`) — the canvas may draw a session's
+  /// snapshot, with functions renamed or gone since; none for any other
+  /// node.
+  List<Opened> graphOpenings(GraphNode node) => node is CallNode
+      ? openings(node, graphFile.graph?.functions ?? const {})
+      : const [];
+
   /// Gives the [selection] the sessions of the main graph drawn now: the
-  /// selected session stays while it is one of them; else, and for
-  /// `Current graph`, they open as on opening the graph.
+  /// selected session stays while it is one of them — kept as one chosen,
+  /// even if it was selected as the graph opened, so that the newest of the
+  /// others does not take its place —; else, and for `Current graph`, they
+  /// open as on opening the graph.
   void _mainGraphChanged() {
-    final selected = selection.sessionId;
-    if (selection.currentGraph ||
-        workflowSessions.every((s) => s.id != selected)) {
+    final session = selectedSession;
+    if (session != null && workflowSessions.any((s) => s.id == session.id)) {
+      selection.showSession(session);
+    } else {
       selection.reopen();
     }
     _feedSelection();
@@ -274,32 +287,40 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// Whether the called graph [functionId] ran in [session], a session of
-  /// another workflow, on its snapshot (`ranIn`): worked out again only
-  /// once the session, its snapshot or the graph file has changed. Starts
-  /// reading the snapshot.
+  /// another workflow, on the graph it is shown on (`ranIn`): worked out
+  /// again only once its snapshot has changed, or the graph file for a
+  /// session shown on it, or — while it had not run there — the session.
+  /// Effects are only added, so one that ran stays so. Starts reading the
+  /// snapshot.
   bool _ranCalled(SessionData session, GraphFile graph, String functionId) {
     final document = snapshotDocumentOf(session);
     if (document != null) outcomes.load(session.id, [document]);
     final snapshot = document == null ? null : outcomes[document];
     final known = _ranCalledOf[session.id];
     if (known != null &&
-        known.changes == session.changes &&
+        known.function == functionId &&
+        known.document == document &&
         known.snapshot == snapshot &&
-        identical(known.graph, graph) &&
-        known.function == functionId) {
+        (known.graphFile == null || identical(known.graphFile, graph)) &&
+        (known.ran || known.changes == session.changes)) {
       return known.ran;
     }
     final shown = sessionGraphOf(
       session,
       documents: outcomes,
       graphFile: graph,
-    ).graph;
-    final ran = ranIn(session, placesOfSession(session, shown), functionId);
+    );
+    final ran = ranIn(
+      session,
+      placesOfSession(session, shown.graph),
+      functionId,
+    );
     _ranCalledOf[session.id] = (
-      changes: session.changes,
-      snapshot: snapshot,
-      graph: graph,
       function: functionId,
+      document: document,
+      snapshot: snapshot,
+      graphFile: shown.noSnapshot ? graph : null,
+      changes: session.changes,
       ran: ran,
     );
     return ran;
@@ -716,12 +737,14 @@ class GraphModel extends ChangeNotifier {
 }
 
 /// Whether a session ran the called graph opened, and what that was told
-/// from: how many changes the session had, its snapshot read, the graph
-/// file, the function.
+/// from: the function, the session's snapshot document and what of it was
+/// read, the graph file when the session is shown on it — it has no
+/// snapshot —, how many changes the session had.
 typedef _RanCalled = ({
-  int changes,
-  Outcome? snapshot,
-  GraphFile graph,
   String function,
+  String? document,
+  Outcome? snapshot,
+  GraphFile? graphFile,
+  int changes,
   bool ran,
 });

@@ -8,7 +8,6 @@ library;
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'body_path.dart';
-import 'called_graph.dart';
 import 'copies.dart';
 import 'effect_details.dart';
 import 'effect_places.dart';
@@ -225,11 +224,16 @@ final class SessionView {
         }(),
     };
     final followed = follow == null ? null : scopes[levelKey(follow)];
-    final logs = followed?.shown ?? shown;
+    final all = followed?.shown ?? shown;
+    final logs = calledGraph == null
+        ? all
+        : all.where(
+            (effect) => places!.isInFunction(
+              session.effects[effect.effectId],
+              calledGraph,
+            ),
+          );
     final copy = logs.copy;
-    final listed = calledGraph == null
-        ? logs.effects
-        : effectsIn(session, logs.effects, places, calledGraph);
     // The title names the copies chosen down to the level Logs show; those
     // chosen in frames in it, the rows do.
     final depth = (followed?.frame.levels.length ?? levels.length) - 1;
@@ -248,10 +252,10 @@ final class SessionView {
       places: places,
       shown: shown,
       logs: (
-        header: LogsHeader(listed.length, copy: copy),
+        header: LogsHeader(logs.effects.length, copy: copy),
         rows: logRows(
           session,
-          effects: listed,
+          effects: logs.effects,
           places: places,
           now: now,
           copyOf: tagOf,
