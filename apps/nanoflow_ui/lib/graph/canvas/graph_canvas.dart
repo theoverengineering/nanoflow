@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show PointMode;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -474,6 +475,9 @@ class _GraphCanvasState extends State<GraphCanvas> {
             onScaleUpdate: _gestureMoved,
             child: Stack(
               children: [
+                Positioned.fill(
+                  child: CustomPaint(painter: _GridPainter(_scale, _offset)),
+                ),
                 if (drawing != null)
                   Positioned.fill(child: ClipRect(child: _view(drawing))),
                 if (_canvas.placeholder case final text?)
@@ -601,6 +605,45 @@ class _GraphCanvasState extends State<GraphCanvas> {
       ),
     );
   }
+}
+
+/// The canvas's dots, 22 px apart at full size, moving with the graph.
+/// Zoomed far out, every other one is left out, and so on.
+class _GridPainter extends CustomPainter {
+  _GridPainter(this.scale, this.offset);
+
+  final double scale;
+  final Offset offset;
+
+  static const _cell = 22.0;
+  static const _minStep = 11.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var step = _cell * scale;
+    while (step < _minStep) {
+      step *= 2;
+    }
+    // A dot in the middle of each cell, as the mockups' CSS grid has them.
+    final left = (offset.dx + _cell / 2 * scale) % step;
+    final top = (offset.dy + _cell / 2 * scale) % step;
+    final dots = [
+      for (var x = left; x < size.width; x += step)
+        for (var y = top; y < size.height; y += step) Offset(x, y),
+    ];
+    canvas.drawPoints(
+      PointMode.points,
+      dots,
+      Paint()
+        ..color = CanvasColors.gridDot
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GridPainter old) =>
+      old.scale != scale || old.offset != offset;
 }
 
 /// Fit, zoom in, zoom out: the bottom left corner of the canvas.

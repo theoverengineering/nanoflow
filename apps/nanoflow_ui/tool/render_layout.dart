@@ -150,6 +150,7 @@ void _addAll(Map<String, GraphBody> bodies, String name, GraphBody body) {
 
 /// The canvas's colours, as lib/graph/canvas/canvas_style.dart has them.
 const _canvas = '#1C1D20';
+const _dots = '#323338';
 const _tileFill = '#3A3B42';
 const _tileBorder = '#7A7B83';
 const _stackFill = '#2E2F35';
@@ -179,7 +180,12 @@ String renderSvg(GraphLayout layout, String caption) {
       '<svg xmlns="http://www.w3.org/2000/svg" width="${_n(width)}" '
       'height="${_n(height)}" viewBox="0 0 ${_n(width)} ${_n(height)}">',
     )
-    ..writeln('<defs>');
+    ..writeln('<defs>')
+    ..writeln(
+      '<pattern id="dots" width="22" height="22" '
+      'patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="1" '
+      'fill="$_dots"/></pattern>',
+    );
   for (final (id, colour) in [('ah', _edge), ('ahb', _back)]) {
     svg.writeln(
       '<marker id="$id" markerWidth="11" markerHeight="9" refX="0.5" '
@@ -191,6 +197,9 @@ String renderSvg(GraphLayout layout, String caption) {
     ..writeln('</defs>')
     ..writeln(
       '<rect width="${_n(width)}" height="${_n(height)}" fill="$_canvas"/>',
+    )
+    ..writeln(
+      '<rect width="${_n(width)}" height="${_n(height)}" fill="url(#dots)"/>',
     )
     ..writeln('<g transform="translate($_pad $_pad)">');
 

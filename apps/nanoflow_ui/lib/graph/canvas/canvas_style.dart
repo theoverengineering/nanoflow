@@ -11,12 +11,14 @@ import 'canvas_marks.dart' show Tone;
 /// The canvas's colors. Arrows, exits and input bars come in two tones
 /// (`Tone` in canvas_marks.dart).
 ///
-/// The background is plain and darker than the mockups', so that tiles stand
-/// off it by their fill and arrows and labels read at a glance: a tile's fill
-/// was all but the canvas's own (1.17:1), and arrows were fainter than lines
-/// should be (2.8:1).
+/// The background is darker than the mockups', so that tiles stand off it by
+/// their fill and arrows and labels read at a glance: a tile's fill was all
+/// but the canvas's own (1.17:1), and arrows were fainter than lines should be
+/// (2.8:1). Its dots stay as faint as they were (1.34:1): something for the
+/// eye to hold to, not to read.
 abstract final class CanvasColors {
   static const background = Color(0xFF1C1D20);
+  static const gridDot = Color(0xFF323338);
 
   /// Arrows, exits and input bars as the graph draws them: `Tone.plain`.
   static const plain = Color(0xFFA3A4AB);
