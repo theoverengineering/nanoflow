@@ -1,10 +1,13 @@
 // Routes (graph node objects design §8–§9): the function a part's `.next`
 // takes, read into the points of its graph's body as a workflow function's
-// body is. Its `if`, `switch` and `?:` are forks labelled as there; each node
-// or graph called in what it returns is an edge to that node, a set an edge
-// to each of its nodes, and `null` or the end of its body an edge to the end
-// of the graph. A `throw` ends its way: the branch fails. A route that is
-// async or a generator is not read: it gives a Future or an Iterable, no Next.
+// body is. Its `if`, `switch` and `?:` are forks labelled as there — but a
+// `switch` the route decides by first, right after the node it follows, is no
+// fork: its cases are that node's own exits, so a node that ends several ways
+// is one tile with an exit for each. Each node or graph called in what it
+// returns is an edge to that node, a set an edge to each of its nodes, and
+// `null` or the end of its body an edge to the end of the graph. A `throw`
+// ends its way: the branch fails. A route that is async or a generator is not
+// read: it gives a Future or an Iterable, no Next.
 
 part of 'extract.dart';
 
@@ -80,8 +83,10 @@ extension on _GraphBody {
           },
         ];
       case SwitchStatement():
-        final (fork, labels, matchesAll) = _points._switchFork(s);
-        _connect(from, fork);
+        final (made, labels, matchesAll) = _points._switchFork(s);
+        // A fork not used is reached by nothing, and not drawn.
+        final fork = _exitsOf(from) ?? made;
+        if (identical(fork, made)) _connect(from, fork);
         final exits = <_Out>[];
         // Cases with no statements of their own share the body of the next
         // one.
@@ -167,12 +172,17 @@ extension on _GraphBody {
         final labels = [
           for (final c in cases) _caseLabel(c.guardedPattern, _source),
         ];
-        final fork = _points._fork(
-          'switch (${_source(expression)})',
-          expression,
-          labels,
-        );
-        _connect(from, fork);
+        final _V fork;
+        if (_exitsOf(from) case final node?) {
+          fork = node;
+        } else {
+          fork = _points._fork(
+            'switch (${_source(expression)})',
+            expression,
+            labels,
+          );
+          _connect(from, fork);
+        }
         for (final (i, c) in cases.indexed) {
           _value(c.expression, [(fork, labels[i])]);
         }
@@ -189,6 +199,14 @@ extension on _GraphBody {
         _notRead(value, 'route value not drawn: ${_source(value)}');
     }
   }
+
+  /// The node a `switch` that comes [from] it goes out of by its own exits:
+  /// the node the route follows, when the route decides by the switch first;
+  /// `null` after a join, a fork or anything else.
+  _V? _exitsOf(List<_Out> from) => switch (from) {
+    [(final _V node, null)] when node is _Effect || node is _Call => node,
+    _ => null,
+  };
 
   /// Warns [message] at [node], a route or a part of one that is not read:
   /// where it leads is not known.

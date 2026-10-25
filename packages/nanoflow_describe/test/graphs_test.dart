@@ -77,8 +77,9 @@ const _polishDoc =
 
 void main() {
   test(
-    'draws graphs of nodes: effects at their first mention, forks for '
-    'switch and ?:, edges for sets and null, joins, a graph as a call',
+    'draws graphs of nodes: effects at their first mention, the switch a '
+    'route decides by first as its node\'s exits, forks for ?:, if and a '
+    'later switch, edges for sets and null, joins, a graph as a call',
     () async {
       final graph = await describeFixture('graphs');
       expectFile(
@@ -125,32 +126,32 @@ void main() {
               'review',
               67,
               [
+                // The switch collect's route decides by first is collect's own
+                // exits, no fork.
                 _effect('1', 'collect', 68, doc: _collectDoc),
-                _fork('2', 'switch (collected)', 69),
-                _effect('3', 'discard', 70),
-                _effect('4', 'inspect', 74, doc: _inspectDoc),
-                _fork('5', 'report.findings == 0', 78),
-                _effect('6', 'publish', 79),
-                _effect('7', 'notify', 79),
-                _call('8', 'polish', 80),
-                _effect('9', 'summarize', 83),
+                _effect('2', 'discard', 70),
+                _effect('3', 'inspect', 74, doc: _inspectDoc),
+                _fork('4', 'report.findings == 0', 78),
+                _effect('5', 'publish', 79),
+                _effect('6', 'notify', 79),
+                _call('7', 'polish', 80),
+                _effect('8', 'summarize', 83),
               ],
               [
                 _edge(null, '1'),
-                _edge('1', '2'),
-                _edge('2', '3', 'Empty'),
-                _edge('2', '3', "Found when change.path.endsWith('.md')"),
-                _edge('2', '4', 'Found'),
-                _edge('3', null),
-                _edge('4', '5'),
-                _edge('5', '6', 'true'),
-                _edge('5', '7', 'true'),
-                _edge('5', '8', 'false'),
-                _edge('6', '9'),
-                _edge('7', '9'),
-                _edge('8', '6'),
-                _edge('8', '7'),
-                _edge('9', null),
+                _edge('1', '2', 'Empty'),
+                _edge('1', '2', "Found when change.path.endsWith('.md')"),
+                _edge('1', '3', 'Found'),
+                _edge('2', null),
+                _edge('3', '4'),
+                _edge('4', '5', 'true'),
+                _edge('4', '6', 'true'),
+                _edge('4', '7', 'false'),
+                _edge('5', '8'),
+                _edge('6', '8'),
+                _edge('7', '5'),
+                _edge('7', '6'),
+                _edge('8', null),
               ],
               doc: _reviewDoc,
             ),

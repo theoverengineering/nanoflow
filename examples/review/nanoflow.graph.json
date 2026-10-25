@@ -154,53 +154,47 @@
           },
           {
             "id": "2",
-            "kind": "fork",
-            "label": "switch (collected)",
-            "place": "lib/review_graph.dart:91"
-          },
-          {
-            "id": "3",
             "kind": "effect",
             "name": "discard",
             "place": "lib/review_graph.dart:92",
             "doc": "Ends the review of a branch that changes nothing."
           },
           {
-            "id": "4",
+            "id": "3",
             "kind": "effect",
             "name": "inspect",
             "place": "lib/review_graph.dart:93",
             "doc": "Checks the name of the change's file with a program, as a reviewer\nsuch as `claude -p` would be run."
           },
           {
-            "id": "5",
+            "id": "4",
             "kind": "fork",
             "label": "r.findings.isEmpty",
             "place": "lib/review_graph.dart:97"
           },
           {
-            "id": "6",
+            "id": "5",
             "kind": "effect",
             "name": "publish",
             "place": "lib/review_graph.dart:97",
             "doc": "Puts the change out."
           },
           {
-            "id": "7",
+            "id": "6",
             "kind": "effect",
             "name": "notify",
             "place": "lib/review_graph.dart:97",
             "doc": "Tells the branch's author it is accepted."
           },
           {
-            "id": "8",
+            "id": "7",
             "kind": "effect",
             "name": "fix",
             "place": "lib/review_graph.dart:97",
             "doc": "Renames the file to lower_snake_case, for inspect to check again."
           },
           {
-            "id": "9",
+            "id": "8",
             "kind": "effect",
             "name": "report",
             "place": "lib/review_graph.dart:99",
@@ -216,60 +210,55 @@
           {
             "from": "1",
             "to": "2",
-            "label": null
-          },
-          {
-            "from": "2",
-            "to": "3",
             "label": "Empty"
           },
           {
-            "from": "2",
-            "to": "4",
+            "from": "1",
+            "to": "3",
             "label": "Found"
           },
           {
-            "from": "3",
+            "from": "2",
             "to": null,
+            "label": null
+          },
+          {
+            "from": "3",
+            "to": "4",
             "label": null
           },
           {
             "from": "4",
             "to": "5",
-            "label": null
+            "label": "true"
           },
           {
-            "from": "5",
+            "from": "4",
             "to": "6",
             "label": "true"
           },
           {
-            "from": "5",
+            "from": "4",
             "to": "7",
-            "label": "true"
+            "label": "false"
           },
           {
             "from": "5",
             "to": "8",
-            "label": "false"
+            "label": null
           },
           {
             "from": "6",
-            "to": "9",
+            "to": "8",
             "label": null
           },
           {
             "from": "7",
-            "to": "9",
+            "to": "3",
             "label": null
           },
           {
             "from": "8",
-            "to": "4",
-            "label": null
-          },
-          {
-            "from": "9",
             "to": null,
             "label": null
           }
