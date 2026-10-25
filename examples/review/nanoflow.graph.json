@@ -1,12 +1,12 @@
 {
   "format": 3,
   "package": "review_example",
-  "fingerprint": "sha256:a51d01086869d3e38173b09fe5a351ada4c655f9bbfb307cac5cea1d64a5cff3",
+  "fingerprint": "sha256:02cfa1e43fab5b897e7283bb4549224afbd91254c845b385f1f4b0765e0affcc",
   "sources": {
-    "bin/graph.dart": "sha256:7deb23c19a7aeb81b415c34c90fc38394af8f4f644db1d1259238f51deeaf385",
+    "bin/graph.dart": "sha256:ac9d14efc94873978495434d4f9cb685e531ec67ed68db905a88eeec822b633b",
     "bin/main.dart": "sha256:fc75e28f8b4640e5f5c1441dd0aff0edbee5ba2eb9f67ae9cf835bc3b46d0389",
     "lib/review.dart": "sha256:259a35289cf7014a1126c5410360f5784bfff03eafb222e7227505ed73ef2615",
-    "lib/review_graph.dart": "sha256:e726a55445e678312aa948fcc6e8e78ae2f0f6576ae65eda5bb4d298570baa4a"
+    "lib/review_graph.dart": "sha256:8705062e85fe31719ab9d238656c4a5f7caffb5f0c9a24f158ecfe750ecf9995"
   },
   "builds": {},
   "workflows": [
@@ -141,63 +141,70 @@
     },
     "lib/review_graph.dart#reviewGraph": {
       "name": "reviewGraph",
-      "place": "lib/review_graph.dart:91",
-      "doc": null,
+      "place": "lib/review_graph.dart:89",
+      "doc": "Reviews the change of a branch.",
       "body": {
         "nodes": [
           {
             "id": "1",
             "kind": "effect",
             "name": "collect",
-            "place": "lib/review_graph.dart:91",
-            "doc": null
+            "place": "lib/review_graph.dart:90",
+            "doc": "The change of the branch, or Empty when it changes nothing."
           },
           {
             "id": "2",
             "kind": "fork",
-            "label": "switch (collect)",
-            "place": "lib/review_graph.dart:92"
+            "label": "switch (collected)",
+            "place": "lib/review_graph.dart:91"
           },
           {
             "id": "3",
             "kind": "effect",
             "name": "discard",
-            "place": "lib/review_graph.dart:91",
-            "doc": null
+            "place": "lib/review_graph.dart:92",
+            "doc": "Ends the review of a branch that changes nothing."
           },
           {
             "id": "4",
             "kind": "effect",
             "name": "inspect",
-            "place": "lib/review_graph.dart:91",
-            "doc": null
+            "place": "lib/review_graph.dart:93",
+            "doc": "Checks the name of the change's file with a program, as a reviewer\nsuch as `claude -p` would be run."
           },
           {
             "id": "5",
             "kind": "fork",
-            "label": "switch (inspect)",
-            "place": "lib/review_graph.dart:93"
+            "label": "r.findings.isEmpty",
+            "place": "lib/review_graph.dart:97"
           },
           {
             "id": "6",
             "kind": "effect",
             "name": "publish",
-            "place": "lib/review_graph.dart:91",
-            "doc": null
+            "place": "lib/review_graph.dart:97",
+            "doc": "Puts the change out."
           },
           {
             "id": "7",
             "kind": "effect",
             "name": "notify",
-            "place": "lib/review_graph.dart:91",
-            "doc": null
+            "place": "lib/review_graph.dart:97",
+            "doc": "Tells the branch's author it is accepted."
           },
           {
             "id": "8",
             "kind": "effect",
             "name": "fix",
-            "place": "lib/review_graph.dart:91",
-            "doc": null
+            "place": "lib/review_graph.dart:97",
+            "doc": "Renames the file to lower_snake_case, for inspect to check again."
+          },
+          {
+            "id": "9",
+            "kind": "effect",
+            "name": "report",
+            "place": "lib/review_graph.dart:99",
+            "doc": "Sums up the review once the change is out and the author is told."
           }
         ],
         "edges": [
@@ -214,12 +221,17 @@
           {
             "from": "2",
             "to": "3",
-            "label": "Empty"
+            "label": "Empty(:final branch)"
           },
           {
             "from": "2",
             "to": "4",
-            "label": "Found"
+            "label": "Found(:final change)"
+          },
+          {
+            "from": "3",
+            "to": null,
+            "label": null
           },
           {
             "from": "4",
@@ -229,17 +241,27 @@
           {
             "from": "5",
             "to": "6",
-            "label": "Clean"
+            "label": "true"
           },
           {
             "from": "5",
             "to": "7",
-            "label": "Clean"
+            "label": "true"
           },
           {
             "from": "5",
             "to": "8",
-            "label": "Findings"
+            "label": "false"
+          },
+          {
+            "from": "6",
+            "to": "9",
+            "label": null
+          },
+          {
+            "from": "7",
+            "to": "9",
+            "label": null
           },
           {
             "from": "8",
@@ -247,17 +269,7 @@
             "label": null
           },
           {
-            "from": "3",
-            "to": null,
-            "label": null
-          },
-          {
-            "from": "6",
-            "to": null,
-            "label": null
-          },
-          {
-            "from": "7",
+            "from": "9",
             "to": null,
             "label": null
           }

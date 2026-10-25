@@ -21,14 +21,13 @@ Future<void> main(List<String> args) async {
   final flow = Flow()
     ..addCodec(Change.fromJson)
     ..addCodec(Report.fromJson)
-    ..addCodec(Collected.fromJson)
-    ..addCodec(Inspected.fromJson);
+    ..addCodec(Collected.fromJson);
   final interrupt = ProcessSignal.sigint.watch().listen((_) => flow.stop());
   try {
     final session = switch (args) {
-      ['--resume', final id] => await flow.resume(reviewGraph.call, id),
+      ['--resume', final id] => await flow.resume(reviewGraph.run, id),
       [final branch] when !branch.startsWith('-') => await flow.start(
-        reviewGraph.call,
+        reviewGraph.run,
         branch,
       ),
       _ => null,

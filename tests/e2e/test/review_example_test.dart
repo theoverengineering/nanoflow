@@ -42,6 +42,19 @@ String graphPlaceOf(String code) {
   return 'lib/review_graph.dart:${found.single}';
 }
 
+/// For each node of the example's review graph, a piece of the one line of
+/// `lib/review_graph.dart` where the graph first names it: the node's place.
+/// publish and notify are named side by side, on one line.
+const graphNodeLines = {
+  'collect': 'Graph.start(collect)',
+  'discard': 'Empty(:final branch) => discard(branch)',
+  'inspect': 'Found(:final change) => inspect(change)',
+  'publish': '{publish(r), notify(r)}',
+  'notify': '{publish(r), notify(r)}',
+  'fix': ': fix(r)',
+  'report': '=> report(sent)',
+};
+
 /// `lib/review.dart:<line>` of the one line of the example's
 /// `lib/review.dart` that holds [code].
 String placeOf(String code) {
@@ -268,21 +281,21 @@ void main() {
     });
   });
 
-  test('its graph file has the review graph, its nodes at the graph', () {
+  test('its graph file has the review graph, its nodes at their first '
+      'mention in it', () {
     final graph = exampleGraph();
-    final place = graphPlaceOf('final reviewGraph = ');
-    Map<String, Object?> effect(String id, String name) => {
+    Map<String, Object?> effect(String id, String name, String doc) => {
       'id': id,
       'kind': 'effect',
       'name': name,
-      'place': place,
-      'doc': null,
+      'place': graphPlaceOf(graphNodeLines[name]!),
+      'doc': doc,
     };
-    Map<String, Object?> fork(String id, String label, String line) => {
+    Map<String, Object?> fork(String id, String label) => {
       'id': id,
       'kind': 'fork',
       'label': label,
-      'place': graphPlaceOf(line),
+      'place': graphPlaceOf(label),
     };
     Map<String, Object?> edge(String? from, String? to, [String? label]) => {
       'from': from,
@@ -291,32 +304,59 @@ void main() {
     };
     expect((graph['functions']! as Map)[graphId], {
       'name': 'reviewGraph',
-      'place': place,
-      'doc': null,
+      'place': graphPlaceOf('final reviewGraph = '),
+      'doc': 'Reviews the change of a branch.',
       'body': {
         'nodes': [
-          effect('1', 'collect'),
-          fork('2', 'switch (collect)', 'Graph.start(collect).next({'),
-          effect('3', 'discard'),
-          effect('4', 'inspect'),
-          fork('5', 'switch (inspect)', 'Graph.part(inspect).next({'),
-          effect('6', 'publish'),
-          effect('7', 'notify'),
-          effect('8', 'fix'),
+          effect(
+            '1',
+            'collect',
+            'The change of the branch, or Empty when it changes nothing.',
+          ),
+          fork('2', 'switch (collected)'),
+          effect(
+            '3',
+            'discard',
+            'Ends the review of a branch that changes nothing.',
+          ),
+          effect(
+            '4',
+            'inspect',
+            "Checks the name of the change's file with a program, as a "
+                'reviewer\nsuch as `claude -p` would be run.',
+          ),
+          fork('5', 'r.findings.isEmpty'),
+          effect('6', 'publish', 'Puts the change out.'),
+          effect('7', 'notify', "Tells the branch's author it is accepted."),
+          effect(
+            '8',
+            'fix',
+            'Renames the file to lower_snake_case, for inspect to check '
+                'again.',
+          ),
+          effect(
+            '9',
+            'report',
+            'Sums up the review once the change is out and the author is '
+                'told.',
+          ),
         ],
         'edges': [
           edge(null, '1'),
           edge('1', '2'),
-          edge('2', '3', 'Empty'),
-          edge('2', '4', 'Found'),
-          edge('4', '5'),
-          edge('5', '6', 'Clean'),
-          edge('5', '7', 'Clean'),
-          edge('5', '8', 'Findings'),
-          edge('8', '4'),
+          edge('2', '3', 'Empty(:final branch)'),
+          edge('2', '4', 'Found(:final change)'),
           edge('3', null),
-          edge('6', null),
-          edge('7', null),
+          edge('4', '5'),
+          // publish and notify side by side.
+          edge('5', '6', 'true'),
+          edge('5', '7', 'true'),
+          edge('5', '8', 'false'),
+          // The join of publish and notify goes to report.
+          edge('6', '9'),
+          edge('7', '9'),
+          edge('8', '4'),
+          edge('9', null),
         ],
       },
     });
@@ -345,10 +385,11 @@ void main() {
           environment: check?.environment,
         );
 
-    /// Checks the session [id] of the review graph: finished, its nodes'
-    /// effects at the graph's place, the fix done; [restarted] effects
-    /// started twice — run again in their record after a crash —, collect
-    /// not among them, and every other once.
+    /// Checks the session [id] of the review graph: finished, each node's
+    /// effect at the node's place in the graph, the fix done, report the
+    /// join of publish and notify; [restarted] effects started twice — run
+    /// again in their record after a crash —, collect not among them, and
+    /// every other once.
     Future<void> expectGraphReviewed(String id, {int restarted = 0}) async {
       final session = await sessionIn(dir, id);
       expect(session.session.workflow, 'reviewGraph');
@@ -357,9 +398,16 @@ void main() {
       final effects = await session.effects();
       final names = [for (final effect in effects) effect.name];
       expect(names.take(4), ['collect', 'inspect', 'fix', 'inspect']);
-      expect(names.skip(4), unorderedEquals(['publish', 'notify']));
-      final place = graphPlaceOf('final reviewGraph = ');
-      expect({for (final effect in effects) effect.place}, {place});
+      expect(names.skip(4).take(2), unorderedEquals(['publish', 'notify']));
+      expect(names.last, 'report');
+      expect(names, hasLength(7));
+      for (final effect in effects) {
+        expect(
+          effect.place,
+          graphPlaceOf(graphNodeLines[effect.name]!),
+          reason: effect.name,
+        );
+      }
       final starts = {
         for (final effect in state.effects) effect.effectId: effect.starts,
       };
@@ -368,8 +416,38 @@ void main() {
         for (var i = 0; i < effects.length - restarted; i++) 1,
         for (var i = 0; i < restarted; i++) 2,
       ]);
-      final published = effects.singleWhere((e) => e.name == 'publish');
-      expect(logOf(session, published), 'published lib/parse_config.dart\n');
+      // What each node gave is in the journal, as JSON.
+      const before = {'id': 'parseConfig', 'path': 'lib/parseConfig.dart'};
+      const after = {'id': 'parseConfig', 'path': 'lib/parse_config.dart'};
+      Future<Object?> outputOf(int i) =>
+          session.documentValue(effects[i].outputId!);
+      expect(await outputOf(0), before);
+      expect(await outputOf(1), {
+        'change': before,
+        'findings': ['lib/parseConfig.dart: file names are lower_snake_case'],
+      });
+      expect(await outputOf(2), after);
+      expect(await outputOf(3), {'change': after, 'findings': <Object?>[]});
+      expect(
+        {
+          for (final i in [4, 5]) names[i]: await outputOf(i),
+        },
+        {
+          'publish': 'published lib/parse_config.dart',
+          'notify': 'parseConfig: accepted',
+        },
+      );
+      expect(await outputOf(6), isNull);
+      String logByName(String name) =>
+          logOf(session, effects.singleWhere((e) => e.name == name))!;
+      expect(logByName('publish'), 'published lib/parse_config.dart\n');
+      expect(logByName('notify'), 'parseConfig: accepted\n');
+      // The join gave report the outputs of publish and notify, in the
+      // order of the join.
+      expect(
+        logByName('report'),
+        'published lib/parse_config.dart; parseConfig: accepted\n',
+      );
     }
 
     test(
@@ -382,6 +460,25 @@ void main() {
         await expectGraphReviewed(id);
       },
     );
+
+    test('a branch that changes nothing goes to discard, its Empty written '
+        'to the journal as the branch', () async {
+      final running = await start(['']);
+      final id = await running.firstLine();
+      expect(await running.exitCode, 0, reason: '${running.err}');
+      final session = await sessionIn(dir, id);
+      final state = replaySession(await session.events());
+      expect(state.status, SessionStatus.finished);
+      final effects = await session.effects();
+      expect(
+        [for (final effect in effects) effect.name],
+        ['collect', 'discard'],
+      );
+      expect(await session.documentValue(effects.first.outputId!), {
+        'branch': '',
+      });
+      expect(logOf(session, effects.last), 'nothing to review\n');
+    });
 
     test('killed with SIGKILL in a node, --resume takes the nodes that '
         'finished from the journal and ends it', () async {
