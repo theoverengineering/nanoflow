@@ -10,17 +10,21 @@ import 'canvas_marks.dart' show Tone;
 
 /// The canvas's colors. Arrows, exits and input bars come in two tones
 /// (`Tone` in canvas_marks.dart).
+///
+/// The background is plain and darker than the mockups', so that tiles stand
+/// off it by their fill and arrows and labels read at a glance: a tile's fill
+/// was all but the canvas's own (1.17:1), and arrows were fainter than lines
+/// should be (2.8:1).
 abstract final class CanvasColors {
-  static const background = Color(0xFF27282C);
-  static const gridDot = Color(0xFF3A3B41);
+  static const background = Color(0xFF1C1D20);
 
   /// Arrows, exits and input bars as the graph draws them: `Tone.plain`.
-  static const plain = Color(0xFF6B6C73);
+  static const plain = Color(0xFFA3A4AB);
 
   /// Arrows and input bars that lead to or from a node one copy shown has
   /// not reached: `Tone.untaken`, darker; and such exits.
-  static const untaken = Color(0xFF4A4B52);
-  static const untakenExit = Color(0xFF55565C);
+  static const untaken = Color(0xFF55565D);
+  static const untakenExit = Color(0xFF62636A);
 
   /// The color of arrows, their heads and input bars in [tone].
   static Color line(Tone tone) => switch (tone) {
@@ -29,30 +33,30 @@ abstract final class CanvasColors {
   };
 
   /// Exit labels.
-  static const chipText = Color(0xFF9A9BA2);
+  static const chipText = Color(0xFFD5D6DA);
 
   /// A tile: its fill and border, its icon, its name and place under it.
-  static const tileFill = Color(0xFF323338);
-  static const tileBorder = Color(0xFF55565C);
-  static const icon = Color(0xFFC9CACF);
+  static const tileFill = Color(0xFF3A3B42);
+  static const tileBorder = Color(0xFF7A7B83);
+  static const icon = Color(0xFFE4E5E9);
   static const name = Color(0xFFECECEE);
-  static const place = Color(0xFF9A9BA2);
+  static const place = Color(0xFF6E6F76);
 
   /// The tiles stacked behind copies.
-  static const stackFill = Color(0xFF2C2D32);
-  static const stackBorder = Color(0xFF55565C);
+  static const stackFill = Color(0xFF2E2F35);
+  static const stackBorder = Color(0xFF6A6B73);
 
   /// The ring round the selected effect's node: 4 px of the accent at 38 %.
   static const ring = Color(0x619C8CFF);
 
   /// The badges over a tile: `×3` across the stack of copies, `2×` over a
   /// node entered more than once.
-  static const badgeFill = Color(0xFF3A3B41);
-  static const badgeBorder = Color(0xFF4A4B52);
+  static const badgeFill = Color(0xFF42434A);
+  static const badgeBorder = Color(0xFF5E5F66);
   static const badgeText = Color(0xFFD5D6DA);
 
   /// The dashed outline of the start and end markers, and their word.
-  static const markerBorder = Color(0xFF5A5B62);
+  static const markerBorder = Color(0xFF6E6F76);
   static const markerText = Color(0xFFA7A8AE);
 
   /// The zoom buttons and the legend.

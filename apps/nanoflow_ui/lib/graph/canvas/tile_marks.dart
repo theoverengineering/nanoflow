@@ -82,7 +82,7 @@ final class TileLook {
   );
 
   static const notVisited = TileLook(
-    fill: Color(0xFF2C2D32),
+    fill: Color(0xFF25262B),
     border: Color(0xFF45464C),
     borderWidth: 1.5,
     icon: Color(0xFF6E6F76),

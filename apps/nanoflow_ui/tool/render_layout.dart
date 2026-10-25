@@ -148,26 +148,25 @@ void _addAll(Map<String, GraphBody> bodies, String name, GraphBody body) {
   layout.bounds.height + 2 * _pad + _captionRoom,
 );
 
-/// The mockups' colours.
-const _canvas = '#27282C';
-const _dots = '#3A3B41';
-const _tileFill = '#323338';
-const _tileBorder = '#5A5B62';
-const _stackFill = '#2C2D32';
-const _stackBorder = '#55565C';
-const _badgeFill = '#3A3B41';
-const _badgeBorder = '#4A4B52';
+/// The canvas's colours, as lib/graph/canvas/canvas_style.dart has them.
+const _canvas = '#1C1D20';
+const _tileFill = '#3A3B42';
+const _tileBorder = '#7A7B83';
+const _stackFill = '#2E2F35';
+const _stackBorder = '#6A6B73';
+const _badgeFill = '#42434A';
+const _badgeBorder = '#5E5F66';
 const _badgeText = '#D5D6DA';
-const _markerBorder = '#5A5B62';
+const _markerBorder = '#6E6F76';
 const _markerText = '#A7A8AE';
-const _icon = '#C9CACF';
+const _icon = '#E4E5E9';
 const _name = '#ECECEE';
-const _place = '#9A9BA2';
+const _place = '#6E6F76';
 const _caption = '#7E7F86';
-const _edge = '#8E8F96';
+const _edge = '#A3A4AB';
 const _back = '#9C8CFF';
-const _label = '#BDB3FF';
-const _bar = '#8E8F96';
+const _label = '#D5D6DA';
+const _bar = '#A3A4AB';
 
 const _pad = 40.0;
 const _captionRoom = 24.0;
@@ -180,12 +179,7 @@ String renderSvg(GraphLayout layout, String caption) {
       '<svg xmlns="http://www.w3.org/2000/svg" width="${_n(width)}" '
       'height="${_n(height)}" viewBox="0 0 ${_n(width)} ${_n(height)}">',
     )
-    ..writeln('<defs>')
-    ..writeln(
-      '<pattern id="dots" width="22" height="22" '
-      'patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="1" '
-      'fill="$_dots"/></pattern>',
-    );
+    ..writeln('<defs>');
   for (final (id, colour) in [('ah', _edge), ('ahb', _back)]) {
     svg.writeln(
       '<marker id="$id" markerWidth="11" markerHeight="9" refX="0.5" '
@@ -197,9 +191,6 @@ String renderSvg(GraphLayout layout, String caption) {
     ..writeln('</defs>')
     ..writeln(
       '<rect width="${_n(width)}" height="${_n(height)}" fill="$_canvas"/>',
-    )
-    ..writeln(
-      '<rect width="${_n(width)}" height="${_n(height)}" fill="url(#dots)"/>',
     )
     ..writeln('<g transform="translate($_pad $_pad)">');
 

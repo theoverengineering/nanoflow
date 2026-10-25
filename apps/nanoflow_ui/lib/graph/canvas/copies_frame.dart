@@ -181,7 +181,7 @@ class CopiesFrameView extends StatelessWidget {
               color: CanvasColors.background,
               border: Border.fromBorderSide(
                 BorderSide(
-                  color: Color(0xFF5A5A62),
+                  color: Color(0xFF6E6F76),
                   width: layout.frameOutline,
                 ),
               ),
