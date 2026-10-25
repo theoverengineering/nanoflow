@@ -1,5 +1,8 @@
-// Graphs that are drawn with warnings: what their arrows carry is not what
-// their targets take, a key never matches, and what is not drawn at all.
+// Graphs that are drawn with warnings: a node or a graph outside a top-level
+// variable, names that are not literals or are taken, routes and values that
+// cannot be read, a node no way reaches, a join whose route takes another
+// record, a side effect in a route, graphs that are nodes and can end in
+// several ends at once, and parts that cannot be read.
 import 'package:nanoflow/nanoflow.dart';
 
 final class Change {
@@ -14,46 +17,75 @@ final class Report {
   final String path;
 }
 
-enum Verdict { pass, fail }
+final begin = node('begin', (String branch) async => Change(branch));
 
-final class Square {}
+final check = node('check', (Change change) async => Report(change.path));
 
-Future<Change> begin(String branch) async => Change(branch);
+final recheck = node('check', (Change change) async => Report(change.path));
 
-Future<Report> check(Change change) async => Report(change.path);
+final done = node('done', (Report report) async => report.path);
 
-Future<String> needsChange(Change change) async => change.path;
+final left = node('left', (Report report) async => report.path);
 
-Future<Verdict> judge(Report report) async => Verdict.pass;
+final right = node('right', (Report report) async => 1);
 
-Future<String> done(Verdict verdict) async => '$verdict';
+Node<String, String> local() => node('local', (String text) async => text);
 
-Future<String> left(Report report) async => report.path;
+Graph<String, void> localGraph() => Graph('localGraph', [Graph.start(begin)]);
 
-Future<int> right(Report report) async => 1;
+const nodeName = 'aNode';
 
-Future<void> both((String, String) parts) async {}
+final named = node(nodeName, (String text) async => text);
 
-final mismatched = Graph<String, void>('mismatched', [
-  Graph.start(begin).next(check),
-  Graph.part(check).next({needsChange, judge, left, right}),
-  Graph.part(judge).next({Square: done, 'pass': done}),
-  Graph.join([left, right]).next(both),
+const graphName = 'aGraph';
+
+final namedGraph = Graph<String, void>(graphName, [Graph.start(named)]);
+
+final twins = Graph<String, void>('twins', [
+  Graph.start(begin).next((change) => check(change)),
+  Graph.part(check).next((report) => recheck(Change(report.path))),
 ]);
 
-const graphName = 'named';
+final unread = Graph<String, void>('unread', [
+  // ignore: implicit_call_tearoffs
+  Graph.start(begin).next(check),
+  Graph.part(check).next((report) => [done(report)]),
+]);
 
-final named = Graph<String, void>(graphName, [Graph.start(begin)]);
+final orphaned = Graph<String, void>('orphaned', [
+  Graph.start(begin).next((change) => check(change)),
+  Graph.part(left).next((path) => null),
+]);
 
-Graph<String, void> local() => Graph('local', [Graph.start(begin)]);
+final joined = Graph<String, void>('joined', [
+  Graph.start(begin).next((change) => check(change)),
+  Graph.part(check).next((report) => {left(report), right(report)}),
+  Graph.join([left, right]).next(((String, String) both) => null),
+]);
+
+final timed = Graph<String, void>('timed', [
+  Graph.start(begin)
+      .next((change) => DateTime.now().hour < 12 ? check(change) : null),
+]);
+
+final fanned = Graph<Report, String>('fanned', [
+  Graph.start(done).next((path) => {left(Report(path)), right(Report(path))}),
+]);
+
+final started = Graph<Report, String>('started', [
+  Graph.start(left),
+  Graph.start(right),
+]);
+
+final outer = Graph<String, void>('outer', [
+  Graph.start(begin).next((change) => check(change)),
+  Graph.part(check)
+      .next((report) => {fanned(report), started(report), joined(report.path)}),
+]);
 
 final aPart = Graph.start(begin);
 
 final indirect = Graph<String, void>('indirect', [aPart]);
-
-final closure = Graph<String, String>('closure', [
-  Graph.start((String text) async => text),
-]);
 
 Future<void> twin(Flow f, String branch) async {
   await f.effect('locate', () => branch);

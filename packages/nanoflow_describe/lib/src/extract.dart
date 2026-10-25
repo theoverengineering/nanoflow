@@ -14,25 +14,25 @@ import 'package:analyzer/dart/analysis/session.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/element/element.dart';
-import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
-import 'package:analyzer/dart/element/type_system.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 part 'graphs.dart';
+part 'routes.dart';
 
 /// What [extract] read from the sources of a package.
 typedef Extracted = ({
-  /// The ids of the functions and graphs passed first to `Flow.start`,
-  /// `Flow.run` or `Flow.resume`, sorted.
+  /// The ids of the functions passed first to `Flow.start`, `Flow.run` or
+  /// `Flow.resume`, and of the graphs whose `run` is, sorted.
   List<String> workflows,
 
-  /// The functions with effects, the workflows, the graphs and the workflow
-  /// functions that are nodes of graphs, by id, sorted by id.
+  /// The functions with effects, the workflows and the graphs, by id, sorted
+  /// by id.
   Map<String, GraphFunction> functions,
 
-  /// The bodies of the functions of [functions], in the same order: a graph
-  /// has none.
+  /// The code whose side effects outside effects warn: the bodies of the
+  /// functions of [functions] — a graph has none — and of the routes of the
+  /// graphs.
   List<FunctionBody> bodies,
 
   /// What could not be drawn, each once.
@@ -104,12 +104,13 @@ final class _Package {
   /// The functions with effects, once [_findWithEffects] has found them.
   final _withEffects = <_Declaration>{};
 
-  /// The graphs declared in top-level variables, by the variable.
-  final _graphs = <Element, _GraphDeclaration>{};
+  /// The nodes and the graphs declared in top-level variables, by the
+  /// variable.
+  final _nodelikes = <Element, _Nodelike>{};
 
-  /// The workflow functions that are nodes of graphs, once the graphs are
-  /// drawn.
-  final _nodeFunctions = <_Declaration>{};
+  /// The graphs among [_nodelikes].
+  Iterable<_GraphDeclaration> get _graphs =>
+      _nodelikes.values.whereType<_GraphDeclaration>();
 
   /// The functions outside the sources that call effects.
   final _effectsOutside = <ExecutableElement>{};
@@ -161,26 +162,16 @@ final class _Package {
     for (final unit in _units) {
       _walk(unit.unit, (node) => _look(node, workflows, graphWorkflows));
     }
-    // Before the functions: drawing a graph finds the workflow functions
-    // that are its nodes.
-    final graphs = {
-      for (final graph in _graphs.values)
-        graph.id: GraphFunction(
-          id: graph.id,
-          name: graph.name,
-          place: graph.place,
-          body: _GraphBody(this, graph).build(),
-        ),
-    };
-    final drawn = {..._withEffects, ...workflows, ..._nodeFunctions}.toList()
+    final (graphs, routes) = _drawGraphs();
+    final drawn = {..._withEffects, ...workflows}.toList()
       ..sort((a, b) => a.id.compareTo(b.id));
     // A session is named after its workflow, and a node's effect is found
     // by the name of its graph: a graph must not share its name.
-    for (final graph in _graphs.values) {
+    for (final graph in _graphs) {
       final twins = [
         for (final d in drawn)
           if (d.name == graph.name) d.id,
-        for (final other in _graphs.values)
+        for (final other in _graphs)
           if (other != graph && other.name == graph.name) other.id,
       ]..sort();
       if (twins.isNotEmpty) {
@@ -209,7 +200,7 @@ final class _Package {
       functions: {
         for (final id in functions.keys.toList()..sort()) id: functions[id]!,
       },
-      bodies: [for (final d in drawn) d.body],
+      bodies: [for (final d in drawn) d.body, ...routes],
       warnings: _warnings.toList(),
     );
   }
@@ -243,8 +234,13 @@ final class _Package {
                 method.body,
               );
             }
-          case TopLevelVariableDeclaration(:final variables):
-            variables.variables.forEach(_declareGraph);
+          case TopLevelVariableDeclaration(
+            :final variables,
+            :final documentationComment,
+          ):
+            for (final variable in variables.variables) {
+              _declareNodelike(variable, documentationComment);
+            }
           default:
         }
       });
@@ -291,7 +287,7 @@ final class _Package {
       _walkRunning(declaration.body, (node) {
         if (node is MethodInvocation && isEffect(node)) effects = true;
         // A graph's nodes run as effects.
-        if (_graphCalled(node) != null) effects = true;
+        if (_graphRun(node) != null) effects = true;
         calls.addAll(_candidates(node));
       });
       if (effects) _withEffects.add(declaration);
@@ -330,9 +326,11 @@ final class _Package {
           offset: local.name.offset,
         );
       case final InstanceCreationExpression made
-          when _makesGraph(made) &&
-              !_graphs.values.any((graph) => identical(graph.made, made)):
+          when _makesGraph(made) && !_isDeclared(made):
         _warn(made, 'a graph outside a top-level variable is not drawn');
+      case final MethodInvocation made
+          when _makesNode(made) && !_isDeclared(made):
+        _warn(made, 'a node outside a top-level variable is not drawn');
       case final MethodInvocation start
           when _isFlow(start, const {'start', 'run', 'resume'}):
         final argument =
@@ -341,7 +339,7 @@ final class _Package {
         if (_declarations[workflow?.baseElement] case final declaration?) {
           workflows.add(declaration);
         }
-        if (_graphReferenced(argument) case final graph?) {
+        if (_graphOfRun(argument) case final graph?) {
           graphWorkflows.add(graph);
         }
       default:
@@ -374,7 +372,7 @@ final class _Package {
   List<String> _callTargets(AstNode node) => [
     for (final d in _candidates(node))
       if (_withEffects.contains(d)) d.id,
-    ?_graphCalled(node)?.id,
+    ?_graphRun(node)?.id,
   ]..sort();
 
   /// The functions of the sources that [node] can call.
@@ -1909,14 +1907,17 @@ final class _Body {
 
   // ---- the body in the graph file ---------------------------------------------
 
-  GraphBody _emit() {
+  /// The body as the graph file has it. [roots] are drawn, with where they
+  /// lead, though no path from the entry reaches them: the nodes a graph
+  /// declares.
+  GraphBody _emit({Iterable<_V> roots = const []}) {
     // A fork whose outcomes all lead to the same nodes decides nothing that
     // can be seen: it is not drawn, as a join. An outcome without an edge
     // (a throw) leads nowhere, which differs from anywhere.
-    // What no path from the entry reaches — a case no path takes, the fork
-    // of a switch every path knows — is not drawn either.
+    // What no path from the entry or the roots reaches — a case no path
+    // takes, the fork of a switch every path knows — is not drawn either.
     final reached = <_V>{};
-    for (final queue = <_V>[_entry]; queue.isNotEmpty;) {
+    for (final queue = <_V>[_entry, ...roots]; queue.isNotEmpty;) {
       final v = queue.removeLast();
       if (!reached.add(v)) continue;
       for (final (_, to) in _edges[v] ?? const <(String?, _V)>[]) {

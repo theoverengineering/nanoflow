@@ -1,6 +1,9 @@
-// Graphs of nodes beside workflow functions: the review graph with Exits, a
-// set and a join; maps that cover every value and maps that do not; graphs
-// and workflow functions as nodes; a workflow function that calls a graph.
+// Graphs of nodes: review, whose routes switch over a sealed output, pick
+// with ?:, and run a set into a join, one of them a top-level function;
+// polish, a node of review that shares a node with it, whose ?: route
+// decides nothing and whose other route has if and switch statements, a
+// throw and a statement that decides nothing; announce, whose join has no
+// route; a workflow function that runs a graph.
 import 'package:nanoflow/nanoflow.dart';
 
 final class Change {
@@ -9,102 +12,113 @@ final class Change {
   final String path;
 }
 
+enum Verdict { pass, retry, fail }
+
 final class Report {
-  Report(this.path, this.findings);
+  Report(this.path, this.findings, this.verdict);
 
   final String path;
   final int findings;
+  final Verdict verdict;
 }
 
 sealed class Collected {}
 
-final class Empty extends Exit<void> implements Collected {
-  Empty() : super(null);
+final class Empty implements Collected {
+  Empty(this.branch);
+
+  final String branch;
 }
 
-final class Found extends Exit<Change> implements Collected {
-  Found(super.value);
+final class Found implements Collected {
+  Found(this.change);
+
+  final Change change;
 }
 
-sealed class Inspected {}
+/// The change of the branch, or Empty when it changes nothing.
+final collect = node<String, Collected>(
+  'collect',
+  (branch) async => branch.isEmpty ? Empty(branch) : Found(Change(branch)),
+);
 
-final class Clean extends Exit<Report> implements Inspected {
-  Clean(super.value);
-}
+/// What is wrong with the change.
+final inspect = node(
+  'inspect',
+  (Change change) async => Report(change.path, 0, Verdict.pass),
+);
 
-final class Findings extends Exit<Report> implements Inspected {
-  Findings(super.value);
-}
+final fix = node('fix', (Report report) async => Change('${report.path}!'));
 
-enum Verdict { pass, fail }
+final discard = node('discard', (String branch) async => branch);
 
-Future<Collected> collect(String branch) async =>
-    branch.isEmpty ? Empty() : Found(Change(branch));
+final publish = node('publish', (Report report) async => report.path);
 
-Future<Inspected> inspect(Change change) async => change.path.endsWith('!')
-    ? Clean(Report(change.path, 0))
-    : Findings(Report(change.path, 1));
+final notify = node('notify', (Report report) async => report.findings);
 
-Future<Change> fix(Report report) async => Change('${report.path}!');
+final summarize = node(
+  'summarize',
+  ((String, int) sent) async => '${sent.$1}: ${sent.$2}',
+);
 
-Future<void> discard(void _) async {}
+final giveUp = node('giveUp', (Report report) async => report);
 
-Future<String> publish(Report report) async => report.path;
+/// Reviews the change of a branch.
+final review = Graph<String, String>('review', [
+  Graph.start(collect).next(
+    (collected) => switch (collected) {
+      Empty(:final branch) => discard(branch),
+      Found(:final change) when change.path.endsWith('.md') => discard(
+        change.path,
+      ),
+      Found(:final change) => inspect(change),
+    },
+  ),
+  Graph.part(inspect).next(
+    (report) => report.findings == 0
+        ? {publish(report), notify(report)}
+        : polish(report),
+  ),
+  Graph.part(polish).next(published),
+  Graph.join([publish, notify]).next(((String, int) sent) => summarize(sent)),
+]);
 
-Future<String> notify(Report report) async => report.path;
-
-Future<void> report((String, String) sent) async {}
-
-final review = Graph<String, void>('review', [
-  Graph.start(collect).next({Empty: discard, Found: inspect}),
-  Graph.part(inspect).next({
-    Clean: {publish, notify},
-    Findings: fix,
+/// Fixes a change until its report has no findings, or gives up.
+final polish = Graph<Report, Report>('polish', [
+  Graph.start(fix).next(
+    (change) => change.path.endsWith('!')
+        ? inspect(change)
+        : inspect(Change('${change.path}!')),
+  ),
+  // A pass falls off the end of the route, which gives null.
+  // ignore: body_might_complete_normally_nullable
+  Graph.part(inspect).next((report) {
+    if (report.findings > 9) print('${report.path}: many findings');
+    if (report.findings == 0) return null;
+    switch (report.verdict) {
+      case Verdict.retry:
+        return fix(report);
+      case Verdict.fail when report.findings > 3:
+        throw StateError('${report.path} cannot be fixed');
+      case Verdict.fail:
+        return giveUp(report);
+      case Verdict.pass:
+    }
   }),
-  Graph.part(fix).next(inspect),
-  Graph.join([publish, notify]).next(report),
 ]);
 
-/// A workflow function as a node.
-Future<Change> prepare(Flow f, String branch) async {
-  final path = await f.effect('locate', () => 'lib/$branch.dart');
-  return Change(path);
-}
-
-/// A workflow function without effects as a node.
-Future<String> plain(Flow f, Change change) async => change.path;
-
-Future<(Verdict, Report)> judge(Change change) async =>
-    (Verdict.pass, Report(change.path, 0));
-
-Future<String> accept(Report report) async => report.path;
-
-Future<bool> isLong(String text) async => text.length > 3;
-
-Future<String> long(bool yes) async => 'long';
-
-Future<String> retry(bool yes) async => 'retry';
-
-final judged = Graph<String, String>('judged', [
-  Graph.start(prepare).next(judge),
-  Graph.part(judge).next({Verdict.pass: accept}),
+// Publishes a report and notifies of it side by side; the record of the two
+// is the result.
+final announce = Graph<Report, (String, int)>('announce', [
+  Graph.start(publish),
+  Graph.start(notify),
+  Graph.join([publish, notify]),
 ]);
 
-final measured = Graph<String, String>('measured', [
-  Graph.start(isLong).next({true: long}, otherwise: retry),
-]);
+/// Where a polished report goes: to publish and notify, side by side.
+Object? published(Report report) => {publish(report), notify(report)};
 
-final nested = Graph<String, String>('nested', [
-  Graph.start(judged).next(measured),
-]);
-
-final plainly = Graph<String, String>('plainly', [
-  Graph.start(prepare).next(plain),
-]);
-
-Future<String> callsGraph(Flow f, String branch) async {
+Future<String> reviewed(Flow f, String branch) async {
   final checked = await f.effect('check', () => branch);
-  return nested(f, checked);
+  return review.run(f, checked);
 }
-
-final viaCall = Graph<String, String>('viaCall', [Graph.start(judged.call)]);

@@ -1,35 +1,76 @@
-// Graphs of nodes (graph design §9, §10): a top-level variable made by
-// `Graph(name, parts)` of `package:nanoflow` is drawn as a function of the
-// graph file, whose body has the nodes a workflow function's has — an effect
-// for a node that is a function of one parameter, a call for a workflow
-// function or a graph, a fork for each map of targets —, so the UI draws it
-// as it is.
+// Graphs of nodes (graph node objects design §8–§9): a top-level variable
+// made by `Graph(name, parts)` of `package:nanoflow` is drawn as a function
+// of the graph file, whose body has the points a workflow function's has —
+// an effect for a node made by `node(…)` in a top-level variable, a call for
+// a graph that is a node, the forks of its routes (routes.dart) —, so the UI
+// draws it as it is.
 
 part of 'extract.dart';
 
-/// A graph declared in a top-level variable of the sources.
-final class _GraphDeclaration {
-  _GraphDeclaration(this.id, this.name, this.place, this.variable, this.made);
+/// A node or a graph declared in a top-level variable: what a part of a
+/// graph starts from and what a route leads to.
+sealed class _Nodelike {
+  _Nodelike(this.name, this.variable, this.doc);
+
+  /// The name it is made with; its variable's when that is not a literal.
+  final String name;
+
+  final TopLevelVariableElement variable;
+
+  /// The doc comment over its variable ([docText]); `null` without one.
+  final String? doc;
+
+  /// `node(…)` or `Graph(…)`.
+  Expression get made;
+
+  /// What it gives: the `O` of the `Node<I, O>` or the `Graph<I, O>` its
+  /// variable is; `null` when not known.
+  DartType? get output => switch (variable.type) {
+    InterfaceType(typeArguments: [_, final output]) => output,
+    _ => null,
+  };
+}
+
+/// A node made by `node(…)`: drawn as an effect.
+final class _NodeDeclaration extends _Nodelike {
+  _NodeDeclaration(super.name, super.variable, super.doc, this.made);
+
+  @override
+  final MethodInvocation made;
+}
+
+/// A graph: drawn as a function, and as a call where it is a node.
+final class _GraphDeclaration extends _Nodelike {
+  _GraphDeclaration(
+    super.name,
+    super.variable,
+    super.doc,
+    this.made, {
+    required this.id,
+    required this.place,
+  });
+
+  @override
+  final InstanceCreationExpression made;
 
   /// `path#variable`.
   final String id;
 
-  /// The name the graph is made with; its variable's when that is not a
-  /// literal.
-  final String name;
-
   /// `path:line` of the name of the variable.
   final String place;
-
-  final TopLevelVariableElement variable;
-
-  /// `Graph(…)`.
-  final InstanceCreationExpression made;
 }
 
 /// Whether [e] makes a `Graph` of `package:nanoflow`.
 bool _makesGraph(InstanceCreationExpression e) =>
     _isNanoflowClass(e.constructorName.element?.enclosingElement, 'Graph');
+
+/// Whether [e] makes a node with `node` of `package:nanoflow`.
+bool _makesNode(MethodInvocation e) {
+  final function = e.methodName.element;
+  return function is TopLevelFunctionElement &&
+      function.name == 'node' &&
+      function.library.uri.toString().startsWith('package:nanoflow/');
+}
 
 /// Whether [element] is the class [name] of `package:nanoflow`.
 bool _isNanoflowClass(Element? element, String name) =>
@@ -46,488 +87,348 @@ bool _isNanoflowMethod(MethodInvocation node, String type, String name) {
       _isNanoflowClass(method.enclosingElement, type);
 }
 
+/// Whether [type] is known enough to check: not `null`, not `dynamic`.
+bool _known(DartType? type) => type != null && type is! DynamicType;
+
 extension on _Package {
-  /// Finds the graph made in [variable], a top-level variable of [unit].
-  void _declareGraph(VariableDeclaration variable) {
+  /// Finds the node or the graph made in [variable], a top-level variable
+  /// whose declaration has the doc comment [comment].
+  void _declareNodelike(VariableDeclaration variable, Comment? comment) {
     final made = variable.initializer?.unParenthesized;
     final element = variable.declaredFragment?.element;
-    if (made is! InstanceCreationExpression ||
-        !_makesGraph(made) ||
-        element is! TopLevelVariableElement) {
-      return;
+    if (element is! TopLevelVariableElement) return;
+    final doc = comment == null ? null : docText(comment.tokens);
+    switch (made) {
+      case InstanceCreationExpression() when _makesGraph(made):
+        _nodelikes[element.baseElement] = _GraphDeclaration(
+          _nameIn(made, made.argumentList, variable, 'graph'),
+          element,
+          doc,
+          made,
+          id: '${_paths[variable.root]}#${variable.name.lexeme}',
+          place: _place(variable, offset: variable.name.offset),
+        );
+      case MethodInvocation() when _makesNode(made):
+        _nodelikes[element.baseElement] = _NodeDeclaration(
+          _nameIn(made, made.argumentList, variable, 'node'),
+          element,
+          doc,
+          made,
+        );
+      default:
     }
-    final name = switch (made.argumentList.arguments.firstOrNull) {
-      SimpleStringLiteral(:final value) => value,
-      _ => null,
-    };
-    if (name == null) {
-      _warn(made, 'graph name is not a string literal');
-    }
-    _graphs[element.baseElement] = _GraphDeclaration(
-      '${_paths[variable.root]}#${variable.name.lexeme}',
-      name ?? variable.name.lexeme,
-      _place(variable, offset: variable.name.offset),
-      element,
-      made,
-    );
   }
 
-  /// The graph declared in the sources that [element] refers to: the
-  /// variable or its getter; `null` for anything else.
-  _GraphDeclaration? _graphOf(Element? element) => switch (element) {
-    GetterElement(:final variable) => _graphs[variable.baseElement],
-    TopLevelVariableElement() => _graphs[element.baseElement],
+  /// The name [made], a [kind], takes first in [arguments]: a string
+  /// literal; or, which it warns of, the name of its [variable].
+  String _nameIn(
+    Expression made,
+    ArgumentList arguments,
+    VariableDeclaration variable,
+    String kind,
+  ) {
+    if (arguments.arguments.firstOrNull case StringLiteral(
+      :final stringValue?,
+    )) {
+      return stringValue;
+    }
+    _warn(made, '$kind name is not a string literal');
+    return variable.name.lexeme;
+  }
+
+  /// Whether [made], `node(…)` or `Graph(…)`, is in a top-level variable.
+  bool _isDeclared(Expression made) =>
+      _nodelikes.values.any((declared) => identical(declared.made, made));
+
+  /// The node or the graph declared in the sources that [element] refers
+  /// to: the variable or its getter; `null` for anything else.
+  _Nodelike? _nodelikeOf(Element? element) => switch (element) {
+    GetterElement(:final variable) => _nodelikes[variable.baseElement],
+    TopLevelVariableElement() => _nodelikes[element.baseElement],
     _ => null,
   };
 
-  /// The graph [expression] refers to — `review`, `review.call` or the
-  /// implicit `call` of `review` —; `null` for anything else.
-  _GraphDeclaration? _graphReferenced(Expression? expression) =>
+  /// The node or the graph [expression] names; `null` for anything else.
+  _Nodelike? _nodelikeIn(Expression? expression) =>
       switch (expression?.unParenthesized) {
-        ImplicitCallReference(:final expression) => _graphReferenced(
-          expression,
-        ),
-        PrefixedIdentifier(:final prefix, :final identifier)
-            when identifier.name == 'call' =>
-          _graphReferenced(prefix),
-        PropertyAccess(:final target, :final propertyName)
-            when propertyName.name == 'call' =>
-          _graphReferenced(target),
-        Identifier(:final element) => _graphOf(element),
+        Identifier(:final element) => _nodelikeOf(element),
         _ => null,
       };
 
-  /// The graph [node] calls — `review(f, input)` or `review.call(f, input)`
-  /// —; `null` when it calls none.
-  _GraphDeclaration? _graphCalled(AstNode node) => switch (node) {
-    FunctionExpressionInvocation(:final function) => _graphReferenced(function),
-    MethodInvocation(target: null, :final methodName) => _graphOf(
+  /// The node or the graph [node] calls, which gives the transition to it —
+  /// `inspect(change)`, the implicit `call` of the variable, or
+  /// `inspect.call(change)` —; `null` when it calls none.
+  _Nodelike? _nodelikeCalled(AstNode node) => switch (node) {
+    FunctionExpressionInvocation(:final function) => _nodelikeIn(function),
+    MethodInvocation(target: null, :final methodName) => _nodelikeOf(
       methodName.element,
     ),
     MethodInvocation(:final target?, :final methodName)
         when methodName.name == 'call' =>
-      _graphReferenced(target),
+      _nodelikeIn(target),
     _ => null,
   };
+
+  /// The graph [expression] names; `null` for anything else.
+  _GraphDeclaration? _graphIn(Expression? expression) =>
+      switch (_nodelikeIn(expression)) {
+        final _GraphDeclaration graph => graph,
+        _ => null,
+      };
+
+  /// The graph whose `run` [expression] is — `review.run`, as `flow.start`
+  /// takes a graph —; `null` for anything else.
+  _GraphDeclaration? _graphOfRun(Expression? expression) =>
+      switch (expression?.unParenthesized) {
+        PrefixedIdentifier(:final prefix, :final identifier)
+            when identifier.name == 'run' =>
+          _graphIn(prefix),
+        PropertyAccess(:final target?, :final propertyName)
+            when propertyName.name == 'run' =>
+          _graphIn(target),
+        _ => null,
+      };
+
+  /// The graph [node] runs in the session of a workflow function —
+  /// `review.run(f, input)` —; `null` when it runs none.
+  _GraphDeclaration? _graphRun(AstNode node) => switch (node) {
+    MethodInvocation(:final target?, :final methodName)
+        when methodName.name == 'run' =>
+      _graphIn(target),
+    _ => null,
+  };
+
+  /// The graphs of the sources, each drawn as a function, by id; and the
+  /// bodies of their routes, whose side effects warn as a workflow
+  /// function's do.
+  ///
+  /// Warns of a graph that is a node of another graph and can end in
+  /// several ends at once (graph node objects design §6).
+  (Map<String, GraphFunction>, Set<FunctionBody>) _drawGraphs() {
+    final bodies = [for (final graph in _graphs) _GraphBody(this, graph)];
+    final functions = {
+      for (final body in bodies)
+        body.graph.id: GraphFunction(
+          id: body.graph.id,
+          name: body.graph.name,
+          place: body.graph.place,
+          doc: body.graph.doc,
+          body: body.build(),
+        ),
+    };
+    for (final body in bodies) {
+      final isNode = bodies.any(
+        (other) => other != body && other.nodes.contains(body.graph),
+      );
+      if (isNode && body.endsAtOnce) {
+        _warn(
+          body.graph.made,
+          'graph ${body.graph.name} is a node and can end in several ends '
+          'at once',
+        );
+      }
+    }
+    return (functions, {for (final body in bodies) ...body.routes});
+  }
 }
 
-/// Where a part of a graph is: at a node, or at a join.
-sealed class _At {}
-
-/// A node of the body: its id, the name a fork after it is labelled with,
-/// and the types of its input and its output, when known.
-final class _AtNode extends _At {
-  _AtNode(this.id, this.name, this.input, this.output);
-
-  final String id;
-  final String name;
-  final DartType? input;
-  final DartType? output;
-}
-
-final class _AtJoin extends _At {
-  _AtJoin(this.sources);
-
-  final List<_AtNode> sources;
-}
-
-/// The body of one graph.
+/// The body of one graph, read from its parts: the point of each node, where
+/// the declaration first names it, and the forks of the routes, drawn by
+/// the rules of a workflow function's body.
 final class _GraphBody {
-  _GraphBody(this._package, this._graph);
+  _GraphBody(this._package, this.graph) : _points = _Body(_package);
 
   final _Package _package;
-  final _GraphDeclaration _graph;
+  final _GraphDeclaration graph;
 
-  final _nodes = <GraphNode>[];
+  /// The points of the body and the ways between them.
+  final _Body _points;
 
-  /// The nodes made so far, by the function or the graph.
-  final _made = <Object, _AtNode>{};
-
-  final _edges = <GraphEdge>[];
-  final _seen = <(String?, String?, String?)>{};
+  /// The point of each node of the graph, with where the declaration first
+  /// names it.
+  final _made = <_Nodelike, (_Drawn, AstNode)>{};
 
   /// The nodes whose output goes somewhere: they have arrows, or are in a
   /// join.
-  final _going = <String>{};
+  final _going = <_Nodelike>{};
+
+  /// The points the graph starts at.
+  final _starts = <_V>[];
+
+  /// The points each set a route gives leads to, side by side.
+  final _parallels = <List<_V>>[];
+
+  /// The bodies of the routes read.
+  final routes = <FunctionBody>{};
+
+  /// Whether a part, a route or what one gives could not be read: where it
+  /// leads is not known.
+  var _unread = false;
+
+  /// The nodes and graphs that are nodes of this graph.
+  Iterable<_Nodelike> get nodes => _made.keys;
 
   GraphBody build() {
-    final parts = _graph.made.argumentList.arguments
+    final parts = graph.made.argumentList.arguments
         .where((argument) => argument is! NamedArgument)
         .elementAtOrNull(1)
         ?.argumentExpression;
     if (parts case ListLiteral(:final elements)) {
       for (final element in elements) {
-        if (element is Expression) {
-          _part(element);
-        } else {
-          _package._warn(element, 'graph part not drawn: ${_source(element)}');
+        if (element is! Expression || !_part(element)) {
+          _notRead(element, 'graph part not drawn: ${_source(element)}');
         }
       }
     }
-    for (final node in _made.values) {
-      if (!_going.contains(node.id)) _edge(node.id, null);
+    // A node without arrows of its own, and not in a join, ends its branch.
+    for (final MapEntry(key: node, value: (point, _)) in _made.entries) {
+      if (!_going.contains(node)) _connect([(point, null)], _points._exit);
     }
-    return GraphBody(nodes: _nodes, edges: _edges);
+    _warnUnreached();
+    return _points._emit(roots: [for (final (point, _) in _made.values) point]);
   }
 
-  /// Where the part [e] — `Graph.start(…)`, `Graph.part(…)`,
-  /// `Graph.join([…])` and the `.next(…)` after them — is after its arrows;
-  /// `null` when it ends at a set or a map, or cannot be read.
-  _At? _part(Expression e) {
+  /// Reads the part [e] — `Graph.start(…)`, `Graph.part(…)` or
+  /// `Graph.join([…])`, and the `.next(…)` after it —; `false` when it is
+  /// none of them, or its nodes are not nodes declared in the sources.
+  bool _part(Expression e) {
+    var head = e;
+    Expression? route;
     if (e case MethodInvocation(:final target?)
         when _isNanoflowMethod(e, 'Part', 'next')) {
-      final at = _part(target);
-      if (at == null) return null;
-      final arguments = e.argumentList.arguments;
-      final to = _firstPositional(e.argumentList);
-      final otherwise = [
-        for (final argument in arguments)
-          if (argument
-              case NamedArgument(:final name, :final argumentExpression)
-              when name.lexeme == 'otherwise')
-            argumentExpression,
-      ].firstOrNull;
-      if (to == null) return null;
-      return _arrow(at, to, otherwise);
+      head = target;
+      route = _firstPositional(e.argumentList);
     }
-    if (e is MethodInvocation) {
-      final argument = _firstPositional(e.argumentList);
-      if (_isNanoflowMethod(e, 'Graph', 'start') && argument != null) {
-        final start = _node(argument);
-        if (start != null) _edge(null, start.id);
-        return start;
+    if (head is! MethodInvocation) return false;
+    final argument = _firstPositional(head.argumentList);
+    final start = _isNanoflowMethod(head, 'Graph', 'start');
+    if (start || _isNanoflowMethod(head, 'Graph', 'part')) {
+      final node = _package._nodelikeIn(argument);
+      if (node == null) return false;
+      final point = _point(node, argument!);
+      if (start) {
+        _starts.add(point);
+        _connect([(_points._entry, null)], point);
       }
-      if (_isNanoflowMethod(e, 'Graph', 'part') && argument != null) {
-        return _node(argument);
+      if (route != null) {
+        _going.add(node);
+        _route(route, [(point, null)]);
       }
-      if (_isNanoflowMethod(e, 'Graph', 'join') && argument is ListLiteral) {
-        final sources = [
-          for (final element in argument.elements)
-            if (element is Expression) _node(element),
-        ];
-        if (sources.contains(null)) return null;
-        final join = _AtJoin(sources.cast());
-        _going.addAll([for (final source in join.sources) source.id]);
-        return join;
-      }
+      return true;
     }
-    _package._warn(e, 'graph part not drawn: ${_source(e)}');
-    return null;
+    if (_isNanoflowMethod(head, 'Graph', 'join') && argument is ListLiteral) {
+      final members = <(_Nodelike, Expression)>[];
+      for (final element in argument.elements) {
+        if (element is! Expression) return false;
+        final node = _package._nodelikeIn(element);
+        if (node == null) return false;
+        members.add((node, element));
+      }
+      final join = _points._join();
+      for (final (node, element) in members) {
+        _going.add(node);
+        _connect([(_point(node, element), null)], join);
+      }
+      if (route == null) {
+        // Its record is the result.
+        _connect([(join, null)], _points._exit);
+      } else {
+        _checkJoin(
+          [for (final (node, _) in members) node],
+          _route(route, [(join, null)]),
+          route,
+        );
+      }
+      return true;
+    }
+    return false;
   }
 
-  /// Draws the arrows from [at] to [to], with the [otherwise] of a map; gives
-  /// the node the part goes on at, `null` after a set or a map.
-  _At? _arrow(_At at, Expression to, Expression? otherwise) {
-    final target = to.unParenthesized;
-    if (at is _AtNode) _going.add(at.id);
-    if (target is SetOrMapLiteral && target.isMap) {
-      if (at is! _AtNode) {
-        _package._warn(target, 'a join leads to a node or a set');
-        return null;
-      }
-      final fork = _add(
-        (id) => ConditionNode(
-          id: id,
-          place: _package._place(target),
-          label: 'switch (${at.name})',
-        ),
-      );
-      _edge(at.id, fork);
-      final keys = <Expression>[];
-      for (final entry in target.elements.whereType<MapLiteralEntry>()) {
-        keys.add(entry.key);
-        final payload = _keyPayload(at, entry.key);
-        for (final (node, written) in _targets(entry.value)) {
-          _edge(fork, node.id, _source(entry.key));
-          if (payload case (:final type)) _check(type, at, node, written);
-        }
-      }
-      if (otherwise != null) {
-        for (final (node, written) in _targets(otherwise)) {
-          _edge(fork, node.id, 'otherwise');
-          _check(at.output, at, node, written);
-        }
-      } else if (!_coversAll(at.output, keys)) {
-        _edge(fork, null, 'otherwise');
-      }
-      return null;
-    }
-    final targets = _targets(target);
-    switch (at) {
-      case _AtNode():
-        for (final (node, written) in targets) {
-          _edge(at.id, node.id);
-          _check(at.output, at, node, written);
-        }
-      case _AtJoin(:final sources):
-        for (final (node, written) in targets) {
-          for (final source in sources) {
-            _edge(source.id, node.id);
-          }
-          _checkJoin(sources, node, written);
-        }
-    }
-    if (target is SetOrMapLiteral || targets.length != 1) return null;
-    return targets.single.$1;
-  }
-
-  TypeSystem get _types => _package._libraryOf[_graph.made.root]!.typeSystem;
-
-  /// Warns at [written] when [payload], what [source] sends [target], is not
-  /// what [target] takes: its input, or [takes], the field of it [source]
-  /// fills.
-  void _check(
-    DartType? payload,
-    _AtNode source,
-    _AtNode target,
-    AstNode written, {
-    DartType? takes,
-  }) {
-    final input = takes ?? target.input;
-    if (!_known(payload) || !_known(input)) return;
-    if (!_types.isAssignableTo(payload!, input!)) {
+  /// The point of [node] in this graph, made where [mention] first names it.
+  _Drawn _point(_Nodelike node, AstNode mention) {
+    if (_made[node] case (final point, _)) return point;
+    if (_made.keys.any((other) => other.name == node.name)) {
       _package._warn(
-        written,
-        '${target.name} takes ${target.input!.getDisplayString()}, not the '
-        '${payload.getDisplayString()} of ${source.name}',
+        mention,
+        'two nodes are named ${node.name} in graph ${graph.name}',
       );
     }
+    final place = _package._place(mention);
+    final point = _points._add<_Drawn>(switch (node) {
+      _NodeDeclaration() => _Effect(node.name, place, node.doc),
+      _GraphDeclaration(:final id) => _Call([id], place),
+    });
+    _made[node] = (point, mention);
+    return point;
   }
 
-  /// Warns at [written] when [target] does not take the record of the
-  /// outputs of [sources], its join.
-  void _checkJoin(List<_AtNode> sources, _AtNode target, AstNode written) {
-    final input = target.input;
-    if (!_known(input)) return;
-    if (input case RecordType(:final positionalFields, namedFields: [])
-        when positionalFields.length == sources.length) {
-      for (final (i, source) in sources.indexed) {
-        _check(
-          source.output,
-          source,
-          target,
-          written,
-          takes: positionalFields[i].type,
-        );
+  /// Warns at [route], the route of the join of [members], when [takes],
+  /// what it takes, is not the record of their outputs in their order.
+  void _checkJoin(List<_Nodelike> members, DartType? takes, AstNode route) {
+    if (!_known(takes)) return;
+    final types = _package._libraryOf[graph.made.root]!.typeSystem;
+    bool fits(RecordType record) {
+      if (record.namedFields.isNotEmpty ||
+          record.positionalFields.length != members.length) {
+        return false;
       }
-      return;
+      for (final (i, member) in members.indexed) {
+        final output = member.output;
+        if (_known(output) &&
+            !types.isAssignableTo(output!, record.positionalFields[i].type)) {
+          return false;
+        }
+      }
+      return true;
     }
+
+    if (takes is RecordType && fits(takes)) return;
     _package._warn(
-      written,
-      '${target.name} takes ${input!.getDisplayString()}, not the record of '
-      'its join',
+      route,
+      'the route of the join takes ${takes!.getDisplayString()}, not the '
+      "record of its nodes' outputs",
     );
   }
 
-  /// What the key [key] of a map of targets after [at] gives its targets: the
-  /// second field of a record of two, the value of an Exit, or what it
-  /// matches; `null` when it never matches, which it warns of.
-  ({DartType? type})? _keyPayload(_AtNode at, Expression key) {
-    final output = at.output;
-    final second = switch (output) {
-      RecordType(positionalFields: [_, final second], namedFields: []) =>
-        second.type,
-      _ => null,
-    };
-    final subject = _subjectOf(output);
-    final keyElement = _keyElement(key);
-    final isType =
-        keyElement is InterfaceElement &&
-        (key.unParenthesized is TypeLiteral ||
-            key.unParenthesized is Identifier);
-    final DartType? keyType = isType ? keyElement.thisType : key.staticType;
-    if (_known(subject) && _known(keyType)) {
-      final matches = isType
-          ? _types.isSubtypeOf(keyType!, subject!)
-          : _types.isAssignableTo(keyType!, subject!);
-      if (!matches) {
-        _package._warn(
-          key,
-          'key ${_source(key)} never matches: switch (${at.name}) takes '
-          '${subject.getDisplayString()}',
-        );
-        return null;
+  /// Warns of each node that no way from the starts reaches; not when a
+  /// part or a route could not be read, which may lead to it.
+  void _warnUnreached() {
+    if (_unread) return;
+    final reached = _reachedFrom(_points._entry, pastJoins: true);
+    for (final MapEntry(key: node, value: (point, mention)) in _made.entries) {
+      if (!reached.contains(point)) {
+        _package._warn(mention, '${node.name} cannot be reached');
       }
     }
-    if (second != null) return (type: second);
-    if (isType) return (type: _exitValue(keyType) ?? keyType);
-    return (type: key is NullLiteral ? keyType : subject);
   }
 
-  /// The nodes of [e], a node or a set of nodes, each with where it is
-  /// written.
-  List<(_AtNode, Expression)> _targets(Expression e) {
-    final target = e.unParenthesized;
-    return [
-      for (final written
-          in target is SetOrMapLiteral && target.isSet
-              ? target.elements.whereType<Expression>()
-              : [target])
-        if (_node(written) case final node?) (node, written),
-    ];
-  }
+  /// Whether the graph can end in several ends at once: two or more of its
+  /// starts, or of the points a set leads to, each reach the end without
+  /// passing a join.
+  bool get endsAtOnce => [
+    _starts,
+    ..._parallels,
+  ].any((points) => points.where(_endsBeforeJoin).length > 1);
 
-  /// The node [e] refers to, made the first time: a function of one
-  /// parameter is an effect, a workflow function or a graph a call.
-  _AtNode? _node(Expression e) {
-    final element = switch (e.unParenthesized) {
-      Identifier(:final element) => element,
-      PropertyAccess(:final propertyName) => propertyName.element,
-      _ => null,
-    };
-    // `judged.call`, as flow.start takes a graph, is the graph too.
-    final graph = _package._graphReferenced(e) ?? _package._graphOf(element);
-    final Object? key = graph ?? element?.baseElement;
-    if (_made[key] case final known?) return known;
-    final place = _graph.place;
-    if (graph != null) {
-      final type = graph.variable.type;
-      final arguments = type is InterfaceType && type.typeArguments.length == 2
-          ? type.typeArguments
-          : null;
-      return _make(
-        graph,
-        graph.name,
-        arguments?[0],
-        arguments?[1],
-        (id) => CallNode(id: id, place: place, functions: [graph.id]),
-      );
+  /// Whether a way from [point] reaches the end without passing a join.
+  bool _endsBeforeJoin(_V point) =>
+      _reachedFrom(point, pastJoins: false).contains(_points._exit);
+
+  /// The points the ways from [from] reach, [from] too; past a join only
+  /// when [pastJoins].
+  Set<_V> _reachedFrom(_V from, {required bool pastJoins}) {
+    final reached = <_V>{};
+    for (final queue = [from]; queue.isNotEmpty;) {
+      final v = queue.removeLast();
+      if (!reached.add(v) || (v is _Join && !pastJoins)) continue;
+      queue.addAll([
+        for (final (_, to) in _points._edges[v] ?? const <(String?, _V)>[]) to,
+      ]);
     }
-    if (element is ExecutableElement && element is! PropertyAccessorElement) {
-      final parameters = element.formalParameters;
-      final name = element.name ?? _source(e);
-      final output = _awaited(element.returnType);
-      if (parameters.length == 2 && _isFlowType(parameters.first.type)) {
-        final declaration = _package._declarations[element.baseElement];
-        if (declaration != null) _package._nodeFunctions.add(declaration);
-        return _make(
-          element.baseElement,
-          name,
-          parameters[1].type,
-          output,
-          (id) => CallNode(id: id, place: place, functions: [?declaration?.id]),
-        );
-      }
-      if (parameters.length == 1) {
-        return _make(
-          element.baseElement,
-          name,
-          parameters.single.type,
-          output,
-          (id) => EffectNode(id: id, place: place, name: name),
-        );
-      }
-    }
-    _package._warn(
-      e,
-      'graph node is not a top-level function, a static method or a '
-      'graph: ${_source(e)}',
-    );
-    return null;
+    return reached;
   }
 
-  _AtNode _make(
-    Object key,
-    String name,
-    DartType? input,
-    DartType? output,
-    GraphNode Function(String id) node,
-  ) => _made[key] = _AtNode(_add(node), name, input, output);
-
-  /// Adds the node [node] makes with the next id, and gives the id.
-  String _add(GraphNode Function(String id) node) {
-    final id = '${_nodes.length + 1}';
-    _nodes.add(node(id));
-    return id;
-  }
-
-  void _edge(String? from, String? to, [String? label]) {
-    if (_seen.add((from, to, label))) {
-      _edges.add(GraphEdge(from: from, to: to, label: label));
-    }
-  }
+  void _connect(List<_Out> from, _V to) => _points._connect(from, to);
 
   String _source(AstNode node) => _package._source(node);
 }
-
-/// The type of the value [type], which a function returns, is of: a future's
-/// value for a `Future` or a `FutureOr`.
-DartType _awaited(DartType type) =>
-    type is InterfaceType &&
-        (type.isDartAsyncFuture || type.isDartAsyncFutureOr) &&
-        type.typeArguments.length == 1
-    ? type.typeArguments.single
-    : type;
-
-/// Whether [type] is known enough to check: not `null`, not `dynamic`.
-bool _known(DartType? type) => type != null && type is! DynamicType;
-
-/// The type of the value of an Exit [type] is: `Change` for a class that
-/// extends `Exit<Change>`; `null` for a type that is no Exit.
-DartType? _exitValue(DartType? type) {
-  if (type is! InterfaceType) return null;
-  for (final supertype in [type, ...type.element.allSupertypes]) {
-    if (_isNanoflowClass(supertype.element, 'Exit')) {
-      return supertype.typeArguments.firstOrNull;
-    }
-  }
-  return null;
-}
-
-/// The type the keys of a map of targets are matched against, for an output
-/// of [output]: the first field of a record of two, or the output itself.
-DartType? _subjectOf(DartType? output) => switch (output) {
-  RecordType(positionalFields: [final key, _], namedFields: []) => key.type,
-  _ => output,
-};
-
-/// Whether [keys] match every value of the subject of [output]: `true` and
-/// `false` of a `bool`, every value of an enum, every class that is not
-/// abstract under a sealed class.
-bool _coversAll(DartType? output, List<Expression> keys) {
-  final subject = _subjectOf(output);
-  if (subject == null || subject.nullabilitySuffix != NullabilitySuffix.none) {
-    return false;
-  }
-  if (subject.isDartCoreBool) {
-    final values = {
-      for (final key in keys)
-        if (key case BooleanLiteral(:final value)) value,
-    };
-    return values.length == 2;
-  }
-  final element = subject.element;
-  if (element is EnumElement) {
-    final named = {
-      for (final key in keys)
-        if (_keyElement(key) case GetterElement(
-          variable: FieldElement(isEnumConstant: true, :final name?),
-        ))
-          name,
-    };
-    return element.constants.every((constant) => named.contains(constant.name));
-  }
-  if (element is ClassElement && element.isSealed) {
-    final named = {
-      for (final key in keys)
-        if (_keyElement(key) case final ClassElement type) type.baseElement,
-    };
-    final concrete = [
-      for (final type in element.library.classes)
-        if (!type.isAbstract &&
-            type.allSupertypes.any((s) => s.element == element))
-          type.baseElement,
-    ];
-    return concrete.every(named.contains);
-  }
-  return false;
-}
-
-/// What the key [key] of a map of targets refers to: a type, an enum's
-/// value.
-Element? _keyElement(Expression key) => switch (key.unParenthesized) {
-  TypeLiteral(:final type) => type.element,
-  Identifier(:final element) => element,
-  PropertyAccess(:final propertyName) => propertyName.element,
-  _ => null,
-};
