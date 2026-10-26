@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/start/recent_graphs.dart';
+import 'package:nanoflow_ui/state/store_place.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -28,9 +29,9 @@ void main() {
     await recent.opened(release, tuesday);
     await recent.opened(review, wednesday);
     expect(recent.graphs, [
-      (path: review, openedAt: wednesday),
-      (path: release, openedAt: tuesday),
-      (path: index, openedAt: monday),
+      (path: review, store: null, openedAt: wednesday),
+      (path: release, store: null, openedAt: tuesday),
+      (path: index, store: null, openedAt: monday),
     ]);
   });
 
@@ -42,8 +43,8 @@ void main() {
       await recent.opened(release, tuesday);
       await recent.opened(index, wednesday);
       expect(recent.graphs, [
-        (path: index, openedAt: wednesday),
-        (path: release, openedAt: tuesday),
+        (path: index, store: null, openedAt: wednesday),
+        (path: release, store: null, openedAt: tuesday),
       ]);
     },
   );
@@ -53,7 +54,7 @@ void main() {
     await recent.opened(index, monday);
     await recent.opened(release, tuesday);
     await recent.remove(index);
-    expect(recent.graphs, [(path: release, openedAt: tuesday)]);
+    expect(recent.graphs, [(path: release, store: null, openedAt: tuesday)]);
   });
 
   test('the list is kept across restarts', () async {
@@ -64,8 +65,8 @@ void main() {
     await recent.opened(review, wednesday);
     await recent.remove(release);
     expect(RecentGraphs(prefs).graphs, [
-      (path: review, openedAt: wednesday),
-      (path: index, openedAt: monday),
+      (path: review, store: null, openedAt: wednesday),
+      (path: index, store: null, openedAt: monday),
     ]);
   });
 
@@ -96,7 +97,7 @@ void main() {
       final recent = RecentGraphs(await preferences({'recentGraphs': stored}));
       expect(recent.graphs, isEmpty, reason: stored);
       await recent.opened(index, monday);
-      expect(recent.graphs, [(path: index, openedAt: monday)]);
+      expect(recent.graphs, [(path: index, store: null, openedAt: monday)]);
     }
   });
 
@@ -107,7 +108,30 @@ void main() {
           '"openedAt": "2026-09-21T09:00:00.000Z"}, '
           '{"path": "$review", "openedAt": "2026-09-22T09:00:00.000Z"}]',
     });
-    expect(RecentGraphs(prefs).graphs, [(path: review, openedAt: tuesday)]);
+    expect(RecentGraphs(prefs).graphs, [
+      (path: review, store: null, openedAt: tuesday),
+    ]);
+  });
+
+  test('keeps the store a graph was opened with: each graph with each store '
+      'once, read back as saved', () async {
+    final prefs = await preferences();
+    final recent = RecentGraphs(prefs);
+    const ideas = StorePlace.sqlite('/Users/me/.ideaforge/ideas.db');
+
+    await recent.opened(review, monday);
+    await recent.opened(review, tuesday, store: ideas);
+    await recent.opened(review, wednesday, store: ideas);
+
+    final listed = [
+      (path: review, store: ideas, openedAt: wednesday),
+      (path: review, store: null, openedAt: monday),
+    ];
+    expect(recent.graphs, listed);
+    expect(RecentGraphs(prefs).graphs, listed);
+
+    await recent.remove(review, store: ideas);
+    expect(recent.graphs, [(path: review, store: null, openedAt: monday)]);
   });
 
   test('a graph file is named *.graph.json', () {
@@ -129,7 +153,7 @@ void main() {
     await recent.remove(index);
     await recent.opened(review, tuesday);
 
-    expect(recent.graphs, [(path: review, openedAt: tuesday)]);
+    expect(recent.graphs, [(path: review, store: null, openedAt: tuesday)]);
     expect(reported, hasLength(3));
     expect(reported.first.exception, isA<StateError>());
     expect(

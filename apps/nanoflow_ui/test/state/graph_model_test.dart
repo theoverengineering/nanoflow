@@ -5,12 +5,14 @@ import 'dart:io';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_sqlite/nanoflow_sqlite.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/freshness.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
 import 'package:nanoflow_ui/state/outcomes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
 import 'package:nanoflow_ui/state/session_view.dart';
+import 'package:nanoflow_ui/state/store_place.dart';
 import 'package:path/path.dart' as p;
 
 import '../layout/support.dart' show loadGraphFile, withEffectFirst;
@@ -25,33 +27,37 @@ void main() {
   late GraphModel model;
   late int notified;
 
-  void run(void Function(FakeAsync async) body) => fakeAsync((async) {
-    changes = StreamController<Change>();
-    graphFile = FixedGraphFile(reviewGraphFile());
-    freshness = FixedFreshness(graphFile);
-    documents = {};
-    read = [];
-    model = GraphModel(
-      graphFile: graphFile,
-      freshness: freshness,
-      feed: SessionFeed(changes.stream),
-      outcomes: Outcomes((_, documentId) async {
-        read.add(documentId);
-        if (!documents.containsKey(documentId)) {
-          throw FormatException('$documentId.json: not there');
-        }
-        return documents[documentId];
-      }),
-      files: FakeFiles(),
-      // The graph is opened at 14:20.
-      now: () => at(1009),
-    );
-    notified = 0;
-    model.addListener(() => notified++);
-    body(async);
-    model.dispose();
-    async.flushMicrotasks();
-  });
+  /// Runs [body] on a fresh model, opened on the session [session] when
+  /// given, as the app is started with `--session`.
+  void run(void Function(FakeAsync async) body, {String? session}) =>
+      fakeAsync((async) {
+        changes = StreamController<Change>();
+        graphFile = FixedGraphFile(reviewGraphFile());
+        freshness = FixedFreshness(graphFile);
+        documents = {};
+        read = [];
+        model = GraphModel(
+          graphFile: graphFile,
+          freshness: freshness,
+          feed: SessionFeed(changes.stream),
+          outcomes: Outcomes((_, documentId) async {
+            read.add(documentId);
+            if (!documents.containsKey(documentId)) {
+              throw FormatException('$documentId.json: not there');
+            }
+            return documents[documentId];
+          }),
+          files: FakeFiles(),
+          session: session,
+          // The graph is opened at 14:20.
+          now: () => at(1009),
+        );
+        notified = 0;
+        model.addListener(() => notified++);
+        body(async);
+        model.dispose();
+        async.flushMicrotasks();
+      });
 
   void give(FakeAsync async, Iterable<Change> list) {
     list.forEach(changes.add);
@@ -64,6 +70,38 @@ void main() {
     Journal('c3d4-session', workflow: 'release', startedAt: 10)
       ..effect('plan', 11),
   ]);
+
+  group('the session the app was started on', () {
+    test('is selected with its workflow once the feed gives it, though it '
+        'started after the graph opened; none is selected before', () {
+      run(session: 'e5f6-session', (async) {
+        give(async, twoWorkflows());
+        expect(model.selection.currentGraph, isTrue);
+
+        give(
+          async,
+          changesOf([
+            Journal('e5f6-session', workflow: 'release', startedAt: 2000)
+              ..effect('plan', 2001),
+          ]),
+        );
+
+        expect(model.workflow!.name, 'release');
+        expect(model.selection.sessionId, 'e5f6-session');
+      });
+    });
+
+    test('once selected, gives way to what the user chooses', () {
+      run(session: 'a1b2-session', (async) {
+        give(async, twoWorkflows());
+        expect(model.selection.sessionId, 'a1b2-session');
+
+        model.selectWorkflow('lib/release.dart#release');
+
+        expect(model.selection.sessionId, 'c3d4-session');
+      });
+    });
+  });
 
   group('the workflows', () {
     test('are those of the graph file; the first is selected', () {
@@ -1565,5 +1603,55 @@ void main() {
       const GraphNote(sessionHasNoSnapshot, text: noSnapshotDetail),
       const GraphNote(sessionCodeNotChecked, text: notCheckedDetail),
     ]);
+  });
+
+  test('opens a graph file on an SQLite store, on the session it is told: '
+      'the store has no files', () async {
+    final dir = await Directory.systemTemp.createTemp('nanoflow_model_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = p.join(dir.path, graphFileName);
+    File(file).writeAsStringSync(jsonEncode(graphFileJson()));
+    final db = p.join(dir.path, 'app.db');
+    final store = SqliteStore(db);
+    addTearDown(store.close);
+    final first = await store.createSession(
+      workflow: 'review',
+      graph: null,
+      input: null,
+      code: null,
+    );
+    final second = await store.createSession(
+      workflow: 'release',
+      graph: null,
+      input: null,
+      code: null,
+    );
+    final effect = await second.createEffect(
+      name: 'plan',
+      key: 'plan#1@e3b0c44298fc1c14',
+      after: null,
+      place: null,
+    );
+    await second.appendEvent(
+      EffectStarted(time: systemClock(), effectId: effect.id),
+    );
+    await first.release();
+    await second.release();
+
+    final model = GraphModel.open(
+      file,
+      store: StorePlace.sqlite(db),
+      session: second.session.id,
+    );
+    addTearDown(model.dispose);
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (model.selection.sessionId == null) {
+      if (DateTime.now().isAfter(deadline)) fail('waited too long');
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(model.workflow!.name, 'release');
+    expect(model.selection.sessionId, second.session.id);
+    expect(model.files.effectPath(effect.id), isNull);
+    expect(model.files.logPath(effect.id), isNull);
   });
 }

@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_reader/nanoflow_reader.dart';
-import 'package:path/path.dart' as p;
 
 import 'body_path.dart';
 import 'called_graph.dart';
@@ -20,6 +18,7 @@ import 'outcomes.dart';
 import 'selection.dart';
 import 'session_feed.dart';
 import 'session_view.dart';
+import 'store_place.dart';
 import 'visit_details.dart';
 import 'visits.dart' as visits show visitToOpen;
 import 'visits.dart' show Visit;
@@ -46,9 +45,12 @@ class GraphModel extends ChangeNotifier {
     required this.feed,
     required this.outcomes,
     required this.files,
+    this.watching = 'runs/',
+    String? session,
     DateTime Function()? now,
   }) : selection = Selection(now: now),
-       _now = now ?? DateTime.now {
+       _now = now ?? DateTime.now,
+       _wantedSession = session {
     _graphRead = graphFile.graph;
     graphFile.addListener(_graphFileChanged);
     freshness.addListener(_changed);
@@ -63,10 +65,12 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// The model of the graph file [file]: the file, read and followed, and
-  /// checked against the code next to it; the sessions in the `runs`
-  /// directory next to it.
-  factory GraphModel.open(String file) {
-    final reader = FsReader(runsDir: runsDirOf(p.dirname(file)));
+  /// checked against the code next to it; the sessions in [store], by
+  /// default the `runs` directory next to it, [session] selected once the
+  /// feed gives it.
+  factory GraphModel.open(String file, {StorePlace? store, String? session}) {
+    final place = store ?? StorePlace.nextTo(file);
+    final reader = place.reader();
     final graphFile = GraphFileSource(file: file);
     final model = GraphModel(
       graphFile: graphFile,
@@ -74,6 +78,8 @@ class GraphModel extends ChangeNotifier {
       feed: SessionFeed.read(reader),
       outcomes: Outcomes.read(reader),
       files: ReaderFiles(reader),
+      watching: place.name,
+      session: session,
     );
     unawaited(graphFile.start());
     model.freshness.start();
@@ -90,6 +96,10 @@ class GraphModel extends ChangeNotifier {
 
   /// The logs and documents of effects, read when the effect details show them.
   final EffectFiles files;
+
+  /// What the store of the sessions is called (`StorePlace.name`): `runs/`,
+  /// or the database's file name.
+  final String watching;
 
   late final StreamSubscription<DocumentAdded> _documents;
 
@@ -121,6 +131,11 @@ class GraphModel extends ChangeNotifier {
 
   /// The time, for what is derived at a moment.
   final DateTime Function() _now;
+
+  /// The session to select once the feed gives it and the graph file is
+  /// read, with its workflow — as the app was started with it —; `null`
+  /// once selected, or for none. Until then no session is selected.
+  String? _wantedSession;
 
   /// The copies chosen in the copies frames of the selected session.
   final _copies = CopyChoices();
@@ -629,6 +644,25 @@ class GraphModel extends ChangeNotifier {
     _changed();
   }
 
+  /// Selects [_wantedSession] once the feed has it and the graph file is
+  /// read: its workflow — the first whose sessions it is of —, then it.
+  void _openWanted() {
+    final id = _wantedSession;
+    final graph = graphFile.graph;
+    final session = id == null ? null : feed.session(id);
+    if (graph == null || session == null) return;
+    _wantedSession = null;
+    final choice = workflows
+        .where(
+          (w) =>
+              !w.called &&
+              sessionsOfWorkflow([session], graph, w.id).isNotEmpty,
+        )
+        .firstOrNull;
+    if (choice != null && choice.id != workflow?.id) selectWorkflow(choice.id);
+    selection.showSession(session);
+  }
+
   void _outcomesRead() {
     // A snapshot read tells whether the called graph ran in its session.
     if (calledGraph != null) _feedSelection();
@@ -695,7 +729,11 @@ class GraphModel extends ChangeNotifier {
   /// graph.
   void _feedSelection() {
     _feeding = true;
-    final sessions = workflowSessions;
+    _openWanted();
+    // Until the session wanted comes, none is selected.
+    final sessions = _wantedSession == null
+        ? workflowSessions
+        : const <SessionData>[];
     final selected = selection.sessionId;
     if (selected != null && sessions.every((s) => s.id != selected)) {
       selection.reopen();

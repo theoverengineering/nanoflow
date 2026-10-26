@@ -3,10 +3,27 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'platform/shell.dart';
+import 'start/launch.dart';
 import 'start/recent_graphs.dart';
 
-Future<void> main() async {
+/// Starts the app, on the graph [args] name when they name one:
+/// `nanoflow_ui <graph file> [--store <place>] [--session <id>]`.
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   final recent = RecentGraphs(await SharedPreferences.getInstance());
-  runApp(NanoflowApp(recent: recent, shell: Shell()));
+  Launch? launch;
+  String? launchError;
+  try {
+    launch = parseLaunch(args);
+  } on FormatException catch (e) {
+    launchError = e.message;
+  }
+  runApp(
+    NanoflowApp(
+      recent: recent,
+      shell: Shell(),
+      launch: launch,
+      launchError: launchError,
+    ),
+  );
 }

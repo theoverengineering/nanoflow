@@ -38,7 +38,7 @@ Future<GraphModel> pumpGraphScreen(
       path: path ?? releaseFile,
       shell: shell ?? Shell(),
       onBack: onBack ?? () {},
-      openModel: (_) => shown,
+      openModel: (_, {store, session}) => shown,
       now: now ?? () => at(100000),
     ),
     size: size,

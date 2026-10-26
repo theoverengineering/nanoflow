@@ -1,4 +1,4 @@
-import 'package:nanoflow_reader/nanoflow_reader.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
 
 /// What the details of an effect read from the storage, on request: the
 /// effect's log as it grows, the values of its documents, and the files they
@@ -24,11 +24,12 @@ abstract interface class EffectFiles {
   String? documentPath(String sessionId, String documentId);
 }
 
-/// The files of the filesystem storage, as [reader] reads them.
+/// What a reader of the storage gives on request; the paths only of a
+/// storage with files.
 final class ReaderFiles implements EffectFiles {
   ReaderFiles(this._reader);
 
-  final FsReader _reader;
+  final SessionReader _reader;
 
   @override
   Stream<String> effectLog(String sessionId, String effectId) =>

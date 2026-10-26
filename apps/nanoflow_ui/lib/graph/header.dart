@@ -100,7 +100,7 @@ class GraphHeader extends StatelessWidget {
                     ? _Crumbs(model: model, directory: directory)
                     : directory,
               ),
-              LiveBadge(source: model.graphFile),
+              LiveBadge(source: model.graphFile, watching: model.watching),
               _Button(
                 'Reveal in Finder',
                 onTap: () => _open(
@@ -380,13 +380,17 @@ class _WorkflowPicker extends StatelessWidget {
   );
 }
 
-/// Whether what the screen shows is live: `Live · watching runs/`. The
-/// `runs` directory is always watched; the graph file is live while it is
-/// there and can be read, else the badge says which is wrong.
+/// Whether what the screen shows is live: `Live · watching runs/`, or the
+/// database of another store. The store is always watched; the graph file
+/// is live while it is there and can be read, else the badge says which is
+/// wrong.
 class LiveBadge extends StatelessWidget {
-  const LiveBadge({super.key, required this.source});
+  const LiveBadge({super.key, required this.source, this.watching = 'runs/'});
 
   final GraphFileSource source;
+
+  /// What the store is called: `runs/`, or the database's file name.
+  final String watching;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -429,7 +433,7 @@ class LiveBadge extends StatelessWidget {
           children: [
             Dot(dot),
             Text(
-              '$state · watching runs/',
+              '$state · watching $watching',
               style: AppText.liveBadge.copyWith(color: text),
             ),
           ],

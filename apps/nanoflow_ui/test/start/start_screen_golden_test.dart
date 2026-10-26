@@ -20,7 +20,7 @@ void main() {
     tester,
     StartScreen(
       recent: recent,
-      onOpen: (_) {},
+      onOpen: (_, {store}) {},
       pickFile: () async => null,
       exists: (path) => !missing.contains(path),
       now: () => now,

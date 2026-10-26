@@ -5,7 +5,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_reader/nanoflow_reader.dart';
 
 import 'batched_notifier.dart';
 
@@ -164,9 +163,9 @@ class SessionFeed extends ChangeNotifier with BatchedNotifier {
     _subscription = changes.listen(_apply, onError: _error);
   }
 
-  /// The changes of [reader], with its session directories.
+  /// The changes of [reader], with its session directories, if it has any.
   SessionFeed.read(
-    FsReader reader, {
+    SessionReader reader, {
     Duration batch = const Duration(milliseconds: 50),
   }) : this(reader.changes(), sessionPath: reader.sessionPath, batch: batch);
 

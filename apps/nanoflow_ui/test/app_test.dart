@@ -32,7 +32,7 @@ void main() {
         pickFile: () async => null,
         exists: (_) => true,
         now: () => now,
-        openModel: (_) => ownedModel(),
+        openModel: (_, {store, session}) => ownedModel(),
       ),
     );
     expect(find.byType(StartScreen), findsOneWidget);

@@ -37,7 +37,7 @@ void main() {
     tester,
     StartScreen(
       recent: recent,
-      onOpen: opened.add,
+      onOpen: (path, {store}) => opened.add(path),
       pickFile: () async => pick,
       exists: (path) => !missing.contains(path),
       now: () => clock,
@@ -147,7 +147,11 @@ void main() {
 
     expect(opened, isEmpty);
     expect(recent.graphs, [
-      (path: onboarding, openedAt: now.subtract(const Duration(days: 3))),
+      (
+        path: onboarding,
+        store: null,
+        openedAt: now.subtract(const Duration(days: 3)),
+      ),
     ]);
   });
 

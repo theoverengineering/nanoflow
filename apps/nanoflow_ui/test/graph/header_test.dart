@@ -382,6 +382,18 @@ void main() {
       expect(inHeader(find.text('Live · watching runs/')), findsOneWidget);
     });
 
+    testWidgets('names the database of an SQLite store', (tester) async {
+      final source = FixedGraphFile(reviewGraphFile());
+      addTearDown(source.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: LiveBadge(source: source, watching: 'ideas.db'),
+        ),
+      );
+
+      expect(find.text('Live · watching ideas.db'), findsOneWidget);
+    });
+
     testWidgets('says the graph file cannot be read, why in its tooltip', (
       tester,
     ) async {

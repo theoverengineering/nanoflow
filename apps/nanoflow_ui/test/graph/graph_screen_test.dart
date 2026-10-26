@@ -340,7 +340,7 @@ void main() {
         path: releaseFile,
         shell: Shell(),
         onBack: () {},
-        openModel: (file) {
+        openModel: (file, {store, session}) {
           opened.add(file);
           return model;
         },

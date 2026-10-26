@@ -9,6 +9,7 @@ import '../state/body_path.dart';
 import '../state/clock.dart';
 import '../state/effect_details.dart';
 import '../state/graph_model.dart';
+import '../state/store_place.dart';
 import '../state/visits.dart';
 import '../theme.dart';
 import 'canvas/graph_canvas.dart';
@@ -20,8 +21,13 @@ import 'session_bar.dart';
 import 'sessions_column.dart';
 import 'split_view.dart';
 
-/// Opens the model of the graph file [file].
-typedef OpenModel = GraphModel Function(String file);
+/// Opens the model of the graph file [file], its sessions read from [store]
+/// — by default `runs/` next to it —, selecting [session] once it comes.
+typedef OpenModel = GraphModel Function(
+  String file, {
+  StorePlace? store,
+  String? session,
+});
 
 /// One graph file's screen (docs/ui-spec.md «Экран графа», spec §9): the
 /// header with the crumbs of the levels drawn, the sessions column, and the
@@ -52,12 +58,21 @@ class GraphScreen extends StatefulWidget {
     required this.path,
     required this.shell,
     required this.onBack,
+    this.store,
+    this.session,
     this.openModel = GraphModel.open,
     this.now,
   });
 
   /// The graph file.
   final String path;
+
+  /// Where its sessions are; `null` for `runs/` next to it.
+  final StorePlace? store;
+
+  /// The session to select once the feed gives it, as the app was started
+  /// with; `null` for the newest.
+  final String? session;
 
   /// How the screen reaches macOS.
   final Shell shell;
@@ -105,7 +120,11 @@ class _GraphScreenState extends State<GraphScreen> {
   @override
   void initState() {
     super.initState();
-    _model = widget.openModel(widget.path);
+    _model = widget.openModel(
+      widget.path,
+      store: widget.store,
+      session: widget.session,
+    );
     _clock = LiveClock(now: widget.now);
     // Quitting the app does not dispose the screen.
     _lifecycle = AppLifecycleListener(onExitRequested: _quitting);

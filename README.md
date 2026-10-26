@@ -184,7 +184,7 @@ Pub workspace: общие `pubspec.lock` и `analysis_options.yaml` в корн�
 | [`packages/nanoflow_sqlite`](packages/nanoflow_sqlite/README.md)     | адаптер SQLite: сессии в базе приложения, запись и чтение                   | `nanoflow_model`, `nanoflow_process`, `sqlite3`        |
 | [`packages/nanoflow`](packages/nanoflow/README.md)                   | библиотека воркфлоу: `Flow`, эффекты, графы, кодеки, `exec`                 | `nanoflow_model`, `nanoflow_store`, `nanoflow_process` |
 | [`packages/nanoflow_describe`](packages/nanoflow_describe/README.md) | извлечение графа, команды `describe` и `stamp`                              | `nanoflow_model`, `analyzer`                           |
-| [`apps/nanoflow_ui`](apps/nanoflow_ui/README.md)                     | приложение для macOS                                                        | `nanoflow_model`, `nanoflow_reader`                    |
+| [`apps/nanoflow_ui`](apps/nanoflow_ui/README.md)                     | приложение для macOS                                                        | `nanoflow_model`, `nanoflow_reader`, `nanoflow_sqlite`                    |
 | [`examples/review`](examples/review/README.md)                       | граф ревью функцией воркфлоу и графом из узлов                              | `nanoflow`, `nanoflow_describe` (dev)                  |
 | `tests/e2e`                                                          | пример процессом, падение и продолжение, договор хранилища и читателя       | всё, кроме UI                                          |
 | `tests/contract`                                                     | контракт хранилища: один набор тестов на каждый адаптер                     | `nanoflow`, адаптеры                                   |
@@ -202,8 +202,8 @@ Pub workspace: общие `pubspec.lock` и `analysis_options.yaml` в корн�
 - **Анализатор не попадает в приложение.** `nanoflow` не зависит от
   `analyzer`, а `nanoflow_describe` приложение подключает как
   `dev_dependency`.
-- **UI импортирует из репозитория только `nanoflow_model` и
-  `nanoflow_reader`.** Раскладка графа (`apps/nanoflow_ui/lib/layout/`) не
+- **UI импортирует из репозитория только `nanoflow_model` и адаптеры
+  чтения — `nanoflow_reader` и `nanoflow_sqlite`.** Раскладка графа (`apps/nanoflow_ui/lib/layout/`) не
   импортирует Flutter: её тесты — на чистом Dart.
 - **UI — вне workspace**, со своим `pubspec.lock` и зависимостями `path:`;
   ставит их `flutter pub get` в его каталоге.
@@ -614,7 +614,11 @@ dart run nanoflow_describe stamp build/review   # хэш бинарника в b
 [ТЗ](docs/ui-spec.md).
 
 - **Открывается файл графа** `nanoflow.graph.json`; сессии — из `runs/`
-  рядом. Файл перечитывается при изменении.
+  рядом или из хранилища `--store` (`fs:<каталог runs>`,
+  `sqlite:<файл базы>`). Файл перечитывается при изменении.
+- **Из командной строки:** `nanoflow_ui <файл графа> [--store …]
+  [--session <id>]` — сразу экран графа на этой сессии; уже запущенное
+  приложение открывают ещё раз: `open -n -a nanoflow_ui --args …`.
 - **Граф — функция воркфлоу:** вызовы — плитки-стопки, двойной клик
   проваливается в функцию, кнопка раскрывает её на месте; копии — рамка-стопка
   с переключателем копий.

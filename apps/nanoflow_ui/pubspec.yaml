@@ -12,6 +12,8 @@ dependencies:
     path: ../../packages/nanoflow_model
   nanoflow_reader:
     path: ../../packages/nanoflow_reader
+  nanoflow_sqlite:
+    path: ../../packages/nanoflow_sqlite
   path: ^1.9.1
   shared_preferences: ^2.5.5
 dev_dependencies:

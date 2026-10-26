@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:nanoflow_reader/nanoflow_reader.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'batched_notifier.dart';
 
@@ -37,7 +37,7 @@ class Outcomes extends ChangeNotifier
 
   /// Values read by [reader].
   Outcomes.read(
-    FsReader reader, {
+    SessionReader reader, {
     Duration batch = const Duration(milliseconds: 50),
   }) : this(reader.documentValue, batch: batch);
 

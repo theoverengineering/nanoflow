@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../platform/home_path.dart';
+import '../state/store_place.dart';
 import '../theme.dart';
 import '../widgets/clickable.dart';
 import '../widgets/dashed_border.dart';
@@ -16,6 +17,10 @@ import 'relative_time.dart';
 
 /// Asks the user for a graph file; null when they cancel.
 typedef PickFile = Future<String?> Function();
+
+/// Opens the graph file [path], its sessions read from [store]: by default
+/// `runs/` next to it.
+typedef OpenGraph = void Function(String path, {StorePlace? store});
 
 /// The system open dialog for a graph file, `nanoflow.graph.json`: it
 /// offers JSON files, since macOS tells files apart by their last extension
@@ -58,8 +63,8 @@ class StartScreen extends StatefulWidget {
 
   final RecentGraphs recent;
 
-  /// Opens the graph file at the given path.
-  final ValueChanged<String> onOpen;
+  /// Opens a graph file: one picked, or one of the list with its store.
+  final OpenGraph onOpen;
   final PickFile pickFile;
   final bool Function(String path) exists;
   final DateTime Function() now;
@@ -94,9 +99,9 @@ class _StartScreenState extends State<StartScreen> {
     }
   }
 
-  void _openRecent(String path) {
+  void _openRecent(String path, StorePlace? store) {
     if (widget.exists(path)) {
-      widget.onOpen(path);
+      widget.onOpen(path, store: store);
     } else {
       // Gone since the list was drawn: show it as missing instead.
       setState(() {});
@@ -132,17 +137,20 @@ class _StartScreenState extends State<StartScreen> {
                     itemCount: graphs.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, i) {
-                      final path = graphs[i].path;
+                      final (:path, :store, :openedAt) = graphs[i];
                       return widget.exists(path)
                           ? _RecentCard(
                               path: path,
-                              opened: openedAgo(graphs[i].openedAt, now),
-                              onTap: () => _openRecent(path),
+                              store: store,
+                              opened: openedAgo(openedAt, now),
+                              onTap: () => _openRecent(path, store),
                             )
                           : _MissingCard(
                               path: path,
-                              onRemove: () =>
-                                  unawaited(widget.recent.remove(path)),
+                              store: store,
+                              onRemove: () => unawaited(
+                                widget.recent.remove(path, store: store),
+                              ),
                             );
                     },
                   ),
@@ -206,11 +214,13 @@ class _Title extends StatelessWidget {
 class _RecentCard extends StatelessWidget {
   const _RecentCard({
     required this.path,
+    required this.store,
     required this.opened,
     required this.onTap,
   });
 
   final String path;
+  final StorePlace? store;
   final String opened;
   final VoidCallback onTap;
 
@@ -249,6 +259,7 @@ class _RecentCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               path: path,
+              store: store,
               pathStyle: AppText.cardPath,
             ),
           ),
@@ -263,9 +274,14 @@ class _RecentCard extends StatelessWidget {
 /// A graph whose file is gone: dimmed, struck through, `Missing`; a click
 /// does nothing, `Remove` takes it off the list.
 class _MissingCard extends StatelessWidget {
-  const _MissingCard({required this.path, required this.onRemove});
+  const _MissingCard({
+    required this.path,
+    required this.store,
+    required this.onRemove,
+  });
 
   final String path;
+  final StorePlace? store;
   final VoidCallback onRemove;
 
   @override
@@ -324,6 +340,7 @@ class _MissingCard extends StatelessWidget {
                 ],
               ),
               path: path,
+              store: store,
               pathStyle: AppText.cardPath.copyWith(color: AppColors.textFaint),
             ),
           ),
@@ -347,16 +364,18 @@ class _MissingCard extends StatelessWidget {
 }
 
 /// The graph's name over the full path of its file, `~` for the home
-/// directory.
+/// directory, and the store it was opened with, if any.
 class _NameAndPath extends StatelessWidget {
   const _NameAndPath({
     required this.name,
     required this.path,
+    required this.store,
     required this.pathStyle,
   });
 
   final Widget name;
   final String path;
+  final StorePlace? store;
   final TextStyle pathStyle;
 
   @override
@@ -366,7 +385,12 @@ class _NameAndPath extends StatelessWidget {
       name,
       const SizedBox(height: 3),
       Text(
-        abbreviateHome(path),
+        switch (store) {
+          final store? =>
+            '${abbreviateHome(path)}  ·  '
+                '${store.scheme}:${abbreviateHome(store.path)}',
+          null => abbreviateHome(path),
+        },
         style: pathStyle,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
