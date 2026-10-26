@@ -3,12 +3,13 @@ import 'dart:io';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_process/nanoflow_process.dart';
 import 'package:nanoflow_reader/nanoflow_reader.dart';
+import 'package:nanoflow_sqlite/nanoflow_sqlite.dart';
 import 'package:nanoflow_store/nanoflow_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 /// The adapters every test runs on, by the scheme of their places.
-const schemes = ['fs'];
+const schemes = ['fs', 'sqlite'];
 
 /// A place of a storage, as nanoflow_ui names it: `fs:<runs directory>` or
 /// `sqlite:<database file>`. The tests and the programs they run name the
@@ -24,6 +25,7 @@ Place freshPlace(String scheme) {
   addTearDown(() => Directory(dir).deleteSync(recursive: true));
   return switch (scheme) {
     'fs' => 'fs:${p.join(dir, 'runs')}',
+    'sqlite' => 'sqlite:${p.join(dir, 'app.db')}',
     _ => throw ArgumentError.value(scheme, 'scheme'),
   };
 }
@@ -31,6 +33,7 @@ Place freshPlace(String scheme) {
 /// The store of the storage at [place].
 SessionStore storeAt(Place place) => switch (_split(place)) {
   ('fs', final path) => FsStore(path),
+  ('sqlite', final path) => SqliteStore(path),
   _ => throw ArgumentError.value(place, 'place'),
 };
 
@@ -40,6 +43,11 @@ SessionReader readerAt(Place place, {Processes? processes}) =>
     switch (_split(place)) {
       ('fs', final path) => FsReader(
         runsDir: path,
+        pollInterval: const Duration(milliseconds: 20),
+        processes: processes,
+      ),
+      ('sqlite', final path) => SqliteReader(
+        path,
         pollInterval: const Duration(milliseconds: 20),
         processes: processes,
       ),

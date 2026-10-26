@@ -1,0 +1,15 @@
+name: nanoflow_sqlite
+description: Keeps the sessions of nanoflow workflows in an SQLite database of the app - writes them for Flow, reads them for the UI and apps.
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.13.0
+dependencies:
+  nanoflow_model:
+    path: ../nanoflow_model
+  nanoflow_process:
+    path: ../nanoflow_process
+  path: ^1.9.0
+  sqlite3: ^3.8.0
+dev_dependencies:
+  test: ^1.25.0

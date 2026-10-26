@@ -181,6 +181,7 @@ Pub workspace: общие `pubspec.lock` и `analysis_options.yaml` в корн�
 | [`packages/nanoflow_store`](packages/nanoflow_store/README.md)       | файловый адаптер записи: своя сессия в `runs/` и её чтение для `resume`     | `nanoflow_model`                                       |
 | [`packages/nanoflow_process`](packages/nanoflow_process/README.md)   | порт ОС: время старта процесса и его выход; жив ли владелец сессии          | `ffi`, `nanoflow_model`                                |
 | [`packages/nanoflow_reader`](packages/nanoflow_reader/README.md)     | файловый адаптер чтения: все сессии `runs/`, лента и данные по запросу       | `nanoflow_model`, `nanoflow_process`                   |
+| [`packages/nanoflow_sqlite`](packages/nanoflow_sqlite/README.md)     | адаптер SQLite: сессии в базе приложения, запись и чтение                   | `nanoflow_model`, `nanoflow_process`, `sqlite3`        |
 | [`packages/nanoflow`](packages/nanoflow/README.md)                   | библиотека воркфлоу: `Flow`, эффекты, графы, кодеки, `exec`                 | `nanoflow_model`, `nanoflow_store`, `nanoflow_process` |
 | [`packages/nanoflow_describe`](packages/nanoflow_describe/README.md) | извлечение графа, команды `describe` и `stamp`                              | `nanoflow_model`, `analyzer`                           |
 | [`apps/nanoflow_ui`](apps/nanoflow_ui/README.md)                     | приложение для macOS                                                        | `nanoflow_model`, `nanoflow_reader`                    |
@@ -241,6 +242,7 @@ final flow = Flow()
 
 final session = await flow.start(review, 'feature/parse-config');
 await flow.start(review, 'main', id: sessionId);    // id сессии от вызывающего
+Flow(store: SqliteStore(dbPath));                   // сессии в базе приложения
 final result = await session.result;                // результат воркфлоу
 await flow.run(review, 'feature/parse-config');     // start, потом result
 await flow.resume(review, sessionId);               // после падения
@@ -308,8 +310,10 @@ await flow.run(reviewGraph.run, 'main');            // граф — так же,
 открытая сессия `OpenSession` — запись, `SessionReader` — чтение. Файловые
 адаптеры: запись — [`nanoflow_store`](packages/nanoflow_store/README.md),
 чтение — [`nanoflow_reader`](packages/nanoflow_reader/README.md); хранилище
-`Flow` по умолчанию. Контракт, общий для адаптеров, проверяет
-`tests/contract`.
+`Flow` по умолчанию. Адаптер SQLite —
+[`nanoflow_sqlite`](packages/nanoflow_sqlite/README.md): те же сессии в
+таблицах `nanoflow_*` базы приложения, тем же JSON. Контракт, общий для
+адаптеров, проверяет `tests/contract`.
 
 ### Файлы
 
@@ -564,8 +568,11 @@ dart run nanoflow_describe stamp build/review   # хэш бинарника в b
 
 ## Чтение
 
-`FsReader(runsDir: …)` из [`nanoflow_reader`](packages/nanoflow_reader/README.md)
-следит за всеми сессиями `runs/`: лента изменений и данные по запросу.
+`SessionReader` следит за всеми сессиями хранилища: лента изменений и данные
+по запросу. Файлы `runs/` читает `FsReader(runsDir: …)` из
+[`nanoflow_reader`](packages/nanoflow_reader/README.md), базу —
+`SqliteReader(path)` из [`nanoflow_sqlite`](packages/nanoflow_sqlite/README.md);
+ниже — то, что у них общее.
 
 | `change`         | Свои поля                     | Когда                                                                          |
 | ---------------- | ----------------------------- | ------------------------------------------------------------------------------ |
@@ -594,9 +601,12 @@ dart run nanoflow_describe stamp build/review   # хэш бинарника в b
   не `alive: false`.
 - **Выход процесса читатель узнаёт от ОС, без опроса:** порт `Processes` из
   [`nanoflow_process`](packages/nanoflow_process/README.md) (macOS —
-  kqueue), `FsReader(processes: …)`; по умолчанию — адаптер этой ОС.
-- **Читатель не запускают в процессе, который ведёт сессии** того же
-  `runs/`: чтение `.owner.lock` сняло бы его блокировку.
+  kqueue), `processes:` читателя; по умолчанию — адаптер этой ОС.
+- **Файловый читатель не запускают в процессе, который ведёт сессии** того
+  же `runs/`: чтение `.owner.lock` сняло бы его блокировку. У SQLite такой
+  блокировки нет.
+- **Пути** (`sessionPath`, `effectPath`, `logPath`, `documentPath`) есть
+  только у хранилища с файлами; у SQLite — `null`.
 
 ## UI
 
