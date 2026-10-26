@@ -166,9 +166,9 @@ SQLite — формат nanoflow, общий, не привязанный к п�
 | Таблица | Столбцы |
 |---|---|
 | `nanoflow_meta` | `key`, `value` — `schema` = `1` |
-| `nanoflow_sessions` | `id`, `workflow`, `created` (время, как в имени каталога), `json` (`session.json`) |
+| `nanoflow_sessions` | `seq` (rowid), `id`, `workflow`, `created` (время, как в имени каталога), `json` (`session.json`) |
 | `nanoflow_events` | `seq` (rowid), `session_id`, `json` (строка `log.jsonl`) |
-| `nanoflow_effects` | `id`, `session_id`, `rev`, `json` (`effect.json`) |
+| `nanoflow_effects` | `seq` (rowid), `id`, `session_id`, `rev`, `json` (`effect.json`) |
 | `nanoflow_documents` | `seq` (rowid), `id`, `session_id`, `json` (документ) |
 | `nanoflow_logs` | `seq` (rowid), `effect_id`, `bytes` — лог эффекта кусками |
 | `nanoflow_owners` | `session_id`, `json` (`.owner.lock`: pid и время старта); нет строки — владельца нет |
@@ -179,7 +179,8 @@ SQLite — формат nanoflow, общий, не привязанный к п�
   каждой записи эффекта: так читатель узнаёт переписанный `effect.json`.
 - **Таблицы создаёт запись** (`CREATE TABLE IF NOT EXISTS`, версия в
   `nanoflow_meta`); читатель ничего не создаёт. Версия схемы новее известной —
-  ошибка с номером; миграции — дело nanoflow.
+  `SchemaVersionException` с номером, и у записи, и у чтения; миграции — дело
+  nanoflow.
 - Индексы — под запросы читателя и `unfinishedSessions`.
 
 ### 6.6. Поведение SQLite
@@ -295,7 +296,11 @@ SQLite — формат nanoflow, общий, не привязанный к п�
 
 ## 8. Этапы
 
-Каждый — отдельно проверяемый, по порядку:
+Каждый — отдельно проверяемый, по порядку. Все пять сделаны 2026-10-26:
+1–4 — в `main` nanoflow (`f9e2603`…`d906998`), 5 — в ideaforge (`5af21cc`).
+Кнопке «Граф» нужен nanoflow_ui, собранный не раньше `d906998`: старая
+сборка аргументы `--store`/`--session` не знает и открывается на стартовом
+экране.
 
 1. Контракт в `nanoflow_model`, `Owners` в `nanoflow_process`, файловые
    адаптеры за интерфейсами, `Flow(store:)` с владельцем в вызове,
