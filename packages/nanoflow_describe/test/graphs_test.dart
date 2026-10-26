@@ -167,6 +167,60 @@ void main() {
     },
   );
 
+  test('draws a for element of a set as a fork labelled as a loop, whose '
+      'each goes to the node it runs once per item', () async {
+    const file = 'lib/graph_sets.dart';
+    final graph = await describeFixture('graph_sets');
+
+    Map<String, Object?> body(String name) =>
+        _functionOf(graph, '$file#$name')['body']! as Map<String, Object?>;
+    Map<String, Object?> at(Map<String, Object?> node, int line) => {
+      ...node,
+      'place': '$file:$line',
+    };
+
+    expect(body('fan'), {
+      'nodes': [
+        at(_effect('1', 'split', 0), 12),
+        at(_fork('2', 'items.isEmpty', 0), 13),
+        at(_fork('3', 'for item in items', 0), 13),
+        at(_effect('4', 'work', 0), 13),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2'),
+        _edge('2', null, 'true'),
+        _edge('2', '3', 'false'),
+        _edge('3', '4', 'each'),
+        _edge('4', null),
+      ],
+    });
+    expect(body('count'), {
+      'nodes': [
+        at(_effect('1', 'first', 0), 18),
+        at(_effect('2', 'skip', 0), 20),
+        at(_fork('3', 'for (var i = 0; i < n; i++)', 0), 21),
+        at(_effect('4', 'work', 0), 21),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2'),
+        _edge('1', '3'),
+        _edge('2', null),
+        _edge('3', '4', 'each'),
+        _edge('4', null),
+      ],
+    });
+    expect(graph['warnings'], [
+      {
+        'place': '$file:22',
+        'message':
+            'route value not drawn: for (final i in [n]) if (i > 0) '
+            'work(i)',
+      },
+    ]);
+  });
+
   test('the same node in two graphs has a place of its own in each', () async {
     final graph = await describeFixture('graphs');
     String? placeOf(String id, String name) =>
