@@ -62,7 +62,8 @@ class GraphCanvasController {
 /// collapsing keeps the node where it is on the screen — or fits the graph
 /// again while the view is as fitting left it. The ↗ on a call is
 /// [onOpenAsGraph]: its function becomes the main graph (open-as-graph
-/// design).
+/// design). The place under a tile is [onOpenPlace]: the editor opens it at
+/// its line.
 class GraphCanvas extends StatefulWidget {
   const GraphCanvas({
     super.key,
@@ -73,6 +74,7 @@ class GraphCanvas extends StatefulWidget {
     this.onOpenEffect,
     this.onExpandNode,
     this.onOpenAsGraph,
+    this.onOpenPlace,
     this.topInset = sessionBarRoom,
   });
 
@@ -99,6 +101,10 @@ class GraphCanvas extends StatefulWidget {
   /// Opens the function of a call as the main graph: on its ↗; without it,
   /// no ↗.
   final OpenNode? onOpenAsGraph;
+
+  /// Opens a node's place, `lib/review.dart:49`, in the editor at its line:
+  /// on the place under its tile; without it, the place is plain text.
+  final ValueChanged<String>? onOpenPlace;
 
   /// The room over the graph that fitting keeps free, for what floats over
   /// the top of the canvas; at most half the canvas. When it changes, the
@@ -568,6 +574,7 @@ class _GraphCanvasState extends State<GraphCanvas> {
       onOpenEffect: widget.onOpenEffect,
       onExpandNode: widget.onExpandNode,
       onOpenAsGraph: widget.onOpenAsGraph,
+      onOpenPlace: widget.onOpenPlace,
     )..draw(graph, _marks, frames: _canvas.frames)).layers;
     return RepaintBoundary(
       child: SizedBox(

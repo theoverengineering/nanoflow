@@ -19,6 +19,23 @@ import 'canvas/support.dart';
 final releaseFile =
     '${Platform.environment['HOME']}/Projects/release/$graphFileName';
 
+/// A shell that notes the files it is asked to open at a line, and opens
+/// them but when told not to.
+class PlaceShell extends Shell {
+  PlaceShell({this.opens = true});
+
+  final bool opens;
+
+  /// What it was asked to open: the file and the line.
+  final opened = <(String, int)>[];
+
+  @override
+  Future<bool> openAtLine(String path, int line) async {
+    opened.add((path, line));
+    return opens;
+  }
+}
+
 /// Pumps a graph screen of [path] (by default [releaseFile]) that owns
 /// [model] (by default the release fixture's) at [now] (by default when
 /// the model is opened), and lets the feed reach it. Returns the model.

@@ -15,6 +15,7 @@ import '../../layout/layout.dart'
         stackStep,
         tilesBehind;
 import '../../state/graph_marks.dart';
+import '../../widgets/clickable.dart';
 import '../../widgets/dashed_border.dart';
 import '../../widgets/doc_text.dart';
 import '../../widgets/icons.dart';
@@ -51,6 +52,9 @@ import 'tile_marks.dart';
 /// An effect or a call with a [doc] shows it when the pointer rests on the
 /// tile (node docs design §4.2).
 ///
+/// The place under the name is a link with [onOpenPlace]: a click opens it
+/// in the editor at its line.
+///
 /// The canvas places it at [areaOf] the node; of all that, only the tile
 /// and its state's badge are clicked. A click is [onTap], a double click
 /// [onDoubleTap], told where on the screen; a tile with neither is not
@@ -69,6 +73,7 @@ class NodeTile extends StatelessWidget {
     this.onDoubleTap,
     this.onExpand,
     this.onOpenAsGraph,
+    this.onOpenPlace,
     this.doc,
   }) : id = id ?? node.id,
        super(key: keyOf(id ?? node.id));
@@ -84,6 +89,12 @@ class NodeTile extends StatelessWidget {
 
   /// The key of the ring round the node [id], the selected effect's.
   static Key ringKeyOf(String id) => ValueKey(('ring', id));
+
+  /// The key of the place under the node [id] when it is a link.
+  static Key placeKeyOf(String id) => ValueKey(('place', id));
+
+  /// What the place under a tile says it does, in its tooltip.
+  static const openPlaceTooltip = 'Open in editor';
 
   final layout.NodeBox node;
 
@@ -112,6 +123,10 @@ class NodeTile extends StatelessWidget {
   /// Opens the call's function as the main graph; `null` for a node that
   /// does not.
   final ValueChanged<Offset>? onOpenAsGraph;
+
+  /// Opens the node's place in the editor at its line; `null` for a node
+  /// whose place is plain text.
+  final VoidCallback? onOpenPlace;
 
   /// What the node's doc says, or the docs of the functions a call goes to,
   /// in a tooltip over the tile; `null` for none.
@@ -251,11 +266,19 @@ class NodeTile extends StatelessWidget {
             tooltip: node.fullName == name ? null : node.fullName,
           ),
         if (node.place case final place?)
-          _text(
-            local(node.placeRect),
-            place,
-            CanvasText.place.copyWith(color: look.place),
-          ),
+          if (onOpenPlace case final open?)
+            _link(
+              local(node.placeRect),
+              place,
+              CanvasText.place.copyWith(color: look.place),
+              onTap: open,
+            )
+          else
+            _text(
+              local(node.placeRect),
+              place,
+              CanvasText.place.copyWith(color: look.place),
+            ),
       ],
     );
   }
@@ -402,23 +425,66 @@ class NodeTile extends StatelessWidget {
     TextStyle style, {
     String? tooltip,
   }) {
+    final shown = _line(text, style);
+    return _centred(
+      rect,
+      style,
+      tooltip == null ? shown : Tooltip(message: tooltip, child: shown),
+    );
+  }
+
+  /// [text] centred on [rect] in [style], a link to [onTap]: underlined and
+  /// lighter under the pointer, [openPlaceTooltip] over it. Only the text is
+  /// clicked, not the room round it.
+  Widget _link(
+    Rect rect,
+    String text,
+    TextStyle style, {
+    required VoidCallback onTap,
+  }) => _centred(
+    rect,
+    style,
+    Center(
+      child: Tooltip(
+        message: openPlaceTooltip,
+        child: Clickable.hover(
+          key: placeKeyOf(id),
+          onTap: onTap,
+          builder: (context, hovered) => _line(
+            text,
+            hovered
+                ? style.copyWith(
+                    color: CanvasColors.link,
+                    decoration: TextDecoration.underline,
+                    decorationColor: CanvasColors.link,
+                  )
+                : style,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  /// [child], a line of text in [style], centred on [rect].
+  static Widget _centred(Rect rect, TextStyle style, Widget child) {
     final height = style.fontSize! * style.height!;
     // Room on both sides, so a text a hair wider than measured still fits.
     const slack = 20.0;
-    final shown = Text(
-      text,
-      style: style,
-      textAlign: TextAlign.center,
-      textScaler: TextScaler.noScaling,
-      maxLines: 1,
-      softWrap: false,
-      overflow: TextOverflow.visible,
-    );
     return Positioned(
       left: rect.left - slack,
       top: rect.top + (rect.height - height) / 2,
       width: rect.width + 2 * slack,
-      child: tooltip == null ? shown : Tooltip(message: tooltip, child: shown),
+      child: child,
     );
   }
+
+  static Widget _line(String text, TextStyle style) => Text(
+    text,
+    style: style,
+    textAlign: TextAlign.center,
+    textScaler: TextScaler.noScaling,
+    maxLines: 1,
+    softWrap: false,
+    overflow: TextOverflow.visible,
+  );
 }

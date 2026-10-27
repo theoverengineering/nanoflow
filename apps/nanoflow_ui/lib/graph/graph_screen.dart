@@ -12,6 +12,7 @@ import '../state/graph_model.dart';
 import '../state/store_place.dart';
 import '../state/visits.dart';
 import '../theme.dart';
+import '../widgets/failure_note.dart';
 import 'canvas/graph_canvas.dart';
 import 'details/effect_details_window.dart';
 import 'graph_notes.dart';
@@ -360,6 +361,8 @@ class _GraphScreenState extends State<GraphScreen> {
             onOpenEffect: _openEffectNode,
             onExpandNode: _expandNode,
             onOpenAsGraph: _openAsGraph,
+            onOpenPlace: (place) =>
+                openPlace(context, widget.shell, widget.path, place),
             topInset: _notesHeight == 0
                 ? GraphCanvas.sessionBarRoom
                 : math.max(

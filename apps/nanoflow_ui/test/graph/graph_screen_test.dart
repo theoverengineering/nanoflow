@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/canvas/tile_marks.dart' show StateBadge;
@@ -19,6 +20,7 @@ import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/graph_marks.dart' show NodeState;
 import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 import 'package:nanoflow_ui/widgets/spinner.dart';
+import 'package:path/path.dart' as p;
 
 import '../state/support.dart';
 import '../support/golden.dart';
@@ -172,6 +174,78 @@ void main() {
       await doubleTap(tester, tile('1'));
       await settle(tester);
       expect(model.canvas.levels, hasLength(1));
+    });
+  });
+
+  group('the place under a tile', () {
+    Finder place(String id) => find.byKey(NodeTile.placeKeyOf(id));
+
+    Text text(WidgetTester tester, String id) => tester.widget<Text>(
+      find.descendant(of: place(id), matching: find.byType(Text)),
+    );
+
+    testWidgets('opens in the editor at its line', (tester) async {
+      final shell = PlaceShell();
+      await pumpReview(tester, shell: shell);
+      expect(text(tester, '4').data, 'review.dart:55');
+
+      await tester.tap(place('4'));
+      await tester.pump();
+
+      expect(shell.opened, [
+        (p.join(p.dirname(reviewFile), 'lib/review.dart'), 55),
+      ]);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('is underlined and lighter under the pointer, and says what '
+        'it does', (tester) async {
+      await pumpReview(tester, shell: PlaceShell());
+      expect(
+        text(tester, '4').style!.decoration,
+        isNot(TextDecoration.underline),
+      );
+      // The header's button.
+      expect(find.text(NodeTile.openPlaceTooltip), findsOneWidget);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(place('4')));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      final style = text(tester, '4').style!;
+      expect(style.decoration, TextDecoration.underline);
+      expect(style.color, CanvasColors.link);
+      expect(find.text(NodeTile.openPlaceTooltip), findsNWidgets(2));
+    });
+
+    testWidgets('says so for a while when the editor does not open it', (
+      tester,
+    ) async {
+      await pumpReview(tester, shell: PlaceShell(opens: false));
+
+      await tester.tap(place('4'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Could not open review.dart:55'), findsOneWidget);
+    });
+
+    testWidgets('is a link under every node with a place, not a marker', (
+      tester,
+    ) async {
+      await pumpReview(tester, shell: PlaceShell());
+      final tiles = tester.widgetList<NodeTile>(find.byType(NodeTile));
+      for (final tile in tiles) {
+        expect(
+          place(tile.id),
+          tile.node.node?.place == null ? findsNothing : findsOneWidget,
+          reason: tile.id,
+        );
+      }
+      expect(tiles.where((tile) => tile.node.node == null), isNotEmpty);
     });
   });
 

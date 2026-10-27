@@ -117,8 +117,8 @@ bool sameExpanded(
 /// its call or copies, with what [view] shows of the session on them. A
 /// node in a frame works as one on the level drawn — a click, a double
 /// click ([onOpenNode], [onOpenEffect]), its `+` ([onExpandNode]), a call's
-/// ↗ ([onOpenAsGraph]) — and its id on the canvas is the path of ids to it,
-/// `5/2`.
+/// ↗ ([onOpenAsGraph]), its place ([onOpenPlace]) — and its id on the canvas
+/// is the path of ids to it, `5/2`.
 ///
 /// A node about to be expanded or collapsed is [anchor]ed, so that it stays
 /// where it is on the screen; [unanchor] lets go of it when it is not.
@@ -133,6 +133,7 @@ final class BodyDrawer {
     this.onOpenEffect,
     this.onExpandNode,
     this.onOpenAsGraph,
+    this.onOpenPlace,
   });
 
   final GraphModel model;
@@ -144,6 +145,7 @@ final class BodyDrawer {
   final OpenEffect? onOpenEffect;
   final ExpandNode? onExpandNode;
   final OpenNode? onOpenAsGraph;
+  final ValueChanged<String>? onOpenPlace;
 
   /// What is drawn, bottom to top: the frames drawn in place, the ring of
   /// the selected effect's node, the arrows and exits, the tiles. The
@@ -223,6 +225,7 @@ final class BodyDrawer {
             onDoubleTap: _opener(node, path),
             onExpand: _expander(node, bodyPath, id),
             onOpenAsGraph: _graphOpener(node, bodyPath),
+            onOpenPlace: _placeOpener(node),
             doc: _docOf(node.node),
           ),
         ),
@@ -340,5 +343,13 @@ final class BodyDrawer {
     if (graphNode == null || open == null) return null;
     if (model.graphOpenings(graphNode).isEmpty) return null;
     return (position) => open(path, graphNode, position);
+  }
+
+  /// What the place under [node]'s tile does: opens it in the editor; none
+  /// for a node without a place.
+  VoidCallback? _placeOpener(layout.NodeBox node) {
+    final place = node.node?.place;
+    final open = onOpenPlace;
+    return place == null || open == null ? null : () => open(place);
   }
 }

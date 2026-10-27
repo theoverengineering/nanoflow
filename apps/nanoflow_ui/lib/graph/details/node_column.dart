@@ -15,8 +15,8 @@ import 'parts.dart';
 /// The effect column of the effect details window (docs/ui-spec.md «Окно
 /// деталей эффекта»; spec §9 «Окно эффекта»): the effect's doc, when it has
 /// one; where in the code the effect was called, `lib/review.dart:49`, with
-/// a button that copies it; and the facts of the effect: `Started`,
-/// `Finished`, every start and how it ended.
+/// buttons that open it in the editor and copy it; and the facts of the
+/// effect: `Started`, `Finished`, every start and how it ended.
 /// The effect's directory is at the bottom, with `Reveal in Finder` and a
 /// copy button.
 class NodeColumn extends StatelessWidget {
@@ -43,6 +43,9 @@ class NodeColumn extends StatelessWidget {
 
   /// The key of the button that copies the place.
   static const copyPlaceKey = ValueKey('copy place');
+
+  /// The key of the button that opens the place in the editor.
+  static const openPlaceKey = ValueKey('open place');
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +83,7 @@ class NodeColumn extends StatelessWidget {
                     ],
                     const SectionLabel('Place in code'),
                     const SizedBox(height: 8),
-                    _Place(place: place, shell: shell),
+                    _Place(place: place, shell: shell, graphFile: graphFile),
                     if (facts != null) ...[
                       const SizedBox(height: 26),
                       const SectionLabel('This effect'),
@@ -132,14 +135,19 @@ class NodeColumn extends StatelessWidget {
   }
 }
 
-/// `lib/review.dart:49` in a box, and a button that copies it: the place
-/// pasted into an editor's «go to file» opens the line. The editor the app
-/// opens files in is given no line, so the app does not open it there.
+/// `lib/review.dart:49` in a box, with `Open in editor`, which opens it at
+/// its line as the place under a tile does, and a button that copies it:
+/// the place pasted into an editor's «go to file» opens the line.
 class _Place extends StatelessWidget {
-  const _Place({required this.place, required this.shell});
+  const _Place({
+    required this.place,
+    required this.shell,
+    required this.graphFile,
+  });
 
   final String? place;
   final Shell shell;
+  final String graphFile;
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +170,14 @@ class _Place extends StatelessWidget {
               ),
             ),
           ),
-          if (place != null)
+          if (place != null) ...[
+            FileButton(
+              'Open in editor',
+              key: NodeColumn.openPlaceKey,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              style: AppText.smallButton,
+              onTap: () => openPlace(context, shell, graphFile, place),
+            ),
             CopyButton(
               key: NodeColumn.copyPlaceKey,
               copy: () => shell.copyToClipboard(place),
@@ -172,6 +187,7 @@ class _Place extends StatelessWidget {
               height: 26,
               iconSize: 12,
             ),
+          ],
         ],
       ),
     );

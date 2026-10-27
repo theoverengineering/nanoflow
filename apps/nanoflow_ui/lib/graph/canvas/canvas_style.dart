@@ -44,6 +44,10 @@ abstract final class CanvasColors {
   static const name = Color(0xFFECECEE);
   static const place = Color(0xFF6E6F76);
 
+  /// A place under the pointer, a link into the code: as light as the exit
+  /// labels.
+  static const link = chipText;
+
   /// The tiles stacked behind copies.
   static const stackFill = Color(0xFF2E2F35);
   static const stackBorder = Color(0xFF6A6B73);

@@ -350,7 +350,7 @@ void main() {
       await doubleClick(tester, '4');
       expect(
         textIn(tester, find.byKey(NodeColumn.descriptionKey)),
-        'PLACE IN CODE lib/review.dart:55 '
+        'PLACE IN CODE lib/review.dart:55 Open in editor '
         'THIS EFFECT Started 14:09:20.000 Finished 14:13:22.000 took 4m 02s '
         'Starts 14:09:20 interrupted — the process stopped 14:11:51',
       );
@@ -387,7 +387,7 @@ void main() {
         textIn(tester, find.byKey(NodeColumn.descriptionKey)),
         startsWith(
           'DOC Checks the change with a program, as claude would. '
-          'PLACE IN CODE lib/review.dart:55 THIS EFFECT',
+          'PLACE IN CODE lib/review.dart:55 Open in editor THIS EFFECT',
         ),
       );
       expect(
@@ -406,8 +406,19 @@ void main() {
       expect(
         textIn(tester, find.byKey(NodeColumn.descriptionKey)),
         'DOC Checks the change with a program, as claude would. '
-        'PLACE IN CODE lib/review.dart:55',
+        'PLACE IN CODE lib/review.dart:55 Open in editor',
       );
+    });
+
+    testWidgets('opens the place in the editor at its line', (tester) async {
+      final shell = PlaceShell();
+      await pumpReview(tester, shell: shell);
+      await doubleClick(tester, '4');
+
+      await tap(tester, find.byKey(NodeColumn.openPlaceKey));
+      expect(shell.opened, [
+        (p.join(p.dirname(reviewFile), 'lib/review.dart'), 55),
+      ]);
     });
 
     testWidgets('copies the place, to go to it in an editor', (tester) async {
