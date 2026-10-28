@@ -492,7 +492,7 @@ void main() {
     });
 
     testWidgets("a run's bar is its effects' bars, each in the color of its "
-        'state, a gap before each but where the run starts', (tester) async {
+        'state, every other one in a darker shade', (tester) async {
       await pumpRuns(tester);
       List<EffectBar> partsOf(int i) => tester
           .widgetList<EffectBar>(
@@ -506,6 +506,7 @@ void main() {
         [for (final part in partsOf(1)) part.status],
         [StartOutcome.finished, StartOutcome.failed],
       );
+      expect([for (final part in partsOf(1)) part.shaded], [false, true]);
       expect([for (final part in partsOf(2)) part.striped], [false, true]);
 
       final track = tester.getRect(
@@ -519,7 +520,7 @@ void main() {
       final verify = tester.getRect(parts.last);
       expect(upload.left, closeTo(track.left + 150 * 11 / 100, 0.01));
       expect(upload.right, closeTo(track.left + 150 * 21 / 100, 0.01));
-      expect(verify.left, closeTo(track.left + 150 * 31 / 100 + 1, 0.01));
+      expect(verify.left, closeTo(track.left + 150 * 31 / 100, 0.01));
       expect(verify.right, closeTo(track.left + 150 * 41 / 100, 0.01));
     });
 

@@ -27,7 +27,6 @@ class EffectTrack extends StatelessWidget {
       final width = constraints.maxWidth;
       final length = math.max(_leastBar, (row.barEnd - row.barStart) * width);
       final left = math.min(row.barStart * width, width - length);
-      final radius = length > _leastBar ? 3.0 : 1.0;
       final key = EffectTrack.barKey(row.barId);
       return Center(
         child: Container(
@@ -50,13 +49,12 @@ class EffectTrack extends StatelessWidget {
                     parts: parts,
                     left: left,
                     width: width,
-                    radius: radius,
                   ),
                   _ => EffectBar(
                     key: key,
                     status: row.status,
                     striped: row.striped,
-                    radius: radius,
+                    radius: length > _leastBar ? 3 : 1,
                   ),
                 },
               ),
@@ -68,15 +66,14 @@ class EffectTrack extends StatelessWidget {
   );
 }
 
-/// A run's bar: its effects' bars, each from where the effect started to
-/// where it ended, a gap before each but where the run starts.
+/// A run's bar: its effects' bars, square, each from where the effect started
+/// to where it ended, every other one [EffectBar.shaded].
 class _RunBar extends StatelessWidget {
   const _RunBar({
     super.key,
     required this.parts,
     required this.left,
     required this.width,
-    required this.radius,
   });
 
   final List<BarPart> parts;
@@ -85,34 +82,27 @@ class _RunBar extends StatelessWidget {
   final double left;
   final double width;
 
-  final double radius;
-
-  static const _gap = 1.0;
-
   /// Shorter than this, an effect's bar in a run is this long.
   static const _leastPart = 1.0;
 
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(radius),
-    child: Stack(children: [for (final part in parts) _placed(part)]),
+  Widget build(BuildContext context) => Stack(
+    children: [
+      for (final (i, part) in parts.indexed)
+        Positioned(
+          left: part.start * width - left,
+          width: math.max(_leastPart, (part.end - part.start) * width),
+          top: 0,
+          bottom: 0,
+          child: EffectBar(
+            status: part.status,
+            striped: part.status == StartOutcome.running,
+            shaded: i.isOdd,
+            radius: 0,
+          ),
+        ),
+    ],
   );
-
-  Widget _placed(BarPart part) {
-    final at = part.start * width - left;
-    final from = at < _gap ? at : at + _gap;
-    return Positioned(
-      left: from,
-      width: math.max(_leastPart, part.end * width - left - from),
-      top: 0,
-      bottom: 0,
-      child: EffectBar(
-        status: part.status,
-        striped: part.status == StartOutcome.running,
-        radius: 0,
-      ),
-    );
-  }
 }
 
 /// An effect's bar in the color of its state; striped while it runs; only
@@ -122,18 +112,31 @@ class EffectBar extends StatelessWidget {
     super.key,
     required this.status,
     required this.striped,
+    this.shaded = false,
     required this.radius,
   });
 
   final StartOutcome status;
   final bool striped;
+
+  /// Whether it is in a darker shade of its color, as every other effect's
+  /// bar in a run's is, to tell them apart; not striped.
+  final bool shaded;
+
   final double radius;
+
+  /// How far toward the panel a shaded bar's color is.
+  static const _shade = 0.4;
+
+  Color get _color => shaded
+      ? Color.lerp(status.color, AppColors.panel, _shade)!
+      : status.color;
 
   @override
   Widget build(BuildContext context) => status == StartOutcome.interrupted
       ? DecoratedBox(
           decoration: BoxDecoration(
-            border: Border.all(color: status.color),
+            border: Border.all(color: _color),
             borderRadius: BorderRadius.circular(radius),
           ),
         )
@@ -141,7 +144,7 @@ class EffectBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(radius),
           child: striped
               ? const CustomPaint(painter: _StripesPainter())
-              : ColoredBox(color: status.color),
+              : ColoredBox(color: _color),
         );
 }
 
