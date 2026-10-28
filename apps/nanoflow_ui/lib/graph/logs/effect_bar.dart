@@ -2,14 +2,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../state/log_rows.dart' show TimedRow;
+import '../../state/log_rows.dart' show BarPart, RunRow, TimedRow;
 import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
 import '../../widgets/icons.dart';
 import '../../widgets/spinner.dart';
 
 /// An effect's timeline, or a run's: the track, and on it the bar from where it
-/// started to where it ended or is now.
+/// started to where it ended or is now; a run's made of its effects' bars.
 class EffectTrack extends StatelessWidget {
   const EffectTrack(this.row, {super.key});
 
@@ -27,6 +27,8 @@ class EffectTrack extends StatelessWidget {
       final width = constraints.maxWidth;
       final length = math.max(_leastBar, (row.barEnd - row.barStart) * width);
       final left = math.min(row.barStart * width, width - length);
+      final radius = length > _leastBar ? 3.0 : 1.0;
+      final key = EffectTrack.barKey(row.barId);
       return Center(
         child: Container(
           key: EffectTrack.trackKey(row.barId),
@@ -42,12 +44,21 @@ class EffectTrack extends StatelessWidget {
                 width: length,
                 top: 0,
                 bottom: 0,
-                child: EffectBar(
-                  key: EffectTrack.barKey(row.barId),
-                  status: row.status,
-                  striped: row.striped,
-                  radius: length > _leastBar ? 3 : 1,
-                ),
+                child: switch (row) {
+                  RunRow(:final parts) => _RunBar(
+                    key: key,
+                    parts: parts,
+                    left: left,
+                    width: width,
+                    radius: radius,
+                  ),
+                  _ => EffectBar(
+                    key: key,
+                    status: row.status,
+                    striped: row.striped,
+                    radius: radius,
+                  ),
+                },
               ),
             ],
           ),
@@ -55,6 +66,53 @@ class EffectTrack extends StatelessWidget {
       );
     },
   );
+}
+
+/// A run's bar: its effects' bars, each from where the effect started to
+/// where it ended, a gap before each but where the run starts.
+class _RunBar extends StatelessWidget {
+  const _RunBar({
+    super.key,
+    required this.parts,
+    required this.left,
+    required this.width,
+    required this.radius,
+  });
+
+  final List<BarPart> parts;
+
+  /// Where the run's bar begins on the track, and how wide the track is.
+  final double left;
+  final double width;
+
+  final double radius;
+
+  static const _gap = 1.0;
+
+  /// Shorter than this, an effect's bar in a run is this long.
+  static const _leastPart = 1.0;
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(radius),
+    child: Stack(children: [for (final part in parts) _placed(part)]),
+  );
+
+  Widget _placed(BarPart part) {
+    final at = part.start * width - left;
+    final from = at < _gap ? at : at + _gap;
+    return Positioned(
+      left: from,
+      width: math.max(_leastPart, part.end * width - left - from),
+      top: 0,
+      bottom: 0,
+      child: EffectBar(
+        status: part.status,
+        striped: part.status == StartOutcome.running,
+        radius: 0,
+      ),
+    );
+  }
 }
 
 /// An effect's bar in the color of its state; striped while it runs; only

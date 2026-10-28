@@ -308,6 +308,24 @@ void main() {
       expect(runs.first.holds(publishingSession().state.effects[3].effectId), isFalse);
     });
 
+    test(
+      "a run's bar is its effects' bars, each in the color of its state",
+      () {
+        final runs = rows().whereType<RunRow>().toList();
+        String describe(BarPart part) =>
+            '${(part.start * 100).round()}-${(part.end * 100).round()} '
+            '${part.status.name}';
+        expect(
+          [for (final part in runs[1].parts) describe(part)],
+          ['11-21 finished', '31-41 failed'],
+        );
+        expect(
+          [for (final part in runs[2].parts) describe(part)],
+          ['12-22 finished', '32-100 running'],
+        );
+      },
+    );
+
     test('an open run has its effects under it, a level deeper', () {
       final second = rows().whereType<RunRow>().elementAt(1);
       expect(second.open, isFalse);

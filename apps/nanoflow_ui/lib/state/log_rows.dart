@@ -135,6 +135,7 @@ final class RunRow extends TimedRow {
     required this.number,
     required this._effectIds,
     required this.open,
+    required this.parts,
     required super.status,
     required super.copy,
     required super.started,
@@ -168,9 +169,17 @@ final class RunRow extends TimedRow {
   /// Whether its effects are shown under it.
   final bool open;
 
+  /// The bars of its effects, at any depth, in its order: its bar is drawn as
+  /// theirs, which shows how many there are.
+  final List<BarPart> parts;
+
   /// After the name: `run 2 · 27 effects`.
   String get runText => 'run $number · ${count(effects, 'effect')}';
 }
+
+/// An effect's bar in a run's: where it begins and ends on the session's time
+/// scale, as [TimedRow.barStart] and [TimedRow.barEnd], and its state.
+typedef BarPart = ({double start, double end, StartOutcome status});
 
 /// The last row of a session that has ended.
 final class EndRow extends LogRow {
@@ -409,6 +418,14 @@ final class _Rows {
       number: run.number,
       effectIds: {for (final effect in effects) effect.effectId},
       open: open,
+      parts: [
+        for (final effect in effects)
+          (
+            start: scale.fraction(effect.startedAt),
+            end: scale.fraction(effect.finishedAt ?? session.timeAt(now)),
+            status: outcomeOf(session, effect),
+          ),
+      ],
       status: status,
       copy: copyOf?.call(effects.first.effectId),
       started: clockTime(start),

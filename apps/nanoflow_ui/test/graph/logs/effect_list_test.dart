@@ -491,6 +491,38 @@ void main() {
       );
     });
 
+    testWidgets("a run's bar is its effects' bars, each in the color of its "
+        'state, a gap before each but where the run starts', (tester) async {
+      await pumpRuns(tester);
+      List<EffectBar> partsOf(int i) => tester
+          .widgetList<EffectBar>(
+            find.descendant(
+              of: find.byKey(EffectTrack.barKey(runs[i].key)),
+              matching: find.byType(EffectBar),
+            ),
+          )
+          .toList();
+      expect(
+        [for (final part in partsOf(1)) part.status],
+        [StartOutcome.finished, StartOutcome.failed],
+      );
+      expect([for (final part in partsOf(2)) part.striped], [false, true]);
+
+      final track = tester.getRect(
+        find.byKey(EffectTrack.trackKey(runs[1].key)),
+      );
+      final parts = find.descendant(
+        of: find.byKey(EffectTrack.barKey(runs[1].key)),
+        matching: find.byType(EffectBar),
+      );
+      final upload = tester.getRect(parts.first);
+      final verify = tester.getRect(parts.last);
+      expect(upload.left, closeTo(track.left + 150 * 11 / 100, 0.01));
+      expect(upload.right, closeTo(track.left + 150 * 21 / 100, 0.01));
+      expect(verify.left, closeTo(track.left + 150 * 31 / 100 + 1, 0.01));
+      expect(verify.right, closeTo(track.left + 150 * 41 / 100, 0.01));
+    });
+
     testWidgets('opening a run keeps the list where it is, while following '
         'too', (tester) async {
       var open = <String>{};
