@@ -17,6 +17,7 @@ void main() {
           path: _graph,
           store: null,
           session: null,
+          currentGraph: false,
         ));
       },
     );
@@ -34,7 +35,20 @@ void main() {
           path: _graph,
           store: const StorePlace.sqlite('/Users/me/.ideaforge/ideas.db'),
           session: '3f1c2e0a-7a4b-4c1d-9e2f-5a6b7c8d9e0f',
+          currentGraph: false,
         ),
+      );
+    });
+
+    test('a graph file on Current graph, not on a session', () {
+      expect(
+        parseLaunch(const [
+          _graph,
+          '--store',
+          'sqlite:/d/ideas.db',
+          '--current-graph',
+        ])?.currentGraph,
+        isTrue,
       );
     });
 
@@ -52,12 +66,17 @@ void main() {
 
     test('says what is wrong', () {
       for (final (args, says) in [
-        (const ['--store', 'fs:/runs'], '--store and --session need'),
+        (const ['--store', 'fs:/runs'], 'need a graph file'),
         (const [_graph, '--store'], '--store needs a value'),
         (const [_graph, '--store', 'mysql:/db'], 'unknown store "mysql"'),
         (const [_graph, '--verbose'], 'unknown option --verbose'),
         (const ['/a/notes.json'], 'is not a graph file'),
         (const [_graph, _graph], 'one graph file only'),
+        (
+          const [_graph, '--session', 's1', '--current-graph'],
+          '--session or --current-graph',
+        ),
+        (const ['--current-graph'], 'need a graph file'),
       ]) {
         expect(
           () => parseLaunch(args),

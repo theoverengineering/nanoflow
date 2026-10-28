@@ -353,6 +353,26 @@ void main() {
     expect(graphFileOf(model).disposed, isTrue);
   });
 
+  testWidgets('opened on Current graph shows the graph file, not the newest '
+      'session', (tester) async {
+    final model = columnModel();
+    await pumpScreen(
+      tester,
+      GraphScreen(
+        path: releaseFile,
+        shell: Shell(),
+        onBack: () {},
+        openModel: (_, {store, session}) => model,
+        currentGraph: true,
+        now: () => at(100000),
+      ),
+    );
+    await settle(tester);
+
+    expect(model.selection.currentGraph, isTrue);
+    expect(model.selection.sessionId, isNull);
+  });
+
   testWidgets('lets the app quit once its feed has stopped, and disposes '
       'its model then', (tester) async {
     // A reader's feed stops once it no longer watches the processes that own

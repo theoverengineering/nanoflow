@@ -198,11 +198,13 @@ const problemsShown = 5;
 /// none.
 const noSessionsYet = 'No sessions yet';
 
-/// Where the sessions of the graph file [graphFile] come from: the workflow
-/// library writes them to the `runs` directory next to it.
-String noSessionsHint(String graphFile) =>
+/// Where the sessions of the graph file [graphFile] come from: the store
+/// [watching] (`StorePlace.name`) — by default the `runs` directory next to
+/// it, where the workflow library writes them.
+String noSessionsHint(String graphFile, {String watching = 'runs/'}) =>
     'Sessions of the workflow appear as it runs: '
-    'they are read from runs/ next to ${p.basename(graphFile)}.';
+    'they are read from '
+    '${watching == 'runs/' ? 'runs/ next to ${p.basename(graphFile)}' : watching}.';
 
 /// The summaries of [sessions] that have started, newest first; [codeOf]
 /// checks the code of each, [fromOf] tells the workflow of a parent's

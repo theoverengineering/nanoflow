@@ -276,6 +276,14 @@ and 2 more''');
       'Sessions of the workflow appear as it runs: '
       'they are read from runs/ next to nanoflow.graph.json.',
     );
+    expect(
+      noSessionsHint(
+        '/Users/me/Projects/ideaforge/nanoflow.graph.json',
+        watching: 'ideas.db',
+      ),
+      'Sessions of the workflow appear as it runs: '
+      'they are read from ideas.db.',
+    );
   });
 
   test('sessions are listed newest first', () {

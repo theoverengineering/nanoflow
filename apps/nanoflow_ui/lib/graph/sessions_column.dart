@@ -68,7 +68,7 @@ class SessionsColumn extends StatelessWidget {
             ),
             Expanded(
               child: sessions.isEmpty
-                  ? _NoSessions(graphFile)
+                  ? _NoSessions(graphFile, watching: model.watching)
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
                       itemCount: sessions.length,
@@ -401,9 +401,12 @@ class _WarningPainter extends CustomPainter {
 
 /// What the column says without sessions.
 class _NoSessions extends StatelessWidget {
-  const _NoSessions(this.graphFile);
+  const _NoSessions(this.graphFile, {required this.watching});
 
   final String graphFile;
+
+  /// What the store of the sessions is called.
+  final String watching;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -416,7 +419,10 @@ class _NoSessions extends StatelessWidget {
           noSessionsYet,
           style: AppText.sessionTitle.copyWith(color: AppColors.textSecondary),
         ),
-        Text(noSessionsHint(graphFile), style: AppText.hint),
+        Text(
+          noSessionsHint(graphFile, watching: watching),
+          style: AppText.hint,
+        ),
       ],
     ),
   );

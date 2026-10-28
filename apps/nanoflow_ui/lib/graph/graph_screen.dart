@@ -60,6 +60,7 @@ class GraphScreen extends StatefulWidget {
     required this.onBack,
     this.store,
     this.session,
+    this.currentGraph = false,
     this.openModel = GraphModel.open,
     this.now,
   });
@@ -73,6 +74,11 @@ class GraphScreen extends StatefulWidget {
   /// The session to select once the feed gives it, as the app was started
   /// with; `null` for the newest.
   final String? session;
+
+  /// Whether `Current graph` is selected as the screen opens, rather than
+  /// the newest session: the graph file as it is, what the workflow will
+  /// run.
+  final bool currentGraph;
 
   /// How the screen reaches macOS.
   final Shell shell;
@@ -125,6 +131,7 @@ class _GraphScreenState extends State<GraphScreen> {
       store: widget.store,
       session: widget.session,
     );
+    if (widget.currentGraph) _model.selection.showCurrentGraph();
     _clock = LiveClock(now: widget.now);
     // Quitting the app does not dispose the screen.
     _lifecycle = AppLifecycleListener(onExitRequested: _quitting);

@@ -79,7 +79,14 @@ class _ScreensState extends State<_Screens> {
 
   void _open(String path, {StorePlace? store}) {
     unawaited(widget.app.recent.opened(path, widget.app.now(), store: store));
-    setState(() => _graph = (path: path, store: store, session: null));
+    setState(
+      () => _graph = (
+        path: path,
+        store: store,
+        session: null,
+        currentGraph: false,
+      ),
+    );
   }
 
   @override
@@ -100,6 +107,7 @@ class _ScreensState extends State<_Screens> {
       path: graph.path,
       store: graph.store,
       session: graph.session,
+      currentGraph: graph.currentGraph,
       shell: app.shell,
       onBack: () => setState(() => _graph = null),
       openModel: app.openModel,
