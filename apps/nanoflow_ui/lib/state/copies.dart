@@ -82,10 +82,55 @@ List<Copy> copiesOf(
   required SessionData session,
   Iterable<EffectState>? effects,
 }) {
-  final held = places.within(frame);
+  final chains = chainsIn(
+    places.within(frame),
+    places: places,
+    session: session,
+    effects: effects,
+  );
+  final started = [
+    for (final MapEntry(key: first, value: chain) in chains.entries)
+      (
+        first: session.stateOf(first) ?? chain.first,
+        chain: chain,
+        at: chain
+            .map((effect) => effect.startedAt)
+            .reduce((a, b) => b.isBefore(a) ? b : a),
+      ),
+  ];
+  // A stable sort: copies that started together keep the order of their
+  // effects.
+  final order = [for (var i = 0; i < started.length; i++) i]
+    ..sort((a, b) {
+      final byTime = started[a].at.compareTo(started[b].at);
+      return byTime != 0 ? byTime : a.compareTo(b);
+    });
+  return [
+    for (final (n, i) in order.indexed)
+      Copy._(
+        n + 1,
+        started[i].first,
+        started[i].chain,
+        _statusOf(started[i].chain, interrupted: session.interrupted),
+      ),
+  ];
+}
+
+/// [effects] of [session] (by default, all of its effects) on the effect
+/// nodes [held], in chains by `after`, by the id of the first effect of each:
+/// one whose predecessor is on none of [held], or that has none; every other
+/// effect is in the chain of its predecessor. The copies of a frame are its
+/// chains, and so are the runs of a call. An effect whose record has not been
+/// given is in none.
+Map<String, List<EffectState>> chainsIn(
+  Set<EffectNode> held, {
+  required EffectPlaces places,
+  required SessionData session,
+  Iterable<EffectState>? effects,
+}) {
   bool inside(Effect? record) => places.of(record).any(held.contains);
 
-  // The first effect of the copy of each effect, by id: every effect walked
+  // The first effect of the chain of each effect, by id: every effect walked
   // gets it, so that each chain is walked once.
   final firsts = <String, String>{};
   String firstOf(Effect record) {
@@ -119,32 +164,7 @@ List<Copy> copiesOf(
     if (!inside(record)) continue;
     (chains[firstOf(record!)] ??= []).add(effect);
   }
-  final started = [
-    for (final MapEntry(key: first, value: chain) in chains.entries)
-      (
-        first: session.stateOf(first) ?? chain.first,
-        chain: chain,
-        at: chain
-            .map((effect) => effect.startedAt)
-            .reduce((a, b) => b.isBefore(a) ? b : a),
-      ),
-  ];
-  // A stable sort: copies that started together keep the order of their
-  // effects.
-  final order = [for (var i = 0; i < started.length; i++) i]
-    ..sort((a, b) {
-      final byTime = started[a].at.compareTo(started[b].at);
-      return byTime != 0 ? byTime : a.compareTo(b);
-    });
-  return [
-    for (final (n, i) in order.indexed)
-      Copy._(
-        n + 1,
-        started[i].first,
-        started[i].chain,
-        _statusOf(started[i].chain, interrupted: session.interrupted),
-      ),
-  ];
+  return chains;
 }
 
 /// The loop variable of the label of [frame], `pkg` of `pkg in packages`;

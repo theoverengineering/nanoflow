@@ -235,6 +235,72 @@ void main() {
     expect(marks.of('1')!.copies, isNull);
   });
 
+  group('a call counts the times it ran', () {
+    // plan, then publish (upload, verify) called once for each package.
+    const body = GraphBody(
+      nodes: [
+        EffectNode(id: '1', place: 'lib/w.dart:2', name: 'plan'),
+        CallNode(
+          id: '2',
+          place: 'lib/w.dart:3',
+          functions: ['lib/copies.dart#publish'],
+        ),
+      ],
+      edges: [],
+    );
+    const function = GraphFunction(
+      id: 'lib/w.dart#w',
+      name: 'w',
+      place: 'lib/w.dart:1',
+      body: body,
+    );
+    final places = EffectPlaces.of(function, {
+      ...file.functions,
+      function.id: function,
+    });
+    NodeMarks callAfter(List<String> packages) {
+      final j = Journal('c3d4-session', workflow: 'w')
+        ..effect('plan', 1, end: 2, place: 'lib/w.dart:2', key: 'p');
+      for (final pkg in packages) {
+        j
+          ..effect(
+            'upload',
+            3,
+            end: 4,
+            place: copiesAt(20),
+            key: 'u$pkg',
+            after: 'p',
+          )
+          ..effect('verify', 5, end: 6, place: copiesAt(21), key: 'v$pkg');
+      }
+      return GraphMarks.of(body, places: places, session: j.data).of('2')!;
+    }
+
+    test('each chain of its effects that follows none in it is a run', () {
+      final marks = callAfter(['core', 'tool', 'docs']);
+      expect(marks.effects, 6);
+      expect(marks.calls, 3);
+      expect(marks.visitsText, '3×');
+    });
+
+    test('a call that ran once says nothing, however many effects it '
+        'had', () {
+      final marks = callAfter(['core']);
+      expect(marks.effects, 2);
+      expect(marks.calls, 1);
+      expect(marks.visitsText, isNull);
+    });
+
+    test('an effect node counts no calls', () {
+      final j = Journal('c3d4-session', workflow: 'w')
+        ..effect('plan', 1, end: 2, place: 'lib/w.dart:2');
+      expect(
+        GraphMarks.of(body, places: places, session: j.data).of('1')!.calls,
+        isNull,
+      );
+    });
+  });
+
   test('an effect is on every node at its place (D13): a finally drawn on each '
       'way out of its try', () {
     const body = GraphBody(

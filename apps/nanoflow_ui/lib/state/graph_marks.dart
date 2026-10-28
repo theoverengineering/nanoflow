@@ -44,6 +44,7 @@ final class NodeMarks {
     required this.effects,
     required this.running,
     this.copies,
+    this.calls,
   });
 
   final NodeState state;
@@ -59,8 +60,17 @@ final class NodeMarks {
   /// How many copies a `copies` node ran; `null` for any other node.
   final int? copies;
 
-  /// `2×` over a node entered more than once; `null` otherwise.
-  String? get visitsText => effects > 1 ? timesText(effects) : null;
+  /// How many times a call ran: the chains of its effects by `after`, each
+  /// begun by an effect that follows none in the call ([chainsIn]); `null`
+  /// for any other node.
+  final int? calls;
+
+  /// `2×` over a node entered more than once, or over a call that ran more
+  /// than once; `null` otherwise.
+  String? get visitsText {
+    final times = calls ?? effects;
+    return times > 1 ? timesText(times) : null;
+  }
 }
 
 /// What effects of a session put on the nodes of one body.
@@ -130,6 +140,14 @@ final class GraphMarks {
                     effects: on[node.id],
                   ).length
                 : null,
+            calls: node is CallNode
+                ? chainsIn(
+                    places.within(node),
+                    places: places,
+                    session: session,
+                    effects: on[node.id],
+                  ).length
+                : null,
           ),
       },
       nodesOf,
@@ -161,6 +179,7 @@ NodeMarks _marksOf(
   SessionData session,
   List<EffectState> effects, {
   int? copies,
+  int? calls,
 }) {
   var state = NodeState.notVisited;
   var running = 0;
@@ -184,5 +203,6 @@ NodeMarks _marksOf(
     effects: effects.length,
     running: running,
     copies: copies,
+    calls: calls,
   );
 }

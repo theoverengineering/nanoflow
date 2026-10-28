@@ -210,7 +210,8 @@ class NodeTile extends StatelessWidget {
         if (count != null)
           Positioned(
             right: area.width - tile.right - _overhang,
-            top: tile.top - 9,
+            // Over a call, higher: clear of its + and ↗.
+            top: tile.top - (node.kind == NodeKind.call ? 14 : 9),
             child: count,
           ),
         if (onExpand case final expand?)
@@ -262,19 +263,22 @@ class NodeTile extends StatelessWidget {
   /// Over an effect node's top right corner: in the body of copies, all
   /// shown, how many copies are on it now, if any; else `2×` when it was
   /// entered more than once. Over a fork's, `2×` when the code went through
-  /// it more than once, but not in the body of copies, all shown. Nothing
-  /// over a call's, nor over copies', which have their stack there.
+  /// it more than once, and over a call's when it ran more than once, but
+  /// neither in the body of copies, all shown. Nothing over copies', which
+  /// have their stack there.
   Widget? _countBadge() {
     final marks = this.marks;
     if (marks == null ||
-        (node.kind != NodeKind.effect && node.kind != NodeKind.condition)) {
+        (node.kind != NodeKind.effect &&
+            node.kind != NodeKind.condition &&
+            node.kind != NodeKind.call)) {
       return null;
     }
     // In copies, how many copies are on the effect — the effects all of them
     // passed have nothing over them (docs/design/code-first/copies-frame.html),
-    // nor do forks, where nothing runs.
+    // nor do forks, where nothing runs, nor calls, which each copy runs.
     if (allCopies) {
-      return marks.running > 0
+      return node.kind == NodeKind.effect && marks.running > 0
           ? RunningBadge(marks.running, key: runningKeyOf(id))
           : null;
     }

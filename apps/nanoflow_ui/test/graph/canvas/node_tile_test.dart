@@ -195,6 +195,53 @@ void main() {
     expect(find.text('f()'), findsOneWidget);
   });
 
+  testWidgets('a call that ran more than once says how many times over its '
+      'top right corner, clear of its + and ↗; not in the body of copies, '
+      'all shown', (tester) async {
+    const marks = NodeMarks(
+      state: NodeState.visited,
+      effects: 121,
+      running: 0,
+      calls: 5,
+    );
+    await pumpTile(
+      tester,
+      'call',
+      marks: marks,
+      onExpand: (_) {},
+      onOpenAsGraph: (_) {},
+    );
+    expect(find.text('121×'), findsNothing);
+    final badge = tester.getRect(find.byType(CountBadge));
+    final tile = tileOf(tester, 'call');
+    expect(find.text('5×'), findsOneWidget);
+    expect(badge.right, moreOrLessEquals(tile.right + 6, epsilon: 1));
+    expect(badge.top, lessThan(tile.top));
+    for (final button in [
+      find.byKey(FrameToggle.expandKeyOf('call')),
+      find.byKey(OpenAsGraphButton.keyOf('call')),
+    ]) {
+      expect(badge.overlaps(tester.getRect(button)), isFalse);
+    }
+
+    await pumpTile(tester, 'call', marks: marks, allCopies: true);
+    expect(find.byType(CountBadge), findsNothing);
+    expect(find.byKey(NodeTile.runningKeyOf('call')), findsNothing);
+
+    // Ran once: nothing over it.
+    await pumpTile(
+      tester,
+      'call',
+      marks: const NodeMarks(
+        state: NodeState.visited,
+        effects: 3,
+        running: 0,
+        calls: 1,
+      ),
+    );
+    expect(find.byType(CountBadge), findsNothing);
+  });
+
   testWidgets('a call opens as the main graph from ↗, Open as graph, left of '
       'its + in its corner, as large as it and clear of ƒ', (tester) async {
     Offset? at;
