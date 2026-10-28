@@ -29,36 +29,35 @@ class EffectTrack extends StatelessWidget {
       final left = math.min(row.barStart * width, width - length);
       final key = EffectTrack.barKey(row.barId);
       return Center(
-        child: Container(
+        child: SizedBox(
           key: EffectTrack.trackKey(row.barId),
           height: 6,
-          decoration: BoxDecoration(
-            color: AppColors.divider,
-            borderRadius: BorderRadius.circular(3),
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                left: left,
-                width: length,
-                top: 0,
-                bottom: 0,
-                child: switch (row) {
-                  RunRow(:final parts) => _RunBar(
-                    key: key,
-                    parts: parts,
-                    left: left,
-                    width: width,
-                  ),
-                  _ => EffectBar(
-                    key: key,
-                    status: row.status,
-                    striped: row.striped,
-                    radius: length > _leastBar ? 3 : 1,
-                  ),
-                },
-              ),
-            ],
+          child: CustomPaint(
+            painter: const _BarPainter(color: AppColors.divider, radius: 3),
+            child: Stack(
+              children: [
+                Positioned(
+                  left: left,
+                  width: length,
+                  top: 0,
+                  bottom: 0,
+                  child: switch (row) {
+                    RunRow(:final parts) => _RunBar(
+                      key: key,
+                      parts: parts,
+                      left: left,
+                      width: width,
+                    ),
+                    _ => EffectBar(
+                      key: key,
+                      status: row.status,
+                      striped: row.striped,
+                      radius: length > _leastBar ? 3 : 1,
+                    ),
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -133,67 +132,71 @@ class EffectBar extends StatelessWidget {
       : status.color;
 
   @override
-  Widget build(BuildContext context) => status == StartOutcome.interrupted
-      ? DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(color: _color),
-            borderRadius: BorderRadius.circular(radius),
-          ),
-        )
-      : radius == 0
-      // Square, as in a run's bar: its edges on whole pixels, so that bars
-      // side by side leave no seam of the track between them.
-      ? ClipRect(
-          child: CustomPaint(
-            painter: striped
-                ? const _StripesPainter(sharp: true)
-                : _FillPainter(_color),
-          ),
-        )
-      : ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: striped
-              ? const CustomPaint(painter: _StripesPainter())
-              : ColoredBox(color: _color),
-        );
+  Widget build(BuildContext context) => CustomPaint(
+    painter: _BarPainter(
+      color: _color,
+      radius: radius,
+      striped: striped,
+      outlined: status == StartOutcome.interrupted,
+    ),
+  );
 }
 
-/// A fill with its edges on whole pixels.
-class _FillPainter extends CustomPainter {
-  const _FillPainter(this.color);
+/// A bar, [radius] round, filled with [color]; [striped] as the mockup's
+/// `repeating-linear-gradient(135deg, #F2A93B 0 4px, #C98526 4px 8px)`,
+/// stripes rising to the right, 8 px apart across them; or only [outlined].
+/// Not smoothed: its edges on whole pixels, so that bars side by side leave
+/// no seam of the track between them.
+class _BarPainter extends CustomPainter {
+  const _BarPainter({
+    required this.color,
+    required this.radius,
+    this.striped = false,
+    this.outlined = false,
+  });
 
   final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) => canvas.drawRect(
-    Offset.zero & size,
-    Paint()
-      ..color = color
-      ..isAntiAlias = false,
-  );
-
-  @override
-  bool shouldRepaint(_FillPainter old) => old.color != color;
-}
-
-/// The mockup's `repeating-linear-gradient(135deg, #F2A93B 0 4px, #C98526
-/// 4px 8px)`: stripes rising to the right, 8 px apart across them; their
-/// ground's edges on whole pixels when [sharp].
-class _StripesPainter extends CustomPainter {
-  const _StripesPainter({this.sharp = false});
-
-  final bool sharp;
+  final double radius;
+  final bool striped;
+  final bool outlined;
 
   static const _period = 8.0;
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(
+    final shape = RRect.fromRectAndRadius(
       Offset.zero & size,
-      Paint()
-        ..color = AppColors.runningStripe
-        ..isAntiAlias = !sharp,
+      Radius.circular(radius),
     );
+    if (outlined) {
+      canvas.drawRRect(
+        shape.deflate(0.5),
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..isAntiAlias = false,
+      );
+      return;
+    }
+    if (!striped) {
+      canvas.drawRRect(
+        shape,
+        Paint()
+          ..color = color
+          ..isAntiAlias = false,
+      );
+      return;
+    }
+    canvas
+      ..save()
+      ..clipRRect(shape, doAntiAlias: false)
+      ..drawRect(
+        Offset.zero & size,
+        Paint()
+          ..color = AppColors.runningStripe
+          ..isAntiAlias = false,
+      );
     // Along the bar, a period and a stripe are √2 times as long.
     final effect = _period * math.sqrt2;
     final stripe = effect / 2;
@@ -210,10 +213,15 @@ class _StripesPainter extends CustomPainter {
         paint,
       );
     }
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_StripesPainter old) => old.sharp != sharp;
+  bool shouldRepaint(_BarPainter old) =>
+      old.color != color ||
+      old.radius != radius ||
+      old.striped != striped ||
+      old.outlined != outlined;
 }
 
 /// An effect's sign: a green check finished, the turning sign running, a red
