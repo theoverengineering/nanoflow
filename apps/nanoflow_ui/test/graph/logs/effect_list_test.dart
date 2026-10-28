@@ -490,5 +490,51 @@ void main() {
         AppColors.accentSurface,
       );
     });
+
+    testWidgets('opening a run keeps the list where it is, while following '
+        'too', (tester) async {
+      var open = <String>{};
+      await pumpScreen(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) => Align(
+            alignment: Alignment.topLeft,
+            // The title and three rows: the list scrolls.
+            child: SizedBox(
+              width: 548,
+              height: 24 + 3 * 22,
+              child: EffectList(
+                rows: publishingRows(open: open),
+                scale: TimeScale(at(0), at(100)),
+                selectedEffectId: 'd5e6-announce-7',
+                following: true,
+                onSelect: (_) {},
+                onToggleRun: (key) => setState(() => open = {...open, key}),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final list = find.byType(EffectList);
+      await wheel(tester, list, -100);
+      final top = tester.getTopLeft(run(0)).dy;
+
+      await tester.tap(run(0));
+      await tester.pump();
+      await tester.pump();
+
+      expect(open, {runs[0].key});
+      expect(shownWithin(tester, run(0), list), isTrue);
+      expect(tester.getTopLeft(run(0)).dy, top);
+      expect(
+        shownWithin(
+          tester,
+          find.byKey(EffectList.rowKey('d5e6-upload-1')),
+          list,
+        ),
+        isTrue,
+      );
+    });
   });
 }

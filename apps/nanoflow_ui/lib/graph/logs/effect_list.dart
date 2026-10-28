@@ -98,10 +98,25 @@ class _EffectListState extends State<EffectList> {
   void didUpdateWidget(EffectList old) {
     super.didUpdateWidget(old);
     if (old.selectedEffectId != widget.selectedEffectId ||
-        widget.following && old.rows.length != widget.rows.length) {
+        widget.following && _progress(old.rows) != _progress(widget.rows)) {
       _keepInView();
     }
   }
+
+  /// How many effects [rows] show, those in closed runs too, and whether the
+  /// session has ended: what changes as the session goes on, unlike the rows
+  /// a run opened or closed adds or takes.
+  static (int, bool) _progress(List<LogRow> rows) => (
+    rows.fold(0, (sum, row) => sum + _effectsIn(row)),
+    rows.lastOrNull is EndRow,
+  );
+
+  /// How many effects [row] shows: one, a closed run's, or none.
+  static int _effectsIn(LogRow row) => switch (row) {
+    EffectRow() => 1,
+    RunRow(:final open, :final effects) => open ? 0 : effects,
+    EndRow() => 0,
+  };
 
   @override
   void dispose() {
@@ -158,11 +173,7 @@ class _EffectListState extends State<EffectList> {
     for (final row in widget.rows) {
       top += _extentOf(row);
       if (top > hidden) break;
-      count += switch (row) {
-        EffectRow() => 1,
-        RunRow(:final open, :final effects) => open ? 0 : effects,
-        EndRow() => 0,
-      };
+      count += _effectsIn(row);
     }
     return count;
   }
