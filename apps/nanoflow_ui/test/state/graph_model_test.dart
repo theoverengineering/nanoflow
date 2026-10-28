@@ -581,15 +581,29 @@ void main() {
         expect(view.marks!.of('3')!.state, NodeState.visited);
         expect(view.marks!.of('5')!.state, NodeState.notVisited);
         expect(view.logs.header.text, '2 effects');
-        expect(
-          [for (final row in view.logs.rows.whereType<EffectRow>()) row.name],
-          ['status', 'coder'],
-        );
+        // Each in a run of a call of carry: admit, then work.
+        final runs = view.logs.rows.whereType<RunRow>().toList();
+        expect([for (final run in runs) run.name], ['admit()', 'work()']);
+        expect(view.logs.rows.whereType<EffectRow>(), isEmpty);
         // What the effect details window takes for the effects of `Logs`.
         expect(
           [for (final effect in view.logsShown.effects) effect.effectId],
           ['c1c1-status-2', 'c1c1-coder-3'],
         );
+
+        // A run opened shows its effects under it; closed again, they go.
+        model.toggleRun(runs.last.key);
+        List<String> names() => [
+          for (final row in model.sessionView(at(746))!.logs.rows)
+            switch (row) {
+              RunRow(:final name) => name,
+              EffectRow(:final name, :final depth) => '$depth $name',
+              EndRow() => 'end',
+            },
+        ];
+        expect(names(), ['admit()', 'work()', '1 coder']);
+        model.toggleRun(runs.last.key);
+        expect(names(), ['admit()', 'work()']);
       });
     });
 

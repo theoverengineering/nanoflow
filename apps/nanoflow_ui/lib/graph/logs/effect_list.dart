@@ -8,6 +8,7 @@ import '../../state/texts.dart' show count;
 import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
+import '../../widgets/icons.dart' show ChevronIcon;
 import 'effect_bar.dart';
 
 /// The effects shown on the left of the `Logs` panel (docs/ui-spec.md «Logs»:
@@ -15,7 +16,9 @@ import 'effect_bar.dart';
 /// effect's sign, name, a failure's error or `not on the graph`, the copy it
 /// is in while every copy is shown, `2 starts`, when it started, how long it
 /// took — a running one's time going on — and its bar on the session's time
-/// scale, striped while it runs. An ended session ends with how it ended.
+/// scale, striped while it runs. A run of a call is one row with a chevron,
+/// which opens it: its effects under it, indented. An ended session ends with
+/// how it ended.
 ///
 /// The selected effect is highlighted, and kept in view as the selection
 /// moves; while the session is followed, so are the rows after it. Scrolled
@@ -28,6 +31,7 @@ class EffectList extends StatefulWidget {
     required this.selectedEffectId,
     required this.following,
     required this.onSelect,
+    required this.onToggleRun,
   });
 
   final List<LogRow> rows;
@@ -43,7 +47,11 @@ class EffectList extends StatefulWidget {
   /// A click on an effect's row.
   final ValueChanged<EffectRow> onSelect;
 
+  /// A click on a run's row, by its key: it opens or closes.
+  final ValueChanged<String> onToggleRun;
+
   static Key rowKey(String effectId) => ValueKey(('effect row', effectId));
+  static Key runKey(String key) => ValueKey(('run row', key));
   static const endKey = ValueKey('end row');
   static const earlierKey = ValueKey('earlier effects');
 
@@ -63,6 +71,12 @@ abstract final class _Sizes {
   static const started = 58.0;
   static const took = 50.0;
   static const timeline = 150.0;
+
+  /// How far in each run opened puts the names of the rows in it.
+  static const indent = 14.0;
+
+  /// The chevron before a run's name.
+  static const chevron = 12.0;
 
   /// The least room the effect's name keeps before the timeline gives way.
   static const name = 100.0;
@@ -95,10 +109,14 @@ class _EffectListState extends State<EffectList> {
     super.dispose();
   }
 
-  double _extentOf(LogRow row) => switch (row) {
-    EffectRow(:final effectId) =>
-      effectId == widget.selectedEffectId ? _Sizes.selected : _Sizes.row,
-    EndRow() => _Sizes.row,
+  double _extentOf(LogRow row) =>
+      _holdsSelected(row) ? _Sizes.selected : _Sizes.row;
+
+  /// Whether [row] is the selected effect's, or a closed run's it is in.
+  bool _holdsSelected(LogRow row) => switch (row) {
+    EffectRow(:final effectId) => effectId == widget.selectedEffectId,
+    RunRow(:final open) => !open && row.holds(widget.selectedEffectId),
+    EndRow() => false,
   };
 
   /// Scrolls the selected row into view once laid out, and while
@@ -111,7 +129,7 @@ class _EffectListState extends State<EffectList> {
     double? end;
     for (final row in rows) {
       final extent = _extentOf(row);
-      if (row is EffectRow && row.effectId == widget.selectedEffectId) {
+      if (_holdsSelected(row)) {
         start = top;
         end = top + extent;
       }
@@ -140,7 +158,11 @@ class _EffectListState extends State<EffectList> {
     for (final row in widget.rows) {
       top += _extentOf(row);
       if (top > hidden) break;
-      if (row is EffectRow) count++;
+      count += switch (row) {
+        EffectRow() => 1,
+        RunRow(:final open, :final effects) => open ? 0 : effects,
+        EndRow() => 0,
+      };
     }
     return count;
   }
@@ -179,6 +201,12 @@ class _EffectListState extends State<EffectList> {
                       columns: columns,
                       selected: row.effectId == widget.selectedEffectId,
                       onTap: () => widget.onSelect(row),
+                    ),
+                    final RunRow row => _RunRowView(
+                      row,
+                      columns: columns,
+                      selected: _holdsSelected(row),
+                      onTap: () => widget.onToggleRun(row.key),
                     ),
                     final EndRow row => _EndRowView(row, columns: columns),
                   },
@@ -220,12 +248,14 @@ final class _Columns {
 
   /// [sign], [effect] (taking the room left), [started], [took] and [bar] in a
   /// row, as the mockup's flex row with its gaps and padding has them.
+  /// [depth] runs deep, the effect's column is indented.
   Widget row({
     required Widget sign,
     required Widget effect,
     required Widget started,
     required Widget took,
     Widget? bar,
+    int depth = 0,
   }) {
     final timeline = this.timeline;
     return Padding(
@@ -237,7 +267,12 @@ final class _Columns {
             width: _Sizes.sign,
             child: Center(child: sign),
           ),
-          Expanded(child: effect),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(left: depth * _Sizes.indent),
+              child: effect,
+            ),
+          ),
           SizedBox(width: _Sizes.started, child: started),
           SizedBox(width: _Sizes.took, child: took),
           if (timeline != null) SizedBox(width: timeline, child: bar),
@@ -353,6 +388,7 @@ class _EffectRowView extends StatelessWidget {
             : AppText.effectTook,
       ),
       bar: EffectTrack(row),
+      depth: row.depth,
     );
     return Clickable(
       onTap: onTap,
@@ -361,6 +397,103 @@ class _EffectRowView extends StatelessWidget {
         decoration: selected
             ? const BoxDecoration(color: AppColors.accentSurface)
             : null,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            content,
+            if (selected)
+              const Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 3,
+                child: ColoredBox(color: AppColors.accentLine),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A run of a call: its sign, a chevron, the call and `run 2 · 27 effects`,
+/// the copy it is in, when it started, how long it took and its bar. A click
+/// opens or closes it. Highlighted while closed over the selected effect.
+class _RunRowView extends StatelessWidget {
+  const _RunRowView(
+    this.row, {
+    required this.columns,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final RunRow row;
+  final _Columns columns;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = row.copy;
+    final content = columns.row(
+      sign: EffectIcon(row.status),
+      effect: Row(
+        spacing: 3,
+        children: [
+          ChevronIcon(
+            size: _Sizes.chevron,
+            color: AppColors.textMuted,
+            right: !row.open,
+            down: row.open,
+          ),
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                text: row.name,
+                style: AppText.effectName.copyWith(
+                  color: selected ? AppColors.selectedText : null,
+                  fontWeight: FontWeight.w600,
+                ),
+                children: [
+                  const TextSpan(text: ' '),
+                  TextSpan(text: row.runText, style: AppText.effectDetail),
+                ],
+              ),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (copy != null) _CopyNote(copy),
+        ],
+      ),
+      started: Text(
+        row.started,
+        style: selected
+            ? AppText.effectTime.copyWith(color: AppColors.accentText)
+            : AppText.effectTime,
+      ),
+      took: Text(
+        row.took,
+        textAlign: TextAlign.right,
+        style: row.status == StartOutcome.running
+            ? AppText.effectTook.copyWith(
+                color: AppColors.running,
+                fontWeight: FontWeight.w500,
+              )
+            : AppText.effectTook,
+      ),
+      bar: EffectTrack(row),
+      depth: row.depth,
+    );
+    return Clickable(
+      onTap: onTap,
+      child: Container(
+        key: EffectList.runKey(row.key),
+        // A fill, if a clear one, so that a click anywhere on the row opens it.
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accentSurface : const Color(0x00000000),
+        ),
         child: Stack(
           fit: StackFit.expand,
           children: [

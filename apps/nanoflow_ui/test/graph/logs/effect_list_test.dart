@@ -8,12 +8,15 @@ import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/logs/effect_bar.dart';
 import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
-import 'package:nanoflow_ui/state/log_rows.dart' show notOnGraph;
+import 'package:nanoflow_ui/state/log_rows.dart';
+import 'package:nanoflow_ui/state/texts.dart' show clockTime;
 import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 import 'package:nanoflow_ui/theme.dart';
+import 'package:nanoflow_ui/widgets/icons.dart' show ChevronIcon;
 import 'package:nanoflow_ui/widgets/spinner.dart';
 
 import '../../state/support.dart';
+import '../../support/golden.dart';
 import '../canvas/support.dart';
 import '../support.dart';
 import 'support.dart';
@@ -391,6 +394,101 @@ void main() {
 
       expect(model.selection.effectId, 'l0ng-collect-0');
       expect(shownWithin(tester, row('l0ng-collect-0'), list()), isTrue);
+    });
+  });
+
+  group('runs of calls (publishingSession)', () {
+    final runs = publishingRows().whereType<RunRow>().toList();
+    Finder run(int i) => find.byKey(EffectList.runKey(runs[i].key));
+
+    Future<List<String>> pumpRuns(
+      WidgetTester tester, {
+      Set<String> open = const {},
+      String? selected,
+    }) async {
+      final toggled = <String>[];
+      await pumpScreen(
+        tester,
+        EffectList(
+          rows: publishingRows(open: open),
+          scale: TimeScale(at(0), at(100)),
+          selectedEffectId: selected,
+          following: false,
+          onSelect: (_) {},
+          onToggleRun: toggled.add,
+        ),
+      );
+      return toggled;
+    }
+
+    testWidgets('a run is one row: its sign, a chevron to the right, the call '
+        'and run n · effects, when it started and how long it took; a click '
+        'opens it, by its key', (tester) async {
+      final toggled = await pumpRuns(tester);
+      expect(
+        textIn(tester, run(0)),
+        'publish() run 1 · 2 effects ${clockTime(at(10))} 30s',
+      );
+      expect(
+        find.descendant(of: run(1), matching: find.byType(EffectIcon)),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<EffectIcon>(
+              find.descendant(of: run(1), matching: find.byType(EffectIcon)),
+            )
+            .status,
+        StartOutcome.failed,
+      );
+      final chevron = tester.widget<ChevronIcon>(
+        find.descendant(of: run(0), matching: find.byType(ChevronIcon)),
+      );
+      expect((chevron.right, chevron.down), (true, false));
+      expect(find.byKey(EffectList.rowKey('d5e6-upload-1')), findsNothing);
+
+      await tester.tap(run(0));
+      expect(toggled, [runs[0].key]);
+    });
+
+    testWidgets('an open run has its chevron down and its effects under it, '
+        'their names indented', (tester) async {
+      await pumpRuns(tester, open: {runs[0].key});
+      final chevron = tester.widget<ChevronIcon>(
+        find.descendant(of: run(0), matching: find.byType(ChevronIcon)),
+      );
+      expect(chevron.down, isTrue);
+      final upload = find.byKey(EffectList.rowKey('d5e6-upload-1'));
+      expect(upload, findsOneWidget);
+      expect(tester.getTopLeft(upload).dy, tester.getBottomLeft(run(0)).dy);
+      double nameLeft(Finder row, String name) => tester
+          .getTopLeft(
+            find.descendant(
+              of: row,
+              matching: find.textContaining(name, findRichText: true),
+            ),
+          )
+          .dx;
+      expect(
+        nameLeft(upload, 'upload'),
+        greaterThan(
+          nameLeft(find.byKey(EffectList.rowKey('d5e6-plan-0')), 'plan'),
+        ),
+      );
+    });
+
+    testWidgets('a closed run over the selected effect is highlighted; open, '
+        'the effect is', (tester) async {
+      await pumpRuns(tester, selected: 'd5e6-verify-2');
+      expect(fillOf(tester, run(0)), AppColors.accentSurface);
+      expect(fillOf(tester, run(1)), const Color(0x00000000));
+
+      await pumpRuns(tester, selected: 'd5e6-verify-2', open: {runs[0].key});
+      expect(fillOf(tester, run(0)), const Color(0x00000000));
+      expect(
+        fillOf(tester, find.byKey(EffectList.rowKey('d5e6-verify-2'))),
+        AppColors.accentSurface,
+      );
     });
   });
 }

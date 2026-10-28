@@ -171,6 +171,9 @@ final class SessionView {
   /// [calledGraph] is the id of the called graph opened when [levels] are
   /// of it in a parent's session (`CanvasGraph.calledGraph`): `Logs` list
   /// the effects in it alone, without the session's end.
+  ///
+  /// `Logs` put each run of a call of the workflow — or of the called graph
+  /// opened — on one row; those whose keys are in [openRuns] are open.
   factory SessionView.of(
     SessionData session, {
     required DateTime now,
@@ -184,6 +187,7 @@ final class SessionView {
     List<InPlaceFrame> frames = const [],
     Map<int, String> Function(List<Opened> path) copiesIn = _noCopies,
     List<Opened>? follow,
+    Set<String> openRuns = const {},
   }) {
     final graph = sessionGraphOf(
       session,
@@ -259,6 +263,13 @@ final class SessionView {
           places: places,
           now: now,
           copyOf: tagOf,
+          calls: switch (calledGraph == null
+              ? file?.workflowNamed(session.session.workflow)
+              : file?.functions[calledGraph]) {
+            final function? => callsIn(function.body),
+            null => const [],
+          },
+          open: openRuns,
           end: copy == null && calledGraph == null,
         ),
         scale: timeScale(session, now),

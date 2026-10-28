@@ -8,8 +8,10 @@ import 'dart:io';
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/effect_files.dart';
+import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/freshness.dart';
 import 'package:nanoflow_ui/state/graph_file_source.dart';
+import 'package:nanoflow_ui/state/log_rows.dart';
 import 'package:nanoflow_ui/state/outcomes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
 
@@ -657,4 +659,72 @@ final class FixedFreshness extends FreshnessWatch {
     _freshness = freshness;
     notifyListeners();
   }
+}
+
+/// A workflow `w`: plan, then publish of [copiesGraphFile] (upload, verify)
+/// called once for each package, then announce.
+const publishingWorkflow = GraphFunction(
+  id: 'lib/w.dart#w',
+  name: 'w',
+  place: 'lib/w.dart:1',
+  body: GraphBody(
+    nodes: [
+      EffectNode(id: '1', place: 'lib/w.dart:2', name: 'plan'),
+      CallNode(
+        id: '2',
+        place: 'lib/w.dart:3',
+        functions: ['lib/copies.dart#publish'],
+      ),
+      EffectNode(id: '3', place: 'lib/w.dart:4', name: 'announce'),
+    ],
+    edges: [],
+  ),
+);
+
+/// Where the effects of [publishingSession] are on [publishingWorkflow].
+EffectPlaces publishingPlaces() => EffectPlaces.of(publishingWorkflow, {
+  ...copiesGraphFile().functions,
+  publishingWorkflow.id: publishingWorkflow,
+});
+
+/// [publishingWorkflow] over core, tool and docs: core's publish done,
+/// tool's verify failed, docs' verify running; announce done.
+SessionData publishingSession() {
+  final j = Journal('d5e6-session', workflow: 'w')
+    ..effect('plan', 0, end: 10, place: 'lib/w.dart:2', key: 'p');
+  for (final (i, pkg) in ['core', 'tool', 'docs'].indexed) {
+    j
+      ..effect(
+        'upload',
+        10 + i,
+        end: 20 + i,
+        place: copiesAt(20),
+        key: 'u$pkg',
+        after: 'p',
+      )
+      ..effect(
+        'verify',
+        30 + i,
+        end: pkg == 'docs' ? null : 40 + i,
+        failed: pkg == 'tool',
+        place: copiesAt(21),
+        key: 'v$pkg',
+        after: 'u$pkg',
+      );
+  }
+  j.effect('announce', 50, end: 60, place: 'lib/w.dart:4', after: 'p');
+  return j.data;
+}
+
+/// The `Logs` rows of [publishingSession] at 100 s, the runs of [open] open.
+List<LogRow> publishingRows({Set<String> open = const {}}) {
+  final session = publishingSession();
+  return logRows(
+    session,
+    effects: session.state.effects,
+    places: publishingPlaces(),
+    now: at(100),
+    calls: callsIn(publishingWorkflow.body),
+    open: open,
+  );
 }

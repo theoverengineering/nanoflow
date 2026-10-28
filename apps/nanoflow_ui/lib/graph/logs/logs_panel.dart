@@ -110,6 +110,7 @@ class LogsPanel extends StatelessWidget {
                                 onRevealNode(nodes.join('/'));
                               }
                             },
+                            onToggleRun: model.toggleRun,
                           ),
                         ),
                         const SizedBox(

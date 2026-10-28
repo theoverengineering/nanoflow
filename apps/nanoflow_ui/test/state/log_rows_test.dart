@@ -3,6 +3,7 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/log_rows.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
+import 'package:nanoflow_ui/state/texts.dart' show clockTime;
 import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 
 import 'support.dart';
@@ -265,5 +266,70 @@ void main() {
     expect(axis(80), ['0s', '40s', '80s']);
     expect(axis(31), ['0s', '15s', '31s']);
     expect(axis(0), ['0s', '0s', '0s']);
+  });
+
+  group('runs of calls (ui-spec «Logs»)', () {
+    List<LogRow> rows({Set<String> open = const {}}) =>
+        publishingRows(open: open);
+
+    String describe(LogRow row) => switch (row) {
+      RunRow(:final name, :final runText, :final depth) =>
+        '$depth $name $runText',
+      EffectRow(:final name, :final depth) => '$depth $name',
+      EndRow() => 'end',
+    };
+
+    test('each run of a call is one row, in place of its first effect, '
+        'numbered in the order the runs started', () {
+      expect([for (final row in rows()) describe(row)], [
+        '0 plan',
+        '0 publish() run 1 · 2 effects',
+        '0 publish() run 2 · 2 effects',
+        '0 publish() run 3 · 2 effects',
+        '0 announce',
+      ]);
+    });
+
+    test("a run's sign weighs its effects: failed, then running, then "
+        'finished; its time runs from its first start to its last end', () {
+      final runs = rows().whereType<RunRow>().toList();
+      expect([for (final run in runs) run.status], [
+        StartOutcome.finished,
+        StartOutcome.failed,
+        StartOutcome.running,
+      ]);
+      expect(runs.first.started, clockTime(at(10)));
+      expect(runs.first.duration, const Duration(seconds: 30));
+      expect(runs.last.duration, const Duration(seconds: 100 - 12));
+      expect(runs.first.barStart, closeTo(10 / 100, 1e-9));
+      expect(runs.first.barEnd, closeTo(40 / 100, 1e-9));
+      expect(runs.last.striped, isTrue);
+      expect(runs.first.holds(publishingSession().state.effects[1].effectId), isTrue);
+      expect(runs.first.holds(publishingSession().state.effects[3].effectId), isFalse);
+    });
+
+    test('an open run has its effects under it, a level deeper', () {
+      final second = rows().whereType<RunRow>().elementAt(1);
+      expect(second.open, isFalse);
+      final opened = rows(open: {second.key});
+      expect([for (final row in opened) describe(row)], [
+        '0 plan',
+        '0 publish() run 1 · 2 effects',
+        '0 publish() run 2 · 2 effects',
+        '1 upload',
+        '1 verify',
+        '0 publish() run 3 · 2 effects',
+        '0 announce',
+      ]);
+      expect(opened.whereType<RunRow>().elementAt(1).open, isTrue);
+    });
+
+    test('the calls are those of the body and of its copies', () {
+      final viaCall = file.functions['lib/copies.dart#viaCall']!;
+      expect([for (final call in callsIn(viaCall.body)) call.functions], [
+        ['lib/copies.dart#publish'],
+      ]);
+      expect(callsIn(publishingWorkflow.body).single.id, '2');
+    });
   });
 }

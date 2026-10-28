@@ -2,18 +2,18 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../state/log_rows.dart' show EffectRow;
+import '../../state/log_rows.dart' show TimedRow;
 import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
 import '../../widgets/icons.dart';
 import '../../widgets/spinner.dart';
 
-/// An effect's timeline: the track, and on it the effect's bar from where it
+/// An effect's timeline, or a run's: the track, and on it the bar from where it
 /// started to where it ended or is now.
 class EffectTrack extends StatelessWidget {
   const EffectTrack(this.row, {super.key});
 
-  final EffectRow row;
+  final TimedRow row;
 
   static Key trackKey(String effectId) => ValueKey(('effect track', effectId));
   static Key barKey(String effectId) => ValueKey(('effect bar', effectId));
@@ -29,7 +29,7 @@ class EffectTrack extends StatelessWidget {
       final left = math.min(row.barStart * width, width - length);
       return Center(
         child: Container(
-          key: EffectTrack.trackKey(row.effectId),
+          key: EffectTrack.trackKey(row.barId),
           height: 6,
           decoration: BoxDecoration(
             color: AppColors.divider,
@@ -43,7 +43,7 @@ class EffectTrack extends StatelessWidget {
                 top: 0,
                 bottom: 0,
                 child: EffectBar(
-                  key: EffectTrack.barKey(row.effectId),
+                  key: EffectTrack.barKey(row.barId),
                   status: row.status,
                   striped: row.striped,
                   radius: length > _leastBar ? 3 : 1,

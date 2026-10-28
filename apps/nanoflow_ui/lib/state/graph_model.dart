@@ -140,6 +140,11 @@ class GraphModel extends ChangeNotifier {
   /// The copies chosen in the copies frames of the selected session.
   final _copies = CopyChoices();
 
+  /// The runs of calls open in `Logs`, by key: those of the session
+  /// [_runsOf], gone when another is selected.
+  final _openRuns = <String>{};
+  String? _runsOf;
+
   /// The nodes expanded in place: they stay for any session of the
   /// workflow, go for another workflow, and follow their nodes into a graph
   /// file written again ([_carryOver]).
@@ -410,6 +415,7 @@ class GraphModel extends ChangeNotifier {
             frames: canvas.ofSession ? canvas.frames : const [],
             copiesIn: _copies.on,
             follow: _followed(session)?.path,
+            openRuns: {..._openRuns},
           );
     // What the copies' first effects gave tells them apart: read it now.
     if (session != null) {
@@ -639,6 +645,13 @@ class GraphModel extends ChangeNotifier {
     if (session != null) selection.selectEffect(session, effectId);
   }
 
+  /// Opens the run of a call [key] in `Logs` (`RunRow.key`), or closes it
+  /// when it is open.
+  void toggleRun(String key) {
+    if (!_openRuns.remove(key)) _openRuns.add(key);
+    _changed();
+  }
+
   void _fed() {
     _feedSelection();
     _changed();
@@ -743,8 +756,12 @@ class GraphModel extends ChangeNotifier {
   }
 
   void _selected() {
-    // The copies chosen are the session's.
+    // The copies chosen and the runs open are the session's.
     _copies.keepFor(selection.sessionId);
+    if (_runsOf != selection.sessionId) {
+      _openRuns.clear();
+      _runsOf = selection.sessionId;
+    }
     if (!_feeding) _changed();
   }
 
