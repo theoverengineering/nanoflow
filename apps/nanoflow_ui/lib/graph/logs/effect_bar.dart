@@ -140,6 +140,16 @@ class EffectBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(radius),
           ),
         )
+      : radius == 0
+      // Square, as in a run's bar: its edges on whole pixels, so that bars
+      // side by side leave no seam of the track between them.
+      ? ClipRect(
+          child: CustomPaint(
+            painter: striped
+                ? const _StripesPainter(sharp: true)
+                : _FillPainter(_color),
+          ),
+        )
       : ClipRRect(
           borderRadius: BorderRadius.circular(radius),
           child: striped
@@ -148,10 +158,31 @@ class EffectBar extends StatelessWidget {
         );
 }
 
+/// A fill with its edges on whole pixels.
+class _FillPainter extends CustomPainter {
+  const _FillPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) => canvas.drawRect(
+    Offset.zero & size,
+    Paint()
+      ..color = color
+      ..isAntiAlias = false,
+  );
+
+  @override
+  bool shouldRepaint(_FillPainter old) => old.color != color;
+}
+
 /// The mockup's `repeating-linear-gradient(135deg, #F2A93B 0 4px, #C98526
-/// 4px 8px)`: stripes rising to the right, 8 px apart across them.
+/// 4px 8px)`: stripes rising to the right, 8 px apart across them; their
+/// ground's edges on whole pixels when [sharp].
 class _StripesPainter extends CustomPainter {
-  const _StripesPainter();
+  const _StripesPainter({this.sharp = false});
+
+  final bool sharp;
 
   static const _period = 8.0;
 
@@ -159,7 +190,9 @@ class _StripesPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(
       Offset.zero & size,
-      Paint()..color = AppColors.runningStripe,
+      Paint()
+        ..color = AppColors.runningStripe
+        ..isAntiAlias = !sharp,
     );
     // Along the bar, a period and a stripe are √2 times as long.
     final effect = _period * math.sqrt2;
@@ -180,7 +213,7 @@ class _StripesPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_StripesPainter old) => false;
+  bool shouldRepaint(_StripesPainter old) => old.sharp != sharp;
 }
 
 /// An effect's sign: a green check finished, the turning sign running, a red
