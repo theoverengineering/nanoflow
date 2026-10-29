@@ -164,8 +164,8 @@ void main() {
     });
   });
 
-  test('sessions of other graphs are neither listed nor noted: runs/ has '
-      'those of every graph of the package', () {
+  test('sessions of other graphs its graph did not run in are neither '
+      'listed nor noted: runs/ has those of every graph of the package', () {
     run((async) {
       give(
         async,
@@ -176,6 +176,118 @@ void main() {
       );
       expect([for (final s in model.sessions(at(746))) s.id], ['a1b2-session']);
       expect(model.canvas.notes, isEmpty);
+    });
+  });
+
+  group('the sessions of a graph called by others (sessions-of-a-graph '
+      'design)', () {
+    // chain calls carry from implement, and task's body is one call of it.
+    final chain = loadGraphFile('chain');
+    const carry = 'lib/task_graph.dart#carry';
+
+    /// The graph file of carry: chain's, with carry its workflow, under
+    /// [id] — a graph's own file names it by its path.
+    GraphFile carryFile({String id = carry}) => GraphFile.fromJson(
+      jsonDecode(
+        jsonEncode({
+          ...chain.toJson(),
+          'workflows': [carry],
+        }).replaceAll(carry, id),
+      ) as Map<String, Object?>,
+    );
+
+    /// The sessions listed, newest first, with whose they are.
+    List<(String, String?)> listed() => [
+      for (final s in model.sessions(at(746))) (s.id, s.fromText),
+    ];
+
+    /// Sessions on chain's graph: chain c1c1 ran carry — status in admit,
+    /// coder in work —, chain c2c2 did not, task t1t1 did; and carry's own
+    /// k1k1.
+    List<Change> sessions() => changesOf([
+      Journal('c1c1-session', workflow: 'chain', graph: chain.toJson())
+        ..effect('workspace', 1, end: 2, place: 'lib/chain.dart:36')
+        ..effect('status', 3, end: 4, place: 'lib/task_graph.dart:66')
+        ..effect('coder', 4, end: 5, place: 'lib/task_graph.dart:139')
+        ..effect('next task', 5, end: 6, place: 'lib/chain.dart:570'),
+      Journal(
+        'c2c2-session',
+        workflow: 'chain',
+        graph: chain.toJson(),
+        startedAt: 10,
+      )..effect('workspace', 11, end: 12, place: 'lib/chain.dart:36'),
+      Journal(
+        't1t1-session',
+        workflow: 'task',
+        graph: chain.toJson(),
+        startedAt: 20,
+      )..effect('status', 21, end: 22, place: 'lib/task_graph.dart:66'),
+      Journal(
+        'k1k1-session',
+        workflow: 'carry',
+        graph: carryFile().toJson(),
+        startedAt: 30,
+      )..effect('status', 31, end: 32, place: 'lib/task_graph.dart:66'),
+    ]);
+
+    test('are every session it ran in, newest first: its own, and those of '
+        'other graphs in which an effect is in its body, saying from which; '
+        'not those in which none is', () {
+      run((async) {
+        graphFile.graph = carryFile();
+        give(async, sessions());
+        expect(listed(), [
+          ('k1k1-session', null),
+          ('t1t1-session', 'from task'),
+          ('c1c1-session', 'from chain'),
+        ]);
+        expect(model.selection.sessionId, 'k1k1-session');
+      });
+    });
+
+    test('leave out a session of a graph that calls what it calls, but not '
+        'it', () {
+      run((async) {
+        graphFile.graph = chain;
+        give(async, sessions());
+        // task calls carry, as chain does.
+        expect(listed(), [('c2c2-session', null), ('c1c1-session', null)]);
+      });
+    });
+
+    test("in a parent's session: its body from the session's snapshot, the "
+        "session's effects on it, the last of them selected", () {
+      run((async) {
+        graphFile.graph = carryFile();
+        give(async, sessions());
+        model.showSession('c1c1-session');
+        final canvas = model.canvas;
+        expect(canvas.calledGraph, carry);
+        expect(canvas.workflow!.id, carry);
+        expect(canvas.places.isCalled(canvas.body!), isTrue);
+        expect(model.selection.effectId, 'c1c1-coder-2');
+        expect(model.sessionView(at(746))!.logs.header.text, '2 effects');
+
+        model.showSession('k1k1-session');
+        expect(model.canvas.calledGraph, isNull);
+        expect(model.canvas.places.isWorkflow(model.canvas.body!), isTrue);
+      });
+    });
+
+    test('find it by its name in a snapshot written before each graph had a '
+        'file of its own, whose id is another', () {
+      run((async) {
+        graphFile.graph = carryFile(id: 'lib/task_graph/carry.graph.json');
+        give(async, sessions());
+        expect(listed(), [
+          ('k1k1-session', null),
+          ('t1t1-session', 'from task'),
+          ('c1c1-session', 'from chain'),
+        ]);
+        model.showSession('c1c1-session');
+        expect(model.canvas.calledGraph, carry);
+        expect(model.canvas.workflow!.name, 'carry');
+      });
     });
   });
 
@@ -373,37 +485,30 @@ void main() {
       });
     });
 
-    test('lists every session it ran in, newest first: those of workflows '
-        'that call it in which an effect is in its body, saying from '
-        'which, and not those in which none is', () {
+    test("lists those of the workflow's sessions it ran in, newest first, "
+        'saying from which: not those in which no effect is in its body, nor '
+        'those of other graphs that call it (sessions-of-a-graph design '
+        '§3)', () {
       run((async) {
         graphFile.graph = chain;
         give(async, sessions());
         model.openAsGraph(carry);
-        expect(listed(), [
-          ('t1t1-session', 'from task'),
-          ('c1c1-session', 'from chain'),
-        ]);
+        expect(listed(), [('c1c1-session', 'from chain')]);
       });
     });
 
-    test('lists its own sessions too, which say nothing of whose they '
-        "are; closed, the workflow's are listed again", () {
+    test("lists none of its own sessions: they are its file's; closed, the "
+        "workflow's are listed again, the one selected staying", () {
       run((async) {
         graphFile.graph = loadGraphFile('release');
         give(async, publishSessions());
         model.openAsGraph(publish);
-        expect(listed(), [
-          ('r1r1-session', 'from release'),
-          ('p1p1-session', null),
-        ]);
-        model.showSession('p1p1-session');
-        expect(model.canvas.workflow!.id, publish);
-        expect(model.canvas.places.isWorkflow(model.canvas.body!), isTrue);
+        expect(listed(), [('r1r1-session', 'from release')]);
+        expect(model.selection.sessionId, 'r1r1-session');
 
         model.closeCalledGraph();
         expect(listed(), [('r2r2-session', null), ('r1r1-session', null)]);
-        expect(model.selection.sessionId, 'r2r2-session');
+        expect(model.selection.sessionId, 'r1r1-session');
       });
     });
 
@@ -484,7 +589,7 @@ void main() {
         expect(model.selection.sessionId, 'c1c1-session');
         model.showSession('c2c2-session');
         model.openAsGraph(carry);
-        expect(model.selection.sessionId, 't1t1-session');
+        expect(model.selection.sessionId, 'c1c1-session');
       });
     });
 

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/called_graph.dart';
 
 import '../layout/support.dart' show loadGraphFile;
@@ -56,6 +57,18 @@ void main() {
       expect(ranIn(outside.data, places, carry.id), isFalse);
     });
 
+    test('of a graph that calls what the function calls, but not it, did '
+        'not run it', () {
+      final session = (Journal(
+        't1t1-session',
+        workflow: 'task',
+      )..effect('status', 1, end: 2, place: 'lib/task_graph.dart:66')).data;
+      final places = placesOfSession(session, chain);
+      expect(ranIn(session, places, carry.id), isTrue);
+      expect(ranIn(session, places, 'lib/chain.dart#chain'), isFalse);
+      expect(ranIn(session, places, 'lib/chain.dart#implement'), isFalse);
+    });
+
     test('has those of its effects in the function, in their order', () {
       final session = chainSession().data;
       final places = placesOfSession(session, chain);
@@ -71,6 +84,31 @@ void main() {
         ],
         ['c1c1-status-1', 'c1c1-coder-2'],
       );
+    });
+  });
+
+  group('functionIdIn', () {
+    test('is the id of the function in the graph a session is shown on, '
+        'else that of the one function of its name there', () {
+      expect(functionIdIn(chain, carry), carry.id);
+      final renamed = GraphFunction(
+        id: 'lib/task_graph/carry.graph.json',
+        name: 'carry',
+        place: carry.place,
+        body: carry.body,
+      );
+      expect(functionIdIn(chain, renamed), carry.id);
+    });
+
+    test('is null without the graph, or a function of the name there', () {
+      expect(functionIdIn(null, carry), isNull);
+      final gone = GraphFunction(
+        id: 'lib/gone.graph.json',
+        name: 'gone',
+        place: carry.place,
+        body: carry.body,
+      );
+      expect(functionIdIn(chain, gone), isNull);
     });
   });
 }

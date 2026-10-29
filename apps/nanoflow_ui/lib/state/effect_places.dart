@@ -122,12 +122,30 @@ final class EffectPlaces {
       };
 
   /// Whether [effect] is in the body of the function [id] or in what it
-  /// calls: on a node [withinFunction] holds. The effects are found among
-  /// those of the workflow, so a function it does not reach holds none.
+  /// calls: on a node [withinFunction] holds. A function the workflow does
+  /// not reach holds none, though what it calls may be the workflow's too.
   bool isInFunction(Effect? effect, String id) {
     final at = of(effect);
-    return at.isNotEmpty && withinFunction(id).any(at.contains);
+    return at.isNotEmpty &&
+        _reached.contains(id) &&
+        withinFunction(id).any(at.contains);
   }
+
+  /// The ids of the functions the workflow reaches: itself, those it calls,
+  /// and so on.
+  late final Set<String> _reached = () {
+    final reached = <String>{};
+    void enter(String id) {
+      final function = _functions[id];
+      if (function == null || !reached.add(id)) return;
+      for (final node in function.body.nodes) {
+        if (node is CallNode) node.functions.forEach(enter);
+      }
+    }
+
+    if (_workflow case final workflow?) enter(workflow);
+    return reached;
+  }();
 
   /// The effect nodes in [body] and all it reaches; a function in [entered]
   /// is not entered again: a recursive call holds nothing new.

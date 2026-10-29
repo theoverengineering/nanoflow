@@ -1,7 +1,9 @@
-/// A function the workflows call opened as the main graph of the graph
-/// screen (docs/superpowers/specs/2026-10-25-open-as-graph-design.md): the
-/// sessions it ran in — its own, run as a workflow, and its parents', the
-/// sessions of the workflows that call it — and the effects of a parent's
+/// The graph of the graph file, or a function it calls opened as the main
+/// graph of the graph screen
+/// (docs/superpowers/specs/2026-10-25-open-as-graph-design.md), in the
+/// sessions (docs/superpowers/specs/2026-10-29-sessions-of-a-graph-design.md):
+/// those it ran in — its own, run as a workflow, and its parents', the
+/// sessions of the graphs that call it — and the effects of a parent's
 /// session that ran in it. Pure.
 ///
 /// A parent's session is told by its own places: those of its workflow on
@@ -27,6 +29,21 @@ bool ranAsWorkflow(
 ) {
   final id = workflowIdOf(graph, session.session.workflow);
   return id == function.id || id == function.name;
+}
+
+/// The id [function] of the graph file has in [graph], the graph a session
+/// is shown on: its own, else that of the one function of its name there —
+/// a snapshot written before each graph had a file of its own names a
+/// function `path#variable`, one written before the graph's Dart file moved
+/// by its path then (sessions-of-a-graph design §4); `null` when [graph]
+/// has neither.
+String? functionIdIn(GraphFile? graph, GraphFunction function) {
+  final functions = graph?.functions ?? const {};
+  if (functions.containsKey(function.id)) return function.id;
+  return functions.values
+      .where((f) => f.name == function.name)
+      .singleOrNull
+      ?.id;
 }
 
 /// Where the effects of [session] are on [graph], the graph it is shown on:

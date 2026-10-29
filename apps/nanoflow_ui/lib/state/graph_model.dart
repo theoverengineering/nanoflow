@@ -103,10 +103,10 @@ class GraphModel extends ChangeNotifier {
   /// graph file has it. `null` while none is open.
   String? _called;
 
-  /// Whether each session ran the called graph opened, by the session's
-  /// id, with what that was told from (`_ranCalled`); forgotten as the
-  /// called graph closes, or another opens.
-  final Map<String, _RanCalled> _ranCalledOf = {};
+  /// Whether each session ran a function — the workflow, or the called
+  /// graph open — as a parent's session, by the session's id and the
+  /// function's, with what that was told from (`_ranIn`).
+  final Map<(String, String), _Ran> _ranOf = {};
 
   /// The levels opened under the main graph's body: the canvas goes down
   /// them as far as the graph it draws has them.
@@ -175,7 +175,6 @@ class GraphModel extends ChangeNotifier {
   void closeCalledGraph() {
     if (_called == null) return;
     _called = null;
-    _ranCalledOf.clear();
     _path = const [];
     _wanted = null;
     _expansions.clear();
@@ -185,13 +184,12 @@ class GraphModel extends ChangeNotifier {
 
   /// Opens the function [functionId] of the graph file as the main graph
   /// (open-as-graph design §3): drawn from its top, its sessions listed —
-  /// those of its own and its parents' ([workflowSessions]). The levels
+  /// those of the workflow it ran in ([workflowSessions]). The levels
   /// opened and the nodes expanded go; the selected session stays while the
   /// function ran in it. Nothing opens
   /// while the graph file does not have the function.
   void openAsGraph(String functionId) {
     if (graphFile.graph?.functions[functionId] == null) return;
-    if (functionId != _called) _ranCalledOf.clear();
     _called = functionId;
     _path = const [];
     _wanted = null;
@@ -253,38 +251,40 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// The sessions of the workflow as the feed has them: every session while
-  /// no graph file has been read. With a called graph open,
-  /// those it ran in (open-as-graph design §4): its own, and those of the
-  /// workflows that call it in which an effect is in its body — by their
-  /// places on their snapshots, which start being read: they come as a
-  /// change.
+  /// no graph file has been read. Those it ran in (sessions-of-a-graph
+  /// design §2): its own, and those of other graphs in which an effect is
+  /// in its body — by their places on their snapshots, which start being
+  /// read: they come as a change. With a called graph open, those of them
+  /// it ran in (§3).
   List<SessionData> get workflowSessions {
     final graph = graphFile.graph;
-    final called = calledGraph;
-    if (graph == null || called == null) {
+    final workflow = this.workflow;
+    if (graph == null || workflow == null) {
       return sessionsOfWorkflow(feed.sessions.values, graph, workflow?.id);
     }
+    final called = calledGraph;
     return [
       for (final session in feed.sessions.values)
-        if (ranAsWorkflow(session, graph, called) ||
-            _ranCalled(session, graph, called.id))
+        if ((ranAsWorkflow(session, graph, workflow) ||
+                _ranIn(session, graph, workflow)) &&
+            (called == null || _ranIn(session, graph, called)))
           session,
     ];
   }
 
-  /// Whether the called graph [functionId] ran in [session], a session of
-  /// another workflow, on the graph it is shown on (`ranIn`): worked out
-  /// again only once its snapshot has changed, or the graph file for a
-  /// session shown on it, or — while it had not run there — the session.
-  /// Effects are only added, so one that ran stays so. Starts reading the
-  /// snapshot.
-  bool _ranCalled(SessionData session, GraphFile graph, String functionId) {
+  /// Whether [function] of [graph] ran in [session] as a parent's session,
+  /// on the graph it is shown on (`ranIn`), where it is found by
+  /// `functionIdIn`: worked out again only once its snapshot has changed,
+  /// or the graph file for a session shown on it, or — while it had not run
+  /// there — the session. Effects are only added, so one that ran stays so.
+  /// Starts reading the snapshot.
+  bool _ranIn(SessionData session, GraphFile graph, GraphFunction function) {
     final document = snapshotDocumentOf(session);
     if (document != null) outcomes.load(session.id, [document]);
     final snapshot = document == null ? null : outcomes[document];
-    final known = _ranCalledOf[session.id];
+    final key = (session.id, function.id);
+    final known = _ranOf[key];
     if (known != null &&
-        known.function == functionId &&
         known.document == document &&
         known.snapshot == snapshot &&
         (known.graphFile == null || identical(known.graphFile, graph)) &&
@@ -296,13 +296,10 @@ class GraphModel extends ChangeNotifier {
       documents: outcomes,
       graphFile: graph,
     );
-    final ran = ranIn(
-      session,
-      placesOfSession(session, shown.graph),
-      functionId,
-    );
-    _ranCalledOf[session.id] = (
-      function: functionId,
+    final id = functionIdIn(shown.graph, function);
+    final ran =
+        id != null && ranIn(session, placesOfSession(session, shown.graph), id);
+    _ranOf[key] = (
       document: document,
       snapshot: snapshot,
       graphFile: shown.noSnapshot ? graph : null,
@@ -312,16 +309,21 @@ class GraphModel extends ChangeNotifier {
     return ran;
   }
 
-  /// The id of the called graph open when [session] is a parent's — of a
-  /// workflow that calls it —, which its canvas draws (`sessionCanvas`);
-  /// `null` for any other session, and while none is open.
+  /// The id the main graph has in [session] (`functionIdIn`) when the
+  /// session is a parent's — of a graph that calls it —, which its canvas
+  /// draws (`sessionCanvas`); `null` for one of its own, and while no graph
+  /// file has been read.
   String? _calledIn(SessionData session) {
-    final (graph, called) = (graphFile.graph, calledGraph);
-    return graph == null ||
-            called == null ||
-            ranAsWorkflow(session, graph, called)
-        ? null
-        : called.id;
+    final (graph, main) = (graphFile.graph, mainGraph);
+    if (graph == null || main == null || ranAsWorkflow(session, graph, main)) {
+      return null;
+    }
+    final shown = sessionGraphOf(
+      session,
+      documents: outcomes,
+      graphFile: graph,
+    ).graph;
+    return functionIdIn(shown, main) ?? main.id;
   }
 
   /// The selected session; `null` for `Current graph`.
@@ -430,7 +432,7 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// In a parent's session, the last of the effects of [session] in the
-  /// called graph open, which the selection follows; `null` otherwise.
+  /// main graph, which the selection follows; `null` otherwise.
   String? _lastShownEffect(SessionData session) {
     final called = _calledIn(session);
     if (called == null) return null;
@@ -539,8 +541,8 @@ class GraphModel extends ChangeNotifier {
   }
 
   void _outcomesRead() {
-    // A snapshot read tells whether the called graph ran in its session.
-    if (calledGraph != null) _feedSelection();
+    // A snapshot read tells whether the main graph ran in its session.
+    _feedSelection();
     _changed();
   }
 
@@ -651,12 +653,11 @@ class GraphModel extends ChangeNotifier {
   }
 }
 
-/// Whether a session ran the called graph opened, and what that was told
-/// from: the function, the session's snapshot document and what of it was
-/// read, the graph file when the session is shown on it — it has no
-/// snapshot —, how many changes the session had.
-typedef _RanCalled = ({
-  String function,
+/// Whether a parent's session ran a function, and what that was told from:
+/// the session's snapshot document and what of it was read, the graph file
+/// when the session is shown on it — it has no snapshot —, how many changes
+/// the session had.
+typedef _Ran = ({
   String? document,
   Outcome? snapshot,
   GraphFile? graphFile,
