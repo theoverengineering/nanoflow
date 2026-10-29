@@ -5,7 +5,8 @@ import 'package:test/test.dart';
 import 'support.dart';
 
 /// The bodies describe writes: the review example's workflow, and the
-/// release and inline fixtures of `nanoflow_describe`.
+/// release and inline fixtures of `nanoflow_describe` — inline's copies
+/// turned into a call of a function holding their body.
 void main() {
   for (final name in ['review', 'release', 'inline']) {
     group('every body of the $name graph', () {
@@ -98,8 +99,7 @@ void main() {
 
   group('release', () {
     test('draws a call named after the function, the effects of its body '
-        'counted on it, nothing stacked behind it: the room over it is an '
-        'effect\'s', () {
+        'counted on it: the room over it is an effect\'s', () {
       final layout = layoutOf('release');
       final call = layout.nodes['5']!;
       expect(call.kind, NodeKind.call);
@@ -107,8 +107,6 @@ void main() {
       // upload, verify, rollback.
       expect(call.inside, '{ 3 }');
       expect(call.node, isA<CallNode>());
-      expect(tilesBehind(NodeKind.call), 0);
-      expect(overTile(NodeKind.call), 0);
       final effect = layout.nodes.values.firstWhere(
         (node) => node.kind == NodeKind.effect,
       );
@@ -156,38 +154,17 @@ void main() {
   });
 
   group('inline', () {
-    test('draws copies as a stack labelled with what they go over, the '
-        'effects of a copy counted on it', () {
-      final layout = layoutOf('inline', 'inPlace');
-      final copies = layout.nodes['1']!;
-      expect(copies.kind, NodeKind.copies);
-      expect(copies.name, 'pkg in packages');
-      // upload, verify, tag.
-      expect(copies.inside, '{ 3 }');
-      expect(tilesBehind(NodeKind.copies), 2);
-      expect(arrows(layout), [
-        '$startMarker-null->1',
-        '1-null->2',
-        '2-null->$endMarker',
-      ]);
-    });
-
-    test('a call in copies counts the effects of the function', () {
-      final file = loadGraphFile('inline');
-      final copies = functionOf(
-        file,
-        'viaCall',
-      ).body.nodes.whereType<CopiesNode>().single;
-      final layout = layoutBody(copies.body, functions: file.functions);
+    test('a call in a called function counts the effects of its function', () {
+      final layout = layoutOf('inline', 'publishEach');
       expect(layout.nodes['1']!.name, 'publish()');
       expect(layout.nodes['1']!.inside, '{ 3 }');
     });
   });
 
-  group('the effects counted on a call or copies', () {
-    test('are those of the bodies below too: of the functions called and '
-        'of copies', () {
-      // viaCall's copies hold one call of publish: upload, verify, tag.
+  group('the effects counted on a call', () {
+    test('are those of the bodies below too: of the functions called, and '
+        'of those they call', () {
+      // viaCall calls publishEach, which calls publish: upload, verify, tag.
       expect(layoutOf('inline', 'viaCall').nodes['1']!.inside, '{ 3 }');
     });
 
@@ -208,7 +185,6 @@ void main() {
         const GraphBody(
           nodes: [
             CallNode(id: 'call', place: null, functions: ['lib/a.dart#none']),
-            CopiesNode(id: 'copies', place: null, label: 'x', body: empty),
           ],
           edges: [],
         ),
@@ -222,28 +198,6 @@ void main() {
         },
       );
       expect(layout.nodes['call']!.inside, '{ }');
-      expect(layout.nodes['copies']!.inside, '{ }');
-    });
-
-    test('are not known on copies that only call functions the file does '
-        'not have, as on such a call', () {
-      const unknown = GraphBody(
-        nodes: [
-          CallNode(id: '1', place: null, functions: ['lib/a.dart#gone']),
-        ],
-        edges: [],
-      );
-      final layout = layoutBody(
-        const GraphBody(
-          nodes: [
-            CallNode(id: 'call', place: null, functions: ['lib/a.dart#gone']),
-            CopiesNode(id: 'copies', place: null, label: 'x', body: unknown),
-          ],
-          edges: [],
-        ),
-      );
-      expect(layout.nodes['call']!.inside, '{ ? }');
-      expect(layout.nodes['copies']!.inside, '{ ? }');
     });
   });
 

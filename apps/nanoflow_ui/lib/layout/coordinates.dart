@@ -16,40 +16,13 @@ const double placeTop = nameTop + nameHeight + 2;
 /// The height of the place's line.
 const double placeHeight = 13;
 
-/// How far each tile stacked behind copies shows over the tile, and how far
-/// in from its sides it is.
-const double stackStep = 7;
-const double stackInset = 8;
-
-/// How many tiles are stacked behind the tile of [kind]: two behind copies,
-/// for the copies run; none behind a call, one tile with `ƒ` on it.
-int tilesBehind(NodeKind kind) => switch (kind) {
-  NodeKind.copies => 2,
-  _ => 0,
-};
-
 /// How far a loop runs from what it goes around: the marks over the tile, or
 /// the place under it.
 const double loopClear = 8;
 
-/// The badge across the top of the stack of copies: its height, and how far
-/// past the tile's right side it reaches.
-const double badgeHeight = 14;
-const double badgeOverhang = 6;
-
-/// How far over the tile of [kind] what is drawn over it reaches: the tiles
-/// stacked behind copies and the badge across the top of their stack.
-double overTile(NodeKind kind) {
-  final stack = stackStep * tilesBehind(kind);
-  return kind == NodeKind.copies ? stack + badgeHeight / 2 : stack;
-}
-
-/// The room the marks over a tile take: badges in its top right corner, the
-/// tiles stacked behind copies; over a frame, what is drawn over it. None
-/// over a port.
-double marksAbove(GNode node) => node.port
-    ? 0
-    : math.max(12, (node.framed?.room.above ?? overTile(node.kind)) + 4);
+/// The room the marks over a tile or a frame take: badges in its top right
+/// corner. None over a port.
+double marksAbove(GNode node) => node.port ? 0 : 12;
 
 /// The room under a tile: its name and place; a marker's state badge.
 /// Nothing is under a frame — its title is in it — or a port.
@@ -615,7 +588,6 @@ final class NodeFrame {
     this.name,
     this.place,
     this.marks,
-    this.behind,
     this.status,
     this.bar,
     this.exits,
@@ -629,14 +601,8 @@ final class NodeFrame {
   /// The place under the name; empty without one.
   final Rect place;
 
-  /// Over the tile: the tiles stacked behind copies, the badges over its top
-  /// right corner.
+  /// Over the tile: the badges over its top right corner.
   final Rect marks;
-
-  /// Right of a frame drawn with outlines stacked behind it, up and to the
-  /// right — copies —: where they run down its right side; `null` without
-  /// them.
-  final Rect? behind;
 
   /// The state badge on the tile's bottom right corner.
   final Rect status;
@@ -652,7 +618,6 @@ final class NodeFrame {
     yield name;
     yield place;
     yield marks;
-    if (behind case final behind?) yield behind;
     yield status;
     if (bar case final bar?) yield bar;
     for (final exit in exits.values) {
@@ -664,14 +629,12 @@ final class NodeFrame {
 /// The frame of [node] with its tile's middle at [y] and left side at x = 0.
 ///
 /// The tile of an expanded node is its frame: no name or place under it,
-/// no state badge, the input bar and the exits level with its body's start
-/// and end, and over it and down its right side only what is drawn with
-/// the frame — the outlines stacked behind copies. A port has no width and
-/// no marks, and nothing of its exits is drawn: arrows leave the start
-/// straight from the frame's side. The end's bar is on the frame's side as
-/// a tile's is on the tile's, the arrows pointing at it from a gap and a
-/// head before it; the room it keeps ends at the side, past which the
-/// frame's exit is.
+/// no state badge, no marks over it, the input bar and the exits level with
+/// its body's start and end. A port has no width and no marks, and nothing
+/// of its exits is drawn: arrows leave the start straight from the frame's
+/// side. The end's bar is on the frame's side as a tile's is on the tile's,
+/// the arrows pointing at it from a gap and a head before it; the room it
+/// keeps ends at the side, past which the frame's exit is.
 NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
   final o = options;
   final framed = node.framed;
@@ -700,29 +663,13 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
     tile.bottom + placeTop,
     placeHeight,
   );
-  final above = node.port ? 0.0 : framed?.room.above;
-  final marks = switch (above) {
-    null => Rect.fromLTRB(
-      tilesBehind(node.kind) > 0 ? tile.left + stackInset : tile.right - 60,
-      tile.top - math.max(10, overTile(node.kind)),
-      tile.right + 8,
-      tile.top + 8,
-    ),
-    0.0 => Rect.fromLTRB(tile.right, tile.top, tile.right, tile.top),
-    final above => Rect.fromLTRB(
-      tile.left,
-      tile.top - above,
-      tile.right + above,
-      tile.top,
-    ),
-  };
-  final behind = above == null || above <= 0
-      ? null
+  final marks = framed != null || node.port
+      ? Rect.fromLTRB(tile.right, tile.top, tile.right, tile.top)
       : Rect.fromLTRB(
-          tile.right,
-          tile.top - above,
-          tile.right + above,
-          tile.bottom,
+          tile.right - 60,
+          tile.top - 10,
+          tile.right + 8,
+          tile.top + 8,
         );
   final status = framed != null || node.port
       ? Rect.fromLTRB(tile.right, tile.bottom, tile.right, tile.bottom)
@@ -778,7 +725,7 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       area: area,
     );
   }
-  return NodeFrame._(tile, name, place, marks, behind, status, bar, exits);
+  return NodeFrame._(tile, name, place, marks, status, bar, exits);
 }
 
 /// Where a label's chip starts right of the exit, how much room an arrow

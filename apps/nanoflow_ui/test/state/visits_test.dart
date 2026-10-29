@@ -7,17 +7,17 @@ import 'package:nanoflow_ui/state/visits.dart';
 import 'support.dart';
 
 void main() {
-  final file = copiesGraphFile();
-  final inPlace = file.functions['lib/copies.dart#inPlace']!;
+  final file = packagesGraphFile();
+  final inPlace = file.functions['lib/packages.dart#inPlace']!;
   final places = EffectPlaces.of(inPlace, file.functions);
-  final copies = inPlace.body.node('2')! as CopiesNode;
-  final upload = copies.body.node('1')! as EffectNode;
+  final ship = file.functions['lib/packages.dart#ship']!;
+  final upload = ship.body.node('1')! as EffectNode;
 
-  /// Two copies' uploads and a plan.
+  /// A plan and two uploads of ship().
   Journal journal() => Journal('a1b2-session', workflow: 'inPlace')
-    ..effect('plan', 0, end: 1, place: copiesAt(4))
-    ..effect('upload', 1, end: 5, place: copiesAt(7))
-    ..effect('upload', 2, end: 3, place: '/home/me/copies/${copiesAt(7)}');
+    ..effect('plan', 0, end: 1, place: packagesAt(4))
+    ..effect('upload', 1, end: 5, place: packagesAt(7))
+    ..effect('upload', 2, end: 3, place: '/home/me/packages/${packagesAt(7)}');
 
   group('the visits of an effect (ui-spec «Окно деталей эффекта»)', () {
     test('are the effects on the nodes it is on, by their first '
@@ -117,7 +117,7 @@ void main() {
           session,
           session.state.effects,
           places,
-          copies.body.node('3')! as EffectNode,
+          ship.body.node('3')! as EffectNode,
         ),
         isNull,
       );

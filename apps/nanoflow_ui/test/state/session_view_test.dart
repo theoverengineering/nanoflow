@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart' show GraphFunction;
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/in_place.dart';
@@ -163,19 +162,27 @@ void main() {
     expect(view.marks, isNull, reason: 'no level drawn');
   });
 
-  group('the session on the levels drawn (spec §9 «Эффекты на графе»)', () {
-    final file = copiesGraphFile();
-    final inPlace = file.functions['lib/copies.dart#inPlace']!;
-
-    /// inPlace over core and tool, tool's verify running.
-    Journal journal() =>
-        Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
-          ..effect('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
+  test('the session on the workflow body drawn: every effect in Logs, each '
+      'run of a call on one row; the marks of its nodes (spec §9 «Эффекты на '
+      'графе»)', () {
+    final file = packagesGraphFile();
+    final inPlace = file.functions['lib/packages.dart#inPlace']!;
+    // inPlace over core and tool, tool's verify running.
+    final j =
+        Journal('a1b2-session', workflow: 'inPlace', graph: packagesGraphJson())
+          ..effect(
+            'plan',
+            1,
+            end: 2,
+            place: packagesAt(4),
+            key: 'p',
+            after: null,
+          )
           ..effect(
             'upload',
             3,
             end: 4,
-            place: copiesAt(7),
+            place: packagesAt(7),
             key: 'uc',
             after: 'p',
           )
@@ -183,85 +190,45 @@ void main() {
             'upload',
             3,
             end: 5,
-            place: copiesAt(7),
+            place: packagesAt(7),
             key: 'ut',
             after: 'p',
           )
-          ..effect('verify', 6, place: copiesAt(8), key: 'vt', after: 'ut');
-
-    SessionView viewOf(
-      Journal j, {
-      List<Opened> path = const [],
-      Map<int, String> copies = const {},
-      String? effectId,
-    }) => SessionView.of(
+          ..effect('verify', 6, place: packagesAt(8), key: 'vt', after: 'ut');
+    final view = SessionView.of(
       j.data,
       now: now,
       documents: noDocuments,
       graphFile: null,
-      effectId: effectId,
-      levels: bodyLevels(inPlace, file.functions, path),
-      copies: copies,
+      levels: bodyLevels(inPlace, file.functions, const []),
     );
-
-    test('the workflow body: every effect in Logs, those in copies named by '
-        'their copy; the marks of its nodes', () {
-      final view = viewOf(journal());
-      expect(view.shown.frames, isEmpty);
-      expect(view.logs.header.text, '4 effects');
-      expect(view.marks!.of('2')!.copies, 2);
-      expect(view.logs.rows.whereType<EffectRow>().map((row) => row.copy), [
-        null,
-        'pkg 1',
-        'pkg 2',
-        'pkg 2',
-      ]);
-    });
-
-    test('the body of the copies, all of them: Logs name the copy of each '
-        'effect', () {
-      final view = viewOf(journal(), path: const [Opened('2')]);
-      expect(view.shown.frames.single.footer, 'done 1 of 2');
-      expect(view.logs.rows.whereType<EffectRow>().map((row) => row.copy), [
-        null,
-        'pkg 1',
-        'pkg 2',
-        'pkg 2',
-      ]);
-      expect(view.marks!.of('2')!.running, 1);
-    });
-
-    test('one copy: Logs and the marks show its effects alone', () {
-      final j = journal();
-      final view = viewOf(
-        j,
-        path: const [Opened('2')],
-        copies: {1: j.effects[2].id},
-        effectId: j.effects[3].id,
-      );
-      expect(view.logs.header.text, 'pkg 2 · 2 effects');
-      expect(view.logs.rows.whereType<EndRow>(), isEmpty);
-      expect(view.marks!.of('1')!.effects, 1);
-      expect(view.marks!.selected, {'2'});
-      expect(view.copyOf(j.effects[3].id), 'pkg 2');
-    });
+    expect(view.logs.header.text, '4 effects');
+    expect(view.logs.rows.whereType<EffectRow>(), hasLength(1));
+    expect(view.logs.rows.whereType<RunRow>(), hasLength(2));
+    expect(view.marks!.of('2')!.effects, 3);
   });
 
   group('frames drawn in place (decision 6)', () {
-    final file = copiesGraphFile();
-    final inPlace = file.functions['lib/copies.dart#inPlace']!;
-    final nested = file.functions['lib/copies.dart#nested']!;
-    const copies = Opened('2');
+    final file = packagesGraphFile();
+    final inPlace = file.functions['lib/packages.dart#inPlace']!;
+    const ship = Opened('2', functionId: 'lib/packages.dart#ship');
 
     /// inPlace over core and tool, tool's verify running.
     Journal journal() =>
-        Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
-          ..effect('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
+        Journal('a1b2-session', workflow: 'inPlace', graph: packagesGraphJson())
+          ..effect(
+            'plan',
+            1,
+            end: 2,
+            place: packagesAt(4),
+            key: 'p',
+            after: null,
+          )
           ..effect(
             'upload',
             3,
             end: 4,
-            place: copiesAt(7),
+            place: packagesAt(7),
             key: 'uc',
             after: 'p',
           )
@@ -269,24 +236,16 @@ void main() {
             'upload',
             3,
             end: 5,
-            place: copiesAt(7),
+            place: packagesAt(7),
             key: 'ut',
             after: 'p',
           )
-          ..effect('verify', 6, place: copiesAt(8), key: 'vt', after: 'ut');
+          ..effect('verify', 6, place: packagesAt(8), key: 'vt', after: 'ut');
 
-    /// The top level of [workflow] drawn, the nodes [expansions] has
-    /// expanded in place; [chosen] the copies chosen by the path to their
-    /// frame, Logs following the frame at [follow].
-    SessionView viewOf(
-      Journal j, {
-      GraphFunction? workflow,
-      Expansions? expansions,
-      Map<String, Map<int, String>> chosen = const {},
-      List<Opened>? follow,
-      String? effectId,
-    }) {
-      final levels = bodyLevels(workflow ?? inPlace, file.functions, const []);
+    /// The top level of inPlace drawn, the nodes [expansions] has expanded
+    /// in place — by default its call of ship().
+    SessionView viewOf(Journal j, {Expansions? expansions, String? effectId}) {
+      final levels = bodyLevels(inPlace, file.functions, const []);
       return SessionView.of(
         j.data,
         now: now,
@@ -297,62 +256,27 @@ void main() {
         frames: inPlaceFrames(
           levels,
           file.functions,
-          expansions ?? (Expansions()..expand(const [], copies)),
+          expansions ?? (Expansions()..expand(const [], ship)),
         ),
-        copiesIn: (path) => chosen[levelKey(path)] ?? const {},
-        follow: follow,
       );
     }
 
-    test('copies in place show what their body shows when opened: all '
-        'copies, how many are on each effect, done 1 of 2', () {
+    test('a call in place shows what its function\'s body shows when opened: '
+        'the effects of every run on each node', () {
       final view = viewOf(journal());
-      final scope = view.scopeOf(const [copies])!;
-      expect(scope.copies!.footer, 'done 1 of 2');
-      expect(scope.copies!.countText, '×2 · in parallel');
-      expect(scope.copies!.selected, isNull);
-      expect(scope.marks.of('2')!.running, 1);
+      final scope = view.scopeOf(const [ship])!;
       expect(scope.marks.of('1')!.effects, 2);
+      expect(scope.marks.of('2')!.state, NodeState.running);
       // The level drawn and Logs are as without the frame.
-      expect(view.marks!.of('2')!.copies, 2);
+      expect(view.marks!.of('2')!.effects, 3);
       expect(view.logs.header.text, '4 effects');
-    });
-
-    test('a copy chosen in place: the frame shows its effects alone, and Logs '
-        'follow it as when its body is opened', () {
-      final j = journal();
-      final view = viewOf(
-        j,
-        chosen: {
-          levelKey(const [copies]): {1: j.effects[2].id},
-        },
-        follow: const [copies],
-      );
-      final scope = view.scopeOf(const [copies])!;
-      expect(scope.copies!.selected!.number, 2);
-      expect(scope.copies!.footer, 'pkg 2 · now verify');
-      expect(scope.marks.of('1')!.effects, 1);
-      expect(view.logs.header.text, 'pkg 2 · 2 effects');
-      expect(view.logs.rows.whereType<EffectRow>().map((row) => row.copy), [
-        null,
-        null,
-      ]);
-      // Without following it, Logs show the level drawn.
-      final unfollowed = viewOf(
-        j,
-        chosen: {
-          levelKey(const [copies]): {1: j.effects[2].id},
-        },
-      );
-      expect(unfollowed.logs.header.text, '4 effects');
-      expect(unfollowed.scopeOf(const [copies])!.marks.of('1')!.effects, 1);
     });
 
     test('the selected effect is ringed in its frame, and is found there to '
         'be revealed', () {
       final j = journal();
       final view = viewOf(j, effectId: j.effects[3].id);
-      expect(view.scopeOf(const [copies])!.marks.selected, {'2'});
+      expect(view.scopeOf(const [ship])!.marks.selected, {'2'});
       expect(view.revealPathOf(j.effects[3].id), ['2', '2']);
       expect(view.revealPathOf(j.effects[0].id), ['1']);
       final collapsed = viewOf(j, expansions: Expansions());
@@ -387,7 +311,6 @@ void main() {
         ),
       );
       final scope = view.scopeOf(const [publish])!;
-      expect(scope.copies, isNull);
       expect(scope.marks.of('1')!.state, NodeState.visited);
       expect(scope.marks.of('2')!.state, NodeState.running);
       expect(scope.marks.of('4')!.state, NodeState.notVisited);
@@ -451,83 +374,6 @@ void main() {
       expect(view.marks!.of('4')!.effects, 1);
       expect(view.marks!.of('6')!.effects, 1);
       expect(view.marks!.passes.of('3'), 0);
-    });
-
-    group('copies in copies', () {
-      const pkg = Opened('1');
-      const target = Opened('2');
-
-      /// nested over core, built for arm and x64.
-      Journal nestedJournal() {
-        final j = Journal(
-          '7c3e-session',
-          workflow: 'nested',
-          graph: copiesGraphJson(),
-        );
-        j.effect(
-          'fetch',
-          1,
-          end: 3,
-          place: copiesAt(27),
-          key: 'f',
-          after: null,
-        );
-        for (final t in ['arm', 'x64']) {
-          j.effect('build', 4, place: copiesAt(30), key: 'b$t', after: 'f');
-        }
-        return j;
-      }
-
-      Expansions both() => Expansions()
-        ..expand(const [], pkg)
-        ..expand(const [pkg], target);
-
-      test('Logs name the copies of an effect in the frames it is in', () {
-        final j = nestedJournal();
-        final view = viewOf(j, workflow: nested, expansions: both());
-        expect(view.logs.rows.whereType<EffectRow>().map((row) => row.copy), [
-          'pkg 1',
-          'pkg 1 › target 1',
-          'pkg 1 › target 2',
-        ]);
-        expect(view.copyOf(j.effects[2].id), 'pkg 1 › target 2');
-      });
-
-      test('Logs following the outer copy name the inner copy chosen in a '
-          'frame in it: their title does not', () {
-        final j = nestedJournal();
-        final view = viewOf(
-          j,
-          workflow: nested,
-          expansions: both(),
-          chosen: {
-            levelKey(const [pkg]): {1: j.effects[0].id},
-            levelKey(const [pkg, target]): {
-              1: j.effects[0].id,
-              2: j.effects[2].id,
-            },
-          },
-          follow: const [pkg],
-        );
-        expect(view.logs.header.text, 'pkg 1 · 3 effects');
-        expect(view.logs.rows.whereType<EffectRow>().map((row) => row.copy), [
-          null,
-          'target 1',
-          'target 2',
-        ]);
-      });
-
-      test('while the frame round shows all its copies, the inner one says '
-          'to choose there first', () {
-        final view = viewOf(
-          nestedJournal(),
-          workflow: nested,
-          expansions: both(),
-        );
-        final inner = view.scopeOf(const [pkg, target])!.copies!;
-        expect(inner.choosable, isFalse);
-        expect(inner.chooseFirst, 'choose the outer pkg first');
-      });
     });
   });
 }

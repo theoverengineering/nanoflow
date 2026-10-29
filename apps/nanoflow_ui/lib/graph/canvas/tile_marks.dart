@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../layout/layout.dart' show badgeHeight;
 import '../../state/graph_marks.dart';
 import '../../theme.dart';
 import '../../widgets/spinner.dart';
@@ -43,7 +42,6 @@ final class TileLook {
     required this.name,
     required this.nameWeight,
     required this.place,
-    this.stack = CanvasColors.stackBorder,
   });
 
   final Color fill;
@@ -54,11 +52,7 @@ final class TileLook {
   final FontWeight nameWeight;
   final Color place;
 
-  /// The outline of the tiles stacked behind copies.
-  final Color stack;
-
-  /// The effects of a call or copies under their icon: the icon's colour,
-  /// muted.
+  /// The effects of a call under its icon: the icon's colour, muted.
   Color get inside => icon.withValues(alpha: icon.a * 0.7);
 
   static TileLook of(NodeState? state) => switch (state) {
@@ -89,7 +83,6 @@ final class TileLook {
     name: Color(0xFF9A9BA2),
     nameWeight: FontWeight.w500,
     place: Color(0xFF8A8B92),
-    stack: Color(0xFF45464C),
   );
 
   static const visited = TileLook(
@@ -211,36 +204,6 @@ class _MarkPainter extends CustomPainter {
   bool shouldRepaint(_MarkPainter old) => old.mark != mark;
 }
 
-/// How many copies are on an effect now, in the color of running effects
-/// (docs/design/code-first/copies-frame.html).
-class RunningBadge extends StatelessWidget {
-  const RunningBadge(this.copies, {super.key});
-
-  final int copies;
-
-  static const _size = 17.0;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    constraints: const BoxConstraints(minWidth: _size),
-    height: _size,
-    padding: const EdgeInsets.symmetric(horizontal: 4),
-    alignment: Alignment.center,
-    decoration: const BoxDecoration(
-      color: Color(0xFFF2A93B),
-      borderRadius: BorderRadius.all(Radius.circular(_size / 2)),
-    ),
-    child: Text(
-      '$copies',
-      style: CanvasText.badge.copyWith(
-        color: const Color(0xFF1F1606),
-        fontWeight: FontWeight.w500,
-      ),
-      textScaler: TextScaler.noScaling,
-    ),
-  );
-}
-
 /// `2×` over a node entered more than once.
 class CountBadge extends StatelessWidget {
   const CountBadge(this.text);
@@ -264,36 +227,6 @@ class CountBadge extends StatelessWidget {
     child: Text(
       text,
       style: CanvasText.badge,
-      textScaler: TextScaler.noScaling,
-    ),
-  );
-}
-
-/// How many copies ran, across the top right of the stack of copies: `×3`;
-/// `×0` muted while none has; `×n` without a session.
-class CopiesBadge extends StatelessWidget {
-  const CopiesBadge(this.text, {required this.muted});
-
-  final String text;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: badgeHeight,
-    padding: const EdgeInsets.symmetric(horizontal: 5),
-    alignment: Alignment.center,
-    decoration: const BoxDecoration(
-      color: CanvasColors.badgeFill,
-      border: Border.fromBorderSide(
-        BorderSide(color: CanvasColors.badgeBorder),
-      ),
-      borderRadius: BorderRadius.all(Radius.circular(badgeHeight / 2)),
-    ),
-    child: Text(
-      text,
-      style: muted
-          ? CanvasText.badge.copyWith(color: CanvasColors.markerText)
-          : CanvasText.badge,
       textScaler: TextScaler.noScaling,
     ),
   );

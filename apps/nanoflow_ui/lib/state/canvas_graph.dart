@@ -295,13 +295,12 @@ CanvasGraph fileCanvas({
   );
 }
 
-/// [id] and the functions of [functions] it calls, in its copies too, and
-/// those they call: what a canvas of [id] can show.
+/// [id] and the functions of [functions] it calls, and those they call:
+/// what a canvas of [id] can show.
 Set<String> _shownFrom(String id, Map<String, GraphFunction> functions) {
   final shown = {id};
   void visit(GraphBody body) {
     for (final node in body.nodes) {
-      if (node case CopiesNode(:final body)) visit(body);
       if (node case CallNode(functions: final called)) {
         for (final callee in called) {
           if (shown.add(callee)) {

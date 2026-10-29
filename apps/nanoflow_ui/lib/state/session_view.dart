@@ -8,7 +8,6 @@ library;
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'body_path.dart';
-import 'copies.dart';
 import 'effect_details.dart';
 import 'effect_places.dart';
 import 'freshness.dart';
@@ -20,7 +19,6 @@ import 'outcomes.dart';
 import 'session_feed.dart';
 import 'sessions.dart';
 
-export 'copies.dart' show Copy, CopiesFrame, CopyStatus, ShownEffects;
 export 'effect_details.dart';
 export 'freshness.dart' show CodeCheck;
 export 'graph_marks.dart';
@@ -110,48 +108,34 @@ String? snapshotDocumentOf(SessionData session) =>
 /// The `Logs` panel of a session: its title, its rows and their time scale.
 typedef LogsView = ({LogsHeader header, List<LogRow> rows, TimeScale scale});
 
-/// What a session shows in a frame drawn in place (decision 6): what its
-/// body would show opened — the copies frames down to it and the effects
-/// shown, those of the copies chosen in them — and their marks on its body,
-/// the forks their code went through there among them.
+/// What a session shows in a frame drawn in place (decision 6): the marks of
+/// its effects on its body, the forks their code went through there among
+/// them.
 final class FrameScope {
-  FrameScope._(this.frame, this.shown, this.marks);
+  FrameScope._(this.frame, this.marks);
 
   final InPlaceFrame frame;
 
-  /// The copies frames down to the frame's body, and the effects shown in it.
-  final ShownEffects shown;
-
-  /// What the effects shown put on the frame's body: their own passes, as on
-  /// that body opened, not the level's.
+  /// What the effects put on the frame's body: their own passes, as on that
+  /// body opened, not the level's.
   final GraphMarks marks;
-
-  /// The frame's own copies, the one chosen, how they stand; `null` for a
-  /// call.
-  CopiesFrame? get copies => shown.frames
-      .where((frame) => frame.depth == this.frame.path.length)
-      .firstOrNull;
 }
 
-/// No copies chosen in any frame.
-Map<int, String> _noCopies(List<Opened> path) => const {};
-
 /// Everything the graph screen shows of a session at a moment: its card,
-/// its graph, and its effects on the levels of the graph drawn — the copies
-/// frames gone down through, the effects shown, the `Logs`, the selected
-/// effect, the marks on the level drawn.
+/// its graph, and its effects on the levels of the graph drawn — the
+/// `Logs`, the selected effect, the marks on the level drawn and on the
+/// frames drawn in place in it.
 final class SessionView {
   SessionView._({
     required this.summary,
     required this.graph,
     required this.effectId,
     required this.places,
-    required this.shown,
+    required this.effects,
     required this.logs,
+    required this.logsEffects,
     required this.effect,
     required this.marks,
-    required this.logsShown,
-    required this._session,
     required this._frames,
     required this._scopes,
   });
@@ -160,13 +144,10 @@ final class SessionView {
   /// documents as [documents] has them, the graph file as [graphFile] is
   /// now. [levels] are the levels of its graph drawn, the last of them on
   /// the canvas, its effects found on them by [places] (by default, the
-  /// places of its graph's workflow); [copies] the copy selected in each
-  /// copies frame among them, by depth.
+  /// places of its graph's workflow).
   ///
-  /// [frames] are drawn in place in the last level: each shows what its
-  /// body would opened, the copies chosen down to it [copiesIn] the path
-  /// to it. `Logs` follow the frame at [follow], as they would its body
-  /// opened; the level drawn without it.
+  /// [frames] are drawn in place in the last level: each has the marks of
+  /// the effects on its body, as that body opened would.
   ///
   /// [calledGraph] is the id of the called graph opened when [levels] are
   /// of it in a parent's session (`CanvasGraph.calledGraph`): `Logs` list
@@ -183,10 +164,7 @@ final class SessionView {
     List<BodyLevel> levels = const [],
     EffectPlaces? places,
     String? calledGraph,
-    Map<int, String> copies = const {},
     List<InPlaceFrame> frames = const [],
-    Map<int, String> Function(List<Opened> path) copiesIn = _noCopies,
-    List<Opened>? follow,
     Set<String> openRuns = const {},
   }) {
     final graph = sessionGraphOf(
@@ -199,70 +177,43 @@ final class SessionView {
       file?.workflowNamed(session.session.workflow),
       file?.functions ?? const {},
     );
-    final shown = framesOf(
-      levels,
-      places: places,
-      session: session,
-      selected: copies,
-    );
+    final effects = session.state.effects;
     final scopes = <String, FrameScope>{
       for (final frame in allFrames(frames))
-        levelKey(frame.path): () {
-          final inside = framesOf(
-            frame.levels,
-            places: places!,
+        levelKey(frame.path): FrameScope._(
+          frame,
+          GraphMarks.of(
+            frame.level.body,
+            places: places,
             session: session,
-            selected: copiesIn(frame.path),
-          );
-          return FrameScope._(
-            frame,
-            inside,
-            GraphMarks.of(
-              frame.level.body,
-              places: places,
-              session: session,
-              effects: inside.effects,
-              selectedEffectId: effectId,
-            ),
-          );
-        }(),
+            effects: effects,
+            selectedEffectId: effectId,
+          ),
+        ),
     };
-    final followed = follow == null ? null : scopes[levelKey(follow)];
-    final all = followed?.shown ?? shown;
     final logs = calledGraph == null
-        ? all
-        : all.where(
-            (effect) => places!.isInFunction(
-              session.effects[effect.effectId],
-              calledGraph,
-            ),
-          );
-    final copy = logs.copy;
-    // The title names the copies chosen down to the level Logs show; those
-    // chosen in frames in it, the rows do.
-    final depth = (followed?.frame.levels.length ?? levels.length) - 1;
-    String? tagOf(String effectId) => _deepest(
-      session,
-      places!,
-      effectId,
-      shown: logs,
-      frames: followed?.frame.frames ?? frames,
-      scopes: scopes,
-    ).tagOf(effectId, upTo: depth);
+        ? effects
+        : [
+            for (final effect in effects)
+              if (places.isInFunction(
+                session.effects[effect.effectId],
+                calledGraph,
+              ))
+                effect,
+          ];
     return SessionView._(
       summary: summarize(session, now),
       graph: graph,
       effectId: effectId,
       places: places,
-      shown: shown,
+      effects: effects,
       logs: (
-        header: LogsHeader(logs.effects.length, copy: copy),
+        header: LogsHeader(logs.length),
         rows: logRows(
           session,
-          effects: logs.effects,
+          effects: logs,
           places: places,
           now: now,
-          copyOf: tagOf,
           calls: switch (calledGraph == null
               ? file?.workflowNamed(session.session.workflow)
               : file?.functions[calledGraph]) {
@@ -270,10 +221,11 @@ final class SessionView {
             null => const [],
           },
           open: openRuns,
-          end: copy == null && calledGraph == null,
+          end: calledGraph == null,
         ),
         scale: timeScale(session, now),
       ),
+      logsEffects: logs,
       effect: effectId == null ? null : effectDetails(session, effectId),
       marks: levels.isEmpty
           ? null
@@ -281,11 +233,9 @@ final class SessionView {
               levels.last.body,
               places: places,
               session: session,
-              effects: shown.effects,
+              effects: effects,
               selectedEffectId: effectId,
             ),
-      logsShown: logs,
-      session: session,
       frames: frames,
       scopes: scopes,
     );
@@ -302,29 +252,20 @@ final class SessionView {
   /// Which nodes of the graph the session's effects are on.
   final EffectPlaces places;
 
-  /// The copies frames the levels drawn go down through, and the effects
-  /// shown: those of the copies selected in them.
-  final ShownEffects shown;
+  /// The session's effects, in the order of their first `effect-started`.
+  final List<EffectState> effects;
 
   final LogsView logs;
+
+  /// The effects `Logs` show: all of [effects], or those in the called graph
+  /// opened in a parent's session.
+  final List<EffectState> logsEffects;
 
   /// The selected effect's details; `null` without one.
   final EffectDetails? effect;
 
-  /// What the effects shown put on the level drawn; `null` without one.
+  /// What the effects put on the level drawn; `null` without one.
   final GraphMarks? marks;
-
-  /// The copies frames the levels drawn go down through.
-  List<CopiesFrame> get frames => shown.frames;
-
-  /// The effects shown, in the order of their first `effect-started`.
-  List<EffectState> get effects => shown.effects;
-
-  /// What `Logs` show: the level drawn, or the frame drawn in place whose
-  /// copy they follow.
-  final ShownEffects logsShown;
-
-  final SessionData _session;
 
   /// The frames drawn in place in the level drawn.
   final List<InPlaceFrame> _frames;
@@ -335,23 +276,6 @@ final class SessionView {
   /// What the frame drawn in place at [path] shows; `null` for one not
   /// drawn.
   FrameScope? scopeOf(List<Opened> path) => _scopes[levelKey(path)];
-
-  /// What the level drawn shows at [path] — its own when [path] is `null`
-  /// or no frame of it.
-  ShownEffects shownAt(List<Opened>? path) =>
-      path == null ? shown : scopeOf(path)?.shown ?? shown;
-
-  /// The copies the effect [effectId] is in: `pkg 2 › target 1`; `null` for an
-  /// effect in no copies frame drawn. The frames drawn in place it is in
-  /// name them as its body opened would.
-  String? copyOf(String effectId) => _deepest(
-    _session,
-    places,
-    effectId,
-    shown: shown,
-    frames: _frames,
-    scopes: _scopes,
-  ).copyOf(effectId);
 
   /// The nodes to show the effect [effectId] at: the node of the level drawn
   /// it is on or in, then, while that node is drawn in place, the node of
@@ -371,32 +295,4 @@ final class SessionView {
     }
     return nodes;
   }
-}
-
-/// What names the copies of the effect [effectId] of [session] best: the
-/// deepest frame drawn in place that holds it, from [frames] down — else
-/// [shown].
-ShownEffects _deepest(
-  SessionData session,
-  EffectPlaces places,
-  String effectId, {
-  required ShownEffects shown,
-  required List<InPlaceFrame> frames,
-  required Map<String, FrameScope> scopes,
-}) {
-  final record = session.effects[effectId];
-  for (final frame in frames) {
-    if (!places.isIn(record, frame.node)) continue;
-    final scope = scopes[levelKey(frame.path)];
-    if (scope == null) continue;
-    return _deepest(
-      session,
-      places,
-      effectId,
-      shown: scope.shown,
-      frames: frame.frames,
-      scopes: scopes,
-    );
-  }
-  return shown;
 }

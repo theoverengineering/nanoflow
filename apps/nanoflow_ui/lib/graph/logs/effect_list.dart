@@ -13,12 +13,11 @@ import 'effect_bar.dart';
 
 /// The effects shown on the left of the `Logs` panel (docs/ui-spec.md «Logs»:
 /// «Лента эффектов»; spec §9 «Логи»), as the rows of `logRows` give them: each
-/// effect's sign, name, a failure's error or `not on the graph`, the copy it
-/// is in while every copy is shown, `2 starts`, when it started, how long it
-/// took — a running one's time going on — and its bar on the session's time
-/// scale, striped while it runs. A run of a call is one row with a chevron,
-/// which opens it: its effects under it, indented. An ended session ends with
-/// how it ended.
+/// effect's sign, name, a failure's error or `not on the graph`, `2 starts`,
+/// when it started, how long it took — a running one's time going on — and
+/// its bar on the session's time scale, striped while it runs. A run of a
+/// call is one row with a chevron, which opens it: its effects under it,
+/// indented. An ended session ends with how it ended.
 ///
 /// The selected effect is highlighted, and kept in view as the selection
 /// moves; while the session is followed, so are the rows after it. Scrolled
@@ -341,7 +340,6 @@ class _EffectRowView extends StatelessWidget {
     final running = row.status == StartOutcome.running;
     final detail = row.detail;
     final starts = row.startsText;
-    final copy = row.copy;
     final effect = Text.rich(
       TextSpan(
         text: row.name,
@@ -378,7 +376,6 @@ class _EffectRowView extends StatelessWidget {
                 ? effect
                 : Tooltip(message: detail, child: effect),
           ),
-          if (copy != null) _CopyNote(copy),
           if (starts != null) _StartsNote(starts),
         ],
       ),
@@ -428,8 +425,8 @@ class _EffectRowView extends StatelessWidget {
 }
 
 /// A run of a call: its sign, a chevron, the call and `run 2 · 27 effects`,
-/// the copy it is in, when it started, how long it took and its bar. A click
-/// opens or closes it. Highlighted while closed over the selected effect.
+/// when it started, how long it took and its bar. A click opens or closes
+/// it. Highlighted while closed over the selected effect.
 class _RunRowView extends StatelessWidget {
   const _RunRowView(
     this.row, {
@@ -445,7 +442,6 @@ class _RunRowView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final copy = row.copy;
     final content = columns.row(
       sign: EffectIcon(row.status),
       effect: Row(
@@ -475,7 +471,6 @@ class _RunRowView extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (copy != null) _CopyNote(copy),
         ],
       ),
       started: Text(
@@ -538,26 +533,6 @@ class _StartsNote extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
     ),
     child: Text(text, style: AppText.startsNote),
-  );
-}
-
-/// `pkg 2`, `pkg 2 › target 1`: the copies an effect is in.
-class _CopyNote extends StatelessWidget {
-  const _CopyNote(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 5),
-    decoration: BoxDecoration(
-      color: AppColors.selectedTab,
-      borderRadius: BorderRadius.circular(4),
-    ),
-    child: Text(
-      text,
-      style: AppText.startsNote.copyWith(color: AppColors.textMuted),
-    ),
   );
 }
 

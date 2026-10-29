@@ -115,46 +115,53 @@ void main() {
   test('the warnings of the workflow shown, of the functions it calls and '
       'of no function: not those of another workflow', () {
     final graph = GraphFile.fromJson({
-      ...copiesGraphJson(),
+      ...packagesGraphJson(),
       'warnings': [
         {
-          'place': 'lib/copies.dart:5',
+          'place': 'lib/packages.dart:5',
           'message': 'in inPlace',
-          'function': 'lib/copies.dart#inPlace',
+          'function': 'lib/packages.dart#inPlace',
         },
-        // viaCall calls publish in its copies.
+        // viaCall calls publish.
         {
-          'place': 'lib/copies.dart:20',
+          'place': 'lib/packages.dart:20',
           'message': 'in publish',
-          'function': 'lib/copies.dart#publish',
+          'function': 'lib/packages.dart#publish',
         },
-        {'place': 'lib/copies.dart:40', 'message': 'in none', 'function': null},
+        {
+          'place': 'lib/packages.dart:40',
+          'message': 'in none',
+          'function': null,
+        },
       ],
     });
     List<GraphNote> notesOn(String workflow) => fileCanvas(
       file: file,
       graph: graph,
-      workflowId: 'lib/copies.dart#$workflow',
+      workflowId: 'lib/packages.dart#$workflow',
     ).notes;
     expect(notesOn('inPlace'), [
       const GraphNote(
         '2 warnings in nanoflow.graph.json',
-        lines: ['lib/copies.dart:5  in inPlace', 'lib/copies.dart:40  in none'],
+        lines: [
+          'lib/packages.dart:5  in inPlace',
+          'lib/packages.dart:40  in none',
+        ],
       ),
     ]);
     expect(notesOn('viaCall'), [
       const GraphNote(
         '2 warnings in nanoflow.graph.json',
         lines: [
-          'lib/copies.dart:20  in publish',
-          'lib/copies.dart:40  in none',
+          'lib/packages.dart:20  in publish',
+          'lib/packages.dart:40  in none',
         ],
       ),
     ]);
     expect(notesOn('nested'), [
       const GraphNote(
         '1 warning in nanoflow.graph.json',
-        lines: ['lib/copies.dart:40  in none'],
+        lines: ['lib/packages.dart:40  in none'],
       ),
     ]);
   });

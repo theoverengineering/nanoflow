@@ -7,29 +7,35 @@ import 'package:nanoflow_ui/state/visits.dart';
 import 'support.dart';
 
 void main() {
-  final file = copiesGraphFile();
-  final inPlace = file.functions['lib/copies.dart#inPlace']!;
+  final file = packagesGraphFile();
+  final inPlace = file.functions['lib/packages.dart#inPlace']!;
   final places = EffectPlaces.of(inPlace, file.functions);
-  final copies = inPlace.body.node('2')! as CopiesNode;
+  final ship = file.functions['lib/packages.dart#ship']!;
   final now = at(746);
 
-  /// Three copies' verify: finished in 4m 02s, running, failed in 0.1s.
+  /// Three runs' verify of ship(): finished in 4m 02s, running, failed in
+  /// 0.1s.
   Journal journal() {
     final j = Journal('a1b2-session', workflow: 'inPlace');
-    j.effect('verify', 9.118, end: 251.524, place: copiesAt(8), output: 'doc');
-    j.effect('verify', 612, place: copiesAt(8));
-    j.effect('verify', 700, end: 700.1, failed: true, place: copiesAt(8));
+    j.effect(
+      'verify',
+      9.118,
+      end: 251.524,
+      place: packagesAt(8),
+      output: 'doc',
+    );
+    j.effect('verify', 612, place: packagesAt(8));
+    j.effect('verify', 700, end: 700.1, failed: true, place: packagesAt(8));
     return j;
   }
 
-  VisitDetails detailsOf(Journal j, int i, {String? Function(String)? copy}) {
+  VisitDetails detailsOf(Journal j, int i) {
     final session = j.data;
     return visitDetails(
       session: session,
       effects: session.state.effects,
       places: places,
       effectId: j.effects[i].id,
-      copyOf: copy,
       now: now,
     );
   }
@@ -41,7 +47,7 @@ void main() {
       expect(details.previous!.effectId, details.visits[0].effectId);
       expect(details.next!.effectId, details.visits[2].effectId);
       expect(details.name, 'verify');
-      expect(details.place, copiesAt(8));
+      expect(details.place, packagesAt(8));
     });
 
     test('of a finished effect: how long it took, when it started and '
@@ -68,8 +74,8 @@ void main() {
       // Killed in the middle of verify 3: the start of the effect is the
       // last event of the journal.
       final killed = Journal('a1b2-session', workflow: 'inPlace')
-        ..effect('verify', 9.118, end: 251.524, place: copiesAt(8))
-        ..effect('verify', 612, place: copiesAt(8));
+        ..effect('verify', 9.118, end: 251.524, place: packagesAt(8))
+        ..effect('verify', 612, place: packagesAt(8));
       for (final (j, time) in [
         (journal()..processGone(), now),
         (journal()..processGone(), at(2000)),
@@ -111,11 +117,6 @@ void main() {
       ]);
     });
 
-    test('names the copy of the effect', () {
-      expect(detailsOf(journal(), 0, copy: (_) => 'copy 2').copy, 'copy 2');
-      expect(detailsOf(journal(), 0).copy, isNull);
-    });
-
     test('a node without effects: its name and place alone', () {
       final session = journal().data;
       final details = visitDetails(
@@ -123,11 +124,11 @@ void main() {
         effects: session.state.effects,
         places: places,
         effectId: null,
-        node: copies.body.node('3')! as EffectNode,
+        node: ship.body.node('3')! as EffectNode,
         now: now,
       );
       expect(details.name, 'tag');
-      expect(details.place, copiesAt(9));
+      expect(details.place, packagesAt(9));
       expect(details.visits, isEmpty);
       expect(details.visitText, isNull);
       expect(details.effect, isNull);
@@ -135,7 +136,7 @@ void main() {
     });
 
     test('the doc of the effect\'s node, with a session and without', () {
-      final json = copiesGraphFile().toJson();
+      final json = packagesGraphFile().toJson();
       void document(Object? value) {
         if (value is Map) {
           if (value['kind'] == 'effect') {
@@ -149,7 +150,8 @@ void main() {
 
       document(json['functions']);
       final documented = GraphFile.fromJson(json);
-      final workflow = documented.functions['lib/copies.dart#inPlace']!;
+      final workflow = documented.functions['lib/packages.dart#inPlace']!;
+      final shipped = documented.functions['lib/packages.dart#ship']!;
       final places = EffectPlaces.of(workflow, documented.functions);
       final j = journal();
       final details = visitDetails(
@@ -165,9 +167,7 @@ void main() {
         effects: const [],
         places: places,
         effectId: null,
-        node:
-            (workflow.body.node('2')! as CopiesNode).body.node('1')!
-                as EffectNode,
+        node: shipped.body.node('1')! as EffectNode,
         now: now,
       );
       expect(alone.doc, 'Does upload.');
@@ -180,7 +180,7 @@ void main() {
         effects: const [],
         places: places,
         effectId: null,
-        node: copies.body.node('1')! as EffectNode,
+        node: ship.body.node('1')! as EffectNode,
         now: now,
       );
       expect(details.name, 'upload');

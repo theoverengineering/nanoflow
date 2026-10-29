@@ -1,13 +1,13 @@
 /// What a session's effects put on the level of the graph the canvas draws
-/// (docs/ui-spec.md «Граф»; spec §9 «Эффекты на графе», «Развилки», «Копии»):
-/// the state of each node, how many effects were on it and how many run there
-/// now, the forks their code went through and how many times, how many
-/// copies a `copies` node ran, and the nodes of the selected effect. Pure.
+/// (docs/ui-spec.md «Граф»; spec §9 «Эффекты на графе», «Развилки»): the
+/// state of each node, how many effects were on it, how many times a call
+/// ran, the forks their code went through and how many times, and the nodes
+/// of the selected effect. Pure.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-import 'copies.dart';
+import 'call_runs.dart';
 import 'effect_places.dart';
 import 'passes.dart';
 import 'session_feed.dart';
@@ -36,29 +36,16 @@ enum NodeState {
 }
 
 /// What the effects put on one node: on an effect node those at its place; on a
-/// call those in its functions; on copies those in their body; on a fork the
-/// runs of their code that went through it.
+/// call those in its functions; on a fork the runs of their code that went
+/// through it.
 final class NodeMarks {
-  const NodeMarks({
-    required this.state,
-    required this.effects,
-    required this.running,
-    this.copies,
-    this.calls,
-  });
+  const NodeMarks({required this.state, required this.effects, this.calls});
 
   final NodeState state;
 
   /// How many effects were on the node, or in it; on a fork, how many runs
   /// of the code went through it.
   final int effects;
-
-  /// How many of them run now: on an effect node in copies, how many copies
-  /// are on the effect. None of an interrupted session's do.
-  final int running;
-
-  /// How many copies a `copies` node ran; `null` for any other node.
-  final int? copies;
 
   /// How many times a call ran: the chains of its effects by `after`, each
   /// begun by an effect that follows none in the call ([chainsIn]); `null`
@@ -126,20 +113,11 @@ final class GraphMarks {
             node.id: NodeMarks(
               state: NodeState.visited,
               effects: passes.of(node.id),
-              running: 0,
             ),
         for (final node in nodes)
           node.id: _marksOf(
             session,
             on[node.id]!,
-            copies: node is CopiesNode
-                ? copiesOf(
-                    node,
-                    places: places,
-                    session: session,
-                    effects: on[node.id],
-                  ).length
-                : null,
             calls: node is CallNode
                 ? chainsIn(
                     places.within(node),
@@ -178,16 +156,13 @@ final class GraphMarks {
 NodeMarks _marksOf(
   SessionData session,
   List<EffectState> effects, {
-  int? copies,
   int? calls,
 }) {
   var state = NodeState.notVisited;
-  var running = 0;
   for (final effect in effects) {
     final NodeState of;
     switch (outcomeOf(session, effect)) {
       case StartOutcome.running:
-        running++;
         of = NodeState.running;
       case StartOutcome.interrupted:
         of = NodeState.interrupted;
@@ -198,11 +173,5 @@ NodeMarks _marksOf(
     }
     if (of.index > state.index) state = of;
   }
-  return NodeMarks(
-    state: state,
-    effects: effects.length,
-    running: running,
-    copies: copies,
-    calls: calls,
-  );
+  return NodeMarks(state: state, effects: effects.length, calls: calls);
 }

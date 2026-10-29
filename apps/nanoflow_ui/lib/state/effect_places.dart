@@ -23,8 +23,7 @@ final class EffectPlaces {
   EffectPlaces._(this._workflow, this._functions, this.nodes);
 
   /// The effect nodes of [workflow] and of all it reaches in [functions]: the
-  /// bodies of its copies, the functions it calls, and so on; none without
-  /// a [workflow].
+  /// functions it calls, and so on; none without a [workflow].
   factory EffectPlaces.of(
     GraphFunction? workflow,
     Map<String, GraphFunction> functions,
@@ -70,27 +69,21 @@ final class EffectPlaces {
   /// Whether [effect] is on an effect node of the graph.
   bool onGraph(Effect? effect) => of(effect).isNotEmpty;
 
-  /// The effect nodes [node] holds: an effect node itself; for copies, those of
-  /// their body and of all it reaches; for a call, those of the bodies of
-  /// its functions and of all they reach; none for a condition.
+  /// The effect nodes [node] holds: an effect node itself; for a call, those
+  /// of the bodies of its functions and of all they reach; none for a
+  /// condition.
   Set<EffectNode> within(GraphNode node) => _within[node] ??= switch (node) {
     final EffectNode effect => {effect},
     ConditionNode() => const {},
-    CopiesNode(:final body) => _inBody(body, const {}),
     CallNode() => _inNode(node, const {}),
   };
-
-  /// The id of the function whose body [body] is, or holds as the body of
-  /// copies; `null` for a body of no function of the graph.
-  String? ownerOf(GraphBody body) => _owners[body];
 
   /// Whether [body] is that of a function the workflow calls: the code comes
   /// into it at each call, and may leave it and come into it again with no
   /// effect between. Not the workflow's own — drawn once whether it runs or
-  /// calls itself —, nor that of copies, which run once.
-  bool isCalled(GraphBody body) => switch (ownerOf(body)) {
-    final owner? =>
-      owner != _workflow && identical(_functions[owner]?.body, body),
+  /// calls itself.
+  bool isCalled(GraphBody body) => switch (_owners[body]) {
+    final owner? => owner != _workflow,
     null => false,
   };
 
@@ -101,15 +94,8 @@ final class EffectPlaces {
   /// The function of each body of the graph, by the body.
   late final Map<GraphBody, String> _owners = () {
     final owners = Map<GraphBody, String>.identity();
-    void own(GraphBody body, String id) {
-      owners[body] = id;
-      for (final copies in body.nodes.whereType<CopiesNode>()) {
-        own(copies.body, id);
-      }
-    }
-
     for (final function in _functions.values) {
-      own(function.body, function.id);
+      owners[function.body] = function.id;
     }
     return owners;
   }();
@@ -153,7 +139,6 @@ final class EffectPlaces {
       switch (node) {
         final EffectNode effect => {effect},
         ConditionNode() => const {},
-        CopiesNode(:final body) => _inBody(body, entered),
         CallNode(:final functions) => {
           for (final id in functions)
             if (_functions[id] case final function? when !entered.contains(id))

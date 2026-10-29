@@ -23,10 +23,9 @@ abstract final class CanvasColors {
   /// Arrows, exits and input bars as the graph draws them: `Tone.plain`.
   static const plain = Color(0xFFA3A4AB);
 
-  /// Arrows and input bars that lead to or from a node one copy shown has
-  /// not reached: `Tone.untaken`, darker; and such exits.
+  /// Arrows out of a passed fork that no way of the code could have taken:
+  /// `Tone.untaken`, darker.
   static const untaken = Color(0xFF55565D);
-  static const untakenExit = Color(0xFF62636A);
 
   /// The color of arrows, their heads and input bars in [tone].
   static Color line(Tone tone) => switch (tone) {
@@ -48,15 +47,10 @@ abstract final class CanvasColors {
   /// labels.
   static const link = chipText;
 
-  /// The tiles stacked behind copies.
-  static const stackFill = Color(0xFF2E2F35);
-  static const stackBorder = Color(0xFF6A6B73);
-
   /// The ring round the selected effect's node: 4 px of the accent at 38 %.
   static const ring = Color(0x619C8CFF);
 
-  /// The badges over a tile: `×3` across the stack of copies, `2×` over a
-  /// node entered more than once.
+  /// The badge over a tile: `2×` over a node entered more than once.
   static const badgeFill = Color(0xFF42434A);
   static const badgeBorder = Color(0xFF5E5F66);
   static const badgeText = Color(0xFFD5D6DA);
@@ -100,7 +94,7 @@ abstract final class CanvasText {
   /// A node's place in the code under its name.
   static final place = _mono.copyWith(fontSize: 10.5);
 
-  /// The effects of a call or of a copy, small under its function icon:
+  /// The effects of a call, small under its function icon:
   /// `{ 3 }`. A tile draws them in its look's colour (`TileLook.inside`).
   static final inside = _mono.copyWith(fontSize: 11, color: CanvasColors.icon);
 
@@ -130,7 +124,7 @@ abstract final class CanvasText {
     color: CanvasColors.legendText,
   );
 
-  /// The title of a frame: `publish()`, `each pkg in packages`.
+  /// The title of a frame: `publish()`.
   static const frameTitle = TextStyle(
     inherit: false,
     fontFamily: AppText.sans,
@@ -138,24 +132,6 @@ abstract final class CanvasText {
     fontWeight: FontWeight.w600,
     height: 1.3,
     color: Color(0xFFD6D6DC),
-  );
-
-  /// Across from the title of a frame of copies: `×3 · in parallel`.
-  static const frameCount = TextStyle(
-    inherit: false,
-    fontFamily: AppText.sans,
-    fontSize: 12,
-    height: 1.3,
-    color: Color(0xFFA9A9B2),
-  );
-
-  /// Under a frame of copies: `done 1 of 3`.
-  static const frameFooter = TextStyle(
-    inherit: false,
-    fontFamily: AppText.sans,
-    fontSize: 10,
-    height: 1.3,
-    color: Color(0xFF8E8E96),
   );
 
   /// How [kind] is drawn. A name is measured in the heaviest weight a

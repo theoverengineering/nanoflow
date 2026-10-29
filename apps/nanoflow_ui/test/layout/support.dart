@@ -43,22 +43,10 @@ GraphLayout layoutOf(String name, [String? function]) {
   );
 }
 
-/// Every body of [file] with a name: each function's, and inside it each
-/// copies node's, as `function` and `function/node`.
-Map<String, GraphBody> bodiesOf(GraphFile file) {
-  final bodies = <String, GraphBody>{};
-  void add(String name, GraphBody body) {
-    bodies[name] = body;
-    for (final node in body.nodes) {
-      if (node is CopiesNode) add('$name/${node.id}', node.body);
-    }
-  }
-
-  for (final function in file.functions.values) {
-    add(function.id, function.body);
-  }
-  return bodies;
-}
+/// Every body of [file] with a name: each function's, by its id.
+Map<String, GraphBody> bodiesOf(GraphFile file) => {
+  for (final function in file.functions.values) function.id: function.body,
+};
 
 /// A body whose call `c` goes on to [ways] branches of `Future.wait`, each
 /// to the end: describe draws `await f(); await Future.wait([a(), b()]);`

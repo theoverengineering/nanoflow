@@ -106,9 +106,9 @@ enum _Limit {
   earlierCall,
 
   /// Effects side by side that end in the millisecond they start, in one call
-  /// or copies node or leading to each other round a loop, read as joined
-  /// before each other, and so as passed: the effect after them finds all its
-  /// ends passed.
+  /// node or leading to each other round a loop, read as joined before each
+  /// other, and so as passed: the effect after them finds all its ends
+  /// passed.
   tied,
 }
 
@@ -121,11 +121,10 @@ enum _Limit {
 /// - [_Limit.sideBySide]: E's code did not wait for O, and O leads to E on a
 ///   body;
 /// - [_Limit.earlierCall]: O and E are in different calls of a function,
-///   and O leads to E on its body, or is in one call or copies node of it
-///   with E;
+///   and O leads to E on its body, or is in one call node of it with E;
 /// - [_Limit.tied]: O and E started and ended in one millisecond, beside
-///   each other, and each leads to the other on a body or is in one call or
-///   copies node with it — the rules read each as joined before the other,
+///   each other, and each leads to the other on a body or is in one call
+///   node with it — the rules read each as joined before the other,
 ///   and so as passed —, and both are such ends before a later effect.
 Set<_Limit> _limitsOf(_Program program, _Run run, int? cut) {
   final recorded = [
@@ -236,7 +235,7 @@ List<String> _nodesOn(_Program program, GraphBody body, _Record record) {
   ];
 }
 
-/// Whether [from] and [to] are in one call or copies node of [body].
+/// Whether [from] and [to] are in one call node of [body].
 bool _inOne(_Program program, GraphBody body, _Record from, _Record to) {
   final targets = _nodesOn(program, body, to).toSet();
   final sources = _nodesOn(program, body, from);
@@ -249,8 +248,8 @@ bool _inOne(_Program program, GraphBody body, _Record from, _Record to) {
 }
 
 /// Whether a way leads on [body] from the nodes [from] is on or in to those
-/// [to] is, through forks, calls and copies; or, when [inside], they share a
-/// call or copies node.
+/// [to] is, through forks and calls; or, when [inside], they share a call
+/// node.
 bool _leads(
   _Program program,
   GraphBody body,

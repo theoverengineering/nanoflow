@@ -107,8 +107,7 @@ final class SessionData {
   int get changes => _changes;
 
   /// The state of the effect [effectId] in [state]; `null` for an effect that
-  /// has not started. Looked up once per [state]: the copies of a frame look
-  /// up the first effect of each.
+  /// has not started. Looked up once per [state].
   EffectState? stateOf(String effectId) => (_statesById ??= {
     for (final effect in state.effects) effect.effectId: effect,
   })[effectId];

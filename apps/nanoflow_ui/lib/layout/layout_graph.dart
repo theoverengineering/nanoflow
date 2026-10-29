@@ -154,9 +154,6 @@ enum NodeKind {
 
   /// A call of a function with effects: a tile with `ƒ` on it.
   call,
-
-  /// A body run in copies side by side: a stack of tiles with `ƒ` on them.
-  copies,
 }
 
 /// The id of the start marker among the nodes of a layout.
@@ -169,12 +166,12 @@ const String endMarker = '(end)';
 /// [endMarker], `(end)2`, `(end)3`.
 String endMarkerAt(int n) => n == 1 ? endMarker : '$endMarker$n';
 
-/// The name under the tile of [node]: an effect's name, a condition's or
-/// copies' label, a call's function with `()`.
+/// The name under the tile of [node]: an effect's name, a condition's
+/// label, a call's function with `()`.
 String nodeName(GraphNode node, Map<String, GraphFunction> functions) =>
     switch (node) {
       EffectNode(:final name) => name,
-      ConditionNode(:final label) || CopiesNode(:final label) => label,
+      ConditionNode(:final label) => label,
       CallNode(functions: final ids) => '${_functionName(ids, functions)}()',
     };
 
@@ -190,20 +187,15 @@ String _functionName(List<String> ids, Map<String, GraphFunction> functions) {
 }
 
 /// What is written on the tile of [node] under its function icon, `null` on
-/// an effect or a condition: how many effects can run in a call or copies
+/// an effect or a condition: how many effects can run in a call
 /// ([reachableEffects]). `{ 3 }` on a call, the effects of its function;
 /// `{ 1–2 }` for implementations of a method with different counts; `{ ? }`
-/// when the file has none of its functions. `{ 3 }` on copies, the effects
-/// of one copy; `{ ? }` when they have none but call a function the file
-/// does not have. `{ }` when there are none.
+/// when the file has none of its functions. `{ }` when there are none.
 String? insideText(GraphNode node, Map<String, GraphFunction> functions) {
   final List<int> counts;
   switch (node) {
     case EffectNode() || ConditionNode():
       return null;
-    case CopiesNode(:final body):
-      counts = [reachableEffects(body, functions)];
-      if (counts.single == 0 && _callsUnknown(body, functions)) return '{ ? }';
     case CallNode(functions: final ids):
       counts = [
         for (final id in ids)
@@ -218,22 +210,10 @@ String? insideText(GraphNode node, Map<String, GraphFunction> functions) {
       : '{ ${counts.first}–${counts.last} }';
 }
 
-/// Whether [body], or the body of copies in it, calls a function that
-/// [functions] does not have: what runs there is not known.
-bool _callsUnknown(GraphBody body, Map<String, GraphFunction> functions) =>
-    body.nodes.any(
-      (node) => switch (node) {
-        CallNode(functions: final ids) => !ids.any(functions.containsKey),
-        CopiesNode(body: final copy) => _callsUnknown(copy, functions),
-        EffectNode() || ConditionNode() => false,
-      },
-    );
-
-/// How many effects can run in [body]: its own, those of the bodies of its
-/// copies, and those of the functions it calls that [functions] has — of
-/// the one with the most, for a call of several. A function in [counting],
-/// being counted already, counts nothing again: a recursive call adds no
-/// effects.
+/// How many effects can run in [body]: its own, and those of the functions
+/// it calls that [functions] has — of the one with the most, for a call of
+/// several. A function in [counting], being counted already, counts nothing
+/// again: a recursive call adds no effects.
 int reachableEffects(
   GraphBody body,
   Map<String, GraphFunction> functions, [
@@ -244,11 +224,6 @@ int reachableEffects(
     count += switch (node) {
       EffectNode() => 1,
       ConditionNode() => 0,
-      CopiesNode(body: final copy) => reachableEffects(
-        copy,
-        functions,
-        counting,
-      ),
       CallNode(functions: final ids) => [
         for (final id in ids)
           if (functions[id] case final function? when !counting.contains(id))
@@ -267,10 +242,6 @@ const int nameLength = 30;
 String shortName(String name) => name.runes.length <= nameLength
     ? name
     : '${String.fromCharCodes(name.runes.take(nameLength - 1))}…';
-
-/// What the badge over the stack of copies says until a session tells how
-/// many copies there are.
-const String copiesBadge = '×n';
 
 /// [place] as written under a tile: the file's name and the line,
 /// `review.dart:49`.
@@ -314,7 +285,7 @@ final class GNode {
   final String? place;
 
   /// What is written on the tile: a marker's word instead of an icon, the
-  /// effects of a call or copies under their function icon.
+  /// effects of a call under its function icon.
   final String? inside;
 
   /// Whether this is the start marker or an end marker.
@@ -324,7 +295,7 @@ final class GNode {
   /// but where the frame's side is — no width, no marks, nothing written.
   final bool port;
 
-  /// The body of a call or copies expanded in place: the node is its frame.
+  /// The body of a call expanded in place: the node is its frame.
   FramedBody? framed;
 
   /// For the end of a body in a frame: the least half length of its bar.
@@ -482,7 +453,6 @@ final class LayoutGraph {
         EffectNode() => NodeKind.effect,
         ConditionNode() => NodeKind.condition,
         CallNode() => NodeKind.call,
-        CopiesNode() => NodeKind.copies,
       }, node);
     }
     final edges = <GEdge>[];

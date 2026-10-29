@@ -15,13 +15,13 @@ void main() {
         0,
         end: 3,
         output: 'doc-1',
-        place: copiesAt(4),
+        place: packagesAt(4),
       );
       final details = effectDetails(j.data, id)!;
       expect(details.sessionId, 'a1b2-session');
       expect(details.effectId, id);
       expect(details.name, 'plan');
-      expect(details.place, copiesAt(4));
+      expect(details.place, packagesAt(4));
       expect(details.status, StartOutcome.finished);
       expect(details.running, isFalse);
       expect(details.error, isNull);
@@ -88,7 +88,7 @@ void main() {
 
     test('none for an effect whose record is not read yet: it has no name', () {
       final j = Journal('a1b2-session', workflow: 'inPlace');
-      final id = j.effect('plan', 0, place: copiesAt(4));
+      final id = j.effect('plan', 0, place: packagesAt(4));
       expect(
         effectDetails(SessionData(j.session, events: j.events), id),
         isNull,

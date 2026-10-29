@@ -587,7 +587,7 @@ void main() {
         expect(view.logs.rows.whereType<EffectRow>(), isEmpty);
         // What the effect details window takes for the effects of `Logs`.
         expect(
-          [for (final effect in view.logsShown.effects) effect.effectId],
+          [for (final effect in view.logsEffects) effect.effectId],
           ['c1c1-status-2', 'c1c1-coder-3'],
         );
 
@@ -1169,111 +1169,47 @@ void main() {
     });
   });
 
-  group('a session with copies', () {
-    /// inPlace over core and tool: core done, tool on verify.
-    List<Change> copies() => changesOf([
-      Journal('a1b2-session', workflow: 'inPlace', graph: copiesGraphJson())
-        ..effect('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null)
-        ..effect('upload', 3, end: 4, place: copiesAt(7), key: 'uc', after: 'p')
-        ..effect('upload', 3, end: 5, place: copiesAt(7), key: 'ut', after: 'p')
+  group('a session on the function of a call opened', () {
+    /// inPlace over core and tool, each a call of ship(): core done, tool
+    /// on verify.
+    List<Change> shipped() => changesOf([
+      Journal('a1b2-session', workflow: 'inPlace', graph: packagesGraphJson())
+        ..effect('plan', 1, end: 2, place: packagesAt(4), key: 'p', after: null)
+        ..effect(
+          'upload',
+          3,
+          end: 4,
+          place: packagesAt(7),
+          key: 'uc',
+          after: 'p',
+        )
+        ..effect(
+          'upload',
+          3,
+          end: 5,
+          place: packagesAt(7),
+          key: 'ut',
+          after: 'p',
+        )
         ..effect(
           'verify',
           6,
           end: 7,
-          place: copiesAt(8),
+          place: packagesAt(8),
           key: 'vc',
           after: 'uc',
         )
-        ..effect('verify', 8, place: copiesAt(8), key: 'vt', after: 'ut'),
+        ..effect('verify', 8, place: packagesAt(8), key: 'vt', after: 'ut'),
     ]);
 
     void open(FakeAsync async) {
-      graphFile.graph = copiesGraphFile();
-      give(async, copies());
-      model.open(const Opened('2'));
+      graphFile.graph = packagesGraphFile();
+      give(async, shipped());
+      model.open(const Opened('2', functionId: 'lib/packages.dart#ship'));
     }
 
-    test('shows every copy of the copies drawn until one is chosen', () {
-      run((async) {
-        open(async);
-        final view = model.sessionView(at(746))!;
-        expect(view.frames.single.copies, hasLength(2));
-        expect(view.frames.single.selected, isNull);
-        expect(view.logs.header.text, '5 effects');
-      });
-    });
-
-    test('a chosen copy shows its effects, its last selected', () {
-      run((async) {
-        open(async);
-        final tool = model.sessionView(at(746))!.frames.single.copies[1];
-        model.selectCopy(1, tool.id);
-        final view = model.sessionView(at(746))!;
-        expect(view.frames.single.selected!.number, 2);
-        expect(view.logs.header.text, 'pkg 2 · 2 effects');
-        expect(model.selection.effectId, 'a1b2-verify-4');
-        model.selectCopy(1, null);
-        expect(model.sessionView(at(746))!.frames.single.selected, isNull);
-      });
-    });
-
-    test('a chosen copy is followed: its new effects are selected, those of '
-        'other copies are not', () {
-      run((async) {
-        open(async);
-        final tool = model.sessionView(at(746))!.frames.single.copies[1];
-        model.selectCopy(1, tool.id);
-        expect(model.selection.following, isTrue);
-        EffectAdded record(String name, String key, String after) =>
-            EffectAdded(
-              Effect(
-                id: 'a1b2-$name-$key',
-                sessionId: 'a1b2-session',
-                name: name,
-                key: key,
-                after: after,
-                place: copiesAt(name == 'tag' ? 9 : 8),
-                outputId: null,
-                log: logFileName,
-              ),
-            );
-        EventAdded started(String effectId, num time) => EventAdded(
-          sessionId: 'a1b2-session',
-          event: EffectStarted(time: at(time), effectId: effectId),
-        );
-        // Core's tag: another copy.
-        give(async, [record('tag', 'tc', 'vc'), started('a1b2-tag-tc', 20)]);
-        expect(model.selection.effectId, 'a1b2-verify-4');
-        // Tool's tag: the copy chosen.
-        give(async, [record('tag', 'tt', 'vt'), started('a1b2-tag-tt', 21)]);
-        expect(model.selection.effectId, 'a1b2-tag-tt');
-      });
-    });
-
-    test('the chosen copies are forgotten for another session', () {
-      run((async) {
-        open(async);
-        final tool = model.sessionView(at(746))!.frames.single.copies[1];
-        model.selectCopy(1, tool.id);
-        give(
-          async,
-          changesOf([
-            Journal(
-              'b2c3-session',
-              workflow: 'inPlace',
-              graph: copiesGraphJson(),
-              startedAt: 20,
-            ),
-          ]),
-        );
-        model.showSession('b2c3-session');
-        model.showSession('a1b2-session');
-        expect(model.sessionView(at(746))!.frames.single.selected, isNull);
-      });
-    });
-
-    test('a click on a node selects its last effect among those shown; on '
-        'a node without one, nothing', () {
+    test('a click on a node selects its last effect; on a node without one, '
+        'nothing', () {
       run((async) {
         open(async);
         model.clickNode('1');
@@ -1290,7 +1226,6 @@ void main() {
         expect(model.visitToOpen(verify)!.effectId, 'a1b2-verify-4');
         final details = model.detailsOf(verify, 'a1b2-verify-3', at(746));
         expect(details.visitText, 'Visit 1 of 2');
-        expect(details.copy, 'pkg 1');
       });
     });
   });
@@ -1401,24 +1336,24 @@ void main() {
       });
     });
 
-    group('in a session with copies', () {
-      const copies = Opened('2');
+    group('in a session, a call in place', () {
+      const ship = Opened('2', functionId: 'lib/packages.dart#ship');
 
       void open(FakeAsync async) {
-        graphFile.graph = copiesGraphFile();
+        graphFile.graph = packagesGraphFile();
         give(
           async,
           changesOf([
             Journal(
                 'a1b2-session',
                 workflow: 'inPlace',
-                graph: copiesGraphJson(),
+                graph: packagesGraphJson(),
               )
               ..effect(
                 'plan',
                 1,
                 end: 2,
-                place: copiesAt(4),
+                place: packagesAt(4),
                 key: 'p',
                 after: null,
               )
@@ -1426,7 +1361,7 @@ void main() {
                 'upload',
                 3,
                 end: 4,
-                place: copiesAt(7),
+                place: packagesAt(7),
                 key: 'uc',
                 after: 'p',
               )
@@ -1434,7 +1369,7 @@ void main() {
                 'upload',
                 3,
                 end: 5,
-                place: copiesAt(7),
+                place: packagesAt(7),
                 key: 'ut',
                 after: 'p',
               )
@@ -1442,76 +1377,47 @@ void main() {
                 'verify',
                 6,
                 end: 7,
-                place: copiesAt(8),
+                place: packagesAt(8),
                 key: 'vc',
                 after: 'uc',
               )
-              ..effect('verify', 8, place: copiesAt(8), key: 'vt', after: 'ut'),
+              ..effect(
+                'verify',
+                8,
+                place: packagesAt(8),
+                key: 'vt',
+                after: 'ut',
+              ),
           ]),
         );
-        model.expandNode(const [], copies);
+        model.expandNode(const [], ship);
       }
 
-      test('a copy chosen in the frame is the one opening it shows; Logs '
-          'and the selection follow it', () {
+      test('a click on a node in the frame selects its last effect; a double '
+          'click on an effect there opens it', () {
         run((async) {
           open(async);
-          var view = model.sessionView(at(746))!;
-          final tool = view.scopeOf(const [copies])!.copies!.copies[1];
-          model.selectCopyAt(const [copies], tool.id);
-          view = model.sessionView(at(746))!;
-          expect(view.scopeOf(const [copies])!.copies!.selected!.number, 2);
-          expect(view.logs.header.text, 'pkg 2 · 2 effects');
+          model.clickNode('2', path: const [ship]);
           expect(model.selection.effectId, 'a1b2-verify-4');
-
-          model.open(copies);
-          view = model.sessionView(at(746))!;
-          expect(view.frames.single.selected!.number, 2);
-          model.openLevel(0);
-          model.selectCopyAt(const [copies], null);
-          expect(model.sessionView(at(746))!.logs.header.text, '5 effects');
+          final verify =
+              model.canvas.frames.single.level.body.node('2')! as EffectNode;
+          expect(model.visitToOpen(verify)!.effectId, 'a1b2-verify-4');
         });
       });
 
-      test(
-        'a click on a node in the frame selects its last effect among '
-        'those the frame shows; a double click on an effect there opens it',
-        () {
-          run((async) {
-            open(async);
-            final core = model
-                .sessionView(at(746))!
-                .scopeOf(const [copies])!
-                .copies!
-                .copies
-                .first;
-            model.clickNode('2', path: const [copies]);
-            expect(model.selection.effectId, 'a1b2-verify-4');
-            model.selectCopyAt(const [copies], core.id);
-            model.clickNode('2', path: const [copies]);
-            expect(model.selection.effectId, 'a1b2-verify-3');
-            final verify =
-                model.canvas.frames.single.level.body.node('2')! as EffectNode;
-            expect(
-              model.visitToOpen(verify, path: const [copies])!.effectId,
-              'a1b2-verify-3',
-            );
-          });
-        },
-      );
-
       test('a node in a frame opens one level down from the frame', () {
         run((async) {
-          graphFile.graph = copiesGraphFile();
-          model.selectWorkflow('lib/copies.dart#viaCall');
-          model.expandNode(const [], const Opened('1'));
+          graphFile.graph = packagesGraphFile();
+          model.selectWorkflow('lib/packages.dart#nested');
+          const prepare = Opened('1', functionId: 'lib/packages.dart#prepare');
+          model.expandNode(const [], prepare);
           model.open(
-            const Opened('1', functionId: 'lib/copies.dart#publish'),
-            from: const [Opened('1')],
+            const Opened('2', functionId: 'lib/packages.dart#compile'),
+            from: const [prepare],
           );
           expect(
             [for (final level in model.canvas.levels) level.title],
-            ['viaCall', 'pkg in packages', 'publish()'],
+            ['nested', 'prepare()', 'compile()'],
           );
         });
       });

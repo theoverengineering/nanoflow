@@ -23,13 +23,14 @@ void main() {
     expanded: {'5': ExpandedNode(functionOf(release, 'publish').body)},
   );
 
-  /// viaCall with its copies expanded, and in them the call of publish().
-  GraphLayout copiesWithCall() => layoutBody(
+  /// viaCall with its call of publishEach() expanded, and in it the call of
+  /// publish().
+  GraphLayout callInCall() => layoutBody(
     functionOf(inline, 'viaCall').body,
     functions: inline.functions,
     expanded: {
       '1': ExpandedNode(
-        (functionOf(inline, 'viaCall').body.node('1')! as CopiesNode).body,
+        functionOf(inline, 'publishEach').body,
         expanded: {'1': ExpandedNode(functionOf(inline, 'publish').body)},
       ),
     },
@@ -415,8 +416,8 @@ void main() {
       }
     });
 
-    test('copies drawn in place end at a bar too, and the call in them', () {
-      final layout = copiesWithCall();
+    test('a call drawn in place in a frame ends at a bar too', () {
+      final layout = callInCall();
       _expectEndBar(layout, '1', ways: 1);
       _expectEndBar(layout.nodes['1']!.frame!.inner, '1', ways: 1);
       expect(checkLayout(layout), isEmpty);
@@ -952,7 +953,7 @@ void main() {
 
   group('two levels nested', () {
     for (final (name, lay, outer, inner) in [
-      ('a call in copies', copiesWithCall, '1', '1'),
+      ('publish() in publishEach()', callInCall, '1', '1'),
       ('crawl() in visit() in crawl', crawlInCrawl, '3', '2'),
     ]) {
       test('$name: each frame inside the one round it, every rule kept', () {
@@ -981,14 +982,8 @@ void main() {
   });
 
   test('a frame keeps the room it is given: its title row, its sides, its '
-      'bottom, its least width, the outlines over it', () {
-    const room = FrameRoom(
-      top: 70,
-      side: 24,
-      bottom: 30,
-      width: 1200,
-      above: 12,
-    );
+      'bottom, its least width', () {
+    const room = FrameRoom(top: 70, side: 24, bottom: 30, width: 1200);
     final layout = layoutBody(
       functionOf(release, 'release').body,
       functions: release.functions,
@@ -1007,12 +1002,10 @@ void main() {
     expect(body.left, call.tile.left);
     final end = frame.inner.nodes[endMarker]!.tile;
     expect(end.right, call.tile.right);
-    expect(call.marks.top, call.tile.top - 12);
     expect(checkLayout(layout), isEmpty);
   });
 
-  test('only calls and copies expand; ids the body does not have are left '
-      'out', () {
+  test('only calls expand; ids the body does not have are left out', () {
     final layout = layoutBody(
       functionOf(release, 'release').body,
       functions: release.functions,
@@ -1084,15 +1077,11 @@ void main() {
     // Frames whose body has an arrow going back or round from a node just
     // before its end: its lane is next to the frame's right side.
     var backBeforeEnd = 0;
-    // Copies drawn in place with an arrow of their level passing the
-    // outlines stacked behind them, down their right side.
-    var passedStacked = 0;
     // Arrows out of a node narrower than its layer turning before the
     // layer's right side.
     var turnedEarly = 0;
     // At every depth: no arrow of a level touches a frame in it but those
-    // into it and out of it, and none comes nearer than a clearance to the
-    // outlines stacked behind copies.
+    // into it and out of it.
     void visit(GraphLayout level, String where) {
       final layerRight = <int, double>{};
       for (final node in level.nodes.values) {
@@ -1113,27 +1102,12 @@ void main() {
         if (inner == null) continue;
         final at = '$where ${node.id}';
         final tile = node.tile;
-        final above = tile.top - node.marks.top;
         for (final edge in level.edges) {
           if (edge.from != node.id && edge.to != node.id) {
             expect(
               _borderTouches(edge, tile),
               isEmpty,
               reason: '$at: ${edge.from}->${edge.to}',
-            );
-          }
-          if (above <= 0) continue;
-          for (final (x, top, bottom) in verticals(edge)) {
-            if (x <= tile.right ||
-                bottom <= tile.top - above ||
-                top >= tile.bottom) {
-              continue;
-            }
-            passedStacked++;
-            expect(
-              x - (tile.right + above),
-              greaterThanOrEqualTo(clearance - 1e-9),
-              reason: '$at: ${edge.from}->${edge.to} at x $x',
             );
           }
         }
@@ -1164,11 +1138,6 @@ void main() {
       backBeforeEnd,
       greaterThan(0),
       reason: 'the lanes next to a frame\'s right side are tried',
-    );
-    expect(
-      passedStacked,
-      greaterThan(0),
-      reason: 'arrows passing the outlines behind copies are tried',
     );
     expect(
       earlyTurnFallbacks - fallbacks,
@@ -1216,12 +1185,12 @@ void main() {
     expect(level.bounds.height, lessThanOrEqualTo(1202));
   });
 
-  for (final (seed, base) in [(603, 2412.0), (870, 2895.5)]) {
+  for (final (seed, base) in [(603, 2347.0), (870, 2760.5)]) {
     test('random body $seed nested: it grows taller for nodes standing where '
         'more arrows come in level only by half a tile for each turn saved, '
         'counted twice for an arrow turning twice no more', () {
-      // Each would grow far for a turn or two without the guard:
-      // docs/graph-layout.md §6 «Узел с несколькими входами» has their numbers.
+      // 603 would grow far for the turns it saves without the guard:
+      // docs/graph-layout.md §6 «Узел с несколькими входами» has its numbers.
       final layout = _randomNested(seed);
       final before = _asBefore(() => _randomNested(seed));
       expect(before.bounds.height, closeTo(base, 1));
@@ -1313,26 +1282,14 @@ GraphLayout _asBefore(GraphLayout Function() lay) {
 GraphLayout _randomNested(int seed) {
   Map<String, ExpandedNode> expand(GraphBody body, int salt, int depth) => {
     for (final (i, node) in body.nodes.indexed)
-      if ((node is CallNode || node is CopiesNode) &&
-          (seed + salt + i) % 3 != 0 &&
-          depth < 2)
+      if (node is CallNode && (seed + salt + i) % 3 != 0 && depth < 2)
         node.id: () {
           final inner = randomBody(seed * 31 + salt + i + 1);
           // Often wider than the body: its end goes on to the side.
           final width = (seed + salt + i) % 4 * 200.0;
           return ExpandedNode(
             inner,
-            // Copies keep the canvas's room, with the outlines stacked
-            // behind them.
-            room: node is CopiesNode
-                ? FrameRoom(
-                    top: 42,
-                    side: 24,
-                    bottom: 30,
-                    width: width,
-                    above: 12,
-                  )
-                : FrameRoom(width: width),
+            room: FrameRoom(width: width),
             expanded: expand(inner, salt + i + 7, depth + 1),
           );
         }(),

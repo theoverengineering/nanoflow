@@ -36,16 +36,16 @@ typedef OpenModel = GraphModel Function(
 /// (`GraphNotes`) floating over the canvas, the notes under the bar. The
 /// borders of the column and of the panel move.
 ///
-/// A double click on a call draws its function's body, on copies the body
-/// of a copy (`openings`); a call of an interface method first offers its
-/// implementations. The `+` on a call or copies draws that body in place,
-/// in a frame (decision 6), the same way; the model keeps what is expanded
-/// for any session of the workflow. The ↗ on a call opens its function as
-/// the main graph, chosen the same way (open-as-graph design).
+/// A double click on a call draws its function's body (`openings`); a call
+/// of an interface method first offers its implementations. The `+` on a
+/// call draws that body in place, in a frame (decision 6), the same way;
+/// the model keeps what is expanded for any session of the workflow. The ↗
+/// on a call opens its function as the main graph, chosen the same way
+/// (open-as-graph design).
 ///
 /// `Open` in `Logs` opens the effect details window over it all on the
-/// selected effect; a double click on an effect node, on the node's last effect
-/// among those shown, else on the node alone. The effect the window shows is
+/// selected effect; a double click on an effect node, on the node's last
+/// effect, else on the node alone. The effect the window shows is
 /// selected, so the canvas and `Logs` are on it once the window closes —
 /// or, when it is the session's last effect, on its newest: following goes
 /// on under the window, which stays on its effect.
@@ -241,11 +241,10 @@ class _GraphScreenState extends State<GraphScreen> {
   void _openEffect(EffectDetails effect) =>
       setState(() => _details = (node: null, effectId: effect.effectId));
 
-  /// A double click on the effect node [node] — of the frame drawn in place
-  /// at [path], when given: the window on the effect it opens on, which is
-  /// selected; on the node alone when it has none.
-  void _openEffectNode(EffectNode node, List<Opened>? path) {
-    final visit = _model.visitToOpen(node, path: path);
+  /// A double click on the effect node [node]: the window on the effect it
+  /// opens on, which is selected; on the node alone when it has none.
+  void _openEffectNode(EffectNode node) {
+    final visit = _model.visitToOpen(node);
     if (visit != null) _model.showVisit(visit.effectId);
     setState(() => _details = (node: node, effectId: visit?.effectId));
   }

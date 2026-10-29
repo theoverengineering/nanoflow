@@ -1,19 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../layout/layout.dart' as layout;
-import '../../layout/layout.dart'
-    show
-        NodeKind,
-        badgeHeight,
-        badgeOverhang,
-        copiesBadge,
-        overTile,
-        stackInset,
-        stackStep,
-        tilesBehind;
+import '../../layout/layout.dart' show NodeKind;
 import '../../state/graph_marks.dart';
 import '../../widgets/clickable.dart';
 import '../../widgets/dashed_border.dart';
@@ -29,22 +18,19 @@ import 'tile_marks.dart';
 /// графе»): the tile of its kind with its name and place under it, a name
 /// cut short whole in a tooltip. An effect's tile has a terminal on it, a
 /// condition's a branch; a call's `ƒ`, a function, with the effects of the
-/// function small under it (`{ 3 }`); copies' is a stack of three tiles, `ƒ`
-/// on it with the effects of a copy under it, and how many copies ran
-/// across the top right of the stack (`×3`; `×n` without a session); the
-/// start and end markers are dashed and say so.
+/// function small under it (`{ 3 }`); the start and end markers are dashed
+/// and say so.
 ///
 /// With a session, the tile is framed in the state of the effects on it, its
 /// state's badge on its bottom right corner; an effect node entered more than
-/// once says so over its top right corner (`2×`) — in the body of copies,
-/// all shown, how many copies are on it now instead. A fork the code went
-/// through looks as a visited effect, `2×` over it as over one, none in the
-/// body of copies, all shown; one it did not is plain. The looks and the
-/// badges are in tile_marks.dart. The ring round the selected effect's node
-/// is not the tile's: the canvas draws it under the arrows ([ringOf]).
+/// once says so over its top right corner (`2×`). A fork the code went
+/// through looks as a visited effect, `2×` over it as over one; one it did
+/// not is plain. The looks and the badges are in tile_marks.dart. The ring
+/// round the selected effect's node is not the tile's: the canvas draws it
+/// under the arrows ([ringOf]).
 ///
-/// A call or copies that can be expanded in place has `+` in its tile's
-/// top right corner: [onExpand], told where on the screen (decision 6). A
+/// A call that can be expanded in place has `+` in its tile's top right
+/// corner: [onExpand], told where on the screen (decision 6). A
 /// call whose function can be opened as the main graph has ↗ left of it —
 /// in the corner without `+`: [onOpenAsGraph], told the same (open-as-graph
 /// design §2).
@@ -67,8 +53,6 @@ class NodeTile extends StatelessWidget {
     required this.node,
     String? id,
     this.marks,
-    this.allCopies = false,
-    this.copies = copiesBadge,
     this.onTap,
     this.onDoubleTap,
     this.onExpand,
@@ -83,9 +67,6 @@ class NodeTile extends StatelessWidget {
 
   /// The key of the tile itself of the node [id]: what is clicked.
   static Key tileKeyOf(String id) => ValueKey(('tile', id));
-
-  /// The key of the badge that counts the copies on an effect.
-  static Key runningKeyOf(String id) => ValueKey(('running', id));
 
   /// The key of the ring round the node [id], the selected effect's.
   static Key ringKeyOf(String id) => ValueKey(('ring', id));
@@ -106,18 +87,10 @@ class NodeTile extends StatelessWidget {
   /// plain.
   final NodeMarks? marks;
 
-  /// Whether an effect node says how many copies are on it now, and a fork
-  /// nothing: in the body of copies, all of them shown, and in the bodies in
-  /// it.
-  final bool allCopies;
-
-  /// The badge over the stack of copies: `×3`, `×0` muted, `×n`.
-  final String copies;
-
   final VoidCallback? onTap;
   final ValueChanged<Offset>? onDoubleTap;
 
-  /// Expands the call or copies in place; `null` for a node that does not.
+  /// Expands the call in place; `null` for a node that does not.
   final ValueChanged<Offset>? onExpand;
 
   /// Opens the call's function as the main graph; `null` for a node that
@@ -132,8 +105,7 @@ class NodeTile extends StatelessWidget {
   /// in a tooltip over the tile; `null` for none.
   final InlineSpan? doc;
 
-  /// How far round the tile the widget reaches: the tiles stacked behind
-  /// copies, the badges, the ring.
+  /// How far round the tile the widget reaches: the badges, the ring.
   static const _margin = 16.0;
 
   static const _radius = 12.0;
@@ -178,7 +150,7 @@ class NodeTile extends StatelessWidget {
     final tile = node.tile.toRect();
     return Rect.fromLTRB(
           tile.left - _margin,
-          tile.top - math.max(_margin, overTile(node.kind)),
+          tile.top - _margin,
           tile.right + _margin,
           tile.bottom + _margin,
         )
@@ -196,32 +168,7 @@ class NodeTile extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        for (var k = tilesBehind(node.kind); k >= 1; k--)
-          Positioned.fromRect(
-            rect: Rect.fromLTRB(
-              tile.left + k * stackInset,
-              tile.top - k * stackStep,
-              tile.right - k * stackInset,
-              tile.bottom - k * stackStep,
-            ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: CanvasColors.stackFill,
-                border: Border.fromBorderSide(
-                  BorderSide(color: look.stack, width: 1.5),
-                ),
-                borderRadius: const BorderRadius.all(Radius.circular(_radius)),
-              ),
-            ),
-          ),
         _clickable(tile, look),
-        if (node.kind == NodeKind.copies)
-          Positioned(
-            right: area.width - tile.right - badgeOverhang,
-            top:
-                tile.top - stackStep * tilesBehind(node.kind) - badgeHeight / 2,
-            child: CopiesBadge(copies, muted: marks?.copies == 0),
-          ),
         if (count != null)
           Positioned(
             right: area.width - tile.right - _overhang,
@@ -283,12 +230,9 @@ class NodeTile extends StatelessWidget {
     );
   }
 
-  /// Over an effect node's top right corner: in the body of copies, all
-  /// shown, how many copies are on it now, if any; else `2×` when it was
-  /// entered more than once. Over a fork's, `2×` when the code went through
-  /// it more than once, and over a call's when it ran more than once, but
-  /// neither in the body of copies, all shown. Nothing over copies', which
-  /// have their stack there.
+  /// Over an effect node's top right corner: `2×` when it was entered more
+  /// than once. Over a fork's, `2×` when the code went through it more than
+  /// once, and over a call's when it ran more than once.
   Widget? _countBadge() {
     final marks = this.marks;
     if (marks == null ||
@@ -296,14 +240,6 @@ class NodeTile extends StatelessWidget {
             node.kind != NodeKind.condition &&
             node.kind != NodeKind.call)) {
       return null;
-    }
-    // In copies, how many copies are on the effect — the effects all of them
-    // passed have nothing over them (docs/design/code-first/copies-frame.html),
-    // nor do forks, where nothing runs, nor calls, which each copy runs.
-    if (allCopies) {
-      return node.kind == NodeKind.effect && marks.running > 0
-          ? RunningBadge(marks.running, key: runningKeyOf(id))
-          : null;
     }
     return switch (marks.visitsText) {
       final visits? => CountBadge(visits),
@@ -378,7 +314,7 @@ class NodeTile extends StatelessWidget {
         return _framed(look, EffectIcon(size: _iconSize, color: look.icon));
       case NodeKind.condition:
         return _framed(look, ConditionIcon(size: _iconSize, color: look.icon));
-      case NodeKind.call || NodeKind.copies:
+      case NodeKind.call:
         return _framed(
           look,
           Column(

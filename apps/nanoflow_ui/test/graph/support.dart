@@ -217,68 +217,6 @@ FakeFiles reviewFiles() => FakeFiles(
 final inlineFile =
     '${Platform.environment['HOME']}/Projects/inline/$graphFileName';
 
-/// A session of `inPlace` of the describe fixture `inline` over core, tool
-/// and cli, as the library writes it: core done, tool on verify, cli on
-/// tag; at [columnNow].
-Journal copiesSession() {
-  final graph = graphFileNamed('inline');
-  String place(int line) => 'lib/inline.dart:$line';
-  final j = Journal(
-    'c0c0-session',
-    workflow: 'inPlace',
-    graph: graph.toJson(),
-    code: graph.fingerprint,
-  );
-  for (final (i, pkg) in ['core', 'tool', 'cli'].indexed) {
-    j.effect(
-      'upload',
-      10 + i,
-      end: 60 + i * 30,
-      output: '$pkg:uploaded',
-      place: place(10),
-      key: 'upload#${i + 1}@e3b0',
-      after: null,
-    );
-  }
-  for (final (i, pkg) in ['core', 'tool', 'cli'].indexed) {
-    j.effect(
-      'verify',
-      61 + i * 30,
-      end: pkg == 'tool' ? null : 120 + i * 30,
-      output: '$pkg:verified',
-      place: place(11),
-      key: 'verify#1@$pkg',
-      after: 'upload#${i + 1}@e3b0',
-    );
-  }
-  for (final pkg in ['core', 'cli']) {
-    j.effect(
-      'tag',
-      pkg == 'core' ? 121 : 181,
-      end: pkg == 'core' ? 150 : null,
-      output: '$pkg:tagged',
-      place: place(12),
-      key: 'tag#1@$pkg',
-      after: 'verify#1@$pkg',
-    );
-  }
-  return j;
-}
-
-/// The model of the fixture `inline` at [inlineFile] with
-/// [copiesSession], its outputs as the effects gave them. For the screen to
-/// own.
-GraphModel copiesModel() => ownedModel(
-  graph: graphFileNamed('inline'),
-  file: inlineFile,
-  changes: copiesSession().changes,
-  documents: {
-    for (final pkg in ['core', 'tool', 'cli'])
-      for (final what in ['uploaded', 'verified', 'tagged'])
-        '$pkg:$what': '$pkg:$what',
-  },
-);
-
 /// Pumps the graph screen of [reviewFile] owning [model], by default
 /// [reviewModel], at [now], by default [columnNow]. Returns the model.
 Future<GraphModel> pumpReview(

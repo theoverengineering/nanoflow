@@ -5,18 +5,16 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nanoflow_model/nanoflow_model.dart'
-    show CopiesNode, GraphBody, GraphFunction;
+    show GraphBody, GraphFunction;
 
 import '../../layout/layout.dart' as layout;
 import '../../state/graph_model.dart';
 import '../../state/node_keys.dart';
 import '../../state/session_view.dart';
 import '../../widgets/clickable.dart';
-import '../copy_switcher.dart';
 import 'canvas_bodies.dart';
 import 'canvas_marks.dart';
 import 'canvas_style.dart';
-import 'copies_frame.dart';
 import 'layout_geometry.dart';
 import 'legend.dart';
 
@@ -50,20 +48,17 @@ class GraphCanvasController {
 /// new data comes for the same graph.
 ///
 /// With a session, its effects are marked on the nodes (spec §9 «Эффекты на
-/// графе»); a click on a node selects its last effect. The body of copies is
-/// drawn in their frame, with the copy switcher (decisions 10, 11).
+/// графе»); a click on a node selects its last effect.
 ///
-/// A double click on a call or on copies is [onOpenNode]: what it opens
-/// (`openings`) is drawn instead; on an effect, [onOpenEffect]. The `+` on a
-/// call or copies is [onExpandNode]: the model's expanded nodes are drawn
-/// in place, each a frame round its body (decision 6), whose `−` collapses
-/// it; in a frame, everything works as on the level drawn, and a copies
-/// frame has its switcher and how its copies stand. Expanding or
-/// collapsing keeps the node where it is on the screen — or fits the graph
-/// again while the view is as fitting left it. The ↗ on a call is
-/// [onOpenAsGraph]: its function becomes the main graph (open-as-graph
-/// design). The place under a tile is [onOpenPlace]: the editor opens it at
-/// its line.
+/// A double click on a call is [onOpenNode]: what it opens (`openings`) is
+/// drawn instead; on an effect, [onOpenEffect]. The `+` on a call is
+/// [onExpandNode]: the model's expanded nodes are drawn in place, each a
+/// frame round its body (decision 6), whose `−` collapses it; in a frame,
+/// everything works as on the level drawn. Expanding or collapsing keeps
+/// the node where it is on the screen — or fits the graph again while the
+/// view is as fitting left it. The ↗ on a call is [onOpenAsGraph]: its
+/// function becomes the main graph (open-as-graph design). The place under
+/// a tile is [onOpenPlace]: the editor opens it at its line.
 class GraphCanvas extends StatefulWidget {
   const GraphCanvas({
     super.key,
@@ -89,13 +84,13 @@ class GraphCanvas extends StatefulWidget {
 
   final GraphCanvasController? controller;
 
-  /// Opens a call or copies: on a double click on it.
+  /// Opens a call: on a double click on it.
   final OpenNode? onOpenNode;
 
   /// Opens the effect details window on an effect node: on a double click.
   final OpenEffect? onOpenEffect;
 
-  /// Expands a call or copies in place: on its `+`; without it, no `+`.
+  /// Expands a call in place: on its `+`; without it, no `+`.
   final ExpandNode? onExpandNode;
 
   /// Opens the function of a call as the main graph: on its ↗; without it,
@@ -134,9 +129,6 @@ class _GraphCanvasState extends State<GraphCanvas> {
 
   late CanvasGraph _canvas;
   CanvasMarks _marks = CanvasMarks.plain;
-
-  /// The frame round the body drawn, when it is the body of copies.
-  CopiesFrameBox? _frame;
 
   /// The body laid out, and what it is drawn with in JSON: another body
   /// drawn the same keeps the layout and the view. What is laid out in
@@ -216,51 +208,27 @@ class _GraphCanvasState extends State<GraphCanvas> {
     _layOut(
       _canvas.body,
       _canvas.file?.functions ?? const {},
-      expandedOf(_canvas.frames, view),
+      expandedOf(_canvas.frames),
       expansionsKeyOf(_canvas.frames),
       _levelOf(_canvas, model),
     );
-    final depth = _canvas.levels.length - 1;
-    _marks = CanvasMarks.of(view, depth: depth);
+    _marks = CanvasMarks.of(view);
     final graph = _layout;
-    final copies = _copiesDrawn();
-    final frame = view?.frames.where((f) => f.depth == depth).firstOrNull;
-    _frame = graph == null || copies == null
-        ? null
-        : CopiesFrameBox.around(
-            graph.bounds.toRect(),
-            title: 'each ${copies.label}',
-            count: frame?.countText ?? plainCopiesCount,
-            switcher: frame == null ? null : CopySwitcher.widthOf(frame),
-          );
-    _drawing = graph == null ? null : _draw(graph, copies, frame, view);
+    _drawing = graph == null ? null : _draw(graph, view);
   }
 
-  /// The copies whose body is drawn; `null` when the body drawn is not
-  /// theirs.
-  CopiesNode? _copiesDrawn() {
-    final levels = _canvas.levels;
-    if (levels.length < 2) return null;
-    final node = levels[levels.length - 2].body.node(
-      levels.last.opened!.nodeId,
-    );
-    return node is CopiesNode ? node : null;
-  }
-
-  /// What is drawn, in the coordinates of the layout: the layout, and the
-  /// frame of copies round it.
-  Rect get _extent => _frame?.extent ?? _layout!.bounds.toRect();
+  /// What is drawn, in the coordinates of the layout: the layout.
+  Rect get _extent => _layout!.bounds.toRect();
 
   /// Lays out [body], the nodes of [expanded] in place in it — [expansions]
   /// tells which those are —, unless it is laid out so already.
   ///
   /// Another body is fitted anew. Nodes expanded or collapsed fit the graph
   /// again while the view is as fitting left it; else the node expanded or
-  /// collapsed stays where it was on the screen. What the session changes
-  /// — the room of a frame of copies for its switcher — keeps the view. The
-  /// same [level] drawn otherwise — the graph file written again — keeps
-  /// the scale, and the node nearest the middle of the screen stays where
-  /// it is on it; while the view is as fitting left it, it fits again.
+  /// collapsed stays where it was on the screen. The same [level] drawn
+  /// otherwise — the graph file written again — keeps the scale, and the
+  /// node nearest the middle of the screen stays where it is on it; while
+  /// the view is as fitting left it, it fits again.
   void _layOut(
     GraphBody? body,
     Map<String, GraphFunction> functions,
@@ -551,19 +519,12 @@ class _GraphCanvasState extends State<GraphCanvas> {
     );
   }
 
-  /// The arrows, the exits and the nodes of [graph], with the marks, in
-  /// the frame of [copies] when it is their body that is drawn, [frame] the
-  /// session's copies of it; calls and copies open on a double click,
-  /// effects their details. The nodes expanded in place are frames, the
-  /// bodies in them drawn the same way, [view] the session's.
-  Widget _draw(
-    layout.GraphLayout graph,
-    CopiesNode? copies,
-    CopiesFrame? frame,
-    SessionView? view,
-  ) {
+  /// The arrows, the exits and the nodes of [graph], with the marks; calls
+  /// open on a double click, effects their details. The nodes expanded in
+  /// place are frames, the bodies in them drawn the same way, [view] the
+  /// session's.
+  Widget _draw(layout.GraphLayout graph, SessionView? view) {
     final extent = _extent;
-    final box = _frame;
     final layers = (BodyDrawer(
       model: widget.model,
       canvas: _canvas,
@@ -583,23 +544,6 @@ class _GraphCanvasState extends State<GraphCanvas> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            if (box != null && copies != null)
-              Positioned.fill(
-                child: CopiesFrameView(
-                  box: box,
-                  title: 'each ${copies.label}',
-                  count: frame?.countText ?? plainCopiesCount,
-                  footer: frame?.footer,
-                  switcher: frame == null
-                      ? null
-                      : CopySwitcher(
-                          frame: frame,
-                          hintOf: widget.model.hintOf,
-                          onSelect: (id) =>
-                              widget.model.selectCopy(frame.depth, id),
-                        ),
-                ),
-              ),
             Positioned(
               left: -extent.left,
               top: -extent.top,

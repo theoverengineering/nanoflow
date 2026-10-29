@@ -41,13 +41,7 @@ GraphBody randomBody(int seed) {
       case final kind:
         nodes.add(switch (kind) {
           1 => EffectNode(id: id, place: place, name: 'run $id'),
-          2 => CallNode(id: id, place: place, functions: ['lib/f.dart#f$id']),
-          _ => CopiesNode(
-            id: id,
-            place: place,
-            label: 'x in $id',
-            body: const GraphBody(nodes: [], edges: []),
-          ),
+          _ => CallNode(id: id, place: place, functions: ['lib/f.dart#f$id']),
         });
         if (random.nextInt(5) > 0) edgesTo(id, null);
     }

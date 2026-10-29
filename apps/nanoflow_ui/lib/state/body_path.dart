@@ -1,19 +1,20 @@
 /// The levels of the graph the canvas goes down through (spec §9 «Граф»,
-/// decision 6): a workflow's body, then the body of a call or of copies
-/// opened in it, and so on; one level is drawn at a time, the path to it
-/// above as crumbs. Pure.
+/// decision 6): a workflow's body, then the body of a call opened in it, and
+/// so on; one level is drawn at a time, the path to it above as crumbs.
+/// Pure.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-/// A node of the shown body opened one level down: [nodeId], and for a call
-/// which of its functions, [functionId].
+/// A call of the shown body opened one level down: [nodeId], and which of
+/// its functions, [functionId].
 final class Opened {
   const Opened(this.nodeId, {this.functionId});
 
   final String nodeId;
 
-  /// The function a call is opened to; `null` for copies.
+  /// The function the call is opened to; `null` when not given, which
+  /// opens nothing.
   final String? functionId;
 
   @override
@@ -34,7 +35,7 @@ final class BodyLevel {
   const BodyLevel._(this.title, this.body, this.opened, {this.doc});
 
   /// The crumb: the workflow's name (`review`), a function's with `()`
-  /// ([functionTitle]), copies' label (`pkg in packages`).
+  /// ([functionTitle]).
   final String title;
 
   final GraphBody body;
@@ -43,7 +44,7 @@ final class BodyLevel {
   final Opened? opened;
 
   /// The doc of the level's function, the workflow's or a called one's;
-  /// `null` without one, and for copies.
+  /// `null` without one.
   final String? doc;
 }
 
@@ -53,15 +54,14 @@ String functionTitle(String id) => '${id.substring(id.indexOf('#') + 1)}()';
 
 /// What opening [node] can show, one level down: one choice for each
 /// function of a call that [functions] has, in the call's order (several
-/// for the implementations of an interface method); the body of copies;
-/// nothing for an effect or a condition.
+/// for the implementations of an interface method); nothing for an effect
+/// or a condition.
 List<Opened> openings(GraphNode node, Map<String, GraphFunction> functions) =>
     switch (node) {
       CallNode(:final id, functions: final ids) => [
         for (final function in ids)
           if (functions.containsKey(function)) Opened(id, functionId: function),
       ],
-      CopiesNode(:final id) => [Opened(id)],
       EffectNode() || ConditionNode() => const [],
     };
 
@@ -94,15 +94,13 @@ BodyLevel? levelOpened(
 ) {
   final node = body.node(opened.nodeId);
   if (node == null || !openings(node, functions).contains(opened)) return null;
-  return switch (node) {
-    CopiesNode(:final label, :final body) => BodyLevel._(label, body, opened),
-    _ => BodyLevel._(
-      functionTitle(opened.functionId!),
-      functions[opened.functionId]!.body,
-      opened,
-      doc: functions[opened.functionId]!.doc,
-    ),
-  };
+  final function = functions[opened.functionId]!;
+  return BodyLevel._(
+    functionTitle(opened.functionId!),
+    function.body,
+    opened,
+    doc: function.doc,
+  );
 }
 
 /// The path to a level, as a key: another path, another key.

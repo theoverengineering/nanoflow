@@ -92,19 +92,6 @@ void main() {
     await expectGolden(tester, 'graph_interrupted');
   });
 
-  testWidgets('the body of copies, all of them: how many are on each effect, '
-      'done 1 of 3 (docs/design/code-first/copies-frame.html)', (tester) async {
-    final model = await pumpGraphScreen(
-      tester,
-      path: inlineFile,
-      model: copiesModel(),
-      now: () => columnNow,
-    );
-    model.open(const Opened('1'));
-    await settle(tester);
-    await expectGolden(tester, 'graph_copies');
-  });
-
   testWidgets('a running session on functions expanded in place: publish() '
       'and upload() in it, its effects on their nodes, sign() done as a tile '
       '(docs/design/code-first/function-frames.html)', (tester) async {
@@ -140,35 +127,5 @@ void main() {
       ], const Opened('1', functionId: 'lib/publish.dart#upload'));
     await settle(tester);
     await expectGolden(tester, 'graph_frames');
-  });
-
-  testWidgets('copies expanded in place in a running session: the stack, '
-      'the switcher, how many are on each effect, done 1 of 3 '
-      '(docs/design/code-first/copies-frame.html)', (tester) async {
-    final model = await pumpGraphScreen(
-      tester,
-      path: inlineFile,
-      model: copiesModel(),
-      now: () => columnNow,
-    );
-    model.expandNode(const [], const Opened('1'));
-    await settle(tester);
-    await expectGolden(tester, 'graph_copies_in_place');
-  });
-
-  testWidgets('one copy: its path, pkg 2 · now verify, the ways it has '
-      'not gone darker '
-      '(docs/design/code-first/copy-switcher.html)', (tester) async {
-    final model = await pumpGraphScreen(
-      tester,
-      path: inlineFile,
-      model: copiesModel(),
-      now: () => columnNow,
-    );
-    model.open(const Opened('1'));
-    await settle(tester);
-    model.selectCopy(1, 'c0c0-upload-1');
-    await settle(tester);
-    await expectGolden(tester, 'graph_copy');
   });
 }

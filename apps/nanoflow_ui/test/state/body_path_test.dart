@@ -38,20 +38,22 @@ void main() {
     );
   });
 
-  test('copies open their body, their crumb their label; a call inside '
-      'opens further', () {
+  test('a call in a function opened opens further', () {
     final viaCall = functionOf(inline, 'viaCall');
     final levels = bodyLevels(viaCall, inline.functions, const [
-      Opened('1'),
+      Opened('1', functionId: 'lib/inline.dart#publishEach'),
       Opened('1', functionId: 'lib/inline.dart#publish'),
     ]);
-    expect(titles(levels), ['viaCall', 'pkg in packages', 'publish()']);
-    expect(levels[1].body, (viaCall.body.node('1')! as CopiesNode).body);
+    expect(titles(levels), ['viaCall', 'publishEach()', 'publish()']);
+    expect(
+      levels[1].body,
+      inline.functions['lib/inline.dart#publishEach']!.body,
+    );
     expect(levels[2].body, inline.functions['lib/inline.dart#publish']!.body);
   });
 
   test('a level has the doc of its function: the workflow\'s, a called '
-      'one\'s; copies none', () {
+      'one\'s; none without one', () {
     GraphFunction withDoc(GraphFunction f, String doc) => GraphFunction(
       id: f.id,
       name: f.name,
@@ -66,7 +68,7 @@ void main() {
       publish: withDoc(inline.functions[publish]!, 'Publishes [pkg].'),
     };
     final levels = bodyLevels(viaCall, functions, const [
-      Opened('1'),
+      Opened('1', functionId: 'lib/inline.dart#publishEach'),
       Opened('1', functionId: publish),
     ]);
     expect(
@@ -84,7 +86,7 @@ void main() {
         titles(bodyLevels(releaseFunction, release.functions, path));
 
     // No such node; an effect; a function the call does not go to; a function
-    // the file does not have; copies opened as a call.
+    // the file does not have.
     expect(deepest(const [Opened('9')]), ['release']);
     expect(deepest(const [Opened('3')]), ['release']);
     expect(
@@ -99,14 +101,6 @@ void main() {
         ]),
       ),
       ['release'],
-    );
-    expect(
-      titles(
-        bodyLevels(functionOf(inline, 'inPlace'), inline.functions, const [
-          Opened('1', functionId: 'lib/inline.dart#publish'),
-        ]),
-      ),
-      ['inPlace'],
     );
     // What follows an effect that does not open is left out too.
     expect(
@@ -129,12 +123,9 @@ void main() {
       expect(openings(call, const {}), isEmpty);
     });
 
-    test('copies: their body; an effect or a condition: nothing', () {
-      final inPlace = functionOf(inline, 'inPlace');
-      expect(openings(inPlace.body.node('1')!, inline.functions), [
-        const Opened('1'),
-      ]);
-      expect(openings(inPlace.body.node('2')!, inline.functions), isEmpty);
+    test('an effect or a condition: nothing', () {
+      final viaCall = functionOf(inline, 'viaCall');
+      expect(openings(viaCall.body.node('2')!, inline.functions), isEmpty);
       expect(openings(releaseFunction.body.node('2')!, const {}), isEmpty);
     });
 

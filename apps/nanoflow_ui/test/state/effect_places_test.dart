@@ -5,9 +5,9 @@ import 'package:nanoflow_ui/state/effect_places.dart';
 import 'support.dart';
 
 void main() {
-  final file = copiesGraphFile();
+  final file = packagesGraphFile();
   EffectPlaces effectPlacesOf(String workflow) => EffectPlaces.of(
-    file.functions['lib/copies.dart#$workflow'],
+    file.functions['lib/packages.dart#$workflow'],
     file.functions,
   );
   GraphNode nodeOf(GraphBody body, String id) => body.node(id)!;
@@ -31,34 +31,40 @@ void main() {
 
   group('isPlaceOf', () {
     test('an effect is at the place of a node it equals', () {
-      expect(isPlaceOf('lib/copies.dart:7', 'lib/copies.dart:7'), isTrue);
+      expect(isPlaceOf('lib/packages.dart:7', 'lib/packages.dart:7'), isTrue);
     });
 
     test('an effect is at the place of a node it ends with after a /', () {
       expect(
-        isPlaceOf('/Users/me/copies/lib/copies.dart:7', 'lib/copies.dart:7'),
+        isPlaceOf(
+          '/Users/me/packages/lib/packages.dart:7',
+          'lib/packages.dart:7',
+        ),
         isTrue,
       );
     });
 
     test('not at another line, nor at a path that only ends the same', () {
-      expect(isPlaceOf('lib/copies.dart:70', 'lib/copies.dart:7'), isFalse);
-      expect(isPlaceOf('lib/copies.dart:7', 'lib/copies.dart:70'), isFalse);
-      expect(isPlaceOf('mylib/copies.dart:7', 'lib/copies.dart:7'), isFalse);
+      expect(isPlaceOf('lib/packages.dart:70', 'lib/packages.dart:7'), isFalse);
+      expect(isPlaceOf('lib/packages.dart:7', 'lib/packages.dart:70'), isFalse);
+      expect(
+        isPlaceOf('mylib/packages.dart:7', 'lib/packages.dart:7'),
+        isFalse,
+      );
     });
   });
 
   group('EffectPlaces', () {
-    test('has every effect node the workflow reaches: its body, the bodies '
-        'of its copies, the functions it calls', () {
+    test('has every effect node the workflow reaches: its body, the '
+        'functions it calls and those they call', () {
       expect(placesOf(effectPlacesOf('inPlace').nodes), {
-        for (final line in [4, 7, 8, 9, 12]) copiesAt(line),
+        for (final line in [4, 7, 8, 9, 12]) packagesAt(line),
       });
       expect(placesOf(effectPlacesOf('viaCall').nodes), {
-        for (final line in [17, 20, 21, 22]) copiesAt(line),
+        for (final line in [17, 20, 21, 22]) packagesAt(line),
       });
       expect(placesOf(effectPlacesOf('nested').nodes), {
-        for (final line in [27, 30, 31, 34, 37]) copiesAt(line),
+        for (final line in [27, 30, 31, 34, 37]) packagesAt(line),
       });
     });
 
@@ -68,12 +74,13 @@ void main() {
 
     test('an effect is at the nodes of its place (D13)', () {
       final places = effectPlacesOf('inPlace');
-      expect(placesOf(places.of(effectAt(copiesAt(7)))), {copiesAt(7)});
-      expect(placesOf(places.of(effectAt('/home/me/copies/${copiesAt(7)}'))), {
-        copiesAt(7),
-      });
+      expect(placesOf(places.of(effectAt(packagesAt(7)))), {packagesAt(7)});
       expect(
-        places.of(effectAt(copiesAt(20))),
+        placesOf(places.of(effectAt('/home/me/packages/${packagesAt(7)}'))),
+        {packagesAt(7)},
+      );
+      expect(
+        places.of(effectAt(packagesAt(20))),
         isEmpty,
         reason: 'publish is not called',
       );
@@ -144,71 +151,50 @@ void main() {
 
     test('an effect without a place, or at no node, is not on the graph', () {
       final places = effectPlacesOf('inPlace');
-      expect(places.onGraph(effectAt(copiesAt(8))), isTrue);
-      expect(places.onGraph(effectAt(copiesAt(99))), isFalse);
+      expect(places.onGraph(effectAt(packagesAt(8))), isTrue);
+      expect(places.onGraph(effectAt(packagesAt(99))), isFalse);
       expect(places.onGraph(effectAt(null)), isFalse);
       expect(places.onGraph(null), isFalse);
     });
 
-    test(
-      'what a node holds: an effect itself; copies the effect nodes in their '
-      'body and deeper; a call those of its functions; a condition '
-      'nothing',
-      () {
-        final places = effectPlacesOf('nested');
-        final nested = file.functions['lib/copies.dart#nested']!.body;
-        final outer = nodeOf(nested, '1') as CopiesNode;
-        expect(places.within(nodeOf(nested, '2')), {nodeOf(nested, '2')});
-        expect(placesOf(places.within(outer)), {
-          for (final line in [27, 30, 31, 34]) copiesAt(line),
-        });
-        expect(placesOf(places.within(nodeOf(outer.body, '2'))), {
-          copiesAt(30),
-          copiesAt(31),
-        });
-        final viaCall = file.functions['lib/copies.dart#viaCall']!.body;
-        final copies = nodeOf(viaCall, '1') as CopiesNode;
-        expect(
-          placesOf(effectPlacesOf('viaCall').within(nodeOf(copies.body, '1'))),
-          {
-            for (final line in [20, 21, 22]) copiesAt(line),
-          },
-        );
-        expect(
-          places.within(
-            const ConditionNode(
-              id: 'c',
-              place: 'lib/copies.dart:1',
-              label: 'x',
-            ),
-          ),
-          isEmpty,
-        );
-      },
-    );
-
-    test('the owner of a body: the function it is the body of, or holds it '
-        'as the body of copies', () {
+    test('what a node holds: an effect itself; a call the effect nodes of its '
+        'functions and deeper; a condition nothing', () {
       final places = effectPlacesOf('nested');
-      final nested = file.functions['lib/copies.dart#nested']!;
-      final outer = nested.body.node('1')! as CopiesNode;
-      final inner = outer.body.node('2')! as CopiesNode;
-      expect(places.ownerOf(nested.body), nested.id);
-      expect(places.ownerOf(inner.body), nested.id);
-      expect(places.ownerOf(const GraphBody(nodes: [], edges: [])), isNull);
+      final nested = file.functions['lib/packages.dart#nested']!.body;
+      final prepare = file.functions['lib/packages.dart#prepare']!.body;
+      expect(places.within(nodeOf(nested, '2')), {nodeOf(nested, '2')});
+      expect(placesOf(places.within(nodeOf(nested, '1'))), {
+        for (final line in [27, 30, 31, 34]) packagesAt(line),
+      });
+      expect(placesOf(places.within(nodeOf(prepare, '2'))), {
+        packagesAt(30),
+        packagesAt(31),
+      });
+      final viaCall = file.functions['lib/packages.dart#viaCall']!.body;
+      expect(placesOf(effectPlacesOf('viaCall').within(nodeOf(viaCall, '1'))), {
+        for (final line in [20, 21, 22]) packagesAt(line),
+      });
+      expect(
+        places.within(
+          const ConditionNode(
+            id: 'c',
+            place: 'lib/packages.dart:1',
+            label: 'x',
+          ),
+        ),
+        isEmpty,
+      );
     });
 
     test('a called body: that of a function the workflow calls, not the '
-        'workflow\'s own nor that of copies', () {
+        'workflow\'s own', () {
       final places = effectPlacesOf('viaCall');
-      final viaCall = file.functions['lib/copies.dart#viaCall']!;
-      final copies = viaCall.body.node('1')! as CopiesNode;
+      final viaCall = file.functions['lib/packages.dart#viaCall']!;
       expect(
-        places.isCalled(file.functions['lib/copies.dart#publish']!.body),
+        places.isCalled(file.functions['lib/packages.dart#publish']!.body),
         isTrue,
       );
       expect(places.isCalled(viaCall.body), isFalse);
-      expect(places.isCalled(copies.body), isFalse);
       expect(places.isCalled(const GraphBody(nodes: [], edges: [])), isFalse);
     });
 
@@ -238,32 +224,33 @@ void main() {
 
     test('isIn: whether an effect is on a node or inside it', () {
       final places = effectPlacesOf('inPlace');
-      final body = file.functions['lib/copies.dart#inPlace']!.body;
-      expect(places.isIn(effectAt(copiesAt(8)), nodeOf(body, '2')), isTrue);
-      expect(places.isIn(effectAt(copiesAt(8)), nodeOf(body, '1')), isFalse);
-      expect(places.isIn(effectAt(copiesAt(4)), nodeOf(body, '1')), isTrue);
+      final body = file.functions['lib/packages.dart#inPlace']!.body;
+      expect(places.isIn(effectAt(packagesAt(8)), nodeOf(body, '2')), isTrue);
+      expect(places.isIn(effectAt(packagesAt(8)), nodeOf(body, '1')), isFalse);
+      expect(places.isIn(effectAt(packagesAt(4)), nodeOf(body, '1')), isTrue);
       expect(places.isIn(effectAt(null), nodeOf(body, '1')), isFalse);
       expect(places.isIn(null, nodeOf(body, '1')), isFalse);
     });
 
     test('isInFunction: whether an effect is in the body of a function the '
         'workflow reaches, or in what it calls', () {
-      const publish = 'lib/copies.dart#publish';
+      const publish = 'lib/packages.dart#publish';
       final places = effectPlacesOf('viaCall');
-      expect(places.isInFunction(effectAt(copiesAt(20)), publish), isTrue);
+      expect(places.isInFunction(effectAt(packagesAt(20)), publish), isTrue);
       expect(
-        places.isInFunction(effectAt(copiesAt(17), 'announce'), publish),
+        places.isInFunction(effectAt(packagesAt(17), 'announce'), publish),
         isFalse,
       );
       expect(places.isInFunction(effectAt(null), publish), isFalse);
       expect(places.isInFunction(null, publish), isFalse);
       expect(
-        places.isInFunction(effectAt(copiesAt(20)), 'lib/copies.dart#gone'),
+        places.isInFunction(effectAt(packagesAt(20)), 'lib/packages.dart#gone'),
         isFalse,
       );
-      // inPlace does not call publish: none of its effects are in it.
+      // inPlace calls ship, not publish: none of its effects are in it.
       expect(
-        effectPlacesOf('inPlace').isInFunction(effectAt(copiesAt(20)), publish),
+        effectPlacesOf('inPlace')
+            .isInFunction(effectAt(packagesAt(20)), publish),
         isFalse,
       );
       expect(places.withinFunction(publish), {
@@ -275,9 +262,9 @@ void main() {
   test('effectsNotOnGraph: the effects without a place or at no node, in '
       'order', () {
     final journal = Journal('a1b2-session', workflow: 'inPlace')
-      ..effect('plan', 1, end: 2, place: copiesAt(4))
+      ..effect('plan', 1, end: 2, place: packagesAt(4))
       ..effect('stray', 2, end: 3, place: 'lib/old.dart:3')
-      ..effect('upload', 3, end: 4, place: copiesAt(7))
+      ..effect('upload', 3, end: 4, place: packagesAt(7))
       ..effect('nowhere', 4);
     final effects = journal.data.effectsInOrder;
     expect(

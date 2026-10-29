@@ -74,7 +74,7 @@ final class NodeBox {
   final String? place;
 
   /// What is written on the tile: `start`, `end` instead of an icon; the
-  /// effects of a call or of a copy under its function icon, `{ 3 }`.
+  /// effects of a call under its function icon, `{ 3 }`.
   final String? inside;
 
   /// The node's layer, 0 for the leftmost.
@@ -89,8 +89,7 @@ final class NodeBox {
   /// The place, centred under the name; empty without a place.
   final Rect placeRect;
 
-  /// The room kept over the tile: for the tiles stacked behind copies, and
-  /// for badges over its top right corner.
+  /// The room kept over the tile for badges over its top right corner.
   final Rect marks;
 
   /// The room kept for the state badge on the tile's bottom right corner.
@@ -105,7 +104,7 @@ final class NodeBox {
   /// bar is; the end's bar is drawn with the frame ([FrameBox.endBar]).
   final bool port;
 
-  /// The body of a call or copies expanded in place, [tile] its frame;
+  /// The body of a call expanded in place, [tile] its frame;
   /// `null` for a node drawn as a tile. A frame has no name or place under
   /// it: [nameRect] and [placeRect] are empty.
   final FrameBox? frame;

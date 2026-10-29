@@ -1,29 +1,28 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_ui/state/copies.dart';
 import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/graph_marks.dart';
 
 import 'support.dart';
 
 void main() {
-  final file = copiesGraphFile();
+  final file = packagesGraphFile();
   GraphFunction workflow(String name) =>
-      file.functions['lib/copies.dart#$name']!;
+      file.functions['lib/packages.dart#$name']!;
   EffectPlaces placesOf(String name) =>
       EffectPlaces.of(workflow(name), file.functions);
 
-  /// `inPlace` over core and tool: plan, then copies; core's tag runs,
-  /// tool's verify failed.
+  /// `inPlace` over core and tool: plan, then ship() for each; core's tag
+  /// runs, tool's verify failed.
   Journal inPlace() {
     final j = Journal('a1b2-session', workflow: 'inPlace')
-      ..effect('plan', 1, end: 2, place: copiesAt(4), key: 'p', after: null);
+      ..effect('plan', 1, end: 2, place: packagesAt(4), key: 'p', after: null);
     for (final (i, pkg) in ['core', 'tool'].indexed) {
       j.effect(
         'upload',
         3 + i,
         end: 5,
-        place: copiesAt(7),
+        place: packagesAt(7),
         key: 'u$pkg',
         after: 'p',
       );
@@ -33,7 +32,7 @@ void main() {
         'verify',
         6,
         end: 7,
-        place: copiesAt(8),
+        place: packagesAt(8),
         key: 'vcore',
         after: 'ucore',
       )
@@ -42,11 +41,11 @@ void main() {
         6,
         end: 8,
         failed: true,
-        place: copiesAt(8),
+        place: packagesAt(8),
         key: 'vtool',
         after: 'utool',
       )
-      ..effect('tag', 9, place: copiesAt(9), key: 'tcore', after: 'vcore');
+      ..effect('tag', 9, place: packagesAt(9), key: 'tcore', after: 'vcore');
     return j;
   }
 
@@ -108,17 +107,12 @@ void main() {
       expect(marks.of('3')!.effects, 0);
     });
 
-    test('copies hold the effects of their copies: failed when one failed, '
-        'whatever else runs; their count of copies', () {
-      final copies = marks.of('2')!;
-      expect(copies.state, NodeState.failed);
-      expect(copies.effects, 5);
-      expect(copies.running, 1);
-      expect(copies.copies, 2);
-    });
-
-    test('an effect node has no count of copies', () {
-      expect(marks.of('1')!.copies, isNull);
+    test('a call holds the effects of its runs: failed when one failed, '
+        'whatever else runs; how many times it ran', () {
+      final call = marks.of('2')!;
+      expect(call.state, NodeState.failed);
+      expect(call.effects, 5);
+      expect(call.calls, 2);
     });
 
     test('markers and unknown nodes have no marks', () {
@@ -127,40 +121,22 @@ void main() {
     });
   });
 
-  group('marks of the body of the copies', () {
-    final session = inPlace().data;
-    final places = placesOf('inPlace');
-    final frame = workflow('inPlace').body.node('2')! as CopiesNode;
-
-    test('all copies: each node counts the effects of every copy on it, and '
-        'how many run', () {
-      final marks = GraphMarks.of(frame.body, places: places, session: session);
-      expect(marks.of('1')!.effects, 2);
-      expect(marks.of('2')!.state, NodeState.failed);
-      expect(marks.of('3')!.state, NodeState.running);
-      expect(marks.of('3')!.running, 1);
-    });
-
-    test('one copy: only its effects, the effects it has not reached not '
-        'visited', () {
-      final tool = copiesOf(frame, places: places, session: session)[1];
-      final marks = GraphMarks.of(
-        frame.body,
-        places: places,
-        session: session,
-        effects: tool.effects,
-      );
-      expect(marks.of('1')!.state, NodeState.visited);
-      expect(marks.of('1')!.effects, 1);
-      expect(marks.of('2')!.state, NodeState.failed);
-      expect(marks.of('3')!.state, NodeState.notVisited);
-    });
+  test('the body of a function called more than once: each node counts the '
+      'effects of every run on it', () {
+    final marks = GraphMarks.of(
+      file.functions['lib/packages.dart#ship']!.body,
+      places: placesOf('inPlace'),
+      session: inPlace().data,
+    );
+    expect(marks.of('1')!.effects, 2);
+    expect(marks.of('2')!.state, NodeState.failed);
+    expect(marks.of('3')!.state, NodeState.running);
   });
 
   test('a running effect outweighs finished ones on its node', () {
     final j = Journal('a1b2-session', workflow: 'inPlace')
-      ..effect('plan', 1, end: 2, place: copiesAt(4))
-      ..effect('plan', 3, place: copiesAt(4));
+      ..effect('plan', 1, end: 2, place: packagesAt(4))
+      ..effect('plan', 3, place: packagesAt(4));
     final marks = GraphMarks.of(
       workflow('inPlace').body,
       places: placesOf('inPlace'),
@@ -175,8 +151,8 @@ void main() {
     test('an effect that was running is interrupted: it outweighs finished '
         'ones on its node, and does not run', () {
       final j = Journal('a1b2-session', workflow: 'inPlace')
-        ..effect('plan', 1, end: 2, place: copiesAt(4))
-        ..effect('plan', 3, place: copiesAt(4))
+        ..effect('plan', 1, end: 2, place: packagesAt(4))
+        ..effect('plan', 3, place: packagesAt(4))
         ..processGone();
       final marks = GraphMarks.of(
         workflow('inPlace').body,
@@ -184,30 +160,30 @@ void main() {
         session: j.data,
       );
       expect(marks.of('1')!.state, NodeState.interrupted);
-      expect(marks.of('1')!.running, 0);
       expect(marks.of('1')!.effects, 2);
     });
 
     test('a failed effect outweighs it', () {
       final j = inPlace()..processGone();
-      final frame = workflow('inPlace').body.node('2')! as CopiesNode;
       final places = placesOf('inPlace');
-      final all = GraphMarks.of(frame.body, places: places, session: j.data);
-      expect(all.of('3')!.state, NodeState.interrupted);
-      expect(all.of('3')!.running, 0);
-      final copies = GraphMarks.of(
+      final ship = GraphMarks.of(
+        file.functions['lib/packages.dart#ship']!.body,
+        places: places,
+        session: j.data,
+      );
+      expect(ship.of('3')!.state, NodeState.interrupted);
+      final call = GraphMarks.of(
         workflow('inPlace').body,
         places: places,
         session: j.data,
       ).of('2')!;
-      expect(copies.state, NodeState.failed);
-      expect(copies.running, 0);
+      expect(call.state, NodeState.failed);
     });
 
     test('runs as before while the process runs or is not known to', () {
       for (final alive in [true, null]) {
         final j = Journal('a1b2-session', workflow: 'inPlace')
-          ..effect('plan', 3, place: copiesAt(4))
+          ..effect('plan', 3, place: packagesAt(4))
           ..owned(testOwner, alive: alive);
         final marks = GraphMarks.of(
           workflow('inPlace').body,
@@ -215,24 +191,28 @@ void main() {
           session: j.data,
         );
         expect(marks.of('1')!.state, NodeState.running);
-        expect(marks.of('1')!.running, 1);
       }
     });
   });
 
   test('a call holds the effects of its functions', () {
     final j = Journal('e5f6-session', workflow: 'viaCall')
-      ..effect('upload', 1, end: 2, place: copiesAt(20), key: 'u', after: null)
-      ..effect('verify', 3, place: copiesAt(21), key: 'v', after: 'u');
-    final copies = workflow('viaCall').body.node('1')! as CopiesNode;
+      ..effect(
+        'upload',
+        1,
+        end: 2,
+        place: packagesAt(20),
+        key: 'u',
+        after: null,
+      )
+      ..effect('verify', 3, place: packagesAt(21), key: 'v', after: 'u');
     final marks = GraphMarks.of(
-      copies.body,
+      workflow('viaCall').body,
       places: placesOf('viaCall'),
       session: j.data,
     );
     expect(marks.of('1')!.state, NodeState.running);
     expect(marks.of('1')!.effects, 2);
-    expect(marks.of('1')!.copies, isNull);
   });
 
   group('a call counts the times it ran', () {
@@ -243,7 +223,7 @@ void main() {
         CallNode(
           id: '2',
           place: 'lib/w.dart:3',
-          functions: ['lib/copies.dart#publish'],
+          functions: ['lib/packages.dart#publish'],
         ),
       ],
       edges: [],
@@ -267,11 +247,11 @@ void main() {
             'upload',
             3,
             end: 4,
-            place: copiesAt(20),
+            place: packagesAt(20),
             key: 'u$pkg',
             after: 'p',
           )
-          ..effect('verify', 5, end: 6, place: copiesAt(21), key: 'v$pkg');
+          ..effect('verify', 5, end: 6, place: packagesAt(21), key: 'v$pkg');
       }
       return GraphMarks.of(body, places: places, session: j.data).of('2')!;
     }
@@ -332,8 +312,8 @@ void main() {
     expect(marks.nodesOf(j.effects.single.id), ['2', '3']);
   });
 
-  test('the selected effect marks the node it is on, or the call or copies it '
-      'is in', () {
+  test('the selected effect marks the node it is on, or the call it is '
+      'in', () {
     final j = inPlace();
     final tag = j.effects.last.id;
     final plan = j.effects.first.id;
@@ -368,13 +348,10 @@ void main() {
       final findings = marks.of('5')!;
       expect(findings.state, NodeState.visited);
       expect(findings.effects, 2);
-      expect(findings.running, 0);
-      expect(findings.copies, isNull);
       expect(findings.visitsText, '2×');
       final change = marks.of('2')!;
       expect(change.state, NodeState.visited);
       expect(change.effects, 1);
-      expect(change.running, 0);
       expect(change.visitsText, isNull);
     });
 

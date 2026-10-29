@@ -9,9 +9,9 @@ import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 import 'support.dart';
 
 void main() {
-  final file = copiesGraphFile();
+  final file = packagesGraphFile();
   final places = EffectPlaces.of(
-    file.functions['lib/copies.dart#inPlace'],
+    file.functions['lib/packages.dart#inPlace'],
     file.functions,
   );
   final now = at(746);
@@ -19,37 +19,26 @@ void main() {
   /// review's effects as docs/design/graph.png has them, at [places] of
   /// inPlace: collect and inspect done, inspect again, then notify running.
   Journal mockupJournal() => Journal('a1b2-session', workflow: 'inPlace')
-    ..effect('collect', 0, end: 149, place: copiesAt(4))
-    ..effect('inspect', 149, end: 341, place: copiesAt(7))
-    ..effect('inspect', 341, end: 612, place: copiesAt(7), restarts: [400])
-    ..effect('notify', 612, place: copiesAt(8));
+    ..effect('collect', 0, end: 149, place: packagesAt(4))
+    ..effect('inspect', 149, end: 341, place: packagesAt(7))
+    ..effect('inspect', 341, end: 612, place: packagesAt(7), restarts: [400])
+    ..effect('notify', 612, place: packagesAt(8));
 
   SessionData mockup() => mockupJournal().data;
 
-  List<EffectRow> effectRows(
-    SessionData session, {
-    String? Function(String effectId)? copyOf,
-    DateTime? time,
-  }) => [
+  List<EffectRow> effectRows(SessionData session, {DateTime? time}) => [
     for (final row in logRows(
       session,
       effects: session.state.effects,
       places: places,
-      copyOf: copyOf,
       now: time ?? now,
     ))
       if (row is EffectRow) row,
   ];
 
-  group('the header (ui-spec «Logs»)', () {
-    test('counts the effects shown', () {
-      expect(const LogsHeader(8).text, '8 effects');
-      expect(const LogsHeader(1).text, '1 effect');
-    });
-
-    test('names the copy shown', () {
-      expect(const LogsHeader(3, copy: 'copy 2').text, 'copy 2 · 3 effects');
-    });
+  test('the header counts the effects shown (ui-spec «Logs»)', () {
+    expect(const LogsHeader(8).text, '8 effects');
+    expect(const LogsHeader(1).text, '1 effect');
   });
 
   test('a row is the effect, its first start, and how long it took, in the '
@@ -82,7 +71,7 @@ void main() {
     /// gone.
     SessionData interrupted() =>
         (mockupJournal()
-              ..effect('tag', 620, end: 700, place: copiesAt(9), after: null)
+              ..effect('tag', 620, end: 700, place: packagesAt(9), after: null)
               ..processGone())
             .data;
 
@@ -146,7 +135,7 @@ void main() {
     final session = (Journal(
       'a1b2-session',
       workflow: 'inPlace',
-    )..effect('plan', 0, end: 6, failed: true, place: copiesAt(4))).data;
+    )..effect('plan', 0, end: 6, failed: true, place: packagesAt(4))).data;
     final row = effectRows(session).single;
     expect(row.detail, 'StateError: plan failed');
     expect(row.failure, isTrue);
@@ -164,16 +153,6 @@ void main() {
     expect(rows.map((row) => row.failure), [false, false]);
   });
 
-  test('an effect in copies names them', () {
-    final session = mockup();
-    final second = session.state.effects[1].effectId;
-    final rows = effectRows(
-      session,
-      copyOf: (effectId) => effectId == second ? 'pkg 2' : null,
-    );
-    expect(rows.map((row) => row.copy), [null, 'pkg 2', null, null]);
-  });
-
   test('only the effects given, in their order', () {
     final session = mockup();
     final rows = logRows(
@@ -189,7 +168,7 @@ void main() {
   test('an ended session ends with how it ended, unless the end is left '
       'out', () {
     final finished = Journal('a1b2-session', workflow: 'inPlace')
-      ..effect('plan', 0, end: 6, place: copiesAt(4))
+      ..effect('plan', 0, end: 6, place: packagesAt(4))
       ..finish(7);
     final end =
         logRows(
@@ -202,7 +181,7 @@ void main() {
     expect(end.text, 'Session finished');
     expect(end.atText, '14:03:18');
     final failed = Journal('a1b2-session', workflow: 'inPlace')
-      ..effect('plan', 0, end: 6, place: copiesAt(4))
+      ..effect('plan', 0, end: 6, place: packagesAt(4))
       ..fail(7, 'StateError: plan failed');
     final failure =
         logRows(
@@ -281,31 +260,39 @@ void main() {
 
     test('each run of a call is one row, in place of its first effect, '
         'numbered in the order the runs started', () {
-      expect([for (final row in rows()) describe(row)], [
-        '0 plan',
-        '0 publish() run 1 · 2 effects',
-        '0 publish() run 2 · 2 effects',
-        '0 publish() run 3 · 2 effects',
-        '0 announce',
-      ]);
+      expect(
+        [for (final row in rows()) describe(row)],
+        [
+          '0 plan',
+          '0 publish() run 1 · 2 effects',
+          '0 publish() run 2 · 2 effects',
+          '0 publish() run 3 · 2 effects',
+          '0 announce',
+        ],
+      );
     });
 
     test("a run's sign weighs its effects: failed, then running, then "
         'finished; its time runs from its first start to its last end', () {
       final runs = rows().whereType<RunRow>().toList();
-      expect([for (final run in runs) run.status], [
-        StartOutcome.finished,
-        StartOutcome.failed,
-        StartOutcome.running,
-      ]);
+      expect(
+        [for (final run in runs) run.status],
+        [StartOutcome.finished, StartOutcome.failed, StartOutcome.running],
+      );
       expect(runs.first.started, clockTime(at(10)));
       expect(runs.first.duration, const Duration(seconds: 30));
       expect(runs.last.duration, const Duration(seconds: 100 - 12));
       expect(runs.first.barStart, closeTo(10 / 100, 1e-9));
       expect(runs.first.barEnd, closeTo(40 / 100, 1e-9));
       expect(runs.last.striped, isTrue);
-      expect(runs.first.holds(publishingSession().state.effects[1].effectId), isTrue);
-      expect(runs.first.holds(publishingSession().state.effects[3].effectId), isFalse);
+      expect(
+        runs.first.holds(publishingSession().state.effects[1].effectId),
+        isTrue,
+      );
+      expect(
+        runs.first.holds(publishingSession().state.effects[3].effectId),
+        isFalse,
+      );
     });
 
     test(
@@ -330,23 +317,29 @@ void main() {
       final second = rows().whereType<RunRow>().elementAt(1);
       expect(second.open, isFalse);
       final opened = rows(open: {second.key});
-      expect([for (final row in opened) describe(row)], [
-        '0 plan',
-        '0 publish() run 1 · 2 effects',
-        '0 publish() run 2 · 2 effects',
-        '1 upload',
-        '1 verify',
-        '0 publish() run 3 · 2 effects',
-        '0 announce',
-      ]);
+      expect(
+        [for (final row in opened) describe(row)],
+        [
+          '0 plan',
+          '0 publish() run 1 · 2 effects',
+          '0 publish() run 2 · 2 effects',
+          '1 upload',
+          '1 verify',
+          '0 publish() run 3 · 2 effects',
+          '0 announce',
+        ],
+      );
       expect(opened.whereType<RunRow>().elementAt(1).open, isTrue);
     });
 
-    test('the calls are those of the body and of its copies', () {
-      final viaCall = file.functions['lib/copies.dart#viaCall']!;
-      expect([for (final call in callsIn(viaCall.body)) call.functions], [
-        ['lib/copies.dart#publish'],
-      ]);
+    test('the calls are those of the body', () {
+      final viaCall = file.functions['lib/packages.dart#viaCall']!;
+      expect(
+        [for (final call in callsIn(viaCall.body)) call.functions],
+        [
+          ['lib/packages.dart#publish'],
+        ],
+      );
       expect(callsIn(publishingWorkflow.body).single.id, '2');
     });
   });

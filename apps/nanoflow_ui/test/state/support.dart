@@ -97,7 +97,15 @@ Map<String, Object?> effectNode(String id, String name, int line) => {
   'id': id,
   'kind': 'effect',
   'name': name,
-  'place': 'lib/copies.dart:$line',
+  'place': 'lib/packages.dart:$line',
+};
+
+/// A call node of a test graph, of the function [function].
+Map<String, Object?> callNode(String id, String function, int line) => {
+  'id': id,
+  'kind': 'call',
+  'functions': [function],
+  'place': 'lib/packages.dart:$line',
 };
 
 /// A body of a test graph whose [nodes] follow one another from its entry
@@ -114,137 +122,88 @@ Map<String, Object?> chainBody(List<Map<String, Object?>> nodes) => {
   ],
 };
 
-/// The graph file describe writes for `lib/copies.dart` of the package
-/// `copies`, whose workflows run copies side by side as the prototype
-/// step_keys does (the line of each effect in the comments):
+/// The graph file of `lib/packages.dart` of the package `packages`, whose
+/// workflows call functions that hold their effects (the line of each node
+/// in the comments):
 ///
-/// ```dart
-/// Future<String> inPlace(Flow f, List<String> packages) async {
-///   final plan = await f.effect('plan', …);                   // 4
-///   final results = await Future.wait([                       // 5
-///     for (final pkg in plan) () async {
-///       final up = await f.effect('upload', …);               // 7
-///       final ok = await f.effect('verify', …);               // 8
-///       return f.effect('tag', …);                            // 9
-///     }(),
-///   ]);
-///   return f.effect('announce', …);                           // 12
-/// }
-///
-/// Future<String> viaCall(Flow f, List<String> packages) async {
-///   final results = await Future.wait([                       // 15
-///     for (final pkg in packages) publish(f, pkg),
-///   ]);
-///   return f.effect('announce', …);                           // 17
-/// }
-///
-/// Future<String> publish(Flow f, String pkg) async {
-///   final up = await f.effect('upload', …);                   // 20
-///   final ok = await f.effect('verify', …);                   // 21
-///   return f.effect('tag', …);                                // 22
-/// }
-///
-/// Future<String> nested(Flow f, List<String> packages) async {
-///   final results = await Future.wait([                       // 25
-///     for (final pkg in packages) () async {
-///       final src = await f.effect('fetch', …);               // 27
-///       final builds = await Future.wait([                    // 28
-///         for (final target in targets) () async {
-///           final bin = await f.effect('build', …);           // 30
-///           return f.effect('test', …);                       // 31
-///         }(),
-///       ]);
-///       return f.effect('upload', …);                         // 34
-///     }(),
-///   ]);
-///   return f.effect('announce', …);                           // 37
-/// }
+/// ```text
+/// inPlace (3):  plan (4) → ship() (5) → announce (12)
+/// ship (6):     upload (7) → verify (8) → tag (9)
+/// viaCall (14): publish() (16) → announce (17)
+/// publish (19): upload (20) → verify (21) → tag (22)
+/// nested (24):  prepare() (25) → announce (37)
+/// prepare (26): fetch (27) → compile() (28) → upload (34)
+/// compile (29): build (30) → test (31)
 /// ```
-Map<String, Object?> copiesGraphJson() => {
+Map<String, Object?> packagesGraphJson() => {
   'format': 2,
-  'package': 'copies',
-  'fingerprint': 'sha256:copies-code',
-  'sources': {'lib/copies.dart': 'sha256:c0c0'},
+  'package': 'packages',
+  'fingerprint': 'sha256:packages-code',
+  'sources': {'lib/packages.dart': 'sha256:c0c0'},
   'builds': <String, String>{},
   'workflows': [
-    'lib/copies.dart#inPlace',
-    'lib/copies.dart#nested',
-    'lib/copies.dart#viaCall',
+    'lib/packages.dart#inPlace',
+    'lib/packages.dart#nested',
+    'lib/packages.dart#viaCall',
   ],
   'functions': {
-    'lib/copies.dart#inPlace': {
+    'lib/packages.dart#compile': {
+      'name': 'compile',
+      'place': 'lib/packages.dart:29',
+      'body': chainBody([
+        effectNode('1', 'build', 30),
+        effectNode('2', 'test', 31),
+      ]),
+    },
+    'lib/packages.dart#inPlace': {
       'name': 'inPlace',
-      'place': 'lib/copies.dart:3',
+      'place': 'lib/packages.dart:3',
       'body': chainBody([
         effectNode('1', 'plan', 4),
-        {
-          'id': '2',
-          'kind': 'copies',
-          'label': 'pkg in plan',
-          'place': 'lib/copies.dart:5',
-          'body': chainBody([
-            effectNode('1', 'upload', 7),
-            effectNode('2', 'verify', 8),
-            effectNode('3', 'tag', 9),
-          ]),
-        },
+        callNode('2', 'lib/packages.dart#ship', 5),
         effectNode('3', 'announce', 12),
       ]),
     },
-    'lib/copies.dart#nested': {
+    'lib/packages.dart#nested': {
       'name': 'nested',
-      'place': 'lib/copies.dart:24',
+      'place': 'lib/packages.dart:24',
       'body': chainBody([
-        {
-          'id': '1',
-          'kind': 'copies',
-          'label': 'pkg in packages',
-          'place': 'lib/copies.dart:25',
-          'body': chainBody([
-            effectNode('1', 'fetch', 27),
-            {
-              'id': '2',
-              'kind': 'copies',
-              'label': 'target in targets',
-              'place': 'lib/copies.dart:28',
-              'body': chainBody([
-                effectNode('1', 'build', 30),
-                effectNode('2', 'test', 31),
-              ]),
-            },
-            effectNode('3', 'upload', 34),
-          ]),
-        },
+        callNode('1', 'lib/packages.dart#prepare', 25),
         effectNode('2', 'announce', 37),
       ]),
     },
-    'lib/copies.dart#publish': {
+    'lib/packages.dart#prepare': {
+      'name': 'prepare',
+      'place': 'lib/packages.dart:26',
+      'body': chainBody([
+        effectNode('1', 'fetch', 27),
+        callNode('2', 'lib/packages.dart#compile', 28),
+        effectNode('3', 'upload', 34),
+      ]),
+    },
+    'lib/packages.dart#publish': {
       'name': 'publish',
-      'place': 'lib/copies.dart:19',
+      'place': 'lib/packages.dart:19',
       'body': chainBody([
         effectNode('1', 'upload', 20),
         effectNode('2', 'verify', 21),
         effectNode('3', 'tag', 22),
       ]),
     },
-    'lib/copies.dart#viaCall': {
-      'name': 'viaCall',
-      'place': 'lib/copies.dart:14',
+    'lib/packages.dart#ship': {
+      'name': 'ship',
+      'place': 'lib/packages.dart:6',
       'body': chainBody([
-        {
-          'id': '1',
-          'kind': 'copies',
-          'label': 'pkg in packages',
-          'place': 'lib/copies.dart:15',
-          'body': chainBody([
-            {
-              'id': '1',
-              'kind': 'call',
-              'functions': ['lib/copies.dart#publish'],
-              'place': 'lib/copies.dart:16',
-            },
-          ]),
-        },
+        effectNode('1', 'upload', 7),
+        effectNode('2', 'verify', 8),
+        effectNode('3', 'tag', 9),
+      ]),
+    },
+    'lib/packages.dart#viaCall': {
+      'name': 'viaCall',
+      'place': 'lib/packages.dart:14',
+      'body': chainBody([
+        callNode('1', 'lib/packages.dart#publish', 16),
         effectNode('2', 'announce', 17),
       ]),
     },
@@ -252,8 +211,8 @@ Map<String, Object?> copiesGraphJson() => {
   'warnings': <Object?>[],
 };
 
-/// [copiesGraphJson] read.
-GraphFile copiesGraphFile() => GraphFile.fromJson(copiesGraphJson());
+/// [packagesGraphJson] read.
+GraphFile packagesGraphFile() => GraphFile.fromJson(packagesGraphJson());
 
 /// What a recording tool wrote into a fixture directory: the graph file, and
 /// the sessions as the real library wrote them, by workflow, with the values
@@ -264,51 +223,18 @@ typedef Recorded = ({
   Map<String, Object?> documents,
 });
 
-/// Sessions the real library wrote for the workflows of
-/// tests/e2e/test/fixtures/copies — in place, given to map, through a
-/// call, copies in copies — with the graph file describe wrote for them
-/// and the values of their documents: test/state/fixtures/copies.
-///
-/// Recorded again with
-///
-/// ```sh
-/// cd tests/e2e
-/// dart run tool/record_copies.dart ../../apps/nanoflow_ui/test/state/fixtures/copies
-/// ```
-///
-/// whenever the library changes how it keys effects (decision D1).
-Recorded recordedCopies() => _recorded('test/state/fixtures/copies');
-
-/// Sessions the real library wrote for the workflows of
-/// tests/e2e/test/fixtures/calls — plan, a call of publish (upload, verify)
-/// or a closure called in place with the same, then announce on the stable
-/// channel — with the graph file describe wrote for them:
-/// test/state/fixtures/calls.
-///
-/// Recorded again with
-///
-/// ```sh
-/// cd tests/e2e
-/// dart run tool/record_calls.dart ../../apps/nanoflow_ui/test/state/fixtures/calls
-/// ```
-///
-/// whenever the library changes how it keys effects (decision D1).
+/// Sessions the real library wrote for workflows written as functions — plan,
+/// a call of publish (upload, verify) or a closure called in place with the
+/// same, then announce on the stable channel — with the graph file describe
+/// wrote for them: test/state/fixtures/calls. They stay as journal data;
+/// nothing records them again.
 Recorded recordedCalls() => _recorded('test/state/fixtures/calls');
 
 /// The session the real library wrote for the `review` workflow of
-/// examples/review run on the branch its README uses, `parseConfig` —
-/// collect, inspect, fix, inspect, then publish and notify side by side —
-/// with the example's graph file: test/state/fixtures/review.
-///
-/// Recorded again with
-///
-/// ```sh
-/// cd tests/e2e
-/// dart run tool/record_review.dart ../../apps/nanoflow_ui/test/state/fixtures/review
-/// ```
-///
-/// whenever the library changes how it keys effects or what it writes for
-/// them, or the example changes.
+/// examples/review, then a function, run on the branch its README uses,
+/// `parseConfig` — collect, inspect, fix, inspect, then publish and notify
+/// side by side — with the example's graph file: test/state/fixtures/review.
+/// It stays as journal data; nothing records it again.
 Recorded recordedReview() => _recorded('test/state/fixtures/review');
 
 Recorded _recorded(String dir) {
@@ -339,8 +265,8 @@ Recorded _recorded(String dir) {
   );
 }
 
-/// The place of line [line] of `lib/copies.dart`.
-String copiesAt(int line) => 'lib/copies.dart:$line';
+/// The place of line [line] of `lib/packages.dart`.
+String packagesAt(int line) => 'lib/packages.dart:$line';
 
 /// 14:03:11 local time on 2026-09-21: when the mockups' session a1b2 starts.
 final DateTime t0 = DateTime(2026, 9, 21, 14, 3, 11).toUtc();
@@ -661,8 +587,8 @@ final class FixedFreshness extends FreshnessWatch {
   }
 }
 
-/// A workflow `w`: plan, then publish of [copiesGraphFile] (upload, verify)
-/// called once for each package, then announce.
+/// A workflow `w`: plan, then publish of [packagesGraphFile] (upload,
+/// verify) called once for each package, then announce.
 const publishingWorkflow = GraphFunction(
   id: 'lib/w.dart#w',
   name: 'w',
@@ -673,7 +599,7 @@ const publishingWorkflow = GraphFunction(
       CallNode(
         id: '2',
         place: 'lib/w.dart:3',
-        functions: ['lib/copies.dart#publish'],
+        functions: ['lib/packages.dart#publish'],
       ),
       EffectNode(id: '3', place: 'lib/w.dart:4', name: 'announce'),
     ],
@@ -683,7 +609,7 @@ const publishingWorkflow = GraphFunction(
 
 /// Where the effects of [publishingSession] are on [publishingWorkflow].
 EffectPlaces publishingPlaces() => EffectPlaces.of(publishingWorkflow, {
-  ...copiesGraphFile().functions,
+  ...packagesGraphFile().functions,
   publishingWorkflow.id: publishingWorkflow,
 });
 
@@ -698,7 +624,7 @@ SessionData publishingSession() {
         'upload',
         10 + i,
         end: 20 + i,
-        place: copiesAt(20),
+        place: packagesAt(20),
         key: 'u$pkg',
         after: 'p',
       )
@@ -707,7 +633,7 @@ SessionData publishingSession() {
         30 + i,
         end: pkg == 'docs' ? null : 40 + i,
         failed: pkg == 'tool',
-        place: copiesAt(21),
+        place: packagesAt(21),
         key: 'v$pkg',
         after: 'u$pkg',
       );

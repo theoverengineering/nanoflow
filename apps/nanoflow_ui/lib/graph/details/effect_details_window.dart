@@ -23,11 +23,11 @@ import 'output_column.dart';
 ///
 /// The top bar has `Back to canvas`, the effect's icon, name and place, the
 /// switcher `Visit 2 of 2` through every visit to its node among the effects
-/// shown, the copy it is in, how it went, and close; Esc closes too. Under
-/// it, the column of the effect — its place in the code and its facts — and
-/// `Output`. An effect has no input. Showing another visit is [onVisit]: the
-/// graph screen selects it. The window stays on its effect while the
-/// selection follows a running session's new effects.
+/// shown, how it went, and close; Esc closes too. Under it, the column of
+/// the effect — its place in the code and its facts — and `Output`. An
+/// effect has no input. Showing another visit is [onVisit]: the graph screen
+/// selects it. The window stays on its effect while the selection follows a
+/// running session's new effects.
 class EffectDetailsWindow extends StatefulWidget {
   const EffectDetailsWindow({
     super.key,
@@ -62,7 +62,6 @@ class EffectDetailsWindow extends StatefulWidget {
   static const closeKey = ValueKey('details close');
   static const previousKey = ValueKey('previous visit');
   static const nextKey = ValueKey('next visit');
-  static const copyKey = ValueKey('details copy');
 
   /// Round the window, the graph screen's dots show: 40 px at the sides, 36
   /// at the top and the bottom.
@@ -191,8 +190,8 @@ class _EffectDetailsWindowState extends State<EffectDetailsWindow> {
   );
 }
 
-/// `Back to canvas`, the effect, the visit switcher and the copy, how the
-/// effect went, close.
+/// `Back to canvas`, the effect, the visit switcher, how the effect went,
+/// close.
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.details,
@@ -280,20 +279,13 @@ class _TopBar extends StatelessWidget {
           ),
         ),
         const Spacer(),
-        if (visit != null) ...[
+        if (visit != null)
           _VisitSwitcher(
             number: details.index! + 1,
             count: details.visits.length,
             onPrevious: _show(details.previous),
             onNext: _show(details.next),
           ),
-          if (details.copy case final copy?)
-            Text(
-              copy,
-              key: EffectDetailsWindow.copyKey,
-              style: AppText.windowCopy,
-            ),
-        ],
         const Spacer(),
         if (result != null) _ResultChip(result),
         Clickable(

@@ -6,9 +6,6 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'body_path.dart';
 import 'called_graph.dart';
 import 'canvas_graph.dart';
-import 'copies.dart';
-import 'copy_choices.dart' as choices show hintOf;
-import 'copy_choices.dart' show CopyChoices, hintDocuments;
 import 'effect_files.dart';
 import 'freshness.dart';
 import 'graph_file_source.dart';
@@ -49,7 +46,6 @@ class GraphModel extends ChangeNotifier {
     String? session,
     DateTime Function()? now,
   }) : selection = Selection(now: now),
-       _now = now ?? DateTime.now,
        _wantedSession = session {
     _graphRead = graphFile.graph;
     graphFile.addListener(_graphFileChanged);
@@ -129,16 +125,10 @@ class GraphModel extends ChangeNotifier {
   /// all.
   List<(String, String?)>? _wanted;
 
-  /// The time, for what is derived at a moment.
-  final DateTime Function() _now;
-
   /// The session to select once the feed gives it and the graph file is
   /// read, with its workflow — as the app was started with it —; `null`
   /// once selected, or for none. Until then no session is selected.
   String? _wantedSession;
-
-  /// The copies chosen in the copies frames of the selected session.
-  final _copies = CopyChoices();
 
   /// The runs of calls open in `Logs`, by key: those of the session
   /// [_runsOf], gone when another is selected.
@@ -394,8 +384,7 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// The selected session at [now]; `null` for `Current graph`. Starts
-  /// reading its snapshot, and the outputs of the first effects of the
-  /// copies of its frames drawn: they come as a change.
+  /// reading its snapshot: it comes as a change.
   SessionView? sessionView(DateTime now) {
     final key = _key(now);
     if (key == _viewKey) return _view;
@@ -411,22 +400,9 @@ class GraphModel extends ChangeNotifier {
             levels: canvas.ofSession ? canvas.levels : const [],
             places: canvas.ofSession ? canvas.places : null,
             calledGraph: canvas.ofSession ? canvas.calledGraph : null,
-            copies: _copies.on(canvas.path),
             frames: canvas.ofSession ? canvas.frames : const [],
-            copiesIn: _copies.on,
-            follow: _followed(session)?.path,
             openRuns: {..._openRuns},
           );
-    // What the copies' first effects gave tells them apart: read it now.
-    if (session != null) {
-      final view = _view!;
-      outcomes.load(session.id, [
-        ...hintDocuments(view.shown),
-        if (canvas.ofSession)
-          for (final frame in allFrames(canvas.frames))
-            ...hintDocuments(view.shownAt(frame.path)),
-      ]);
-    }
     _viewKey = key;
     return _view;
   }
@@ -487,49 +463,9 @@ class GraphModel extends ChangeNotifier {
     if (session != null) selection.showSession(session);
   }
 
-  /// The copies frames of the canvas's levels and the effects they show, of
-  /// the selected session on its own graph, as [sessionView] has them at
-  /// [now] — in the frame drawn in place at [path] when it is given;
-  /// `null` for `Current graph`.
-  ShownEffects? _shown(DateTime now, [List<Opened>? path]) =>
-      canvas.ofSession ? sessionView(now)?.shownAt(path) : null;
-
-  /// The frame drawn in place whose copy `Logs` follow: of those where a
-  /// copy of [session] is chosen, the one chosen last; `null` for none —
-  /// `Logs` follow the level drawn.
-  InPlaceFrame? _followed(SessionData session) {
-    if (!canvas.ofSession) return null;
-    final frames = allFrames(canvas.frames).toList();
-    final path = _copies.lastChosen(session.id, [
-      for (final frame in frames) frame.path,
-    ]);
-    if (path == null) return null;
-    final key = levelKey(path);
-    return frames.where((frame) => levelKey(frame.path) == key).firstOrNull;
-  }
-
-  /// The frames and effects `Logs` show of [session] as they are now, the
-  /// copies chosen as they are now: for what changes them before
-  /// [sessionView] can tell.
-  ShownEffects? _shownNow(SessionData session) {
-    final canvas = this.canvas;
-    if (!canvas.ofSession) return null;
-    final followed = _followed(session);
-    return framesOf(
-      followed?.levels ?? canvas.levels,
-      places: canvas.places,
-      session: session,
-      selected: _copies.on(followed?.path ?? canvas.path),
-    );
-  }
-
-  /// The last of the effects of [session] shown, while copies of it are
-  /// chosen: the selection follows the copy shown; in a parent's session,
-  /// the last of its effects in the called graph open; `null` otherwise.
+  /// In a parent's session, the last of the effects of [session] in the
+  /// called graph open, which the selection follows; `null` otherwise.
   String? _lastShownEffect(SessionData session) {
-    if (_copies.anyFor(session.id)) {
-      return _shownNow(session)?.effects.lastOrNull?.effectId;
-    }
     final called = _calledIn(session);
     if (called == null) return null;
     final shown = sessionGraphOf(
@@ -545,46 +481,14 @@ class GraphModel extends ChangeNotifier {
     ).lastOrNull?.effectId;
   }
 
-  /// Shows the copy [copyId] — the id of its first effect — of the copies
-  /// frame at the level [depth] of the canvas, and selects its last effect;
-  /// every copy for `null` (decision 11).
-  void selectCopy(int depth, String? copyId) =>
-      selectCopyAt(canvas.path.take(depth).toList(), copyId);
-
-  /// Shows the copy [copyId] of the copies frame at [path] — a level
-  /// opened, or a frame drawn in place: the same choice for both — and
-  /// selects its last effect; every copy for `null` (decision 11).
-  void selectCopyAt(List<Opened> path, String? copyId) {
-    final session = selectedSession;
-    final canvas = this.canvas;
-    final workflow = canvas.workflow;
-    if (session == null || workflow == null) return;
-    _copies.choose(session.id, path, path.length, copyId);
-    final frame = framesOf(
-      bodyLevels(workflow, canvas.file!.functions, path),
-      places: canvas.places,
-      session: session,
-      selected: _copies.on(path),
-    ).frames.where((f) => f.depth == path.length).firstOrNull;
-    final last = frame?.selected?.effects.lastOrNull;
-    if (last != null) selection.selectEffect(session, last.effectId);
-    _changed();
-  }
-
-  /// What the first effect of [copy] of the selected session gave, to tell
-  /// the copy by (`copyHint`); `null` while it is not known: [sessionView]
-  /// reads it.
-  String? hintOf(Copy copy) => choices.hintOf(copy, outcomes);
-
   /// A click on the node [nodeId] of the body drawn — or of the body of the
-  /// frame drawn in place at [path]: selects the last of the effects shown on
-  /// it or in it; nothing without one.
+  /// frame drawn in place at [path]: selects the last of the session's
+  /// effects on it or in it; nothing without one, and for `Current graph`.
   void clickNode(String nodeId, {List<Opened>? path}) {
     final session = selectedSession;
     final node = _bodyAt(path)?.node(nodeId);
-    final shown = _shown(_now(), path);
-    if (session == null || node == null || shown == null) return;
-    final last = shown.effects
+    if (session == null || node == null || !canvas.ofSession) return;
+    final last = session.state.effects
         .where((s) => canvas.places.isIn(session.effects[s.effectId], node))
         .lastOrNull;
     if (last != null) selection.selectEffect(session, last.effectId);
@@ -602,14 +506,17 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// The visit the effect details window opens on for a double click on the
-  /// effect node [node] — of the frame drawn in place at [path], when given:
-  /// its last effect among those shown; `null` when it has none, and for
+  /// effect node [node]: its last effect; `null` when it has none, and for
   /// `Current graph`.
-  Visit? visitToOpen(EffectNode node, {List<Opened>? path}) {
+  Visit? visitToOpen(EffectNode node) {
     final session = selectedSession;
-    final shown = _shown(_now(), path);
-    if (session == null || shown == null) return null;
-    return visits.visitToOpen(session, shown.effects, canvas.places, node);
+    if (session == null || !canvas.ofSession) return null;
+    return visits.visitToOpen(
+      session,
+      session.state.effects,
+      canvas.places,
+      node,
+    );
   }
 
   /// Selects the effect [effectId] of the selected session, a visit the effect
@@ -617,24 +524,22 @@ class GraphModel extends ChangeNotifier {
   void showVisit(String effectId) => selectEffect(effectId);
 
   /// The effect details window on the effect [effectId] of the selected
-  /// session, among the effects shown, at [now]; on the effect node [node]
-  /// alone without an effect.
+  /// session, among the effects `Logs` show, at [now]; on the effect node
+  /// [node] alone without an effect.
   VisitDetails detailsOf(EffectNode? node, String? effectId, DateTime now) {
     final view = canvas.ofSession ? sessionView(now) : null;
-    // The effects `Logs` show, unless the effect is not one of them: those of
-    // the level drawn.
-    final logs = view?.logsShown;
-    final shown =
-        logs != null && logs.effects.any((s) => s.effectId == effectId)
+    // The effects `Logs` show, unless the effect is not one of them: all the
+    // session's.
+    final logs = view?.logsEffects;
+    final effects = logs != null && logs.any((s) => s.effectId == effectId)
         ? logs
-        : view?.shown;
+        : view?.effects;
     return visitDetails(
-      session: shown == null ? null : selectedSession,
-      effects: shown?.effects ?? const [],
+      session: effects == null ? null : selectedSession,
+      effects: effects ?? const [],
       places: canvas.places,
       effectId: effectId,
       node: node,
-      copyOf: view?.copyOf,
       now: now,
     );
   }
@@ -756,8 +661,7 @@ class GraphModel extends ChangeNotifier {
   }
 
   void _selected() {
-    // The copies chosen and the runs open are the session's.
-    _copies.keepFor(selection.sessionId);
+    // The runs open are the session's.
     if (_runsOf != selection.sessionId) {
       _openRuns.clear();
       _runsOf = selection.sessionId;

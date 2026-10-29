@@ -12,14 +12,14 @@ import 'effect_details_pane.dart';
 import 'effect_list.dart';
 
 /// The `Logs` panel under the canvas (docs/ui-spec.md «Logs»; spec §9
-/// «Логи»): its title counts the effects shown and names the copy shown —
-/// `12 effects`, `pkg 2 · 3 effects` — over the [EffectList] on the left and
-/// the selected effect's [EffectDetailsPane] on the right. The chevron folds it
-/// to its title. With `Current graph` selected it is empty.
+/// «Логи»): its title counts the effects shown — `12 effects` — over the
+/// [EffectList] on the left and the selected effect's [EffectDetailsPane] on
+/// the right. The chevron folds it to its title. With `Current graph`
+/// selected it is empty.
 ///
 /// A click on an effect selects it and asks the canvas to show its node on
-/// the level drawn, or the call or copies it is in — its node in their
-/// frame, when they are drawn in place ([onRevealNode]);
+/// the level drawn, or the call it is in — its node in the call's frame,
+/// when it is drawn in place ([onRevealNode]);
 /// running times go on with the [clock].
 class LogsPanel extends StatelessWidget {
   const LogsPanel({
@@ -140,8 +140,8 @@ class LogsPanel extends StatelessWidget {
   );
 }
 
-/// The chevron and `Logs`, which fold the panel, and the copy shown with
-/// its effects.
+/// The chevron and `Logs`, which fold the panel, and how many effects are
+/// shown.
 class _Title extends StatelessWidget {
   const _Title({
     required this.header,
@@ -185,21 +185,8 @@ class _Title extends StatelessWidget {
           ),
           if (header != null)
             Expanded(
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    if (header.copy case final copy?) ...[
-                      TextSpan(
-                        text: copy,
-                        style: AppText.logsEffects.copyWith(
-                          color: AppColors.accentText,
-                        ),
-                      ),
-                      const TextSpan(text: ' · '),
-                    ],
-                    TextSpan(text: header.effectsText),
-                  ],
-                ),
+              child: Text(
+                header.text,
                 style: AppText.logsEffects,
                 maxLines: 1,
                 softWrap: false,

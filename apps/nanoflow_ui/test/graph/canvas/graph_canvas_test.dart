@@ -98,9 +98,8 @@ void main() {
       expect(_chips(tester), containsAll(['true', 'false']));
     });
 
-    testWidgets('draws a call as ƒ with its effects counted, copies as a '
-        'stack of them with the effects of a copy and ×n, conditions as the '
-        'branch', (tester) async {
+    testWidgets('draws a call as ƒ with its effects counted, conditions as '
+        'the branch', (tester) async {
       await pumpCanvas(tester, modelOf());
       expect(find.text('publish()'), findsOneWidget);
       expect(find.text('{ 3 }'), findsOneWidget);
@@ -108,24 +107,10 @@ void main() {
       // for pkg in plan.packages, switch (plan.channel), pkg.isPublic.
       expect(find.byType(ConditionIcon), findsNWidgets(3));
       expect(_chips(tester), containsAll(['each', 'done', 'Channel.dev']));
-
-      await pumpCanvas(
-        tester,
-        modelOf(
-          graph: GraphFile.fromJson({
-            ...graphFileNamed('inline').toJson(),
-            'workflows': ['lib/inline.dart#inPlace'],
-          }),
-        ),
-      );
-      expect(find.text('pkg in packages'), findsOneWidget);
-      expect(find.text('{ 3 }'), findsOneWidget);
-      expect(find.byType(FunctionIcon), findsOneWidget);
-      expect(find.text('×n'), findsOneWidget);
     });
 
-    testWidgets('a double click on a call or copies opens it, on another '
-        'node does nothing', (tester) async {
+    testWidgets('a double click on a call opens it, on another node does '
+        'nothing', (tester) async {
       final opened = <(String, Offset)>[];
       await pumpCanvas(
         tester,

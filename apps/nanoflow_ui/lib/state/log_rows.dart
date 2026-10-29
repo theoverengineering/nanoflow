@@ -1,12 +1,12 @@
 /// The `Logs` panel: its title and the rows of the effects list
 /// (docs/ui-spec.md «Logs»; spec §9 «Логи»): a session's effects in the order
-/// of their first `effect-started`, a selected copy's alone; each run of a
-/// call on one row, opened to show its effects. Pure: the time is passed in.
+/// of their first `effect-started`; each run of a call on one row, opened to
+/// show its effects. Pure: the time is passed in.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
-import 'copies.dart' show chainsIn;
+import 'call_runs.dart';
 import 'effect_places.dart';
 import 'session_feed.dart';
 import 'texts.dart';
@@ -15,20 +15,14 @@ import 'visits.dart' show StartOutcome, outcomeOf;
 /// What a row says of an effect that is on no node of the graph.
 const notOnGraph = 'not on the graph';
 
-/// The title of the `Logs` panel: `8 effects`, `pkg 2 · 3 effects`.
+/// The title of the `Logs` panel: `8 effects`.
 final class LogsHeader {
-  const LogsHeader(this.effects, {this.copy});
+  const LogsHeader(this.effects);
 
   /// How many effects the list shows.
   final int effects;
 
-  /// The copy shown, `pkg 2` or `pkg 2 › target 1`; `null` when the list
-  /// shows every copy's effects.
-  final String? copy;
-
-  String get effectsText => count(effects, 'effect');
-
-  String get text => copy == null ? effectsText : '$copy · $effectsText';
+  String get text => count(effects, 'effect');
 }
 
 /// A row of the effects list.
@@ -38,7 +32,6 @@ sealed class LogRow {}
 sealed class TimedRow extends LogRow {
   TimedRow({
     required this.status,
-    required this.copy,
     required this.started,
     required this.duration,
     required this.barStart,
@@ -53,10 +46,6 @@ sealed class TimedRow extends LogRow {
   /// running when the process of its session went. A run's is that of the
   /// effect in it that weighs most: failed, running, interrupted, finished.
   final StartOutcome status;
-
-  /// The copies the effect is in, but those chosen: `pkg 2`, `pkg 2 ›
-  /// target 1`; a run's, those its first effect is in.
-  final String? copy;
 
   /// The time of the first `effect-started`: `14:03:11`.
   final String started;
@@ -93,7 +82,6 @@ final class EffectRow extends TimedRow {
     required super.status,
     required this.detail,
     required this.failure,
-    required super.copy,
     required super.started,
     required super.duration,
     required this.starts,
@@ -137,7 +125,6 @@ final class RunRow extends TimedRow {
     required this.open,
     required this.parts,
     required super.status,
-    required super.copy,
     required super.started,
     required super.duration,
     required super.barStart,
@@ -246,9 +233,9 @@ TimeScale timeScale(SessionData session, DateTime now) {
   );
 }
 
-/// The rows of [effects] of [session], in their order; an effect in copies
-/// named by [copyOf] (`pkg 2`). The effects in each of [calls] are its runs,
-/// a [RunRow] each in place of its first effect; those whose key is in
+/// The rows of [effects] of [session], in their order. The effects in each
+/// of [calls] are its runs, a [RunRow] each in place of its first effect;
+/// those whose key is in
 /// [open] have their effects under them, a run of each call in its function
 /// on one row again. An [EndRow] follows once the session has ended, unless
 /// [end] is false. [places] tells which effects are not on the graph.
@@ -257,14 +244,13 @@ List<LogRow> logRows(
   required Iterable<EffectState> effects,
   required EffectPlaces places,
   required DateTime now,
-  String? Function(String effectId)? copyOf,
   List<CallNode> calls = const [],
   Set<String> open = const {},
   bool end = true,
 }) {
   final state = session.state;
   final ended = state.finishedAt;
-  final rows = _Rows(session, places, now, copyOf, open)
+  final rows = _Rows(session, places, now, open)
     ..add([...effects], calls, depth: 0, key: '', path: Set.identity());
   return [
     ...rows.rows,
@@ -272,17 +258,9 @@ List<LogRow> logRows(
   ];
 }
 
-/// The calls in [body] and in the bodies of its copies, whose effects the
-/// `Logs` put in runs: those of the workflow's body, or of a called graph
-/// opened.
-List<CallNode> callsIn(GraphBody body) => [
-  for (final node in body.nodes)
-    ...switch (node) {
-      final CallNode call => [call],
-      CopiesNode(:final body) => callsIn(body),
-      _ => const <CallNode>[],
-    },
-];
+/// The calls in [body], whose effects the `Logs` put in runs: those of the
+/// workflow's body, or of a called graph opened.
+List<CallNode> callsIn(GraphBody body) => [...body.nodes.whereType<CallNode>()];
 
 /// A run of [call]: [effects], a chain by `after`, the [number]th of the call.
 typedef _Run = ({
@@ -294,13 +272,12 @@ typedef _Run = ({
 
 /// The rows [logRows] builds, row by row.
 final class _Rows {
-  _Rows(this.session, this.places, this.now, this.copyOf, this.open)
+  _Rows(this.session, this.places, this.now, this.open)
     : scale = timeScale(session, now);
 
   final SessionData session;
   final EffectPlaces places;
   final DateTime now;
-  final String? Function(String effectId)? copyOf;
   final Set<String> open;
   final TimeScale scale;
 
@@ -382,7 +359,6 @@ final class _Rows {
           error ??
           (record == null || places.onGraph(record) ? null : notOnGraph),
       failure: error != null,
-      copy: copyOf?.call(effect.effectId),
       started: clockTime(effect.startedAt),
       duration: status == StartOutcome.interrupted
           ? null
@@ -427,7 +403,6 @@ final class _Rows {
           ),
       ],
       status: status,
-      copy: copyOf?.call(effects.first.effectId),
       started: clockTime(start),
       duration: status == StartOutcome.interrupted
           ? null

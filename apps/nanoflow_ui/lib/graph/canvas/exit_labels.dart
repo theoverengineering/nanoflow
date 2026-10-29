@@ -1,7 +1,6 @@
 import 'package:flutter/widgets.dart';
 
 import '../../layout/layout.dart' as layout;
-import 'canvas_marks.dart';
 import 'canvas_style.dart';
 import 'layout_geometry.dart';
 
@@ -19,11 +18,9 @@ final class ExitChip {
 /// go behind. Over the arrows, under the tiles: a tile covers the half of a
 /// dot on its side, as in the mockups. Clicks go through it.
 class ExitsPainter extends CustomPainter {
-  ExitsPainter(this.graph, this.marks)
-    : chips = List.unmodifiable(_chipsOf(graph));
+  ExitsPainter(this.graph) : chips = List.unmodifiable(_chipsOf(graph));
 
   final layout.GraphLayout graph;
-  final CanvasMarks marks;
 
   /// The labels, each where the layout put it.
   final List<ExitChip> chips;
@@ -49,11 +46,10 @@ class ExitsPainter extends CustomPainter {
       // The arrows of a frame's start leave its side, where its bar is; the
       // arrows out of a frame leave the bar of its body's end.
       if ((node?.port ?? false) || node?.frame?.endBar != null) continue;
-      final tone = marks.exit(exit.node);
       final anchor = exit.anchor.toOffset();
       switch (exit.shape) {
         case layout.ExitShape.dot:
-          _paintDot(canvas, anchor, tone, background);
+          _paintDot(canvas, anchor, background);
         case layout.ExitShape.capsule:
           final handle = exit.handle.toRect();
           canvas
@@ -69,7 +65,7 @@ class ExitsPainter extends CustomPainter {
                 handle.deflate(_outline / 2),
                 const Radius.circular(_dot - _outline / 2),
               ),
-              Paint()..color = _handleColor(tone),
+              Paint()..color = CanvasColors.plain,
             );
       }
     }
@@ -102,25 +98,19 @@ class ExitsPainter extends CustomPainter {
     }
   }
 
-  void _paintDot(Canvas canvas, Offset at, Tone tone, Paint background) {
+  void _paintDot(Canvas canvas, Offset at, Paint background) {
     canvas
       ..drawCircle(at, _dot + _outline / 2, background)
       ..drawCircle(
         at,
         _dot - _outline / 2,
-        Paint()..color = _handleColor(tone),
+        Paint()..color = CanvasColors.plain,
       );
   }
-
-  static Color _handleColor(Tone tone) => switch (tone) {
-    Tone.plain => CanvasColors.plain,
-    Tone.untaken => CanvasColors.untakenExit,
-  };
 
   @override
   bool? hitTest(Offset position) => false;
 
   @override
-  bool shouldRepaint(ExitsPainter old) =>
-      old.graph != graph || old.marks != marks;
+  bool shouldRepaint(ExitsPainter old) => old.graph != graph;
 }

@@ -11,12 +11,12 @@ import 'layout_geometry.dart';
 /// darker — an arrow into a frame drawn in place runs on to the frame's
 /// side without a head, the arrows of its body go on from there
 /// (docs/design/code-first/function-frames.html); and in each frame drawn in
-/// place, the bar of the end of its body on its right side, in the tone of
-/// its exit — the arrows that end the body point at it, as at a tile's bar,
-/// and the arrows out of the frame leave it —, and the link from its left
-/// side to the start of its body where that is off the side, in the tone
-/// of its bar. Under the exits and the tiles: a tile covers the half of its
-/// bar on its side, as in the mockups. Clicks go through it.
+/// place, the bar of the end of its body on its right side — the arrows that
+/// end the body point at it, as at a tile's bar, and the arrows out of the
+/// frame leave it —, and the link from its left side to the start of its
+/// body where that is off the side. Input bars are drawn plain. Under the
+/// exits and the tiles: a tile covers the half of its bar on its side, as in
+/// the mockups. Clicks go through it.
 class EdgesPainter extends CustomPainter {
   EdgesPainter(this.graph, this.marks);
 
@@ -42,13 +42,13 @@ class EdgesPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final node in graph.nodes.values) {
       // The bar of the end of a body in a frame is the frame's exit: it is
-      // drawn with the frame, in the tone of the frame's exit.
+      // drawn with the frame.
       if (node.port) continue;
       if (node.bar case final bar?) {
-        _paintBar(canvas, bar.rect.toRect(), marks.bar(node.id));
+        _paintBar(canvas, bar.rect.toRect());
       }
       if (node.frame?.endBar case final bar?) {
-        _paintBar(canvas, bar.rect.toRect(), marks.exit(node.id));
+        _paintBar(canvas, bar.rect.toRect());
       }
     }
     for (final node in graph.nodes.values) {
@@ -58,7 +58,7 @@ class EdgesPainter extends CustomPainter {
         link.a.toOffset(),
         link.b.toOffset(),
         Paint()
-          ..color = CanvasColors.line(marks.bar(node.id))
+          ..color = CanvasColors.plain
           ..strokeWidth = _width,
       );
     }
@@ -74,7 +74,7 @@ class EdgesPainter extends CustomPainter {
   /// The bar [rect], outlined in the canvas's colour, as an exit dot is: it
   /// stands out of the ring round the selected effect's node, under the
   /// arrows.
-  void _paintBar(Canvas canvas, Rect rect, Tone tone) => canvas
+  void _paintBar(Canvas canvas, Rect rect) => canvas
     ..drawRRect(
       RRect.fromRectAndRadius(
         rect.inflate(_barOutline),
@@ -84,7 +84,7 @@ class EdgesPainter extends CustomPainter {
     )
     ..drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(_barRadius)),
-      Paint()..color = CanvasColors.line(tone),
+      Paint()..color = CanvasColors.plain,
     );
 
   void _paintEdge(Canvas canvas, layout.EdgePath edge, Tone tone) {

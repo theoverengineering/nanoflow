@@ -112,40 +112,40 @@ void main() {
       expect(frame.frames, isEmpty);
     });
 
-    test('a frame in a frame: copies, and the call in their body', () {
-      const copies = Opened('1');
+    test('a frame in a frame: a call, and the call in its function', () {
+      const outer = Opened('1', functionId: 'lib/inline.dart#publishEach');
       const call = Opened('1', functionId: 'lib/inline.dart#publish');
       final frames = framesAt(
         viaCall,
         inline.functions,
         const [],
         Expansions()
-          ..expand(const [], copies)
-          ..expand(const [copies], call),
+          ..expand(const [], outer)
+          ..expand(const [outer], call),
       );
-      expect(frames.single.level.title, 'pkg in packages');
+      expect(frames.single.level.title, 'publishEach()');
       final inner = frames.single.frames.single;
-      expect(inner.path, const [copies, call]);
+      expect(inner.path, const [outer, call]);
       expect(inner.level.title, 'publish()');
       expect(
         [for (final level in inner.levels) level.title],
-        ['viaCall', 'pkg in packages', 'publish()'],
+        ['viaCall', 'publishEach()', 'publish()'],
       );
     });
 
     test('frames of the level drawn only: those of the levels above or '
         'below are not drawn', () {
-      const copies = Opened('1');
+      const outer = Opened('1', functionId: 'lib/inline.dart#publishEach');
       final expansions = Expansions()
-        ..expand(const [], copies)
-        ..expand(const [copies], const Opened('1', functionId: 'x'));
-      // Drilled into the copies: only what is expanded in their body.
+        ..expand(const [], outer)
+        ..expand(const [outer], const Opened('1', functionId: 'x'));
+      // Drilled into the call: only what is expanded in its function.
       final frames = framesAt(viaCall, inline.functions, const [
-        copies,
-      ], Expansions()..expand(const [copies], const Opened('9')));
+        outer,
+      ], Expansions()..expand(const [outer], const Opened('9')));
       expect(frames, isEmpty);
       expect(
-        framesAt(viaCall, inline.functions, const [copies], expansions),
+        framesAt(viaCall, inline.functions, const [outer], expansions),
         isEmpty,
         reason: 'the call does not go to x',
       );

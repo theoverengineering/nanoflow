@@ -121,25 +121,6 @@ void main() {
       expect(names(tester), isNot(contains('upload')));
     });
 
-    testWidgets('on copies draws the body of a copy', (tester) async {
-      final model = await pumpGraphScreen(
-        tester,
-        model: ownedModel(
-          graph: GraphFile.fromJson({
-            ...graphFileNamed('inline').toJson(),
-            'workflows': ['lib/inline.dart#inPlace'],
-          }),
-        ),
-      );
-      expect(names(tester), ['pkg in packages', 'announce']);
-
-      await doubleTap(tester, tile('1'));
-      await settle(tester);
-      expect(names(tester), ['upload', 'verify', 'tag']);
-      expect(inHeader(find.text('pkg in packages')), findsOneWidget);
-      expect(model.canvas.levels.last.title, 'pkg in packages');
-    });
-
     testWidgets('on a call of an interface method offers its '
         'implementations', (tester) async {
       await pumpGraphScreen(

@@ -1,13 +1,12 @@
 // Renders graph layouts in the mockups' style, to look at them.
 //
 //   dart run tool/render_layout.dart [--out <dir>] [--png] <graph file>
-//       [<function>[/<copies node>...]]...
+//       [<function>]...
 //
 // Each function of the graph file named — by its id, or by what follows `#`
-// in it — and each copies body named after it by its node's id becomes
-// <dir>/<package>-<function>[-<node>...].svg; with no function named, every
-// function and every copies body in it. The default <dir> is the current
-// directory; the layout's crossings and any broken rules are printed. With
+// in it — becomes <dir>/<package>-<function>.svg; with no function named,
+// every function. The default <dir> is the current directory; the layout's
+// crossings and any broken rules are printed. With
 // --png, headless Google Chrome ($CHROME, or its usual place on macOS) also
 // renders the PNG at twice the size. (`qlmanage -t` renders SVG too, but
 // into a square of about 800 px, cutting off wider graphs.)
@@ -24,7 +23,7 @@ String get _chrome =>
 
 const _usage =
     'usage: dart run tool/render_layout.dart [--out <dir>] [--png] '
-    '<graph file> [<function>[/<copies node>...]]...';
+    '<graph file> [<function>]...';
 
 Future<void> main(List<String> args) async {
   var out = '.';
@@ -58,12 +57,12 @@ Future<void> main(List<String> args) async {
   try {
     if (rest.length == 1) {
       for (final function in file.functions.values) {
-        _addAll(bodies, _short(function.id), function.body);
+        bodies[_short(function.id)] = function.body;
       }
     } else {
-      for (final path in rest.skip(1)) {
-        final (name, body) = _bodyAt(file, path);
-        bodies[name] = body;
+      for (final name in rest.skip(1)) {
+        final function = _functionNamed(file, name);
+        bodies[_short(function.id)] = function.body;
       }
     }
   } on FormatException catch (e) {
@@ -107,40 +106,12 @@ Future<void> main(List<String> args) async {
 /// A function's id without its path: `release`, `MailNotifier.notify`.
 String _short(String id) => id.substring(id.indexOf('#') + 1);
 
-/// [body] by [name], and every copies body in it after it.
-void _addAll(Map<String, GraphBody> bodies, String name, GraphBody body) {
-  bodies[name] = body;
-  for (final node in body.nodes) {
-    if (node is CopiesNode) _addAll(bodies, '$name-${node.id}', node.body);
-  }
-}
-
-/// The body [path] names in [file]: a function, by its id or what follows
-/// `#` in it, then the copies nodes down to the body, by their ids.
-(String, GraphBody) _bodyAt(GraphFile file, String path) {
-  // A function's id has slashes of its own: the nodes start after `#`.
-  final hash = path.indexOf('#');
-  final slash = path.indexOf('/', hash < 0 ? 0 : hash);
-  final name = slash < 0 ? path : path.substring(0, slash);
-  final nodes = slash < 0
-      ? const <String>[]
-      : path.substring(slash + 1).split('/');
-  final function =
-      file.functions[name] ??
-      file.functions.values.where((f) => _short(f.id) == name).firstOrNull;
-  if (function == null) throw FormatException('no function $name');
-  var body = function.body;
-  var stem = _short(function.id);
-  for (final id in nodes) {
-    final node = body.node(id);
-    if (node is! CopiesNode) {
-      throw FormatException('$id in $stem is not a copies node');
-    }
-    body = node.body;
-    stem = '$stem-$id';
-  }
-  return (stem, body);
-}
+/// The function [name] names in [file]: by its id or what follows `#` in
+/// it.
+GraphFunction _functionNamed(GraphFile file, String name) =>
+    file.functions[name] ??
+    file.functions.values.where((f) => _short(f.id) == name).firstOrNull ??
+    (throw FormatException('no function $name'));
 
 /// The size of the SVG of [layout]: the layout, its margin and the caption.
 (double, double) _size(GraphLayout layout) => (
@@ -153,11 +124,6 @@ const _canvas = '#1C1D20';
 const _dots = '#323338';
 const _tileFill = '#3A3B42';
 const _tileBorder = '#7A7B83';
-const _stackFill = '#2E2F35';
-const _stackBorder = '#6A6B73';
-const _badgeFill = '#42434A';
-const _badgeBorder = '#5E5F66';
-const _badgeText = '#D5D6DA';
 const _markerBorder = '#6E6F76';
 const _markerText = '#A7A8AE';
 const _icon = '#E4E5E9';
@@ -259,17 +225,8 @@ String renderSvg(GraphLayout layout, String caption) {
               node.kind == NodeKind.condition ? _conditionIcon : _effectIcon,
             ),
           );
-      case NodeKind.call || NodeKind.copies:
-        for (var k = tilesBehind(node.kind); k >= 1; k--) {
-          svg.writeln(
-            '<rect x="${_n(t.left + k * stackInset + 0.75)}" '
-            'y="${_n(t.top - k * stackStep + 0.75)}" '
-            'width="${_n(t.width - 2 * k * stackInset - 1.5)}" '
-            'height="${_n(t.height - 1.5)}" rx="11" fill="$_stackFill" '
-            'stroke="$_stackBorder" stroke-width="1.5"/>',
-          );
-        }
-        // ƒ with the count of the effects in them under it, the two in the
+      case NodeKind.call:
+        // ƒ with the count of the effects in it under it, the two in the
         // middle of the tile as the app draws them.
         final iconTop = c.y - (28 + _countLine) / 2;
         svg
@@ -285,25 +242,6 @@ String renderSvg(GraphLayout layout, String caption) {
               opacity: 0.7,
             ),
           );
-        if (node.kind == NodeKind.copies) {
-          // The badge across the top right of the stack.
-          const width = 24.0;
-          final top =
-              t.top - stackStep * tilesBehind(node.kind) - badgeHeight / 2;
-          final right = t.right + badgeOverhang;
-          svg
-            ..writeln(
-              '<rect x="${_n(right - width)}" y="${_n(top)}" '
-              'width="${_n(width)}" height="${_n(badgeHeight)}" '
-              'rx="${_n(badgeHeight / 2)}" fill="$_badgeFill" '
-              'stroke="$_badgeBorder"/>',
-            )
-            ..writeln(
-              '<text x="${_n(right - width / 2)}" y="${_n(top + 10.5)}" '
-              'text-anchor="middle" font-family="Geist Mono, Menlo, monospace" '
-              'font-size="10" fill="$_badgeText">$copiesBadge</text>',
-            );
-        }
     }
     if (node.name case final name?) {
       final n = node.nameRect;
@@ -360,7 +298,7 @@ String renderSvg(GraphLayout layout, String caption) {
   return svg.toString();
 }
 
-/// The tile [t] of an effect, a condition, a call or copies.
+/// The tile [t] of an effect, a condition or a call.
 String _tile(Rect t) =>
     '<rect x="${_n(t.left + 1)}" y="${_n(t.top + 1)}" '
     'width="${_n(t.width - 2)}" height="${_n(t.height - 2)}" rx="11" '
@@ -395,7 +333,7 @@ String _inside(
     '${opacity < 1 ? ' fill-opacity="${_n(opacity)}"' : ''}>'
     '${_escape(text)}</text>';
 
-/// The effects of a call or of a copy under its `ƒ`: their size, and the
+/// The effects of a call under its `ƒ`: their size, and the
 /// height of their line.
 const _countSize = 11.0;
 const _countLine = _countSize * 1.3;

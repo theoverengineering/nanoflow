@@ -2,9 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_ui/graph/canvas/canvas_marks.dart';
 import 'package:nanoflow_ui/graph/canvas/canvas_style.dart';
-import 'package:nanoflow_ui/graph/canvas/copies_frame.dart';
 import 'package:nanoflow_ui/graph/canvas/edges_painter.dart';
 import 'package:nanoflow_ui/graph/canvas/exit_labels.dart';
 import 'package:nanoflow_ui/graph/canvas/frame_toggle.dart';
@@ -13,20 +11,18 @@ import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/graph/canvas/layout_geometry.dart';
 import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/canvas/open_as_graph_button.dart';
-import 'package:nanoflow_ui/graph/copy_switcher.dart';
 import 'package:nanoflow_ui/graph/header.dart';
 import 'package:nanoflow_ui/graph/logs/effect_list.dart';
-import 'package:nanoflow_ui/graph/logs/logs_panel.dart';
 import 'package:nanoflow_ui/layout/layout.dart' as layout;
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
+import 'package:nanoflow_ui/state/log_rows.dart' show RunRow;
 
 import '../../layout/support.dart'
     show bodyOf, callThenWait, functionOf, loadGraphFile;
 import '../../state/support.dart';
 import '../../support/golden.dart';
-import '../logs/support.dart';
 import '../support.dart';
 import 'support.dart';
 
@@ -118,8 +114,8 @@ void main() {
     expect(tile('5/1'), findsNothing);
   });
 
-  testWidgets('↗ is on calls alone, not on effects, forks or copies; in a '
-      'frame too, opening from there', (tester) async {
+  testWidgets('↗ is on calls alone, not on effects or forks; in a frame too, '
+      'opening from there', (tester) async {
     final opened = <(String, String)>[];
     await pumpCanvas(
       tester,
@@ -131,12 +127,17 @@ void main() {
       ),
       onOpenAsGraph: (path, node, _) => opened.add((levelKey(path), node.id)),
     );
-    expect(openAsGraph('1'), findsNothing, reason: 'copies');
+    expect(openAsGraph('1'), findsOneWidget);
     await tap(tester, expand('1'));
     expect(openAsGraph('1/1'), findsOneWidget);
     await tap(tester, openAsGraph('1/1'));
     expect(opened, [
-      (levelKey(const [Opened('1')]), '1'),
+      (
+        levelKey(const [
+          Opened('1', functionId: 'lib/inline.dart#publishEach'),
+        ]),
+        '1',
+      ),
     ]);
 
     await pumpCanvas(tester, modelOf(), onOpenAsGraph: (_, _, _) {});
@@ -279,9 +280,7 @@ void main() {
       },
     );
     expect(graph.nodes['5']!.frame!.endBar, isNull);
-    await tester.pumpWidget(
-      CustomPaint(painter: ExitsPainter(graph, CanvasMarks.plain)),
-    );
+    await tester.pumpWidget(CustomPaint(painter: ExitsPainter(graph)));
     final out = graph.exits.singleWhere((x) => x.node == '5').anchor;
     expect(
       tester.renderObject(find.byType(CustomPaint)),
@@ -314,9 +313,7 @@ void main() {
     /// What the exits of [graph] paint: a capsule round the exit of c or
     /// none.
     Future<RenderObject> exitsOf(layout.GraphLayout graph) async {
-      await tester.pumpWidget(
-        CustomPaint(painter: ExitsPainter(graph, CanvasMarks.plain)),
-      );
+      await tester.pumpWidget(CustomPaint(painter: ExitsPainter(graph)));
       return tester.renderObject(find.byType(CustomPaint));
     }
 
@@ -339,8 +336,8 @@ void main() {
     expect(await exitsOf(framed), isNot(capsuleOf(framed)));
   });
 
-  testWidgets('a frame in a frame: copies, and the call in them, at any '
-      'depth the same', (tester) async {
+  testWidgets('a frame in a frame: a call, and the call in its function, at '
+      'any depth the same', (tester) async {
     final model = modelOf(
       graph: GraphFile.fromJson({
         ...graphFileNamed('inline').toJson(),
@@ -349,23 +346,29 @@ void main() {
     );
     await pumpCanvas(tester, model);
     await tap(tester, expand('1'));
-    expect(find.text('each pkg in packages'), findsOneWidget);
-    expect(find.text('×n · in parallel'), findsOneWidget);
-    expect(find.byType(CopySwitcher), findsNothing, reason: 'no session');
+    expect(find.byType(FunctionFrameView), findsOneWidget);
+    expect(find.text('publishEach()'), findsOneWidget);
 
     await tap(tester, expand('1/1'));
-    expect(find.byType(FunctionFrameView), findsOneWidget);
+    expect(find.byType(FunctionFrameView), findsNWidgets(2));
     for (final id in ['1/1/1', '1/1/2', '1/1/3']) {
       expect(tile(id), findsOneWidget, reason: id);
     }
-    final copies = tester.getRect(find.byType(CopiesFrameView));
-    final call = tester.getRect(find.byType(FunctionFrameView));
-    expect(inside(copies, call), isTrue);
+    Rect frameTitled(String title) => tester.getRect(
+      find.ancestor(
+        of: find.text(title),
+        matching: find.byType(FunctionFrameView),
+      ),
+    );
+    expect(
+      inside(frameTitled('publishEach()'), frameTitled('publish()')),
+      isTrue,
+    );
 
-    // Collapsing the copies forgets what was expanded in them.
+    // Collapsing the call forgets what was expanded in its frame.
     await tap(tester, collapse('1'));
     await tap(tester, expand('1'));
-    expect(find.byType(FunctionFrameView), findsNothing);
+    expect(find.byType(FunctionFrameView), findsOneWidget);
   });
 
   testWidgets('a node expanded stays where it was on the screen once the '
@@ -430,26 +433,6 @@ void main() {
     expect(find.byKey(NodeTile.ringKeyOf('5')), findsNothing);
     expect(tileOf('5/4').marks!.state, NodeState.notVisited);
     expect(tileOf('1').marks!.state, NodeState.visited);
-  });
-
-  testWidgets('what a session changes in a frame — the room of its copy '
-      'switcher — keeps the view fitted as it was', (tester) async {
-    final model = modelOf(
-      graph: graphFileNamed('inline'),
-      file: inlineFile,
-      changes: copiesSession().changes,
-    );
-    model.selection.showCurrentGraph();
-    await pumpCanvas(tester, model);
-    await tap(tester, expand('1'));
-    final (scale, offset) = (controller.scale, controller.offset);
-
-    // The session's frame has its switcher: a row taller.
-    model.showSession('c0c0-session');
-    await settle(tester);
-    expect(find.byType(CopySwitcher), findsOneWidget);
-    expect(controller.scale, scale);
-    expect(controller.offset, offset);
   });
 
   group('on the graph screen', () {
@@ -581,76 +564,56 @@ void main() {
       await settle(tester);
       expect(
         [for (final level in model.canvas.levels) level.title],
-        ['viaCall', 'pkg in packages', 'publish()'],
-      );
-    });
-
-    testWidgets('copies in place with a session: the stack, what they are '
-        'over, the switcher, how they stand; a copy chosen there is shown, '
-        'and Logs follow it', (tester) async {
-      final model = await pumpGraphScreen(
-        tester,
-        path: inlineFile,
-        model: copiesModel(),
-        now: () => columnNow,
-      );
-      await tap(tester, expand('1'));
-      expect(find.text('each pkg in packages'), findsOneWidget);
-      expect(find.text('×3 · in parallel'), findsOneWidget);
-      expect(textIn(tester, find.byType(CopySwitcher)), 'all 1 2 3');
-      expect(
-        textIn(tester, find.byKey(CopiesFrameView.footerKey)),
-        'done 1 of 3',
-      );
-      // How many copies are on each effect now.
-      expect(find.byKey(NodeTile.runningKeyOf('1/2')), findsOneWidget);
-      expect(find.byKey(NodeTile.runningKeyOf('1/3')), findsOneWidget);
-
-      await tap(tester, find.byKey(CopySwitcher.chipKey(2)));
-      expect(
-        textIn(tester, find.byKey(CopiesFrameView.footerKey)),
-        'pkg 2 · now verify',
-      );
-      expect(
-        textIn(tester, find.byKey(LogsPanel.titleKey)),
-        'Logs pkg 2 · 2 effects',
-      );
-      expect(model.selection.effectId, 'c0c0-verify-4');
-      final tag = tester.widget<NodeTile>(node('1/3'));
-      expect(tag.marks!.effects, 0, reason: 'tool has not reached tag');
-
-      // Opened, the copies show the same copy.
-      model.open(const Opened('1'));
-      await settle(tester);
-      expect(
-        textIn(tester, find.byKey(CopiesFrameView.footerKey)),
-        'pkg 2 · now verify',
+        ['viaCall', 'publishEach()', 'publish()'],
       );
     });
 
     testWidgets(
       'an effect of Logs in a frame is shown at its node in the frame',
       (tester) async {
-        await pumpGraphScreen(
+        final release = graphFileNamed('release');
+        final model = await pumpGraphScreen(
           tester,
-          path: inlineFile,
-          model: copiesModel(),
+          path: releaseFile,
+          model: ownedModel(
+            file: releaseFile,
+            graph: release,
+            changes: changesOf([
+              Journal(
+                  'r1r1-session',
+                  workflow: 'release',
+                  graph: release.toJson(),
+                  code: release.fingerprint,
+                )
+                ..effect('plan', 1, end: 2, place: 'lib/release.dart:16')
+                ..effect('upload', 3, end: 4, place: 'lib/publish.dart:12')
+                ..effect('verify', 5, place: 'lib/publish.dart:13'),
+            ]),
+          ),
           now: () => columnNow,
         );
-        await tap(tester, expand('1'));
+        await tap(tester, expand('5'));
         for (var i = 0; i < 4; i++) {
           await tester.tap(find.byTooltip('Zoom in'));
         }
         await tester.pump();
         final canvas = tester.getRect(find.byType(GraphCanvas));
         expect(
-          canvas.intersect(tester.getRect(tile('1/1'))),
-          isNot(tester.getRect(tile('1/1'))),
+          canvas.intersect(tester.getRect(tile('5/1'))),
+          isNot(tester.getRect(tile('5/1'))),
         );
 
-        await tap(tester, find.byKey(EffectList.rowKey('c0c0-upload-0')));
+        // The run of publish() opened, its upload clicked.
+        final run = model
+            .sessionView(columnNow)!
+            .logs
+            .rows
+            .whereType<RunRow>()
+            .single;
+        await tap(tester, find.byKey(EffectList.runKey(run.key)));
+        await tap(tester, find.byKey(EffectList.rowKey('r1r1-upload-1')));
         expect(
-          inside(canvas, tester.getRect(tile('1/1'))),
+          inside(canvas, tester.getRect(tile('5/1'))),
           isTrue,
           reason: 'upload is revealed in the frame',
         );

@@ -1,6 +1,6 @@
-/// Calls and copies expanded in place (spec §9 «Граф», decision 6): a
-/// node of the body drawn shows its body in a frame, without leaving the
-/// level; the nodes of that body expand in turn, at any depth. Pure.
+/// Calls expanded in place (spec §9 «Граф», decision 6): a call of the body
+/// drawn shows its function's body in a frame, without leaving the level;
+/// the nodes of that body expand in turn, at any depth. Pure.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
@@ -66,12 +66,11 @@ final class InPlaceFrame {
   InPlaceFrame._(this.node, this.levels, List<InPlaceFrame> frames)
     : frames = List.unmodifiable(frames);
 
-  /// The call or the copies expanded.
+  /// The call expanded.
   final GraphNode node;
 
   /// The levels down to the frame's body: those opened down to the level
-  /// drawn, those of the frames round it, and its own, last. Copies frames
-  /// among them number their copies as when they are opened so.
+  /// drawn, those of the frames round it, and its own, last.
   final List<BodyLevel> levels;
 
   /// The nodes of the frame's body expanded in place.
@@ -79,7 +78,7 @@ final class InPlaceFrame {
 
   String get nodeId => node.id;
 
-  /// The frame's body and its title: `publish()`, `pkg in packages`.
+  /// The frame's body and its title: `publish()`.
   BodyLevel get level => levels.last;
 
   /// The path to the frame's body: as [levels] open it.

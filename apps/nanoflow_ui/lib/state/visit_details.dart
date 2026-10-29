@@ -56,7 +56,6 @@ final class VisitDetails {
     this.effect,
     this.result,
     this.facts,
-    this.copy,
   }) : visits = List.unmodifiable(visits);
 
   /// The effect's name, or the node's.
@@ -96,22 +95,17 @@ final class VisitDetails {
   final EffectResult? result;
 
   final EffectFacts? facts;
-
-  /// The copies the effect is in: `pkg 2 › target 1`; `null` outside copies.
-  final String? copy;
 }
 
 /// The window on the effect [effectId] of [session] among [effects], the
-/// effects shown, at [now]; [copyOf] names the copy of an effect. Without the
-/// effect — for `Current graph`, or a node without effects — the window shows
-/// the effect node [node] alone.
+/// effects shown, at [now]. Without the effect — for `Current graph`, or a
+/// node without effects — the window shows the effect node [node] alone.
 VisitDetails visitDetails({
   required SessionData? session,
   required Iterable<EffectState> effects,
   required EffectPlaces places,
   required String? effectId,
   EffectNode? node,
-  String? Function(String effectId)? copyOf,
   required DateTime now,
 }) {
   final details = session == null || effectId == null
@@ -166,6 +160,5 @@ VisitDetails visitDetails({
           (time: clockTime(start.at), outcome: start.outcome),
       ],
     ),
-    copy: copyOf?.call(details.effectId),
   );
 }

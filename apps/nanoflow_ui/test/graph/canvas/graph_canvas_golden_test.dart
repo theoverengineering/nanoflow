@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/canvas/graph_canvas.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
@@ -22,19 +21,6 @@ void main() {
       'fixture', (tester) async {
     await pumpCanvas(tester, modelOf());
     await expectGolden(tester, 'canvas_release');
-  });
-
-  testWidgets('copies of a body', (tester) async {
-    await pumpCanvas(
-      tester,
-      modelOf(
-        graph: GraphFile.fromJson({
-          ...graphFileNamed('inline').toJson(),
-          'workflows': ['lib/inline.dart#inPlace'],
-        }),
-      ),
-    );
-    await expectGolden(tester, 'canvas_copies');
   });
 
   testWidgets('publish() expanded in place, and upload() in it; sign() '

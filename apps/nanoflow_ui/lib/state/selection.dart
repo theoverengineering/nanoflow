@@ -19,8 +19,7 @@ class Selection extends ChangeNotifier {
   final DateTime Function() _now;
 
   /// The last of the effects of a session shown, which following moves on
-  /// to; `null` for the session's last effect. The effects shown are those of
-  /// the copies chosen, when any is.
+  /// to; `null` for the session's last effect.
   String? Function(SessionData session)? lastEffectOf;
 
   late DateTime _openedAt;

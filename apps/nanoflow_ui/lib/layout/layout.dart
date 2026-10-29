@@ -23,14 +23,6 @@ import 'ports.dart';
 import 'routing.dart';
 
 export 'checks.dart' show checkLayout, countCrossings;
-export 'coordinates.dart'
-    show
-        badgeHeight,
-        badgeOverhang,
-        overTile,
-        stackInset,
-        stackStep,
-        tilesBehind;
 export 'geometry.dart';
 export 'graph_layout.dart';
 export 'layout_graph.dart'
@@ -40,7 +32,6 @@ export 'layout_graph.dart'
         LayoutOptions,
         MeasureText,
         NodeKind,
-        copiesBadge,
         endMarker,
         endMarkerAt,
         insideText,
@@ -56,11 +47,11 @@ export 'nested.dart' show ExpandedNode, FrameRoom, frameOutline, sideClearance;
 /// markers (`LayoutGraph.ofBody`), its calls named after their functions in
 /// [functions]: steps 1 to 8 of `docs/graph-layout.md`.
 ///
-/// The calls and copies of [expanded], by id, are drawn in place (decision
-/// 6): each is a frame round the layout of the body it is given, a node of
-/// [body]'s layout as big as the frame (`NodeBox.frame`). A body in a frame
-/// has one end, after everything else; the nodes it expands are frames in
-/// it, and so on. Other ids of [expanded] are left out.
+/// The calls of [expanded], by id, are drawn in place (decision 6): each is
+/// a frame round the layout of the body it is given, a node of [body]'s
+/// layout as big as the frame (`NodeBox.frame`). A body in a frame has one
+/// end, after everything else; the nodes it expands are frames in it, and
+/// so on. Other ids of [expanded] are left out.
 ///
 /// The same body always gets the same layout.
 GraphLayout layoutBody(
@@ -118,7 +109,7 @@ GraphLayout layoutBody(
   final g = graph();
   final inners = <String, ({GraphLayout base, GraphLayout chosen})>{};
   for (final node in g.nodes) {
-    if (node.kind != NodeKind.call && node.kind != NodeKind.copies) continue;
+    if (node.kind != NodeKind.call) continue;
     final open = expanded[node.id];
     if (open == null) continue;
     inners[node.id] = _layout(

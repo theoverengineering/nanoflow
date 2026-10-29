@@ -18,15 +18,13 @@ const double sideClearance = frameOutline + clearance;
 
 /// The room a frame keeps round the body it holds (decision 6,
 /// docs/design/code-first/function-frames.html): a row over the body for
-/// its title — and, for copies, the switcher —, its sides and its bottom,
-/// how wide it is at least, and how far what is drawn over it reaches.
+/// its title, its sides and its bottom, and how wide it is at least.
 final class FrameRoom {
   const FrameRoom({
     this.top = 32,
     this.side = 16,
     this.bottom = 16,
     this.width = 0,
-    this.above = 0,
   });
 
   /// From the frame's top to the body: the title row.
@@ -44,26 +42,21 @@ final class FrameRoom {
   /// The least width of the frame: its title row must fit.
   final double width;
 
-  /// How far over the frame, and right of it, what is drawn with it
-  /// reaches: the outlines stacked behind copies.
-  final double above;
-
   @override
   bool operator ==(Object other) =>
       other is FrameRoom &&
       other.top == top &&
       other.side == side &&
       other.bottom == bottom &&
-      other.width == width &&
-      other.above == above;
+      other.width == width;
 
   @override
-  int get hashCode => Object.hash(top, side, bottom, width, above);
+  int get hashCode => Object.hash(top, side, bottom, width);
 }
 
-/// A call or copies expanded in place: [body] — the function's, or a
-/// copy's — drawn in a frame instead of the node's tile, with the [room]
-/// the frame keeps round it, and the nodes of [body] expanded in turn.
+/// A call expanded in place: [body] — the function's — drawn in a frame
+/// instead of the node's tile, with the [room] the frame keeps round it,
+/// and the nodes of [body] expanded in turn.
 final class ExpandedNode {
   const ExpandedNode(
     this.body, {

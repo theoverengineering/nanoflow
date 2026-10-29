@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
 
-/// The button that expands a call or copies in place, `+` on its tile, and
+/// The button that expands a call in place, `+` on its tile, and
 /// collapses its frame back to the tile, `−` in the frame's top right
 /// corner (decision 6; docs/design/code-first/function-frames.html).
 class FrameToggle extends StatelessWidget {

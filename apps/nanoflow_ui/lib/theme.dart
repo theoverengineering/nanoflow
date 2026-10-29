@@ -357,7 +357,6 @@ abstract final class AppText {
   );
   static final windowPlace = _style(mono, 11, color: AppColors.textSubtle);
   static final visitText = _style(sans, 12, color: AppColors.textPrimary);
-  static final windowCopy = _style(sans, 12, color: AppColors.textMuted);
   static final resultChip = _style(sans, 11.5);
 
   /// `PLACE IN CODE`, `THIS EFFECT`, `OUTPUT`: 0.09 em apart.

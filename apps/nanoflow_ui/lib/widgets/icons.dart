@@ -236,9 +236,9 @@ class OpenOutIcon extends StatelessWidget {
   );
 }
 
-/// Two upright bars, a pause: an effect or a copy interrupted — its process
-/// stopped, a resume goes on with it. 10 units, as wide as the cross of a
-/// failed effect.
+/// Two upright bars, a pause: an effect interrupted — its process stopped,
+/// a resume goes on with it. 10 units, as wide as the cross of a failed
+/// effect.
 class PauseIcon extends StatelessWidget {
   const PauseIcon({
     super.key,
@@ -395,8 +395,8 @@ class ConditionIcon extends _NodeIcon {
     );
 }
 
-/// A function, `ƒ` with `×` by it as in `f(x)`: a call, or copies of a
-/// body, with the effects folded in it.
+/// A function, `ƒ` with `×` by it as in `f(x)`: a call, with the effects
+/// folded in it.
 class FunctionIcon extends _NodeIcon {
   const FunctionIcon({super.key, required super.size, required super.color});
 

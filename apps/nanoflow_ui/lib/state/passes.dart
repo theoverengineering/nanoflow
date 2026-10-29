@@ -22,9 +22,9 @@
 /// **The ends before an effect.** The code before an effect E ended at the
 /// effects below E's predecessor — below what E is below when it has none —
 /// that no effect on the graph follows, that had finished by E's first
-/// `effect-started`, and that lead to E on the level or are in one call or
-/// copies node with it: a wait ends after all it waits for, a call after all
-/// it ran, while effects side by side start before either ends. They were
+/// `effect-started`, and that lead to E on the level or are in one call
+/// node with it: a wait ends after all it waits for, a call after all it
+/// ran, while effects side by side start before either ends. They were
 /// joined before E; E itself never is. An end joined before an effect that
 /// started before E and had finished by then was passed: the code went on
 /// from it to that effect, and it is not joined before E — `await
@@ -35,11 +35,11 @@
 /// and the code before it, along the level's edges. A transition goes:
 ///
 /// - from the ends before E, when there are some — not from one in one call
-///   or copies node with E: from it the code went to E inside;
+///   node with E: from it the code went to E inside;
 /// - else from the body's start to E when its predecessor is outside the
 ///   level, or there is none — no `after`, or one no record has;
 /// - else from the predecessor to E when both are on the level, unless they
-///   are in one call or one copies node: then it is inside it;
+///   are in one call node: then it is inside it;
 /// - but on the body of a function the workflow calls, when no way leads
 ///   from the predecessor to E in it, from the predecessor to the body's end
 ///   and from the body's start to E, a run of its own: the code left the
@@ -51,36 +51,34 @@
 ///   no effect on the graph follows, and that was not joined before one — or
 ///   only before effects that started in its own millisecond, as ends side
 ///   by side in one wait are —, to the body's end.
-/// What lies on every simple path of a transition through forks, calls and
-/// copies was passed, and its edges taken. On the body of a function the
-/// workflow calls, of a transition between two effects that could also have
-/// gone out of the body after the one and into it again before the other,
-/// only what lies on every path of both: the code may have left between
-/// them.
+/// What lies on every simple path of a transition through forks and calls
+/// was passed, and its edges taken. On the body of a function the workflow
+/// calls, of a transition between two effects that could also have gone out
+/// of the body after the one and into it again before the other, only what
+/// lies on every path of both: the code may have left between them.
 ///
 /// Some transitions mark nothing, though the code may have gone their way:
 /// those through an effect not on the graph — from an end it follows, or to
 /// an effect that follows it —, where the code went is not drawn; those from
-/// a copies node to the end, as the ends of copies are not always told apart
-/// from copies that went on, and from an end joined only before effects that
-/// started in its millisecond, as it may have run beside them; those to an
-/// effect whose ends were all passed, as they may have been passed by
-/// effects beside it — two calls of a function one after the other leave the
-/// journal `Future.wait([x(), helper()])` leaves when helper's first effect
-/// comes after x ended —; and those to an effect whose ends are all in one
-/// call or copies node with it, as effects side by side there that end in
-/// the millisecond they start join each other so.
+/// an end joined only before effects that started in its millisecond, as it
+/// may have run beside them; those to an effect whose ends were all passed,
+/// as they may have been passed by effects beside it — two calls of a
+/// function one after the other leave the journal `Future.wait([x(),
+/// helper()])` leaves when helper's first effect comes after x ended —; and
+/// those to an effect whose ends are all in one call node with it, as
+/// effects side by side there that end in the millisecond they start join
+/// each other so.
 ///
 /// **Runs.** The transitions of one run of the code are one pass of the
 /// forks on them: those from one predecessor; those from the body's start
 /// again after one predecessor; those to the effects after one wait, from all
 /// it joined; and those to the body's end from the effects one run came to.
 /// Each transition from the body's start to an effect whose predecessor is
-/// not on the level is a run of its own — each copy, and each call, comes
-/// into the body so —, but on the workflow's own body, which the code comes
-/// into once, those of effects with the same `after` are one. The count is
-/// of the runs the journal tells apart: with waits and calls it can differ
-/// from how many times the condition was evaluated.
+/// not on the level is a run of its own — each call comes into the body
+/// so —, but on the workflow's own body, which the code comes into once,
+/// those of effects with the same `after` are one. The count is of the runs
+/// the journal tells apart: with waits and calls it can differ from how
+/// many times the condition was evaluated.
 ///
 /// **The ways the code may have gone** mark nothing, but no exit on them is
 /// darker ([_mayHaveGone]): the walks of every transition, marking or not; on
@@ -135,7 +133,7 @@
 ///   (!first) await e7();`, first true then false, darkens the way out the
 ///   first took.
 /// - *Effects side by side that end in the millisecond they start*, in one
-///   call or copies node or leading to each other round a loop: each reads as
+///   call node or leading to each other round a loop: each reads as
 ///   joined before the other, and so, the other done, as passed. The effect
 ///   after them that has no other end
 ///   finds all its ends passed: it marks nothing, and the way the code took
@@ -145,10 +143,10 @@
 ///   e2(); i++; }`, can darken the loop's way to e1 when e5 and e6 end in the
 ///   millisecond they start.
 /// - *Counts* (see «Runs»): they can be lower or higher than how many times
-///   the condition was evaluated. An effect whose ends are all in one call or
-///   copies node with it comes by a way that marks nothing, and its way to
-///   the end is of the run it came by, not of the wait's: that too moves
-///   counts, either way.
+///   the condition was evaluated. An effect whose ends are all in one call
+///   node with it comes by a way that marks nothing, and its way to the end
+///   is of the run it came by, not of the wait's: that too moves counts,
+///   either way.
 /// - *Paths*: a transition with more than [_maxPaths] simple paths marks
 ///   nothing.
 library;
@@ -166,8 +164,8 @@ import 'session_feed.dart';
 final class Passes {
   const Passes._(this._forks, this._taken, this._untaken);
 
-  /// The passes of [effects] of [session] — all of it, a copy, all copies —
-  /// on [body], their nodes found by [places].
+  /// The passes of [effects] of [session] on [body], their nodes found by
+  /// [places].
   ///
   /// Asked again of the same body, places and session while the session has
   /// not changed, with the same effects, it gives the same answer at once:
@@ -206,7 +204,7 @@ final class Passes {
 
   /// Whether the edge at [index] leaves a passed fork and the code cannot
   /// have gone along it: it is on none of the ways the code may have gone —
-  /// the walks of the transitions, through forks, calls and copies, a walk
+  /// the walks of the transitions, through forks and calls, a walk
   /// and not a simple path since the code may go round a loop that runs no
   /// effect; on the body of a function the workflow calls, out of it and
   /// back in between any two effects; and the others of the library doc.
@@ -311,7 +309,7 @@ Passes _passesOf(
   );
   final ways = <_Way>[];
   // Each effect and its predecessor, both on the level and not in one call
-  // or copies node: the code may have left the body between them.
+  // node: the code may have left the body between them.
   final pairs = <(List<String>, List<String>)>[];
   // The run that came to each effect, when not the one on from its
   // predecessor: its way to the body's end is one with those of the others
@@ -324,8 +322,8 @@ Passes _passesOf(
     final join = joins[effect.id];
     // Where the code came from is not drawn, or not told: from the
     // predecessor, or from the start, the code may have come. So too when
-    // the ends before the effect are all in one call or copies node with
-    // it: ends side by side in one millisecond join each other so.
+    // the ends before the effect are all in one call node with it: ends
+    // side by side in one millisecond join each other so.
     final unsure =
         passedOver ||
         passed.contains(effect.id) ||
@@ -393,8 +391,7 @@ Passes _passesOf(
           final after? => (by: after, leg: _Leg.on, end: false),
           null => (by: effect.id, leg: _Leg.into, end: false),
         };
-    final sure =
-        !beside && !at.any(level.isCopies) && !tree.isFollowedOffGraph(effect);
+    final sure = !beside && !tree.isFollowedOffGraph(effect);
     ways.add((
       from: at,
       to: const [null],
@@ -665,8 +662,8 @@ typedef _Follows = ({Effect? before, bool passedOver, String parent});
 /// The ends joined before an effect: [key] is the same for two effects only
 /// when the same were joined before both, as before the effects after one
 /// wait; [from] has the nodes of the level of those that lead to the effect
-/// — one for each nodes they are on, none for those in one call or copies
-/// node with it, which lead to it inside —, `drawn` unless effects not on
+/// — one for each nodes they are on, none for those in one call node with
+/// it, which lead to it inside —, `drawn` unless effects not on
 /// the graph followed them.
 typedef _Join = ({String key, List<({List<String> nodes, bool drawn})> from});
 
@@ -742,7 +739,7 @@ _joinsOf(
   finishing.sort((a, b) => a.finished.compareTo(b.finished));
   starting.sort((a, b) => a.started.compareTo(b.started));
   // By the nodes of an effect, the ends that lead to it, or from which the
-  // code may have gone to it inside a call or copies node.
+  // code may have gone to it inside a call node.
   final leading = <String, List<_Ends>>{};
   // The ends joined before an effect, by when it finished: from then on they
   // are joined before no effect that started later than it did — an end that
@@ -966,27 +963,23 @@ final class _Level {
 
   final Map<String, _Between> _between = {};
 
-  bool isCopies(String id) => _nodes[id] is CopiesNode;
-
   bool isEffect(String id) => _nodes[id] is EffectNode;
 
-  /// Whether [from] and [to] share a call or copies node: a transition
-  /// between them may be inside it.
-  bool inOne(List<String> from, List<String> to) => from.any(
-    (id) =>
-        to.contains(id) && (_nodes[id] is CallNode || _nodes[id] is CopiesNode),
-  );
+  /// Whether [from] and [to] share a call node: a transition between them
+  /// may be inside it.
+  bool inOne(List<String> from, List<String> to) =>
+      from.any((id) => to.contains(id) && _nodes[id] is CallNode);
 
   /// Whether a path may go through [id]: a fork, a call that may have run
-  /// no effects, copies run whole; never an effect node, or there would be
-  /// an effect between the two.
+  /// no effects; never an effect node, or there would be an effect between
+  /// the two.
   bool _passable(String id) => switch (_nodes[id]) {
-    ConditionNode() || CallNode() || CopiesNode() => true,
+    ConditionNode() || CallNode() => true,
     EffectNode() || null => false,
   };
 
   /// Whether some way leads from a node of [from] to a node of [to] through
-  /// forks, calls and copies: the corridor of the transition is not empty.
+  /// forks and calls: the corridor of the transition is not empty.
   bool leads(List<String?> from, List<String?> to) =>
       between(from, to).corridor.isNotEmpty;
 
@@ -1003,9 +996,9 @@ final class _Level {
     );
   }
 
-  /// The edges on some walk from a node of [from] through forks, calls and
-  /// copies to any node, or the body's end: those leaving [from] and the
-  /// nodes such a walk reaches.
+  /// The edges on some walk from a node of [from] through forks and calls
+  /// to any node, or the body's end: those leaving [from] and the nodes such
+  /// a walk reaches.
   Set<int> onwards(List<String?> from) {
     final reached = <String?>{...from};
     final ahead = [...from];
@@ -1037,7 +1030,7 @@ final class _Level {
   }
 
   /// The edges on some walk from a node of [from] to a node of [to] through
-  /// forks, calls and copies: nodes may come again on a walk, so the rounds
+  /// forks and calls: nodes may come again on a walk, so the rounds
   /// of a loop that run no effect are on one. Each edge leaves a node a
   /// source reaches and enters a target, or a node that reaches one.
   Set<int> _corridor(List<String?> from, Set<String?> to) {

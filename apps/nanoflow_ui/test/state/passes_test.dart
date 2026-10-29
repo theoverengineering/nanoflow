@@ -16,7 +16,6 @@ import 'dart:async';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:nanoflow_ui/state/copies.dart';
 import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/passes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
@@ -38,10 +37,6 @@ ConditionNode forkAt(String id) =>
 /// A call [id] of [function].
 CallNode callAt(String id, GraphFunction function) =>
     CallNode(id: id, place: null, functions: [function.id]);
-
-/// Copies [id] of [body], side by side.
-CopiesNode copiesNode(String id, GraphBody body) =>
-    CopiesNode(id: id, place: null, label: 'x in xs', body: body);
 
 GraphEdge _edge(String text) {
   final [from, rest] = text.split('>');
@@ -763,20 +758,11 @@ void main() {
     group('calls that begin with a wait: for (env in envs) await '
         'deploy(env), deploy { await Future.wait(hosts.map(push)); if '
         '(notify) await notify(); }', () {
+      // Every host's push side by side on the node push.
       final deploy = graphFunction(
         'deploy',
-        [
-          copiesNode(
-            'c',
-            GraphBody(
-              nodes: [effectAt('push')],
-              edges: [_edge('>push'), _edge('push>')],
-            ),
-          ),
-          forkAt('n'),
-          effectAt('notify'),
-        ],
-        ['>c', 'c>n', 'n>notify', 'n>', 'notify>'],
+        [effectAt('push'), forkAt('n'), effectAt('notify')],
+        ['>push', 'push>n', 'n>notify', 'n>', 'notify>'],
       );
       final s = Shape.of(deploy.body, places: calledInALoop(deploy));
 
@@ -1855,130 +1841,6 @@ void main() {
         expect(s.forksOf(p), {'c': 1}, reason: 'finished: $finished');
         expect(s.untakenBy(p), {'c>'}, reason: 'finished: $finished');
       }
-    });
-  });
-
-  group('copies', () {
-    // plan → (each x: (f ? b : c) → (g ? e : end)) → (h ? announce : end);
-    // three copies: the first and the third take b, the second c. The first
-    // effect of each copy follows plan, as the library keys it.
-    final inside = graphFunction(
-      'inside',
-      [forkAt('f'), effectAt('b'), effectAt('c'), forkAt('g'), effectAt('e')],
-      ['>f', 'f>b', 'f>c', 'b>g', 'c>g', 'g>e', 'g>', 'e>'],
-    ).body;
-    final top = Shape(
-      [
-        effectAt('plan'),
-        copiesNode('x', inside),
-        forkAt('h'),
-        effectAt('announce'),
-      ],
-      ['>plan', 'plan>x', 'x>h', 'h>announce', 'h>', 'announce>'],
-    );
-    final frame = top.body.nodes.whereType<CopiesNode>().single;
-    final body = Shape.of(inside, places: top.places);
-
-    /// plan, then three copies, then [announce] after plan when given.
-    Journal copies({bool finished = false, bool announce = false}) {
-      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
-        ..effect(
-          'plan',
-          1,
-          end: 2,
-          place: flowAt('plan'),
-          key: 'p',
-          after: null,
-        );
-      for (final (i, exit) in ['b', 'c', 'b'].indexed) {
-        j.effect(
-          exit,
-          3 + i / 10,
-          end: 4 + i,
-          place: flowAt(exit),
-          key: '$exit$i',
-          after: 'p',
-        );
-      }
-      if (announce) {
-        j.effect('announce', 8, end: 9, place: flowAt('announce'), after: 'p');
-      }
-      if (finished) j.finish(10);
-      return j;
-    }
-
-    List<EffectState> copy(SessionData session, int number) => copiesOf(
-      frame,
-      places: top.places,
-      session: session,
-    )[number - 1].effects;
-
-    test('each copy marks its own exit', () {
-      final session = copies().data;
-
-      final first = body.passes(session, effects: copy(session, 1));
-      expect(body.forksOf(first), {'f': 1});
-      expect(body.takenBy(first), {'>f', 'f>b'});
-      expect(body.untakenBy(first), {'f>c'});
-
-      final second = body.passes(session, effects: copy(session, 2));
-      expect(body.forksOf(second), {'f': 1});
-      expect(body.takenBy(second), {'>f', 'f>c'});
-      expect(body.untakenBy(second), {'f>b'});
-    });
-
-    test('all copies: each passed the fork, both exits taken', () {
-      final p = body.passes(copies().data);
-
-      expect(body.forksOf(p), {'f': 3});
-      expect(body.takenBy(p), {'>f', 'f>b', 'f>c'});
-      expect(body.untakenBy(p), isEmpty);
-    });
-
-    test("the last effect of a copy goes to the body's end only once the "
-        'session has finished', () {
-      final running = copies().data;
-      final before = body.passes(running, effects: copy(running, 1));
-      expect(body.forksOf(before), {'f': 1});
-      expect(body.takenBy(before), {'>f', 'f>b'});
-
-      final finished = copies(finished: true).data;
-      final after = body.passes(finished, effects: copy(finished, 1));
-      expect(body.forksOf(after), {'f': 1, 'g': 1});
-      expect(body.takenBy(after), {'>f', 'f>b', 'b>g', 'g>'});
-      expect(body.untakenBy(after), {'f>c', 'g>e'});
-
-      final all = body.passes(finished);
-      expect(body.forksOf(all), {'f': 3, 'g': 3});
-      expect(body.untakenBy(all), {'g>e'});
-    });
-
-    test("at the level above, a copy's effects are on the copies node and go "
-        "nowhere after it, however the copies end: the workflow's end is not "
-        'reached from them', () {
-      final session = copies(finished: true).data;
-      for (final effects in [null, copy(session, 1), copy(session, 2)]) {
-        final p = top.passes(session, effects: effects);
-
-        expect(top.forksOf(p), isEmpty);
-        expect(top.takenBy(p), {if (effects == null) '>plan', 'plan>x'});
-        expect(top.untakenBy(p), isEmpty);
-      }
-    });
-
-    test('the effect after the copies follows the effect before them: its '
-        'path goes through the copies', () {
-      final p = top.passes(copies(announce: true, finished: true).data);
-
-      expect(top.forksOf(p), {'h': 1});
-      expect(top.takenBy(p), {
-        '>plan',
-        'plan>x',
-        'x>h',
-        'h>announce',
-        'announce>',
-      });
-      expect(top.untakenBy(p), {'h>'});
     });
   });
 

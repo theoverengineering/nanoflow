@@ -1,9 +1,9 @@
 /// Which node of a graph file written again is which node of the one
 /// before (spec §9 «Граф»): node ids are numbers in the order the code has
 /// the nodes, so an edit shifts them, while what a node is — an effect's
-/// name, a call's functions, copies' label, a fork's condition — and its
-/// place among the nodes alike stay. The levels opened and the nodes
-/// expanded in place follow their nodes so. Pure.
+/// name, a call's functions, a fork's condition — and its place among the
+/// nodes alike stay. The levels opened and the nodes expanded in place
+/// follow their nodes so. Pure.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
@@ -14,7 +14,6 @@ import 'body_path.dart';
 String _what(GraphNode node) => switch (node) {
   EffectNode(:final name) => 'effect $name',
   CallNode(:final functions) => 'call ${functions.join(',')}',
-  CopiesNode(:final label) => 'copies $label',
   ConditionNode(:final label) => 'fork $label',
 };
 
