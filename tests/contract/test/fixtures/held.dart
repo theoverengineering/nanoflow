@@ -1,12 +1,12 @@
-// A workflow program on the storage at a place, for test/contract_test.dart.
-// Its middle effect waits until there is a file `go` in the work directory,
-// so that the test can kill the program while the effect runs; the body of
-// each effect counts its runs there, in `<effect>.runs`, a byte a run.
+// A graph program on the storage at a place, for test/contract_test.dart.
+// Its middle node waits until there is a file `go` in the work directory,
+// so that the test can kill the program while the node runs; the body of
+// each node counts its runs there, in `<node>.runs`, a byte a run.
 //
 //   held <place> <work dir> <change>        starts a session, prints its id
 //   held <place> <work dir> --resume <id>   takes the session on, prints its id
 //
-// Then it prints what the workflow returned.
+// Then it prints what the graph returned.
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
@@ -17,26 +17,34 @@ import '../support/places.dart';
 /// The work directory.
 late final String work;
 
-Future<String> held(Flow f, String change) async {
-  final collected = await f.effect('collect', () {
-    _ran('collect');
-    return '$change collected';
-  });
-  final inspected = await f.effect('inspect', () async {
-    _ran('inspect');
-    while (!File(p.join(work, 'go')).existsSync()) {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    return '$collected, inspected';
-  });
-  return f.effect('publish', () {
-    _ran('publish');
-    return '$inspected, published';
-  });
-}
+/// Gives what the change is collected as.
+final collect = node('collect', (String change) {
+  _ran('collect');
+  return '$change collected';
+});
 
-void _ran(String effect) =>
-    File(p.join(work, '$effect.runs'))
+/// Waits for `go` in the work directory, then inspects.
+final inspect = node('inspect', (String collected) async {
+  _ran('inspect');
+  while (!File(p.join(work, 'go')).existsSync()) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  return '$collected, inspected';
+});
+
+/// Publishes what was inspected.
+final publish = node('publish', (String inspected) {
+  _ran('publish');
+  return '$inspected, published';
+});
+
+final held = Graph<String, String>('held', [
+  Graph.start(collect).next((collected) => inspect(collected)),
+  Graph.part(inspect).next((inspected) => publish(inspected)),
+]);
+
+void _ran(String node) =>
+    File(p.join(work, '$node.runs'))
         .writeAsStringSync('x', mode: FileMode.append);
 
 Future<void> main(List<String> args) async {

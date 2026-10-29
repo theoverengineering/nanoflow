@@ -1,5 +1,6 @@
-// Reviews a branch as a nanoflow session, in runs/ of this package — or of
-// the directory of the binary, once compiled — and prints the session's id:
+// Reviews a branch as a nanoflow session of the review graph, in runs/ of
+// this package — or of the directory of the binary, once compiled — and
+// prints the session's id:
 //
 //   dart run bin/main.dart parseConfig
 //   dart run bin/main.dart --resume <id>    # takes a session on
@@ -19,7 +20,8 @@ Usage: review <branch>
 Future<void> main(List<String> args) async {
   final flow = Flow()
     ..addCodec(Change.fromJson)
-    ..addCodec(Report.fromJson);
+    ..addCodec(Report.fromJson)
+    ..addCodec(Collected.fromJson);
   final interrupt = ProcessSignal.sigint.watch().listen((_) => flow.stop());
   try {
     final session = switch (args) {

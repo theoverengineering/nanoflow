@@ -1,5 +1,5 @@
 name: review_example
-description: The review graph from the README as an ordinary Dart workflow function, which nanoflow runs in the app's own process.
+description: The review graph from the README as a graph of nodes, which nanoflow runs in the app's own process.
 publish_to: none
 resolution: workspace
 environment:

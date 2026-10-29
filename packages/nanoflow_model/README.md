@@ -23,7 +23,7 @@
   блокирует владелец сессии: содержимое файла остаётся читаемым.
   `idOfDirName` достаёт идентификатор из имени каталога, `isSessionDirName`
   узнаёт каталог сессии, `runsDirOf` — каталог `runs` в каталоге проекта.
-- **Модели и их JSON.** `Session` (один вызов функции воркфлоу: `workflow`,
+- **Модели и их JSON.** `Session` (один запуск графа: `workflow`,
   снимок файла графа `graph`, `inputId`), `Effect` (`name`, `key`, `after`,
   `place`, `outputId`, `log`), `Document` и `Owner` (процесс-владелец
   сессии: `pid` и `started` — время старта процесса, UTC до миллисекунд, в
@@ -44,17 +44,18 @@
   `KnownEvent` с `time`: `switch` по `Event` исчерпывается им и
   `UnknownEvent`.
 - **Файл графа.** `GraphFile.fromJson` разбирает `nanoflow.graph.json`
-  (`graphFileName`, формат `graphFileFormat`): функции с эффектами
-  (`GraphFunction`), их тела (`GraphBody`) из узлов `EffectNode`,
-  `ConditionNode`, `CallNode` и `CopiesNode` и рёбер `GraphEdge`, а также
-  `GraphWarning` (с `function` — функцией, в чьём объявлении оно; нет ключа —
-  `null`); у функции и эффекта — `doc`, их документация. `toJson`
+  (`graphFileName`, формат `graphFileFormat`): графы (`GraphFunction`; в
+  снимках старых сессий — и функции с эффектами), их тела (`GraphBody`) из
+  узлов `EffectNode`, `ConditionNode` и `CallNode` и рёбер `GraphEdge`, а
+  также `GraphWarning` (с `function` — графом, в чьём объявлении оно; нет
+  ключа — `null`); у графа и узла — `doc`, их документация. Вида `copies`
+  больше нет: файл с ним не читается. `toJson`
   пишет формат 3 и ключи в порядке спецификации; `fromJson` бросает
   `FormatException`, начинающийся с пути в JSON
   (`functions.lib/a.dart#f.body.nodes[2].kind`). Формат 2, до `doc`,
   читается с `doc: null` — так читаются снимки старых сессий; другой формат
   отвергается: файл графа до эффектов (формат 1) не читается.
-  `workflowNamed(name)` находит workflow-функцию по имени.
+  `workflowNamed(name)` находит воркфлоу по имени.
 - **Исходники и отпечаток.** `packageSourcePaths`, `sourceHash` (`\r\n` читается
   как `\n`), `bytesHash`, `hashSources` и `fingerprintOf` считают `sources` и
   `fingerprint` файла графа одним кодом для `describe`, библиотеки и UI.

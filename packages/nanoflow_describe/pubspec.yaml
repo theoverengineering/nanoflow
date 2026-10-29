@@ -1,5 +1,5 @@
 name: nanoflow_describe
-description: Reads the graph of every function with effects of a Dart package from its code, without running it, into the graph file.
+description: Reads the graphs of nodes of a Dart package from its code, without running it, into the graph file.
 publish_to: none
 resolution: workspace
 environment:

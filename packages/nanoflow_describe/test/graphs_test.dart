@@ -87,7 +87,7 @@ void main() {
       graph,
       await expectedFile(
         'graphs',
-        workflows: ['$_file#review', '$_file#reviewed'],
+        workflows: ['$_file#review'],
         functions: {
           '$_file#announce': _function(
             'announce',
@@ -155,12 +155,6 @@ void main() {
               _edge('7', null),
             ],
             doc: _reviewDoc,
-          ),
-          '$_file#reviewed': _function(
-            'reviewed',
-            121,
-            [_effect('1', 'check', 122), _call('2', 'review', 123)],
-            [_edge(null, '1'), _edge('1', '2'), _edge('2', null)],
           ),
         },
       ),
@@ -304,6 +298,60 @@ void main() {
     expect(graph['warnings'], isEmpty);
   });
 
+  test('draws no default for a route\'s switch on a record of types a switch '
+      'must cover, and one for a record it need not; reads block doc '
+      'comments', () async {
+    const file = 'lib/graph_corners.dart';
+    final graph = await describeFixture('graph_corners');
+
+    Map<String, Object?> body(String name) =>
+        _functionOf(graph, '$file#$name')['body']! as Map<String, Object?>;
+    Map<String, Object?> at(Map<String, Object?> node, int line) => {
+      ...node,
+      'place': '$file:$line',
+    };
+    const receiveDoc = 'Takes an alert in.';
+    const pageDoc = 'Pages someone.\n\nOnly when it is urgent.';
+
+    expect(body('route'), {
+      'nodes': [
+        at(_effect('1', 'receive', 0, doc: receiveDoc), 36),
+        at(_effect('2', 'page', 0, doc: pageDoc), 39),
+        // An empty block comment is no doc, and no trouble.
+        at(_effect('3', 'mail', 0), 41),
+        at(_effect('4', 'log', 0), 43),
+        at(_effect('5', 'chat', 0), 45),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2', '(true, _)'),
+        _edge('1', '3', '(false, (Speed.slow, _))'),
+        _edge('1', '4', '(false, (Speed.fast, true))'),
+        _edge('1', '5', '(false, (Speed.fast, false))'),
+        _edge('2', null),
+        _edge('3', null),
+        _edge('4', null),
+        _edge('5', null),
+      ],
+    });
+    expect(body('retry'), {
+      'nodes': [
+        at(_effect('1', 'receive', 0, doc: receiveDoc), 52),
+        at(_effect('2', 'page', 0, doc: pageDoc), 55),
+        at(_effect('3', 'mail', 0), 57),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2', '(true, _)'),
+        _edge('1', '3', '(false, 0)'),
+        _edge('1', null, 'default'),
+        _edge('2', null),
+        _edge('3', null),
+      ],
+    });
+    expect(graph['warnings'], isEmpty);
+  });
+
   test('the same node in two graphs has a place of its own in each', () async {
     final graph = await describeFixture('graphs');
     String? placeOf(String id, String name) =>
@@ -342,7 +390,7 @@ void main() {
   test('warns, of the graph whose declaration each warning is in', () async {
     final graph = await describeFixture('graph_warnings');
     expect(graph['warnings'], [
-      // In functions with no effects, and in a node's declaration: no graph.
+      // In functions, and in a node's declaration: no graph.
       _warning(32, 'a node outside a top-level variable is not drawn'),
       _warning(34, 'a graph outside a top-level variable is not drawn'),
       _warning(38, 'node name is not a string literal'),
@@ -369,6 +417,13 @@ void main() {
         'started',
       ),
       _warning(88, 'graph part not drawn: aPart', 'indirect'),
+      // Graphs of one name: each warns of the other.
+      _warning(
+        90,
+        'graph name twin is also the name of '
+            'lib/graph_warnings.dart#twinGraph',
+        'twin',
+      ),
       _warning(
         94,
         'graph name twin is also the name of lib/graph_warnings.dart#twin',

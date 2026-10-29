@@ -4,18 +4,21 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 
-Future<void> values(Flow f, String url) async {
-  final status = await f.effect('fetch', () => 200);
-  if (status == HttpStatus.notFound) throw HttpException('missing $url');
-  if (status != HttpStatus.ok) throw ProcessException('curl', [url]);
-  print(FileMode.append);
-  print(HttpClientResponseCompressionState.notCompressed);
-  print(ContentType.json);
-  try {
-    await f.effect('parse', () => url);
-  } on HttpException catch (e) {
-    print(e.message);
-  }
-  print(SocketException('refused').osError);
-  await f.effect('done', () => url);
-}
+final fetch = node('fetch', (String url) async => 200);
+
+final values = Graph<String, void>('values', [
+  Graph.start(fetch).next((status) {
+    if (status == HttpStatus.notFound) throw HttpException('missing $status');
+    if (status != HttpStatus.ok) throw ProcessException('curl', ['$status']);
+    print(FileMode.append);
+    print(HttpClientResponseCompressionState.notCompressed);
+    print(ContentType.json);
+    try {
+      print(status);
+    } on HttpException catch (e) {
+      print(e.message);
+    }
+    print(SocketException('refused').osError);
+    return null;
+  }),
+]);

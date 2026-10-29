@@ -1,9 +1,9 @@
-// Graphs of nodes: review, whose routes switch over a sealed output, pick
-// with ?:, and run a set into a join, one of them a top-level function;
-// polish, a node of review that shares a node with it, whose ?: route
-// decides nothing and whose other route has if and switch statements, a
-// throw and a statement that decides nothing; announce, whose join has no
-// route; a workflow function that runs a graph.
+// Graphs of nodes: review, a workflow, whose routes switch over a sealed
+// output, pick with ?:, and run a set into a join, one of them a top-level
+// function; polish, a node of review that shares a node with it, whose ?:
+// route decides nothing and whose other route has if and switch statements,
+// a throw and a statement that decides nothing; announce, whose join has no
+// route.
 import 'package:nanoflow/nanoflow.dart';
 
 final class Change {
@@ -117,8 +117,3 @@ final announce = Graph<Report, (String, int)>('announce', [
 
 /// Where a polished report goes: to publish and notify, side by side.
 Object? published(Report report) => {publish(report), notify(report)};
-
-Future<String> reviewed(Flow f, String branch) async {
-  final checked = await f.effect('check', () => branch);
-  return review.run(f, checked);
-}

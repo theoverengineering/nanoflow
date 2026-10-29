@@ -1,8 +1,8 @@
-// Side effects outside effects (effects design §3, spec §7.1): what the graph
-// functions of a package run between their effects that touches the world —
+// Side effects outside effects (effects design §3, spec §7.1): what the routes
+// of the graphs of a package run between their nodes that touches the world —
 // the time, random numbers, anything of `dart:io` — themselves or through the
-// functions of the package they call. Logs and waiting are free; the body
-// given to `Flow.effect` is the effect, so nothing in it counts.
+// functions of the package they call. Logs and waiting are free; a node is an
+// effect, so nothing in its body counts.
 
 import 'dart:math';
 
@@ -13,18 +13,18 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'extract.dart';
 
-/// The warnings about side effects outside effects in the graph functions
-/// whose bodies are [graphBodies], each once.
+/// The warnings about side effects outside effects in the routes whose bodies
+/// are [routes], each once.
 ///
 /// [units] are the resolved sources of the package; [paths] gives the path
 /// from the package root of every unit by its absolute path. A side effect in
-/// the body of a graph function warns where it is; a call there of a function
-/// of the sources warns when the call reaches one, naming the first.
+/// the body of a route warns where it is; a call there of a function of the
+/// sources warns when the call reaches one, naming the first.
 List<GraphWarning> sideEffectWarnings(
   List<ResolvedUnitResult> units,
   Map<String, String> paths,
-  List<FunctionBody> graphBodies,
-) => _Check(units, paths, graphBodies)._warnings();
+  List<FunctionBody> routes,
+) => _Check(units, paths, routes)._warnings();
 
 /// What a side effect is to the rule: none, a log, which may be anywhere, or
 /// one that belongs in an effect.
@@ -34,25 +34,25 @@ enum _Kind { none, log, sideEffect }
 typedef _Reached = ({String source, String place});
 
 /// What the walk of a function meets: a side effect, or a call of a function
-/// of the sources that is not a graph function.
+/// of the sources that is not a route.
 typedef _Meet = ({_Reached? sideEffect, Element? call});
 
 final class _Check {
   _Check(
     List<ResolvedUnitResult> units,
     Map<String, String> paths,
-    this._graphBodies,
+    this._routes,
   ) : _units = {
         for (final unit in units)
           unit.unit: (path: paths[unit.path]!, content: unit.content),
       } {
-    final graphBodies = _graphBodies.toSet();
+    final routes = _routes.toSet();
     for (final unit in units) {
-      _index(unit.unit, graphBodies);
+      _index(unit.unit, routes);
     }
   }
 
-  final List<FunctionBody> _graphBodies;
+  final List<FunctionBody> _routes;
 
   /// The path from the package root and the text of every unit.
   final Map<CompilationUnit, ({String path, String content})> _units;
@@ -61,8 +61,9 @@ final class _Check {
   /// runs when it is called, by its element.
   final _runs = <Element, List<AstNode>>{};
 
-  /// The graph functions, whose side effects warn in their own bodies.
-  final _graphFunctions = <Element>{};
+  /// The top-level functions that are routes, whose side effects warn in
+  /// their own bodies.
+  final _routeFunctions = <Element>{};
 
   /// What a call of a function of the sources reaches, by the function; none
   /// for a function that reaches no side effect (see [_reachAll]).
@@ -70,7 +71,7 @@ final class _Check {
 
   List<GraphWarning> _warnings() {
     final warnings = <GraphWarning>{};
-    for (final body in _graphBodies) {
+    for (final body in _routes) {
       _walk(body, (node) {
         if (_isSideEffect(node)) {
           warnings.add(
@@ -95,8 +96,8 @@ final class _Check {
   }
 
   /// Finds what every function, method, constructor, getter and setter of
-  /// [unit] with a body runs, and which are graph functions.
-  void _index(CompilationUnit unit, Set<FunctionBody> graphBodies) {
+  /// [unit] with a body runs, and which are routes of [routes].
+  void _index(CompilationUnit unit, Set<FunctionBody> routes) {
     void visit(AstNode node) {
       final (fragment, runs) = switch (node) {
         FunctionDeclaration(
@@ -119,7 +120,7 @@ final class _Check {
       if (fragment != null) {
         final element = fragment.element.baseElement;
         _runs[element] = runs;
-        if (graphBodies.contains(runs.last)) _graphFunctions.add(element);
+        if (routes.contains(runs.last)) _routeFunctions.add(element);
       }
       for (final child in node.childEntities.whereType<AstNode>()) {
         visit(child);
@@ -130,7 +131,7 @@ final class _Check {
   }
 
   /// The first side effect that each function of the sources that is not a
-  /// graph function reaches: the first that the walk of what it runs meets,
+  /// route reaches: the first that the walk of what it runs meets,
   /// in the order of its code, itself or through a call of another such
   /// function. Every function is walked once.
   ///
@@ -143,7 +144,7 @@ final class _Check {
   Map<Element, _Reached> _reachAll() {
     final meets = {
       for (final MapEntry(key: function, value: runs) in _runs.entries)
-        if (!_graphFunctions.contains(function)) function: _meets(runs),
+        if (!_routeFunctions.contains(function)) function: _meets(runs),
     };
     final reached = <Element, _Reached>{};
     final order = <Element, int>{};
@@ -218,7 +219,7 @@ final class _Check {
           ));
         } else if (_resolved(node) case final function?
             when _runs.containsKey(function) &&
-                !_graphFunctions.contains(function)) {
+                !_routeFunctions.contains(function)) {
           meets.add((sideEffect: null, call: function));
         }
       });
@@ -227,26 +228,14 @@ final class _Check {
   }
 
   /// Calls [visit] on [node] and every node below it, in the order of the
-  /// code. It leaves out the body given to `Flow.effect`, which is the
-  /// effect, and a local function, which runs where it is called.
+  /// code. It leaves out a local function, which runs where it is called.
   void _walk(AstNode node, void Function(AstNode node) visit) {
-    if (node is FunctionDeclarationStatement ||
-        node is Comment ||
-        _isEffectBody(node)) {
-      return;
-    }
+    if (node is FunctionDeclarationStatement || node is Comment) return;
     visit(node);
     for (final child in node.childEntities.whereType<AstNode>()) {
       _walk(child, visit);
     }
   }
-
-  /// Whether [node] is the body given to `Flow.effect`.
-  bool _isEffectBody(AstNode node) => switch (node.parent) {
-    ArgumentList(:final arguments, parent: final MethodInvocation call) =>
-      arguments.length > 1 && arguments[1] == node && isEffect(call),
-    _ => false,
-  };
 
   /// Whether [node] is a side effect that belongs in an effect, and the first
   /// of its chain: what it is a member of, however deep, is not one already,

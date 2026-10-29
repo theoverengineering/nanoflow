@@ -1,18 +1,18 @@
 // Routes (graph node objects design §8–§9): the function a part's `.next`
-// takes, read into the points of its graph's body as a workflow function's
-// body is. Its `if`, `switch` and `?:` are forks labelled as there — but a
-// `switch` the route decides by first, right after the node it follows, is no
-// fork: its cases are that node's own exits, so a node that ends several ways
-// is one tile with an exit for each. So is an `if` or a `?:` it decides by
-// first: its exits are the condition and `else`, and an `if` or a `?:` that
-// `else` decides by — an else-if — adds its condition before it. Unless they
-// all lead to the same place: then the node has an arrow, as a fork that
-// decides nothing is not drawn. Each node or graph called in what it
-// returns is an edge to that node, a set an edge to each of its nodes — a
-// `for` element in it a fork labelled as a loop, whose `each` goes to its
-// node —, and `null` or the end of its body an edge to the end of the graph. A `throw`
-// ends its way: the branch fails. A route that is async or a generator is not
-// read: it gives a Future or an Iterable, no Next.
+// takes, read into the points of its graph's body. Its `if`, `switch` and
+// `?:` are forks labelled with their source — but a `switch` the route
+// decides by first, right after the node it follows, is no fork: its cases
+// are that node's own exits, so a node that ends several ways is one tile
+// with an exit for each. So is an `if` or a `?:` it decides by first: its
+// exits are the condition and `else`, and an `if` or a `?:` that `else`
+// decides by — an else-if — adds its condition before it. Unless they all
+// lead to the same place: then the node has an arrow, as a fork that decides
+// nothing is not drawn. Each node or graph called in what it returns is an
+// edge to that node, a set an edge to each of its nodes — a `for` element in
+// it a fork labelled as a loop, whose `each` goes to its node —, and `null`
+// or the end of its body an edge to the end of the graph. A `throw` ends its
+// way: the branch fails. A route that is async or a generator is not read:
+// it gives a Future or an Iterable, no Next.
 
 part of 'extract.dart';
 
@@ -28,7 +28,7 @@ extension on _GraphBody {
         declaredFragment?.element.formalParameters.firstOrNull?.type,
       ),
       Identifier(:final element) when element is TopLevelFunctionElement => (
-        _package._declarations[element.baseElement]?.body,
+        _package._functions[element.baseElement],
         element.formalParameters.firstOrNull?.type,
       ),
       _ => (null, null),

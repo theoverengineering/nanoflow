@@ -1,7 +1,7 @@
 // The graph file of a package: its sources resolved by the analyzer, refused
-// while they do not compile, then read by extract.dart, checked for side
-// effects outside effects by side_effects.dart and hashed as the model hashes
-// them (spec §6, §7.1).
+// while they do not compile, then read by extract.dart, their routes checked
+// for side effects outside effects by side_effects.dart, and hashed as the
+// model hashes them (spec §6, §7.1).
 
 import 'dart:io';
 
@@ -75,7 +75,7 @@ Future<DescribeResult> describePackage(
     }
     if (errors.isNotEmpty) return DescribeResult(errors: errors);
     final resolved = units.values.toList();
-    final extracted = await extract(resolved, paths, session);
+    final extracted = extract(resolved, paths);
     final sources = await hashSources(root, sourcePaths);
     return DescribeResult(
       graph: GraphFile(
@@ -86,11 +86,11 @@ Future<DescribeResult> describePackage(
         builds: const {},
         workflows: extracted.workflows,
         functions: extracted.functions,
-        // Each once, by place, with the function it is in.
+        // Each once, by place, with the graph it is in.
         warnings: {
           for (final warning in {
             ...extracted.warnings,
-            ...sideEffectWarnings(resolved, paths, extracted.bodies),
+            ...sideEffectWarnings(resolved, paths, extracted.routes),
           })
             if (_split(warning.place!) case (final path, final line))
               GraphWarning(

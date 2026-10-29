@@ -22,37 +22,8 @@ final String example = p.join(repoRoot, 'examples', 'review');
 /// The example's graph file, as the repository has it.
 Map<String, Object?> exampleGraph() => readJson(p.join(example, graphFileName));
 
-/// The id of the example's workflow in its graph file.
-const reviewId = 'lib/review.dart#review';
-
 /// The id of the example's review graph in its graph file.
-const graphId = 'lib/review_graph.dart#reviewGraph';
-
-/// `lib/review_graph.dart:<line>` of the one line of the example's
-/// `lib/review_graph.dart` that holds [code].
-String graphPlaceOf(String code) {
-  final lines = File(p.join(example, 'lib', 'review_graph.dart'))
-      .readAsLinesSync();
-  final found = [
-    for (final (i, line) in lines.indexed)
-      if (line.contains(code)) i + 1,
-  ];
-  expect(found, hasLength(1), reason: code);
-  return 'lib/review_graph.dart:${found.single}';
-}
-
-/// For each node of the example's review graph, a piece of the one line of
-/// `lib/review_graph.dart` where the graph first names it: the node's place.
-/// publish and notify are named side by side, on one line.
-const graphNodeLines = {
-  'collect': 'Graph.start(collect)',
-  'discard': 'Empty(:final branch) => discard(branch)',
-  'inspect': 'Found(:final change) => inspect(change)',
-  'publish': '{publish(r), notify(r)}',
-  'notify': '{publish(r), notify(r)}',
-  'fix': ': fix(r)',
-  'report': '=> report(sent)',
-};
+const reviewId = 'lib/review.dart#review';
 
 /// `lib/review.dart:<line>` of the one line of the example's
 /// `lib/review.dart` that holds [code].
@@ -65,6 +36,19 @@ String placeOf(String code) {
   expect(found, hasLength(1), reason: code);
   return 'lib/review.dart:${found.single}';
 }
+
+/// For each node of the example's review graph, a piece of the one line of
+/// `lib/review.dart` where the graph first names it: the node's place.
+/// publish and notify are named side by side, on one line.
+const nodeLines = {
+  'collect': 'Graph.start(collect)',
+  'discard': 'Empty(:final branch) => discard(branch)',
+  'inspect': 'Found(:final change) => inspect(change)',
+  'publish': '{publish(r), notify(r)}',
+  'notify': '{publish(r), notify(r)}',
+  'fix': ': fix(r)',
+  'report': '=> report(sent)',
+};
 
 /// Copies what the library and describe read of the example — its sources,
 /// its graph file and the name of its package — into [dir].
@@ -97,81 +81,76 @@ void copyExample(String dir) {
 }
 
 /// Checks the session [sessionId] in [projectDir]: a review of the branch
-/// `parseConfig`, whose file name inspect finds wrong once, run from its
-/// start to its end in one go, with [graph] as the graph file and [code] as
-/// the hash of the code it ran.
+/// `parseConfig`, finished; each node's effect at the node's place in the
+/// graph, the fix done, report the join of publish and notify; [restarted]
+/// effects started twice — run again in their record after a crash —,
+/// collect not among them, and every other once. When given, [graph] is the
+/// graph file the session recorded and [codes] the hashes of the code it ran.
 Future<void> expectReviewed(
   String projectDir,
   String sessionId, {
-  required Map<String, Object?> graph,
-  required String code,
+  int restarted = 0,
+  Map<String, Object?>? graph,
+  List<String>? codes,
 }) async {
   final session = await sessionIn(projectDir, sessionId);
   expect(session.session.workflow, 'review');
-  expect(session.session.graph, graph);
+  if (graph != null) expect(session.session.graph, graph);
   expect(await session.documentValue(session.session.inputId!), 'parseConfig');
 
   final state = replaySession(await session.events());
   expect(state.status, SessionStatus.finished);
-  expect(state.codes, [code]);
-  expect(await session.documentValue(state.outputId!), isNull);
+  if (codes != null) expect(state.codes, codes);
 
   final effects = await session.effects();
-  expect(
-    [for (final effect in effects) effect.name],
-    ['collect', 'inspect', 'fix', 'inspect', 'publish', 'notify'],
-  );
-  expect(
-    [
-      for (final effect in state.effects)
-        (effect.effectId, effect.status, effect.starts),
-    ],
-    unorderedEquals([
-      for (final effect in effects) (effect.id, EffectStatus.finished, 1),
-    ]),
-  );
+  final names = [for (final effect in effects) effect.name];
+  expect(names.take(4), ['collect', 'inspect', 'fix', 'inspect']);
+  expect(names.skip(4).take(2), unorderedEquals(['publish', 'notify']));
+  expect(names.last, 'report');
+  expect(names, hasLength(7));
+  for (final effect in effects) {
+    expect(effect.place, placeOf(nodeLines[effect.name]!), reason: effect.name);
+  }
+  final starts = {
+    for (final effect in state.effects) effect.effectId: effect.starts,
+  };
+  expect(starts[effects.first.id], 1);
+  expect([for (final effect in effects) starts[effect.id]]..sort(), [
+    for (var i = 0; i < effects.length - restarted; i++) 1,
+    for (var i = 0; i < restarted; i++) 2,
+  ]);
+  // What each node gave is in the journal, as JSON.
   const before = {'id': 'parseConfig', 'path': 'lib/parseConfig.dart'};
   const after = {'id': 'parseConfig', 'path': 'lib/parse_config.dart'};
+  Future<Object?> outputOf(int i) =>
+      session.documentValue(effects[i].outputId!);
+  expect(await outputOf(0), before);
+  expect(await outputOf(1), {
+    'change': before,
+    'findings': ['lib/parseConfig.dart: file names are lower_snake_case'],
+  });
+  expect(await outputOf(2), after);
+  expect(await outputOf(3), {'change': after, 'findings': <Object?>[]});
   expect(
-    [
-      for (final effect in effects)
-        await session.documentValue(effect.outputId!),
-    ],
-    [
-      before,
-      {
-        'change': before,
-        'findings': ['lib/parseConfig.dart: file names are lower_snake_case'],
-      },
-      after,
-      {'change': after, 'findings': <Object?>[]},
-      null,
-      null,
-    ],
+    {
+      for (final i in [4, 5]) names[i]: await outputOf(i),
+    },
+    {
+      'publish': 'published lib/parse_config.dart',
+      'notify': 'parseConfig: accepted',
+    },
   );
+  expect(await outputOf(6), isNull);
+  String logByName(String name) =>
+      logOf(session, effects.singleWhere((e) => e.name == name))!;
+  expect(logByName('publish'), 'published lib/parse_config.dart\n');
+  expect(logByName('notify'), 'parseConfig: accepted\n');
+  // The join gave report the outputs of publish and notify, in the order of
+  // the join.
   expect(
-    [for (final effect in effects) logOf(session, effect)],
-    [
-      null,
-      null,
-      null,
-      null,
-      'published lib/parse_config.dart\n',
-      'parseConfig: accepted\n',
-    ],
+    logByName('report'),
+    'published lib/parse_config.dart; parseConfig: accepted\n',
   );
-
-  // Each effect is where its node is in the graph.
-  final function = (graph['functions']! as Map)[reviewId] as Map;
-  final nodes = ((function['body']! as Map)['nodes']! as List)
-      .cast<Map<String, Object?>>();
-  for (final effect in effects) {
-    expect(
-      effect.place,
-      nodes.singleWhere((node) => node['name'] == effect.name)['place'],
-      reason: effect.name,
-    );
-  }
 }
 
 /// An `sh` that, put before the real one on `PATH`, stands in for inspect's
@@ -204,100 +183,28 @@ final class HeldCheck {
 }
 
 void main() {
-  test('its graph file is the README review graph, read from its code', () {
+  test('its graph file is the README review graph, read from its code, its '
+      'nodes at their first mention in it', () {
     final graph = exampleGraph();
     expect(graph['package'], 'review_example');
-    expect(graph['workflows'], [reviewId, graphId]);
+    expect(graph['workflows'], [reviewId]);
     expect(graph['warnings'], isEmpty);
+    expect((graph['functions']! as Map).keys, [reviewId]);
     Map<String, Object?> effect(String id, String name, String doc) => {
       'id': id,
       'kind': 'effect',
       'name': name,
-      'place': placeOf("f.effect('$name'"),
+      'place': placeOf(nodeLines[name]!),
       'doc': doc,
-    };
-    Map<String, Object?> fork(String id, String label) => {
-      'id': id,
-      'kind': 'fork',
-      'label': label,
-      'place': placeOf(label),
     };
     Map<String, Object?> edge(String? from, String? to, [String? label]) => {
       'from': from,
       'to': to,
       'label': label,
     };
-    expect((graph['functions']! as Map).keys, [reviewId, graphId]);
     expect((graph['functions']! as Map)[reviewId], {
       'name': 'review',
-      'place': placeOf('Future<void> review('),
-      'doc': 'Reviews the change of [branch].',
-      'body': {
-        'nodes': [
-          effect(
-            '1',
-            'collect',
-            'Takes the change of the branch: the one file named after it.',
-          ),
-          fork('2', 'change.path.isEmpty'),
-          effect(
-            '3',
-            'discard',
-            'Ends the review of a branch that changes nothing.',
-          ),
-          effect(
-            '4',
-            'inspect',
-            "Checks the name of the change's file with a program, as a "
-                'reviewer\nsuch as `claude -p` would be run.',
-          ),
-          fork('5', 'report.findings.isEmpty'),
-          effect('6', 'publish', 'Puts the change out.'),
-          effect('7', 'notify', "Tells the branch's author it is accepted."),
-          effect(
-            '8',
-            'fix',
-            'Renames the file to lower_snake_case, for inspect to check '
-                'again.',
-          ),
-        ],
-        'edges': [
-          edge(null, '1'),
-          edge('1', '2'),
-          edge('2', '3', 'true'),
-          edge('2', '4', 'false'),
-          edge('3', null),
-          edge('4', '5'),
-          // publish and notify side by side.
-          edge('5', '6', 'true'),
-          edge('5', '7', 'true'),
-          edge('5', '8', 'false'),
-          edge('6', null),
-          edge('7', null),
-          edge('8', '4'),
-        ],
-      },
-    });
-  });
-
-  test('its graph file has the review graph, its nodes at their first '
-      'mention in it', () {
-    final graph = exampleGraph();
-    Map<String, Object?> effect(String id, String name, String doc) => {
-      'id': id,
-      'kind': 'effect',
-      'name': name,
-      'place': graphPlaceOf(graphNodeLines[name]!),
-      'doc': doc,
-    };
-    Map<String, Object?> edge(String? from, String? to, [String? label]) => {
-      'from': from,
-      'to': to,
-      'label': label,
-    };
-    expect((graph['functions']! as Map)[graphId], {
-      'name': 'reviewGraph',
-      'place': graphPlaceOf('final reviewGraph = '),
+      'place': placeOf('final review = '),
       'doc': 'Reviews the change of a branch.',
       'body': {
         'nodes': [
@@ -353,7 +260,7 @@ void main() {
     });
   });
 
-  group('the review graph, with dart run', () {
+  group('dart run', () {
     late String dir;
     late String packages;
 
@@ -369,88 +276,28 @@ void main() {
           [
             'run',
             '--packages=$packages',
-            p.join(dir, 'bin', 'graph.dart'),
+            p.join(dir, 'bin', 'main.dart'),
             ...args,
           ],
           dir: dir,
           environment: check?.environment,
         );
 
-    /// Checks the session [id] of the review graph: finished, each node's
-    /// effect at the node's place in the graph, the fix done, report the
-    /// join of publish and notify; [restarted] effects started twice — run
-    /// again in their record after a crash —, collect not among them, and
-    /// every other once.
-    Future<void> expectGraphReviewed(String id, {int restarted = 0}) async {
-      final session = await sessionIn(dir, id);
-      expect(session.session.workflow, 'reviewGraph');
-      final state = replaySession(await session.events());
-      expect(state.status, SessionStatus.finished);
-      final effects = await session.effects();
-      final names = [for (final effect in effects) effect.name];
-      expect(names.take(4), ['collect', 'inspect', 'fix', 'inspect']);
-      expect(names.skip(4).take(2), unorderedEquals(['publish', 'notify']));
-      expect(names.last, 'report');
-      expect(names, hasLength(7));
-      for (final effect in effects) {
-        expect(
-          effect.place,
-          graphPlaceOf(graphNodeLines[effect.name]!),
-          reason: effect.name,
-        );
-      }
-      final starts = {
-        for (final effect in state.effects) effect.effectId: effect.starts,
-      };
-      expect(starts[effects.first.id], 1);
-      expect([for (final effect in effects) starts[effect.id]]..sort(), [
-        for (var i = 0; i < effects.length - restarted; i++) 1,
-        for (var i = 0; i < restarted; i++) 2,
-      ]);
-      // What each node gave is in the journal, as JSON.
-      const before = {'id': 'parseConfig', 'path': 'lib/parseConfig.dart'};
-      const after = {'id': 'parseConfig', 'path': 'lib/parse_config.dart'};
-      Future<Object?> outputOf(int i) =>
-          session.documentValue(effects[i].outputId!);
-      expect(await outputOf(0), before);
-      expect(await outputOf(1), {
-        'change': before,
-        'findings': ['lib/parseConfig.dart: file names are lower_snake_case'],
-      });
-      expect(await outputOf(2), after);
-      expect(await outputOf(3), {'change': after, 'findings': <Object?>[]});
-      expect(
-        {
-          for (final i in [4, 5]) names[i]: await outputOf(i),
-        },
-        {
-          'publish': 'published lib/parse_config.dart',
-          'notify': 'parseConfig: accepted',
-        },
+    test('a branch whose file name needs a fix is reviewed to the end, with '
+        'the graph file and the fingerprint of the sources', () async {
+      final running = await start(['parseConfig']);
+      final id = await running.firstLine();
+      expect(await running.exitCode, 0, reason: '${running.err}');
+      expect(running.lines, [id]);
+      expect('${running.err}', isEmpty);
+      final graph = exampleGraph();
+      await expectReviewed(
+        dir,
+        id,
+        graph: graph,
+        codes: [graph['fingerprint']! as String],
       );
-      expect(await outputOf(6), isNull);
-      String logByName(String name) =>
-          logOf(session, effects.singleWhere((e) => e.name == name))!;
-      expect(logByName('publish'), 'published lib/parse_config.dart\n');
-      expect(logByName('notify'), 'parseConfig: accepted\n');
-      // The join gave report the outputs of publish and notify, in the
-      // order of the join.
-      expect(
-        logByName('report'),
-        'published lib/parse_config.dart; parseConfig: accepted\n',
-      );
-    }
-
-    test(
-      'a branch whose file name needs a fix is reviewed to the end',
-      () async {
-        final running = await start(['parseConfig']);
-        final id = await running.firstLine();
-        expect(await running.exitCode, 0, reason: '${running.err}');
-        expect(running.lines, [id]);
-        await expectGraphReviewed(id);
-      },
-    );
+    });
 
     test('a branch that changes nothing goes to discard, its Empty written '
         'to the journal as the branch', () async {
@@ -487,34 +334,8 @@ void main() {
       final resumed = await start(['--resume', id], check: check);
       expect(await resumed.exitCode, 0, reason: '${resumed.err}');
       expect(resumed.lines, [id]);
-      await expectGraphReviewed(id, restarted: 1);
+      await expectReviewed(dir, id, restarted: 1);
     });
-  });
-
-  test('dart run: a branch whose file name needs a fix is reviewed to the '
-      'end, with the graph file and the fingerprint of the sources', () async {
-    // A copy, so that its sessions go to runs/ in the copy.
-    final dir = tempDir();
-    copyExample(dir);
-    final packages = p.join(repoRoot, '.dart_tool', 'package_config.json');
-
-    final outcome = await run(dart, [
-      'run',
-      '--packages=$packages',
-      p.join(dir, 'bin', 'main.dart'),
-      'parseConfig',
-    ], dir: dir);
-    expect(outcome.code, 0, reason: outcome.err);
-    final id = outcome.out.trim();
-    expect(outcome, (code: 0, out: '$id\n', err: ''));
-
-    final graph = exampleGraph();
-    await expectReviewed(
-      dir,
-      id,
-      graph: graph,
-      code: graph['fingerprint']! as String,
-    );
   });
 
   group('compiled', () {
@@ -556,7 +377,7 @@ void main() {
       expect((graph['builds']! as Map)['review'], binaryHash());
       const noBuilds = {'builds': <String, Object?>{}};
       expect({...graph, ...noBuilds}, {...exampleGraph(), ...noBuilds});
-      await expectReviewed(build, id, graph: graph, code: binaryHash());
+      await expectReviewed(build, id, graph: graph, codes: [binaryHash()]);
     });
 
     test('Ctrl+C stops the session, which no other process can take on '
@@ -591,23 +412,16 @@ void main() {
 
       final resumed = await run(binary, ['--resume', id]);
       expect(resumed, (code: 0, out: '$id\n', err: ''));
-      final session = await sessionIn(build, id);
-      final state = replaySession(await session.events());
-      expect(state.status, SessionStatus.finished);
-      expect(state.codes, [binaryHash(), binaryHash()]);
-      final effects = await session.effects();
-      expect(
-        [for (final effect in effects) effect.name],
-        ['collect', 'inspect', 'fix', 'inspect', 'publish', 'notify'],
-      );
       // The stopped inspect ran again in its record.
-      expect(
-        {for (final effect in state.effects) effect.effectId: effect.starts},
-        {for (final (i, effect) in effects.indexed) effect.id: i == 1 ? 2 : 1},
+      await expectReviewed(
+        build,
+        id,
+        restarted: 1,
+        codes: [binaryHash(), binaryHash()],
       );
     });
 
-    test('killed with SIGKILL in an effect: the reader tells the owner of its '
+    test('killed with SIGKILL in a node: the reader tells the owner of its '
         'session gone within 5 s; --resume tells the new owner alive, then '
         'session-finished, and nothing of the owner after it', () async {
       final check = HeldCheck();

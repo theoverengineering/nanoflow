@@ -1,9 +1,8 @@
 // Graphs of nodes (graph node objects design §8–§9): a top-level variable
 // made by `Graph(name, parts)` of `package:nanoflow` is drawn as a function
-// of the graph file, whose body has the points a workflow function's has —
-// an effect for a node made by `node(…)` in a top-level variable, a call for
-// a graph that is a node, the forks of its routes (routes.dart) —, so the UI
-// draws it as it is.
+// of the graph file, whose body has an effect for a node made by `node(…)`
+// in a top-level variable, a call for a graph that is a node, and the forks
+// of its routes (routes.dart).
 
 part of 'extract.dart';
 
@@ -176,31 +175,8 @@ extension on _Package {
         _ => null,
       };
 
-  /// The graph whose `run` [expression] is — `review.run`, as `flow.start`
-  /// takes a graph —; `null` for anything else.
-  _GraphDeclaration? _graphOfRun(Expression? expression) =>
-      switch (expression?.unParenthesized) {
-        PrefixedIdentifier(:final prefix, :final identifier)
-            when identifier.name == 'run' =>
-          _graphIn(prefix),
-        PropertyAccess(:final target?, :final propertyName)
-            when propertyName.name == 'run' =>
-          _graphIn(target),
-        _ => null,
-      };
-
-  /// The graph [node] runs in the session of a workflow function —
-  /// `review.run(f, input)` —; `null` when it runs none.
-  _GraphDeclaration? _graphRun(AstNode node) => switch (node) {
-    MethodInvocation(:final target?, :final methodName)
-        when methodName.name == 'run' =>
-      _graphIn(target),
-    _ => null,
-  };
-
   /// The graphs of the sources, each drawn as a function, by id; and the
-  /// bodies of their routes, whose side effects warn as a workflow
-  /// function's do.
+  /// bodies of their routes, whose side effects outside effects warn.
   ///
   /// Warns of a graph that is a node of another graph and can end in
   /// several ends at once (graph node objects design §6).
@@ -233,16 +209,15 @@ extension on _Package {
 }
 
 /// The body of one graph, read from its parts: the point of each node, where
-/// the declaration first names it, and the forks of the routes, drawn by
-/// the rules of a workflow function's body.
+/// the declaration first names it, and the forks of the routes.
 final class _GraphBody {
-  _GraphBody(this._package, this.graph) : _points = _Body(_package);
+  _GraphBody(this._package, this.graph) : _points = _Points(_package);
 
   final _Package _package;
   final _GraphDeclaration graph;
 
   /// The points of the body and the ways between them.
-  final _Body _points;
+  final _Points _points;
 
   /// The point of each node of the graph, with where the declaration first
   /// names it.

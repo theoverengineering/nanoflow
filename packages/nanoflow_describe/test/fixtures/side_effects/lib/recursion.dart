@@ -3,23 +3,31 @@
 // side effect a walk from the first of them meets.
 import 'package:nanoflow/nanoflow.dart';
 
-Future<void> count(Flow f, int n) async {
-  final total = r(n);
-  await f.effect('total', () => total);
-}
+final total = node('total', (int n) async => n);
+
+final count = Graph<int, void>('count', [
+  Graph.start(total).next((n) {
+    print(r(n));
+    return null;
+  }),
+]);
 
 /// Calls itself, and nothing else.
 int r(int n) => n <= 0 ? 0 : 1 + r(n - 1);
 
-Future<void> serve(Flow f, int n) async {
-  ping(n);
-  await f.effect('serve', () => n);
-}
+final serve = Graph<int, void>('serve', [
+  Graph.start(total).next((n) {
+    ping(n);
+    return null;
+  }),
+]);
 
-Future<void> volley(Flow f, int n) async {
-  pong(n);
-  await f.effect('volley', () => n);
-}
+final volley = Graph<int, void>('volley', [
+  Graph.start(total).next((n) {
+    pong(n);
+    return null;
+  }),
+]);
 
 /// Calls [pong], then reads the time.
 void ping(int n) {
@@ -32,11 +40,13 @@ void pong(int n) {
   if (n > 0) ping(n - 1);
 }
 
-Future<void> play(Flow f, int n) async {
-  rock(n);
-  scissors(n);
-  await f.effect('play', () => n);
-}
+final play = Graph<int, void>('play', [
+  Graph.start(total).next((n) {
+    rock(n);
+    scissors(n);
+    return null;
+  }),
+]);
 
 /// Calls [paper], then reads the time.
 void rock(int n) {
@@ -55,10 +65,12 @@ void scissors(int n) {
   if (n > 0) rock(n - 1);
 }
 
-Future<void> nest(Flow f, int n) async {
-  outer(n);
-  await f.effect('nest', () => n);
-}
+final nest = Graph<int, void>('nest', [
+  Graph.start(total).next((n) {
+    outer(n);
+    return null;
+  }),
+]);
 
 /// Calls [middle], and nothing else.
 void outer(int n) => middle(n);

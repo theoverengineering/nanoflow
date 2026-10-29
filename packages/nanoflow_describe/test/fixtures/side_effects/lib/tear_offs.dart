@@ -4,9 +4,13 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 
-Future<void> tearOffs(Flow f, List<String> names) async {
-  print(names.map(File.new));
-  final now = DateTime.now;
-  print(now());
-  await f.effect('count', () => names.length);
-}
+final names = node('names', (List<String> names) async => names);
+
+final tearOffs = Graph<List<String>, void>('tearOffs', [
+  Graph.start(names).next((names) {
+    print(names.map(File.new));
+    final now = DateTime.now;
+    print(now());
+    return null;
+  }),
+]);

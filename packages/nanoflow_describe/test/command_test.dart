@@ -31,7 +31,7 @@ Future<void> until(
 }
 
 void main() {
-  // The review fixture as a package of its own. It is inside the workspace,
+  // The graphs fixture as a package of its own. It is inside the workspace,
   // so that the analyzer finds `package:nanoflow`, in a directory whose name
   // starts with `.`, which `dart analyze` and `dart format` of the workspace
   // pass by.
@@ -43,8 +43,8 @@ void main() {
     final temp = await Directory(p.join('test', 'fixtures'))
         .createTemp('.tmp-');
     dir = p.normalize(temp.absolute.path);
-    await copyDir(p.join('test', 'fixtures', 'review'), dir);
-    await File(p.join(dir, 'pubspec.yaml')).writeAsString('name: review\n');
+    await copyDir(p.join('test', 'fixtures', 'graphs'), dir);
+    await File(p.join(dir, 'pubspec.yaml')).writeAsString('name: graphs\n');
     out = StringBuffer();
     err = StringBuffer();
   });
@@ -57,13 +57,13 @@ void main() {
       runDescribe(args, cwd: dir, out: out, err: err);
 
   File graphFile([String? inDir]) => File(p.join(inDir ?? dir, graphFileName));
-  File source() => File(p.join(dir, 'lib', 'review.dart'));
+  File source() => File(p.join(dir, 'lib', 'graphs.dart'));
 
-  /// Changes the text of `lib/review.dart` with [change].
+  /// Changes the text of `lib/graphs.dart` with [change].
   Future<void> edit(String Function(String text) change) async =>
       source().writeAsString(change(await source().readAsString()));
 
-  /// A line that does not compile, added to the end of `lib/review.dart`.
+  /// A line that does not compile, added to the end of `lib/graphs.dart`.
   Future<void> breakSource() => edit((text) => "${text}int broken = '';\n");
 
   /// The graph file describe gives, as the command writes it.
@@ -130,7 +130,7 @@ void main() {
     expect(out.toString(), isEmpty);
     expect(
       err.toString(),
-      matches(RegExp(r'^lib/review\.dart:\d+:\d+: .+\n$')),
+      matches(RegExp(r'^lib/graphs\.dart:\d+:\d+: .+\n$')),
     );
     expect(await graphFile().readAsString(), text);
     expect(await graphFile().lastModified(), old);
@@ -163,7 +163,7 @@ void main() {
     expect(await run(['--check']), 1);
     expect(
       err.toString(),
-      matches(RegExp(r'^lib/review\.dart:\d+:\d+: .+\n$')),
+      matches(RegExp(r'^lib/graphs\.dart:\d+:\d+: .+\n$')),
     );
   });
 
@@ -291,7 +291,7 @@ void main() {
       await Future<void>.delayed(const Duration(seconds: 1));
       expect(
         err.toString(),
-        matches(RegExp(r'^describe failed: lib/review\.dart:\d+:\d+: .+\n$')),
+        matches(RegExp(r'^describe failed: lib/graphs\.dart:\d+:\d+: .+\n$')),
       );
       expect(await graphFile().readAsString(), text);
 

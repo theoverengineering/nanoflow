@@ -4,11 +4,15 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 
-Future<void> logs(Flow f, String input) async {
-  print('x');
-  stdout.writeln('x');
-  stderr.write('x');
-  await Future<void>.delayed(Duration.zero);
-  Timer(Duration.zero, () {});
-  await f.effect('log', () => input);
-}
+final log = node('log', (String input) async => input);
+
+final logs = Graph<String, void>('logs', [
+  Graph.start(log).next((input) {
+    print('x');
+    stdout.writeln('x');
+    stderr.write('x');
+    unawaited(Future<void>.delayed(Duration.zero));
+    Timer(Duration.zero, () {});
+    return null;
+  }),
+]);

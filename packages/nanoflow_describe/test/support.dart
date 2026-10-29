@@ -1,5 +1,5 @@
-// What the tests of extraction share: the fixture packages and the graph
-// file each must give.
+// What the tests of describe share: the fixture packages and the graph file
+// each must give.
 
 import 'dart:convert';
 
@@ -18,9 +18,9 @@ Future<Map<String, Object?>> describeFixture(String name) async {
   return result.graph!.toJson();
 }
 
-/// [functions] as the file has them: `doc: null` on a function and on an
-/// effect whose expectation gives none, in the place the file has it — the
-/// fixtures document only what their tests say.
+/// [functions] as the file has them: `doc: null` on a graph and on an effect
+/// whose expectation gives none, in the place the file has it — the fixtures
+/// document only what their tests say.
 Map<String, Object?> withDocs(Map<String, Object?> functions) => {
   for (final MapEntry(key: id, value: function) in functions.entries)
     id: {
@@ -44,10 +44,6 @@ Object? _bodyWithDocs(Object? body) => {
               in (node as Map<String, Object?>).entries)
             if (key != 'doc') key: value,
           'doc': node['doc'],
-        },
-        {'kind': 'copies'} => {
-          ...node as Map<String, Object?>,
-          'body': _bodyWithDocs(node['body']),
         },
         _ => node,
       },

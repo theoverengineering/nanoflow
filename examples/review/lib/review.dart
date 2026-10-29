@@ -1,104 +1,99 @@
-/// The review graph from the README as an ordinary workflow function: take
-/// the change of a branch; end at once when it changes nothing; otherwise
-/// inspect it, fix it while inspect finds something, and publish it and
-/// notify about it side by side once inspect finds nothing.
+/// The review graph from the README: each step a node that runs as one
+/// effect and knows nothing of the others, and a graph whose routes say what
+/// follows what.
 ///
-/// The effects do their work offline and the same way every run, so that the
-/// example runs anywhere: the change of a branch is the one file named after
-/// it, inspect checks the file's name with a program through `exec` — as a
-/// reviewer such as `claude -p` would be run — and fix renames the file.
+/// collect gives [Empty] for a branch that changes nothing, which goes to
+/// discard, or [Found] with the change, which goes to inspect; a report of
+/// inspect with findings goes to fix and back to inspect, one without goes to
+/// publish and notify side by side, and when both are done to report.
 library;
-
-import 'dart:convert';
 
 import 'package:nanoflow/nanoflow.dart';
 
-/// The change under review: the file it touches; none when [path] is empty.
-class Change {
-  Change({required this.id, required this.path});
+import 'change.dart' as work show collect, fix, inspect;
+import 'change.dart' show Change, Report;
 
-  factory Change.fromJson(Map<String, Object?> json) =>
-      Change(id: json['id']! as String, path: json['path']! as String);
+export 'change.dart' show Change, Report;
 
-  final String id;
-  final String path;
+/// What collect gives: [Empty] or [Found].
+sealed class Collected {
+  /// An [Empty] for the JSON of a branch, a [Found] for the JSON of a change.
+  static Collected fromJson(Map<String, Object?> json) =>
+      json.containsKey('branch')
+      ? Empty(json['branch']! as String)
+      : Found(Change.fromJson(json));
 
-  Map<String, Object?> toJson() => {'id': id, 'path': path};
+  Map<String, Object?> toJson();
 }
 
-/// What inspect found in a change: nothing when it can go out.
-class Report {
-  Report({required this.change, required this.findings});
+/// The branch changes nothing.
+final class Empty implements Collected {
+  Empty(this.branch);
 
-  factory Report.fromJson(Map<String, Object?> json) => Report(
-    change: Change.fromJson(json['change']! as Map<String, Object?>),
-    findings: [for (final finding in json['findings']! as List) '$finding'],
-  );
+  final String branch;
+
+  @override
+  Map<String, Object?> toJson() => {'branch': branch};
+}
+
+/// The change of the branch.
+final class Found implements Collected {
+  Found(this.change);
 
   final Change change;
-  final List<String> findings;
 
-  Map<String, Object?> toJson() => {
-    'change': change.toJson(),
-    'findings': findings,
-  };
+  @override
+  Map<String, Object?> toJson() => change.toJson();
 }
 
-/// Reviews the change of [branch].
-Future<void> review(Flow f, String branch) async {
-  /// Takes the change of the branch: the one file named after it.
-  var change = await f.effect('collect', () => collect(branch));
-  if (change.path.isEmpty) {
-    /// Ends the review of a branch that changes nothing.
-    await f.effect('discard', () => print('nothing to review'));
-    return;
-  }
-  while (true) {
-    /// Checks the name of the change's file with a program, as a reviewer
-    /// such as `claude -p` would be run.
-    final report = await f.effect('inspect', () => inspect(change));
-    if (report.findings.isEmpty) {
-      await Future.wait([
-        /// Puts the change out.
-        f.effect('publish', () => print('published ${report.change.path}')),
+/// The change of the branch, or Empty when it changes nothing.
+final collect = node('collect', (String branch) async {
+  final change = work.collect(branch);
+  return change.path.isEmpty ? Empty(branch) : Found(change);
+});
 
-        /// Tells the branch's author it is accepted.
-        f.effect('notify', () => print('${report.change.id}: accepted')),
-      ]);
-      return;
-    }
+/// Checks the name of the change's file with a program, as a reviewer
+/// such as `claude -p` would be run.
+final inspect = node('inspect', (Change change) async => work.inspect(change));
 
-    /// Renames the file to lower_snake_case, for inspect to check again.
-    change = await f.effect('fix', () => fix(report));
-  }
-}
+/// Renames the file to lower_snake_case, for inspect to check again.
+final fix = node('fix', (Report report) async => work.fix(report));
 
-/// The change of [branch]: the one file named after it, `lib/<branch>.dart`;
-/// none for a branch without a name.
-Change collect(String branch) =>
-    Change(id: branch, path: branch.isEmpty ? '' : 'lib/$branch.dart');
+/// Ends the review of a branch that changes nothing.
+final discard = node(
+  'discard',
+  (String branch) async => print('nothing to review'),
+);
 
-/// Checks [change] with a program: a shell prints a finding a line when the
-/// name of the file is not lower_snake_case.
-Future<Report> inspect(Change change) async {
-  final out = await exec('sh', ['-c', _namingCheck, 'sh', change.path]);
-  return Report(change: change, findings: const LineSplitter().convert(out));
-}
+/// Puts the change out.
+final publish = node('publish', (Report report) async {
+  final done = 'published ${report.change.path}';
+  print(done);
+  return done;
+});
 
-const _namingCheck = r'''
-case "${1##*/}" in
-  *[!a-z0-9_.]*) echo "$1: file names are lower_snake_case" ;;
-esac''';
+/// Tells the branch's author it is accepted.
+final notify = node('notify', (Report report) async {
+  final said = '${report.change.id}: accepted';
+  print(said);
+  return said;
+});
 
-/// Renames the file of the change [report] is about to lower_snake_case:
-/// `lib/parseConfig.dart` becomes `lib/parse_config.dart`. What it gives
-/// passes inspect.
-Change fix(Report report) {
-  final path = report.change.path;
-  final slash = path.lastIndexOf('/') + 1;
-  final name = path
-      .substring(slash)
-      .replaceAllMapped(RegExp('[A-Z]'), (m) => '_${m[0]!.toLowerCase()}')
-      .replaceAll(RegExp('[^a-z0-9_.]'), '_');
-  return Change(id: report.change.id, path: path.substring(0, slash) + name);
-}
+/// Sums up the review once the change is out and the author is told.
+final report = node('report', ((String, String) sent) async {
+  print('${sent.$1}; ${sent.$2}');
+});
+
+/// Reviews the change of a branch.
+final review = Graph<String, void>('review', [
+  Graph.start(collect).next(
+    (collected) => switch (collected) {
+      Empty(:final branch) => discard(branch),
+      Found(:final change) => inspect(change),
+    },
+  ),
+  Graph.part(inspect)
+      .next((r) => r.findings.isEmpty ? {publish(r), notify(r)} : fix(r)),
+  Graph.part(fix).next((change) => inspect(change)),
+  Graph.join([publish, notify]).next(((String, String) sent) => report(sent)),
+]);
