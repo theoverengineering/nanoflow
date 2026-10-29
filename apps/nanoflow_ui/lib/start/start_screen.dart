@@ -35,19 +35,22 @@ Future<String?> pickGraphFile() async {
   return file?.path;
 }
 
-/// How the start screen names the graph file at [path]: a graph's own file
-/// by its name, without `.graph.json`; the graph file of a whole package,
-/// `nanoflow.graph.json`, by the directory it is in, the project's.
+/// How the start screen names the graph file at [path]: by the name of its
+/// graph, without `.graph.json`.
 String graphTitle(String path) {
   final name = p.basename(path);
-  return name == graphFileName
-      ? p.basename(p.dirname(path))
-      : name.substring(0, name.length - graphFileSuffix.length);
+  return name.substring(0, name.length - graphFileSuffix.length);
 }
 
 /// Said when the file chosen in the open dialog is not a graph file.
 String notAGraphFile(String path) =>
     '${p.basename(path)} is not a graph file: open a *.graph.json file';
+
+/// Said when the file chosen in the open dialog is the graph file of a
+/// whole package (`isPackageGraphFile`).
+String packageGraphFile(String path) =>
+    '${p.basename(path)} has the graphs of a whole package: run '
+    'nanoflow_describe to write a file for each graph';
 
 /// Whether a file is still at [path].
 bool fileExists(String path) => File(path).existsSync();
@@ -102,7 +105,10 @@ class _StartScreenState extends State<StartScreen> {
     if (isGraphFile(path)) {
       widget.onOpen(path);
     } else {
-      showFailureNote(context, notAGraphFile(path));
+      showFailureNote(
+        context,
+        isPackageGraphFile(path) ? packageGraphFile(path) : notAGraphFile(path),
+      );
     }
   }
 

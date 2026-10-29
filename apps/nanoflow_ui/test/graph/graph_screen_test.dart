@@ -18,6 +18,7 @@ import 'package:nanoflow_ui/graph/session_bar.dart';
 import 'package:nanoflow_ui/graph/sessions_column.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/graph_marks.dart' show NodeState;
+import 'package:nanoflow_ui/state/project_dir.dart';
 import 'package:nanoflow_ui/state/visits.dart' show StartOutcome;
 import 'package:nanoflow_ui/widgets/spinner.dart';
 import 'package:path/path.dart' as p;
@@ -174,7 +175,7 @@ void main() {
       await tester.pump();
 
       expect(shell.opened, [
-        (p.join(p.dirname(reviewFile), 'lib/review.dart'), 55),
+        (p.join(projectDirOf(reviewFile), 'lib/review.dart'), 55),
       ]);
       expect(find.byType(SnackBar), findsNothing);
     });

@@ -13,9 +13,9 @@ import '../support/golden.dart';
 
 void main() {
   final home = Platform.environment['HOME']!;
-  final review = '$home/Projects/review/nanoflow.graph.json';
-  final release = '$home/work/deploy/nanoflow.graph.json';
-  final onboarding = '$home/Projects/hr/onboarding/nanoflow.graph.json';
+  final review = '$home/Projects/review/lib/review.graph.json';
+  final release = '$home/work/deploy/lib/deploy.graph.json';
+  final onboarding = '$home/Projects/hr/onboarding/lib/onboarding.graph.json';
   final now = DateTime(2026, 9, 21, 14);
 
   late RecentGraphs recent;
@@ -44,8 +44,7 @@ void main() {
     ),
   );
 
-  test("names a graph's own file by its graph, and a package's by its "
-      'directory', () {
+  test('names a graph file by its graph', () {
     expect(
       graphTitle('$home/app/lib/src/generateIdeas.graph.json'),
       'generateIdeas',
@@ -54,7 +53,7 @@ void main() {
   });
 
   testWidgets('recently opened graphs are listed newest first, by their '
-      'directory, with path and time', (tester) async {
+      'graph, with path and time', (tester) async {
     await recent.opened(
       release,
       now.subtract(const Duration(days: 1, hours: 3)),
@@ -65,10 +64,13 @@ void main() {
     expect(find.text('Recently opened'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
     expect(find.text('review'), findsOneWidget);
-    expect(find.text('~/Projects/review/nanoflow.graph.json'), findsOneWidget);
+    expect(
+      find.text('~/Projects/review/lib/review.graph.json'),
+      findsOneWidget,
+    );
     expect(find.text('Opened 2 hours ago'), findsOneWidget);
     expect(find.text('deploy'), findsOneWidget);
-    expect(find.text('~/work/deploy/nanoflow.graph.json'), findsOneWidget);
+    expect(find.text('~/work/deploy/lib/deploy.graph.json'), findsOneWidget);
     expect(find.text('Opened yesterday'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('review')).dy,
@@ -95,6 +97,21 @@ void main() {
     expect(opened, isEmpty);
     expect(
       find.text('package.json is not a graph file: open a *.graph.json file'),
+      findsOneWidget,
+    );
+    await tester.pumpAndSettle(const Duration(seconds: 5));
+  });
+
+  testWidgets("a package's graph file, which describe no longer writes, is "
+      'not opened; a note says what to run', (tester) async {
+    await pumpStart(tester, pick: '$home/Projects/review/nanoflow.graph.json');
+
+    await tester.tap(find.text('Open graph'));
+    await tester.pump();
+
+    expect(opened, isEmpty);
+    expect(
+      find.text(packageGraphFile('$home/Projects/review/nanoflow.graph.json')),
       findsOneWidget,
     );
     await tester.pumpAndSettle(const Duration(seconds: 5));
@@ -137,7 +154,7 @@ void main() {
       );
       expect(find.text('Missing'), findsOneWidget);
       expect(
-        find.text('~/Projects/hr/onboarding/nanoflow.graph.json'),
+        find.text('~/Projects/hr/onboarding/lib/onboarding.graph.json'),
         findsOneWidget,
       );
       expect(find.text('Remove'), findsOneWidget);
@@ -228,8 +245,8 @@ void main() {
       final dialog = _FakeFileSelector();
       FileSelectorPlatform.instance = dialog;
 
-      dialog.answer = '/Users/me/review/nanoflow.graph.json';
-      expect(await pickGraphFile(), '/Users/me/review/nanoflow.graph.json');
+      dialog.answer = '/Users/me/review/lib/review.graph.json';
+      expect(await pickGraphFile(), '/Users/me/review/lib/review.graph.json');
       expect(dialog.accepted!.single.extensions, ['json']);
 
       dialog.answer = null;

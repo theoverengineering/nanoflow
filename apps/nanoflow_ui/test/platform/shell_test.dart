@@ -23,21 +23,21 @@ void main() {
 
     test('revealInFinder selects it in Finder', () async {
       expect(
-        await shell.revealInFinder('/Users/me/review/nanoflow.graph.json'),
+        await shell.revealInFinder('/Users/me/review/lib/review.graph.json'),
         isTrue,
       );
       expect(runs, [
-        ['/usr/bin/open', '-R', '/Users/me/review/nanoflow.graph.json'],
+        ['/usr/bin/open', '-R', '/Users/me/review/lib/review.graph.json'],
       ]);
     });
 
     test('openInEditor opens it in the default text editor', () async {
       expect(
-        await shell.openInEditor('/Users/me/review/nanoflow.graph.json'),
+        await shell.openInEditor('/Users/me/review/lib/review.graph.json'),
         isTrue,
       );
       expect(runs, [
-        ['/usr/bin/open', '-t', '/Users/me/review/nanoflow.graph.json'],
+        ['/usr/bin/open', '-t', '/Users/me/review/lib/review.graph.json'],
       ]);
     });
 
@@ -185,9 +185,9 @@ void main() {
         null,
       ),
     );
-    await Shell().copyToClipboard('/Users/me/review/nanoflow.graph.json');
+    await Shell().copyToClipboard('/Users/me/review/lib/review.graph.json');
     expect(copied, [
-      {'text': '/Users/me/review/nanoflow.graph.json'},
+      {'text': '/Users/me/review/lib/review.graph.json'},
     ]);
   });
 }

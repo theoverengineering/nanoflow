@@ -2,7 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nanoflow_ui/start/launch.dart';
 import 'package:nanoflow_ui/state/store_place.dart';
 
-const _graph = '/Users/me/ideaforge/packages/ideas_flow/nanoflow.graph.json';
+const _graph =
+    '/Users/me/ideaforge/packages/ideas_flow/lib/src/generate/'
+    'generateIdeas.graph.json';
 
 void main() {
   group('parseLaunch', () {
@@ -71,6 +73,7 @@ void main() {
         (const [_graph, '--store', 'mysql:/db'], 'unknown store "mysql"'),
         (const [_graph, '--verbose'], 'unknown option --verbose'),
         (const ['/a/notes.json'], 'is not a graph file'),
+        (const ['/a/nanoflow.graph.json'], 'has the graphs of a whole package'),
         (const [_graph, _graph], 'one graph file only'),
         (
           const [_graph, '--session', 's1', '--current-graph'],
@@ -125,9 +128,9 @@ void main() {
       );
     });
 
-    test('next to a graph file is runs/ there', () {
+    test('in the project of a graph file is runs/ there', () {
       expect(
-        StorePlace.nextTo('/p/nanoflow.graph.json'),
+        StorePlace.nextTo('/p/lib/p.graph.json'),
         const StorePlace.files('/p/runs'),
       );
     });

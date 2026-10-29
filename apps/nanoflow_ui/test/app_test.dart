@@ -13,8 +13,8 @@ import 'support/golden.dart';
 
 void main() {
   final home = Platform.environment['HOME']!;
-  final review = '$home/Projects/review/nanoflow.graph.json';
-  final release = '$home/work/deploy/nanoflow.graph.json';
+  final review = '$home/Projects/review/lib/review.graph.json';
+  final release = '$home/work/deploy/lib/deploy.graph.json';
   final now = DateTime(2026, 9, 21, 14);
 
   testWidgets('the app starts on the start screen, goes to a graph and back', (
@@ -41,7 +41,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(StartScreen), findsNothing);
     expect(find.byType(GraphScreen), findsOneWidget);
-    expect(find.text('~/Projects/review'), findsOneWidget);
+    expect(find.text('~/Projects/review/lib'), findsOneWidget);
 
     await tester.tap(find.text('Graphs'));
     await tester.pumpAndSettle();

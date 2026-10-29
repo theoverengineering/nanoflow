@@ -11,7 +11,7 @@ import '../state/support.dart';
 import '../support/golden.dart';
 
 void main() {
-  const file = '/Users/me/Projects/review/nanoflow.graph.json';
+  const file = '/Users/me/Projects/review/lib/review.graph.json';
 
   /// The notes over the canvas: [notes], their height told to [heights].
   Future<void> pumpNotes(
@@ -99,7 +99,7 @@ void main() {
       ).notes,
     );
     expect(
-      colorOf(tester, '1 warning in nanoflow.graph.json'),
+      colorOf(tester, '1 warning in review.graph.json'),
       AppColors.running,
     );
     expect(
@@ -142,7 +142,7 @@ void main() {
     ).notes;
     expect(notesOn('inPlace'), [
       const GraphNote(
-        '2 warnings in nanoflow.graph.json',
+        '2 warnings in review.graph.json',
         lines: [
           'lib/packages.dart:5  in inPlace',
           'lib/packages.dart:40  in none',
@@ -151,7 +151,7 @@ void main() {
     ]);
     expect(notesOn('viaCall'), [
       const GraphNote(
-        '2 warnings in nanoflow.graph.json',
+        '2 warnings in review.graph.json',
         lines: [
           'lib/packages.dart:20  in publish',
           'lib/packages.dart:40  in none',
@@ -160,7 +160,7 @@ void main() {
     ]);
     expect(notesOn('nested'), [
       const GraphNote(
-        '1 warning in nanoflow.graph.json',
+        '1 warning in review.graph.json',
         lines: ['lib/packages.dart:40  in none'],
       ),
     ]);
@@ -182,14 +182,12 @@ void main() {
     expect(colorOf(tester, fileUnavailable), AppColors.dangerText);
     expect(
       inNotes(
-        find.text(
-          fileUnavailableDetail('nanoflow.graph.json', graphKept: true),
-        ),
+        find.text(fileUnavailableDetail('review.graph.json', graphKept: true)),
       ),
       findsOneWidget,
     );
     expect(
-      colorOf(tester, fileUnreadable('nanoflow.graph.json')),
+      colorOf(tester, fileUnreadable('review.graph.json')),
       AppColors.dangerText,
     );
     expect(
@@ -197,59 +195,6 @@ void main() {
       findsOneWidget,
     );
     expect(inNotes(find.text(lastGraphShown)), findsOneWidget);
-  });
-
-  testWidgets('sessions of workflows the graph file does not have: amber, '
-      'with the workflows', (tester) async {
-    await pumpNotes(
-      tester,
-      fileCanvas(
-        file: file,
-        graph: reviewGraphFile(),
-        workflowId: 'lib/review.dart#review',
-        extraNotes: workflowNotes(
-          file: file,
-          workflow: null,
-          notInGraph: const {'backup': 1, 'deploy': 2},
-        ),
-      ).notes,
-    );
-    expect(
-      colorOf(tester, '3 sessions of 2 workflows not in nanoflow.graph.json'),
-      AppColors.running,
-    );
-    expect(inNotes(find.text('backup')), findsOneWidget);
-    expect(inNotes(find.text('deploy')), findsOneWidget);
-    expect(inNotes(find.text(notInGraphFileDetail)), findsOneWidget);
-  });
-
-  testWidgets('a workflow the graph file does not have, chosen', (
-    tester,
-  ) async {
-    await pumpNotes(
-      tester,
-      fileCanvas(
-        file: file,
-        graph: reviewGraphFile(),
-        workflowId: 'deploy',
-        extraNotes: workflowNotes(
-          file: file,
-          workflow: workflowChoices(reviewGraphFile(), [
-            Journal('d1d1-session', workflow: 'deploy').data,
-          ]).last,
-          notInGraph: const {'deploy': 1},
-        ),
-      ).notes,
-    );
-    expect(
-      colorOf(tester, workflowNotInFile('deploy', 'nanoflow.graph.json')),
-      AppColors.running,
-    );
-    expect(inNotes(find.text(graphFileMayBeStale)), findsOneWidget);
-    expect(
-      inNotes(find.text('1 session of a workflow not in nanoflow.graph.json')),
-      findsNothing,
-    );
   });
 
   testWidgets('a session that ran on other code', (tester) async {

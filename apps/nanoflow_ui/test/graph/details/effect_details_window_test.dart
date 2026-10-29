@@ -13,6 +13,7 @@ import 'package:nanoflow_ui/graph/details/output_column.dart';
 import 'package:nanoflow_ui/graph/logs/effect_details_pane.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
+import 'package:nanoflow_ui/state/project_dir.dart';
 import 'package:nanoflow_ui/theme.dart';
 import 'package:nanoflow_ui/widgets/doc_text.dart';
 import 'package:nanoflow_ui/widgets/icons.dart';
@@ -417,7 +418,7 @@ void main() {
 
       await tap(tester, find.byKey(NodeColumn.openPlaceKey));
       expect(shell.opened, [
-        (p.join(p.dirname(reviewFile), 'lib/review.dart'), 55),
+        (p.join(projectDirOf(reviewFile), 'lib/review.dart'), 55),
       ]);
     });
 

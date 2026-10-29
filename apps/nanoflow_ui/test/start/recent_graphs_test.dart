@@ -5,9 +5,9 @@ import 'package:nanoflow_ui/state/store_place.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  const review = '/Users/me/Projects/review/nanoflow.graph.json';
-  const release = '/Users/me/work/deploy/nanoflow.graph.json';
-  const index = '/Users/me/sandbox/nanoflow.graph.json';
+  const review = '/Users/me/Projects/review/lib/review.graph.json';
+  const release = '/Users/me/work/deploy/lib/deploy.graph.json';
+  const index = '/Users/me/sandbox/lib/index.graph.json';
   final monday = DateTime.utc(2026, 9, 21, 9);
   final tuesday = DateTime.utc(2026, 9, 22, 9);
   final wednesday = DateTime.utc(2026, 9, 23, 9);
@@ -89,9 +89,9 @@ void main() {
   test('a stored list that cannot be read starts empty', () async {
     for (final stored in [
       'not json',
-      '{"path": "/a/nanoflow.graph.json"}',
-      '[{"path": "/a/nanoflow.graph.json"}]',
-      '[{"path": "/a/nanoflow.graph.json", "openedAt": "yesterday"}]',
+      '{"path": "/a/lib/a.graph.json"}',
+      '[{"path": "/a/lib/a.graph.json"}]',
+      '[{"path": "/a/lib/a.graph.json", "openedAt": "yesterday"}]',
       '[{"path": 1, "openedAt": "2026-09-21T09:00:00.000Z"}]',
     ]) {
       final recent = RecentGraphs(await preferences({'recentGraphs': stored}));
@@ -134,12 +134,14 @@ void main() {
     expect(recent.graphs, [(path: review, store: null, openedAt: monday)]);
   });
 
-  test('a graph file is named *.graph.json', () {
+  test("a graph file is named *.graph.json, but for a package's", () {
     expect(isGraphFile(review), isTrue);
     expect(isGraphFile('/Users/me/build/review.graph.json'), isTrue);
     expect(isGraphFile('/Users/me/review.yaml'), isFalse);
     expect(isGraphFile('/Users/me/package.json'), isFalse);
     expect(isGraphFile('/Users/me/graph.json'), isFalse);
+    // A package's, which describe no longer writes.
+    expect(isGraphFile('/Users/me/nanoflow.graph.json'), isFalse);
   });
 
   test('a list that cannot be saved is reported and still shown', () async {

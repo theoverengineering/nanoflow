@@ -23,9 +23,8 @@ import 'visits.dart' show Visit;
 export 'canvas_graph.dart';
 
 /// The state of one graph screen: the graph file and how it stands against
-/// the code, the sessions of its selected workflow — or of the function the
-/// workflows call opened as the main graph, its called graph —, what is
-/// selected, the levels opened and the nodes expanded in place, the
+/// the code, the sessions of its graph — or of a graph it calls opened as
+/// the main graph, its called graph —, what is selected, the levels opened and the nodes expanded in place, the
 /// snapshot documents read; everything the screen shows is derived from it.
 ///
 /// It feeds new data to the [selection], and reads the snapshot of the
@@ -99,15 +98,9 @@ class GraphModel extends ChangeNotifier {
 
   late final StreamSubscription<DocumentAdded> _documents;
 
-  /// The workflow the user chose, by its id and its name: [workflow] finds
-  /// it by its name when its id has changed, as when describe writes a
-  /// workflow its sessions ran to the graph file; it falls back to the
-  /// first.
-  ({String id, String name})? _chosen;
-
-  /// The id of the function the workflows call opened as the main graph
-  /// (open-as-graph design): it is drawn instead of the workflow chosen
-  /// while the graph file has it. `null` while none is open.
+  /// The id of the function the workflow calls opened as the main graph
+  /// (open-as-graph design): it is drawn instead of the workflow while the
+  /// graph file has it. `null` while none is open.
   String? _called;
 
   /// Whether each session ran the called graph opened, by the session's
@@ -115,8 +108,8 @@ class GraphModel extends ChangeNotifier {
   /// called graph closes, or another opens.
   final Map<String, _RanCalled> _ranCalledOf = {};
 
-  /// The levels opened under the workflow's body: the canvas goes down them
-  /// as far as the graph it draws has them.
+  /// The levels opened under the main graph's body: the canvas goes down
+  /// them as far as the graph it draws has them.
   List<Opened> _path = const [];
 
   /// The nodes of the levels opened last, by their keys ([pathKeys]), while
@@ -126,8 +119,8 @@ class GraphModel extends ChangeNotifier {
   List<(String, String?)>? _wanted;
 
   /// The session to select once the feed gives it and the graph file is
-  /// read, with its workflow — as the app was started with it —; `null`
-  /// once selected, or for none. Until then no session is selected.
+  /// read — as the app was started with it —; `null` once selected, or for
+  /// none. Until then no session is selected.
   String? _wantedSession;
 
   /// The runs of calls open in `Logs`, by key: those of the session
@@ -135,9 +128,9 @@ class GraphModel extends ChangeNotifier {
   final _openRuns = <String>{};
   String? _runsOf;
 
-  /// The nodes expanded in place: they stay for any session of the
-  /// workflow, go for another workflow, and follow their nodes into a graph
-  /// file written again ([_carryOver]).
+  /// The nodes expanded in place: they stay for any session of the main
+  /// graph, go as another main graph is drawn, and follow their nodes into a
+  /// graph file written again ([_carryOver]).
   final _expansions = Expansions();
 
   /// The graph file read last: the levels opened and the nodes expanded
@@ -158,66 +151,43 @@ class GraphModel extends ChangeNotifier {
   int? _canvasKey;
   CanvasGraph? _canvas;
 
-  /// The workflows to choose from: the called graph open first, unless it
-  /// is one of them; the graph file's in its order, then those sessions ran
-  /// that it does not have (`workflowChoices`) — but for a graph's own file,
-  /// whose `runs/` has the sessions of other graphs too; none while no
-  /// graph file has been read.
-  List<WorkflowChoice> get workflows {
+  /// The graph of the graph file, its workflow: the first of its workflows,
+  /// the one a graph's own file has; `null` while no graph file has been
+  /// read.
+  GraphFunction? get workflow {
     final graph = graphFile.graph;
-    return graph == null
-        ? const []
-        : workflowChoices(graph, _othersRan, called: _called);
+    return graph?.functions[graph.workflows.firstOrNull];
   }
 
-  /// The sessions that may have run workflows the graph file lacks: none
-  /// for a graph's own file, which lacks those of the other graphs.
-  Iterable<SessionData> get _othersRan =>
-      graphFile.oneGraph ? const [] : feed.sessions.values;
-
-  /// The selected workflow: the called graph while one is open; else the
-  /// one chosen while it is listed, by its id or else its name; else the
-  /// first; `null` without workflows.
-  WorkflowChoice? get workflow {
-    final all = workflows;
-    final chosen = _chosen;
-    if (calledGraph != null) return all.firstWhere((w) => w.id == _called);
-    return all.where((w) => w.id == chosen?.id).firstOrNull ??
-        all.where((w) => w.name == chosen?.name).firstOrNull ??
-        all.firstOrNull;
-  }
-
-  /// The function the workflows call opened as the main graph, as the
-  /// graph file has it; `null` while none is open, or the graph file does
-  /// not have it.
+  /// The function the workflow calls opened as the main graph, as the graph
+  /// file has it; `null` while none is open, or the graph file does not
+  /// have it.
   GraphFunction? get calledGraph => graphFile.graph?.functions[_called];
 
-  /// Selects the workflow [id] (a [WorkflowChoice.id]), drawn from its top
-  /// level; the called graph open goes, but for itself chosen. Another
-  /// workflow's sessions open as on opening the graph: its newest session
-  /// started before now is selected.
-  void selectWorkflow(String id) {
-    final choice = workflows.where((w) => w.id == id).firstOrNull;
-    if (choice == null) return;
+  /// The graph drawn from the top level of the canvas: the [calledGraph]
+  /// open, else the [workflow].
+  GraphFunction? get mainGraph => calledGraph ?? workflow;
+
+  /// Closes the called graph open, back to the [workflow] drawn from its
+  /// top level (the parent's crumb): the levels opened and the nodes
+  /// expanded go; the selected session stays while it is one of the
+  /// workflow's.
+  void closeCalledGraph() {
+    if (_called == null) return;
+    _called = null;
+    _ranCalledOf.clear();
     _path = const [];
     _wanted = null;
-    if (!choice.called) {
-      final drawn = workflow?.id;
-      final wasCalled = calledGraph != null;
-      _called = null;
-      _ranCalledOf.clear();
-      _chosen = (id: choice.id, name: choice.name);
-      if (id != drawn) _expansions.clear();
-      if (id != drawn || wasCalled) _mainGraphChanged();
-    }
+    _expansions.clear();
+    _mainGraphChanged();
     _changed();
   }
 
   /// Opens the function [functionId] of the graph file as the main graph
   /// (open-as-graph design §3): drawn from its top, its sessions listed —
   /// those of its own and its parents' ([workflowSessions]). The levels
-  /// opened and the nodes expanded go, as for another workflow; the
-  /// selected session stays while the function ran in it. Nothing opens
+  /// opened and the nodes expanded go; the selected session stays while the
+  /// function ran in it. Nothing opens
   /// while the graph file does not have the function.
   void openAsGraph(String functionId) {
     if (graphFile.graph?.functions[functionId] == null) return;
@@ -282,8 +252,8 @@ class GraphModel extends ChangeNotifier {
     _changed();
   }
 
-  /// The sessions of the selected workflow as the feed has them: every
-  /// session while no graph file has been read. With a called graph open,
+  /// The sessions of the workflow as the feed has them: every session while
+  /// no graph file has been read. With a called graph open,
   /// those it ran in (open-as-graph design §4): its own, and those of the
   /// workflows that call it in which an effect is in its body — by their
   /// places on their snapshots, which start being read: they come as a
@@ -419,25 +389,16 @@ class GraphModel extends ChangeNotifier {
     if (_canvasKey == _changes) return _canvas!;
     final session = _readSelected();
     final graph = graphFile.graph;
-    final workflow = this.workflow;
-    final notes = graph == null
-        ? const <GraphNote>[]
-        : workflowNotes(
-            file: graphFile.file,
-            workflow: workflow,
-            notInGraph: sessionsNotInGraph(graph, _othersRan),
-          );
     final canvas = session == null
         ? fileCanvas(
             file: graphFile.file,
             graph: graph,
-            workflowId: workflow?.id,
+            workflowId: mainGraph?.id,
             path: _path,
             expansions: _expansions,
             error: graphFile.error,
             fileMissing: graphFile.fileMissing,
             freshness: freshness.freshness,
-            extraNotes: notes,
           )
         : sessionCanvas(
             session,
@@ -445,7 +406,6 @@ class GraphModel extends ChangeNotifier {
             calledGraph: _calledIn(session),
             path: _path,
             expansions: _expansions,
-            extraNotes: notes,
           );
     _canvasKey = _changes;
     return _canvas = canvas;
@@ -569,21 +529,12 @@ class GraphModel extends ChangeNotifier {
   }
 
   /// Selects [_wantedSession] once the feed has it and the graph file is
-  /// read: its workflow — the first whose sessions it is of —, then it.
+  /// read.
   void _openWanted() {
     final id = _wantedSession;
-    final graph = graphFile.graph;
     final session = id == null ? null : feed.session(id);
-    if (graph == null || session == null) return;
+    if (graphFile.graph == null || session == null) return;
     _wantedSession = null;
-    final choice = workflows
-        .where(
-          (w) =>
-              !w.called &&
-              sessionsOfWorkflow([session], graph, w.id).isNotEmpty,
-        )
-        .firstOrNull;
-    if (choice != null && choice.id != workflow?.id) selectWorkflow(choice.id);
     selection.showSession(session);
   }
 
@@ -647,10 +598,9 @@ class GraphModel extends ChangeNotifier {
     _changed();
   }
 
-  /// Gives the [selection] the sessions of the workflow. A selected session
-  /// that is no longer one of them — the graph file changed which workflow
-  /// it ran, or which workflow is selected — gives way as on opening the
-  /// graph.
+  /// Gives the [selection] the sessions of the main graph. A selected
+  /// session that is no longer one of them — the graph file changed which
+  /// workflow it ran — gives way as on opening the graph.
   void _feedSelection() {
     _feeding = true;
     _openWanted();

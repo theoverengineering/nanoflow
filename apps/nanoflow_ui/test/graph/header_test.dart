@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/header.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/body_path.dart';
@@ -28,23 +27,15 @@ void main() {
 
   const publish = Opened('5', functionId: 'lib/publish.dart#publish');
 
-  /// The release fixture with publish as a workflow too.
-  GraphFile twoWorkflows() => GraphFile.fromJson({
-    ...graphFileNamed('release').toJson(),
-    'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
-  });
-
   testWidgets('names the graph file, its directory and the workflow', (
     tester,
   ) async {
     await pumpGraphScreen(tester);
 
     expect(inHeader(find.text('Graphs')), findsOneWidget);
-    expect(inHeader(find.text(graphFileName)), findsOneWidget);
-    expect(inHeader(find.text('~/Projects/release')), findsOneWidget);
+    expect(inHeader(find.text('release.graph.json')), findsOneWidget);
+    expect(inHeader(find.text('~/Projects/release/lib')), findsOneWidget);
     expect(inHeader(find.text('release')), findsOneWidget);
-    // One workflow: nothing to choose.
-    expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsNothing);
   });
 
   testWidgets('Graphs leads back', (tester) async {
@@ -127,26 +118,6 @@ void main() {
     testWidgets('are none while there is no workflow to draw', (tester) async {
       await pumpGraphScreen(tester, model: ownedModel(noGraph: true));
       expect(inHeader(find.text('›')), findsNothing);
-      expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsNothing);
-    });
-
-    testWidgets('with several workflows the workflow\'s crumb goes back up; '
-        'its chevron lists the workflows', (tester) async {
-      final model = await pumpGraphScreen(
-        tester,
-        model: ownedModel(graph: twoWorkflows()),
-      );
-      model.open(publish);
-      await tester.pump();
-
-      await tester.tap(inHeader(find.text('release')));
-      await tester.pumpAndSettle();
-      expect(model.canvas.levels, hasLength(1));
-      expect(find.byType(PopupMenuItem<String>), findsNothing);
-
-      await tester.tap(inHeader(find.byKey(GraphHeader.workflowKey)));
-      await tester.pumpAndSettle();
-      expect(find.byType(PopupMenuItem<String>), findsNWidgets(2));
     });
 
     testWidgets('of a deep path fit the narrowest window: the middle ones '
@@ -191,8 +162,9 @@ void main() {
     });
 
     testWidgets('never overflow, at any width the header has room for: '
-        'folded, squeezed or not; the narrowest keep the last crumb and the '
-        'workflows\' chevron', (tester) async {
+        'folded, squeezed or not; the narrowest keep the last crumb', (
+      tester,
+    ) async {
       final model = modelOf(graph: graphFileNamed('recursion'));
       final width = ValueNotifier(1300.0);
       addTearDown(width.dispose);
@@ -221,7 +193,7 @@ void main() {
       );
       await settle(tester);
       // Narrower than this, the header's own words and buttons do not fit.
-      const narrowest = 674.0;
+      const narrowest = 641.0;
       // Two levels squeeze, three fold, nine fold further; at the
       // narrowest the workflow's crumb folds too.
       for (final depth in [1, 2, 9]) {
@@ -242,7 +214,6 @@ void main() {
         await tester.pump();
         final lastTitle = depth.isEven ? 'crawl()' : 'visit()';
         expect(inHeader(find.text(lastTitle)), findsOneWidget);
-        expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsOneWidget);
         expect(
           inHeader(find.text('crawl')),
           findsNothing,
@@ -271,106 +242,115 @@ void main() {
 
   testWidgets('the graph file\'s name is not drawn as a link', (tester) async {
     final model = await pumpGraphScreen(tester);
-    final style = tester.widget<Text>(inHeader(find.text(graphFileName))).style;
+    final style = tester
+        .widget<Text>(inHeader(find.text('release.graph.json')))
+        .style;
     expect(style, AppText.headerFile);
     model.open(publish);
     await tester.pump();
     expect(
-      tester.widget<Text>(inHeader(find.text(graphFileName))).style,
+      tester.widget<Text>(inHeader(find.text('release.graph.json'))).style,
       AppText.headerFile,
     );
   });
 
-  group('the workflow picker', () {
-    testWidgets('lists the workflows of the graph file, then those only '
-        'sessions ran, marked; a choice draws its top level', (tester) async {
+  group('with a called graph open', () {
+    const visit = 'lib/crawl.dart#visit';
+    const crawl = Opened('2', functionId: 'lib/crawl.dart#crawl');
+
+    testWidgets("the workflow's crumb comes first, with its doc, and goes "
+        'back to the workflow from its top level', (tester) async {
       final model = await pumpGraphScreen(
         tester,
         model: ownedModel(
-          graph: twoWorkflows(),
-          changes: changesOf([Journal('d1d1-session', workflow: 'deploy')]),
+          file: releaseFile,
+          graph: documented(
+            graphFileNamed('release'),
+            functions: {'lib/release.dart#release': 'Ships every package.'},
+          ),
         ),
       );
-      model.open(publish);
+      model.openAsGraph('lib/publish.dart#publish');
       await tester.pump();
-
-      await tester.tap(inHeader(find.byKey(GraphHeader.workflowKey)));
-      await tester.pumpAndSettle();
-      final menu = find.byType(PopupMenuItem<String>);
-      expect(menu, findsNWidgets(3));
-      for (final name in ['release', 'publish', 'deploy']) {
-        expect(
-          find.descendant(of: menu, matching: find.text(name)),
-          findsOneWidget,
-        );
-      }
+      final release = tester.getRect(inHeader(find.text('release')));
       expect(
-        find.descendant(of: menu, matching: find.text('not in the graph file')),
+        tester.getRect(inHeader(find.text('publish'))).left,
+        greaterThan(release.right),
+      );
+      expect(inHeader(find.text('›')), findsOneWidget);
+
+      await hover(tester, inHeader(find.text('release')));
+      expect(
+        find.text('Ships every package.', findRichText: true),
         findsOneWidget,
       );
 
-      await tester.tap(
-        find.descendant(of: menu, matching: find.text('publish')),
-      );
+      await tester.tap(inHeader(find.text('release')));
       await tester.pumpAndSettle();
-      expect(model.workflow!.name, 'publish');
-      expect(model.canvas.levels, hasLength(1));
-      expect(inHeader(find.text('publish')), findsOneWidget);
-    });
-
-    testWidgets('with a called graph open: the crumbs start at it, the '
-        'picker lists it first, marked as drawn; a workflow chosen goes back '
-        'to it, and the called graph leaves the list', (tester) async {
-      final model = await pumpGraphScreen(tester);
-      model.openAsGraph('lib/publish.dart#publish');
-      await tester.pump();
-      expect(inHeader(find.text('publish')), findsOneWidget);
-      expect(inHeader(find.text('release')), findsNothing);
-
-      await tester.tap(inHeader(find.byKey(GraphHeader.workflowKey)));
-      await tester.pumpAndSettle();
-      final menu = find.byType(PopupMenuItem<String>);
-      expect(menu, findsNWidgets(2));
-      final names = find.descendant(of: menu, matching: find.byType(Text));
-      expect(
-        [for (final text in tester.widgetList<Text>(names)) text.data],
-        ['publish', 'release'],
-      );
-      expect(
-        tester.widget<Text>(names.first).style!.color,
-        AppColors.accentText,
-      );
-
-      await tester.tap(
-        find.descendant(of: menu, matching: find.text('release')),
-      );
-      await tester.pumpAndSettle();
-      expect(model.workflow!.name, 'release');
       expect(model.calledGraph, isNull);
-      expect(inHeader(find.text('release')), findsOneWidget);
-      expect(inHeader(find.byKey(GraphHeader.workflowKey)), findsNothing);
+      expect(model.canvas.levels, hasLength(1));
+      expect(inHeader(find.text('publish')), findsNothing);
+      expect(inHeader(find.text('›')), findsNothing);
     });
 
-    testWidgets('the workflow drawn chosen again draws its top level', (
+    testWidgets("the called graph's crumb goes back up to its top level", (
       tester,
     ) async {
       final model = await pumpGraphScreen(
         tester,
-        model: ownedModel(graph: twoWorkflows()),
+        model: ownedModel(graph: graphFileNamed('recursion')),
       );
-      model.open(publish);
+      model
+        ..openAsGraph(visit)
+        ..open(crawl);
       await tester.pump();
-
-      await tester.tap(inHeader(find.byKey(GraphHeader.workflowKey)));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.descendant(
-          of: find.byType(PopupMenuItem<String>),
-          matching: find.text('release'),
-        ),
+      expect(
+        [
+          for (final text in tester.widgetList<Text>(
+            inHeader(find.textContaining(RegExp(r'^(crawl|visit)'))),
+          ))
+            text.data,
+        ],
+        ['crawl', 'visit', 'crawl()'],
       );
+
+      await tester.tap(inHeader(find.text('visit')));
+      await tester.pump();
+      expect(model.calledGraph?.id, visit);
+      expect(model.canvas.levels, hasLength(1));
+    });
+
+    testWidgets("folded, the workflow's crumb stays in front; one chosen "
+        'from … goes back up to its level', (tester) async {
+      final model = await pumpGraphScreen(
+        tester,
+        model: ownedModel(graph: graphFileNamed('recursion')),
+        size: const Size(1100, 700),
+      );
+      model.openAsGraph(visit);
+      for (var i = 0; i < 4; i++) {
+        model
+          ..open(crawl)
+          ..open(const Opened('3', functionId: visit));
+      }
+      await tester.pump();
+      expect(model.canvas.levels, hasLength(9));
+
+      final folded = inHeader(find.byKey(GraphHeader.foldedKey));
+      expect(folded, findsOneWidget);
+      expect(
+        tester.getRect(folded).left,
+        greaterThan(tester.getRect(inHeader(find.text('crawl'))).right),
+      );
+
+      await tester.tap(folded);
       await tester.pumpAndSettle();
-      expect(model.workflow!.name, 'release');
+      final menu = find.byType(PopupMenuItem<int>);
+      final first = find.descendant(of: menu, matching: find.text('visit'));
+      expect(first, findsOneWidget);
+      await tester.tap(first);
+      await tester.pumpAndSettle();
+      expect(model.calledGraph?.id, visit);
       expect(model.canvas.levels, hasLength(1));
     });
   });
@@ -469,7 +449,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(
-      find.text('Could not reveal $graphFileName in Finder'),
+      find.text('Could not reveal release.graph.json in Finder'),
       findsOneWidget,
     );
 
@@ -477,7 +457,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     }
     expect(
-      find.text('Could not reveal $graphFileName in Finder'),
+      find.text('Could not reveal release.graph.json in Finder'),
       findsNothing,
     );
 
@@ -485,7 +465,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(
-      find.text('Could not open $graphFileName in an editor'),
+      find.text('Could not open release.graph.json in an editor'),
       findsOneWidget,
     );
   });

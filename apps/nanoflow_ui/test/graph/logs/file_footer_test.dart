@@ -6,6 +6,7 @@ import 'package:nanoflow_ui/graph/logs/effect_details_pane.dart';
 import 'package:nanoflow_ui/graph/logs/effect_list.dart';
 import 'package:nanoflow_ui/graph/logs/file_footer.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
+import 'package:nanoflow_ui/state/project_dir.dart';
 
 import '../../state/support.dart';
 import '../support.dart';
@@ -49,12 +50,12 @@ void main() {
     );
   });
 
-  testWidgets('a short path is shown whole, from the graph\'s directory', (
+  testWidgets("a short path is shown whole, from the graph's project", (
     tester,
   ) async {
     final files = reviewFiles()
       ..logPaths['a1b2-notify-5'] =
-          '${File(reviewFile).parent.path}/'
+          '${projectDirOf(reviewFile)}/'
           'runs/notify.log';
     await pumpReview(tester, model: reviewModel(files: files));
 

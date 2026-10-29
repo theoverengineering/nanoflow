@@ -9,21 +9,21 @@ import 'canvas/support.dart';
 import 'support.dart';
 
 void main() {
-  /// The release fixture with publish as a workflow too.
-  GraphFile twoWorkflows() => GraphFile.fromJson({
-    ...graphFileNamed('release').toJson(),
-    'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
-  });
-
-  testWidgets('a function opened from its call, under the crumbs of the '
-      'workflow picker', (tester) async {
-    final model = await pumpGraphScreen(
-      tester,
-      model: ownedModel(file: releaseFile, graph: twoWorkflows()),
-    );
+  testWidgets('a function opened from its call, under the crumbs', (
+    tester,
+  ) async {
+    final model = await pumpGraphScreen(tester);
     model.open(const Opened('5', functionId: 'lib/publish.dart#publish'));
     await settle(tester);
     await expectGolden(tester, 'graph_publish');
+  });
+
+  testWidgets('a called graph opened as the main graph, its crumb after the '
+      "workflow's", (tester) async {
+    final model = await pumpGraphScreen(tester);
+    model.openAsGraph('lib/publish.dart#publish');
+    await settle(tester);
+    await expectGolden(tester, 'graph_called');
   });
 
   testWidgets('a deep path in the narrowest window: the middle crumbs '
@@ -52,7 +52,6 @@ void main() {
           Journal('r1r1-session', workflow: 'release', snapshot: false)
             ..effect('plan', 1, end: 3, place: 'lib/release.dart:16')
             ..effect('build', 3, place: 'lib/release.dart:18'),
-          Journal('d1d1-session', workflow: 'deploy', startedAt: -60),
         ]),
       ),
       now: () => at(200),

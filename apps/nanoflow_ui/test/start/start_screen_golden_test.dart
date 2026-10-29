@@ -38,32 +38,32 @@ void main() {
     'recently opened, the pointer on the newest card (docs/design/start.png)',
     (tester) async {
       await recent.opened(
-        '$home/sandbox/index/nanoflow.graph.json',
+        '$home/sandbox/index/lib/index.graph.json',
         DateTime(2026, 9, 8, 11),
       );
       await recent.opened(
-        '$home/Projects/hr/onboarding/nanoflow.graph.json',
+        '$home/Projects/hr/onboarding/lib/onboarding.graph.json',
         DateTime(2026, 9, 12, 16),
       );
       await recent.opened(
-        '$home/work/release/nanoflow.graph.json',
+        '$home/work/release/lib/release.graph.json',
         DateTime(2026, 9, 20, 10),
       );
       await recent.opened(
-        '$home/Projects/review/nanoflow.graph.json',
+        '$home/Projects/review/lib/review.graph.json',
         DateTime(2026, 9, 21, 12),
       );
       await pumpStart(
         tester,
         recent,
-        missing: {'$home/Projects/hr/onboarding/nanoflow.graph.json'},
+        missing: {'$home/Projects/hr/onboarding/lib/onboarding.graph.json'},
       );
 
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       addTearDown(mouse.removePointer);
       await mouse.addPointer(
         location: tester.getCenter(
-          find.text('~/Projects/review/nanoflow.graph.json'),
+          find.text('~/Projects/review/lib/review.graph.json'),
         ),
       );
       await tester.pump();

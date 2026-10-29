@@ -16,7 +16,7 @@ void main() {
 
   setUp(() {
     dir = Directory.systemTemp.createTempSync('nanoflow_graph_file');
-    file = p.join(dir.path, graphFileName);
+    file = p.join(dir.path, 'review.graph.json');
     source = GraphFileSource(
       file: file,
       pollInterval: const Duration(milliseconds: 20),
@@ -33,76 +33,93 @@ void main() {
   /// Writes [text] to the graph file the way describe does: under another
   /// name, renamed into place.
   void write(String text) {
-    final temporary = File(p.join(dir.path, '.$graphFileName.tmp'))
+    final temporary = File(p.join(dir.path, '.review.graph.json.tmp'))
       ..writeAsStringSync(text);
     temporary.renameSync(file);
   }
 
-  String json(GraphFile graph) =>
-      const JsonEncoder.withIndent('  ').convert(graph.toJson());
+  /// The file of the graph `review` whose effect is [effect], as describe
+  /// writes it.
+  String json({String effect = 'collect'}) =>
+      const JsonEncoder.withIndent('  ')
+          .convert(_graphOf('review', effect: effect).toJson());
+
+  /// What the source gives for [json] of [effect].
+  GraphFile graph({String effect = 'collect'}) => assembleGraphFile(
+    'review.graph.json',
+    {'review.graph.json': _graphOf('review', effect: effect)},
+  )!;
 
   test('gives the graph file as it is when started', () async {
-    write(json(reviewGraphFile()));
+    write(json());
     await source.start();
-    expect(source.graph, reviewGraphFile());
+    expect(source.graph, graph());
     expect(source.error, isNull);
     expect(source.fileMissing, isFalse);
     expect(notified, 1);
   });
 
   test('gives the graph file again once it changes', () async {
-    write(json(reviewGraphFile()));
+    write(json());
     await source.start();
 
-    write(json(reviewGraphFile(reviewEffect: 'gather')));
-    await _until(() => source.graph == reviewGraphFile(reviewEffect: 'gather'));
+    write(json(effect: 'gather'));
+    await _until(() => source.graph == graph(effect: 'gather'));
     expect(notified, 2);
 
     // Written in place, as an editor may.
-    File(file).writeAsStringSync(json(reviewGraphFile(reviewEffect: 'take')));
-    await _until(() => source.graph == reviewGraphFile(reviewEffect: 'take'));
+    File(file).writeAsStringSync(json(effect: 'take'));
+    await _until(() => source.graph == graph(effect: 'take'));
   });
 
   test(
     'a file that is not JSON is an error; the last graph read stays',
     () async {
-      write(json(reviewGraphFile()));
+      write(json());
       await source.start();
 
       write('{"format": 2,');
       await _until(() => source.error != null);
       expect(source.error, contains('Unexpected end of input'));
-      expect(source.graph, reviewGraphFile());
+      expect(source.graph, graph());
 
-      write(json(reviewGraphFile(reviewEffect: 'gather')));
+      write(json(effect: 'gather'));
       await _until(() => source.error == null);
-      expect(source.graph, reviewGraphFile(reviewEffect: 'gather'));
+      expect(source.graph, graph(effect: 'gather'));
     },
   );
 
   test('JSON that is not a graph file is an error that says where', () async {
-    final broken = graphFileJson()..remove('workflows');
+    final broken = _graphOf('review').toJson()..remove('package');
     write(jsonEncode(broken));
     await source.start();
     expect(source.graph, isNull);
-    expect(source.error, startsWith('workflows'));
+    expect(source.error, 'package: missing');
 
     write('[]');
     await _until(() => source.error == 'the file is not a JSON object');
   });
 
+  test('the graph file of a whole package, which describe no longer writes, '
+      'is an error', () async {
+    write(jsonEncode(graphFileJson()));
+    await source.start();
+    expect(source.graph, isNull);
+    expect(source.error, 'format: expected 4, the file is 2');
+  });
+
   test('a file deleted while open: the last graph stays, the file is '
       'missing until it is back', () async {
-    write(json(reviewGraphFile()));
+    write(json());
     await source.start();
 
     File(file).deleteSync();
     await _until(() => source.fileMissing);
-    expect(source.graph, reviewGraphFile());
+    expect(source.graph, graph());
 
-    write(json(reviewGraphFile(reviewEffect: 'gather')));
+    write(json(effect: 'gather'));
     await _until(() => !source.fileMissing);
-    expect(source.graph, reviewGraphFile(reviewEffect: 'gather'));
+    expect(source.graph, graph(effect: 'gather'));
   });
 
   test('a file not there when started is missing', () async {
@@ -110,63 +127,35 @@ void main() {
     expect(source.fileMissing, isTrue);
     expect(source.graph, isNull);
 
-    write(json(reviewGraphFile()));
+    write(json());
     await _until(() => source.graph != null);
     expect(source.fileMissing, isFalse);
   });
 
   test('a file written again as it was tells nobody', () async {
-    write(json(reviewGraphFile()));
+    write(json());
     await source.start();
-    write(json(reviewGraphFile()));
+    write(json());
     await Future<void>.delayed(const Duration(milliseconds: 200));
     expect(notified, 1);
   });
 
   test('stops looking once disposed', () async {
-    write(json(reviewGraphFile()));
+    write(json());
     final disposed = GraphFileSource(
       file: file,
       pollInterval: const Duration(milliseconds: 20),
     );
     await disposed.start();
     disposed.dispose();
-    write(json(reviewGraphFile(reviewEffect: 'gather')));
+    write(json(effect: 'gather'));
     await Future<void>.delayed(const Duration(milliseconds: 200));
-    expect(disposed.graph, reviewGraphFile());
+    expect(disposed.graph, graph());
   });
 
-  group("a graph's own file", () {
+  group('with subgraphs', () {
     late String root;
     late GraphFileSource own;
-
-    /// The graph file of the graph [name] whose effect is [effect], calling
-    /// the graph files [calls].
-    OneGraphFile graphOf(
-      String name, {
-      String effect = 'collect',
-      List<String> calls = const [],
-    }) => OneGraphFile(
-      package: 'review_example',
-      name: name,
-      place: 'lib/review.dart:1',
-      body: GraphBody(
-        nodes: [
-          EffectNode(id: '1', place: 'lib/review.dart:2', name: effect),
-          for (final (i, call) in calls.indexed)
-            CallNode(
-              id: '${i + 2}',
-              place: 'lib/review.dart:3',
-              functions: [call],
-            ),
-        ],
-        edges: const [],
-      ),
-      warnings: const [],
-      fingerprint: 'sha256:0',
-      sources: const {},
-      builds: const {},
-    );
 
     /// Writes [graph] to [path] from the package root, as describe does.
     void put(String path, OneGraphFile graph) {
@@ -193,35 +182,34 @@ void main() {
 
     test('is read with the files of its subgraphs, put together', () async {
       final files = {
-        review: graphOf('review', calls: [polish]),
-        polish: graphOf('polish', effect: 'fix'),
+        review: _graphOf('review', calls: [polish]),
+        polish: _graphOf('polish', effect: 'fix'),
       };
       files.forEach(put);
       await own.start();
       expect(own.graph, assembleGraphFile(review, files));
-      expect(own.oneGraph, isTrue);
       expect(own.error, isNull);
     });
 
     test("is read again when a subgraph's file changes, or comes", () async {
-      put(review, graphOf('review', calls: [polish]));
+      put(review, _graphOf('review', calls: [polish]));
       await own.start();
       expect(own.graph!.functions.keys, [review]);
 
       final files = {
-        review: graphOf('review', calls: [polish]),
-        polish: graphOf('polish', effect: 'fix'),
+        review: _graphOf('review', calls: [polish]),
+        polish: _graphOf('polish', effect: 'fix'),
       };
       put(polish, files[polish]!);
       await _until(() => own.graph == assembleGraphFile(review, files));
 
-      files[polish] = graphOf('polish', effect: 'mend');
+      files[polish] = _graphOf('polish', effect: 'mend');
       put(polish, files[polish]!);
       await _until(() => own.graph == assembleGraphFile(review, files));
     });
 
     test("says what is wrong with it, but not with a subgraph's", () async {
-      put(review, graphOf('review', calls: [polish]));
+      put(review, _graphOf('review', calls: [polish]));
       File(p.join(root, 'lib', 'src', 'polish.graph.json'))
         ..parent.createSync(recursive: true)
         ..writeAsStringSync('{}');
@@ -252,6 +240,30 @@ void main() {
     });
   });
 }
+
+/// The graph file of the graph [name] whose effect is [effect], calling
+/// the graph files [calls].
+OneGraphFile _graphOf(
+  String name, {
+  String effect = 'collect',
+  List<String> calls = const [],
+}) => OneGraphFile(
+  package: 'review_example',
+  name: name,
+  place: 'lib/review.dart:1',
+  body: GraphBody(
+    nodes: [
+      EffectNode(id: '1', place: 'lib/review.dart:2', name: effect),
+      for (final (i, call) in calls.indexed)
+        CallNode(id: '${i + 2}', place: 'lib/review.dart:3', functions: [call]),
+    ],
+    edges: const [],
+  ),
+  warnings: const [],
+  fingerprint: 'sha256:0',
+  sources: const {},
+  builds: const {},
+);
 
 /// Waits until [done] holds, looking every few milliseconds.
 Future<void> _until(bool Function() done) async {

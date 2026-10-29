@@ -455,11 +455,11 @@ void main() {
       ]);
     });
 
-    testWidgets('↗ on a call opens its function as the main graph: the '
-        'crumbs start at it', (tester) async {
+    testWidgets('↗ on a call opens its function as the main graph: its '
+        "crumb follows the workflow's", (tester) async {
       final model = await pumpGraphScreen(tester);
       await tap(tester, openAsGraph('5'));
-      expect(model.workflow!.id, 'lib/publish.dart#publish');
+      expect(model.mainGraph!.id, 'lib/publish.dart#publish');
       expect(
         find.descendant(
           of: find.byType(GraphHeader),
@@ -483,7 +483,7 @@ void main() {
       await tap(tester, openAsGraph('2'));
       await tester.tap(find.text('MailNotifier.notify()').last);
       await tester.pumpAndSettle();
-      expect(model.workflow!.id, _mail);
+      expect(model.mainGraph!.id, _mail);
       expect(find.text('send-mail'), findsOneWidget);
     });
 
@@ -509,7 +509,7 @@ void main() {
       expect(model.canvas.ofSession, isTrue);
       await tap(tester, openAsGraph('2'));
       expect(find.text('ChatNotifier.notify()'), findsNothing);
-      expect(model.workflow!.id, _mail);
+      expect(model.mainGraph!.id, _mail);
     });
 
     testWidgets('a + whose menu is left without a choice expands nothing, '

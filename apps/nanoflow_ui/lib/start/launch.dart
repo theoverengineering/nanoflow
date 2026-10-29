@@ -66,7 +66,12 @@ Launch? parseLaunch(List<String> args, {String? home}) {
     throw const FormatException('either --session or --current-graph');
   }
   if (!isGraphFile(path)) {
-    throw FormatException('$path is not a graph file (*.graph.json)');
+    throw FormatException(
+      isPackageGraphFile(path)
+          ? '$path has the graphs of a whole package: run nanoflow_describe '
+                'to write a file for each graph'
+          : '$path is not a graph file (*.graph.json)',
+    );
   }
   return (
     path: path,

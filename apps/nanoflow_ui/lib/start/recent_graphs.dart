@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,12 +11,20 @@ import '../state/store_place.dart';
 /// `null` for `runs/` next to it.
 typedef RecentGraph = ({String path, StorePlace? store, DateTime openedAt});
 
-/// Whether [path] names a graph file: `nanoflow.graph.json`, or another
-/// `*.graph.json`.
+/// Whether [path] names the graph file of a graph, `<name>.graph.json`: not
+/// that of a whole package, `nanoflow.graph.json`, which describe no longer
+/// writes ([isPackageGraphFile]).
 bool isGraphFile(String path) {
   final name = p.basename(path);
-  return name.endsWith('.graph.json') && name.length > '.graph.json'.length;
+  return name.endsWith(graphFileSuffix) &&
+      name.length > graphFileSuffix.length &&
+      !isPackageGraphFile(path);
 }
+
+/// Whether [path] names the graph file of a whole package,
+/// `nanoflow.graph.json`, which describe wrote before each graph had a file
+/// of its own.
+bool isPackageGraphFile(String path) => p.basename(path) == graphFileName;
 
 /// The start screen's `Recently opened` list: newest first, each graph file
 /// with each store once.
@@ -23,7 +32,8 @@ bool isGraphFile(String path) {
 /// Kept in the app's preferences as a JSON list of `{path, store, openedAt}`,
 /// the store as `fs:…` or `sqlite:…` and only for a graph opened with one,
 /// the time in UTC ISO-8601. Only graph files are listed ([isGraphFile]):
-/// what the app opened when graphs were YAML files cannot be opened now.
+/// what the app opened when graphs were YAML files, or when a package had
+/// one graph file, cannot be opened now.
 ///
 /// Changes show at once; saving them finishes later, and a save that fails
 /// is reported to [FlutterError.reportError] rather than to the caller: the

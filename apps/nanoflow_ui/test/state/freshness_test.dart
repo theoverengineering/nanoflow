@@ -143,10 +143,8 @@ void main() {
 
     setUp(() async {
       write('lib/review.dart', 'void review() {}\n');
-      final graph = await describe();
-      write(graphFileName, jsonEncode(graph.toJson()));
       source = GraphFileSource(
-        file: p.join(dir.path, graphFileName),
+        file: putGraphOf(dir.path, 'review', graph: await describe()),
         pollInterval: const Duration(milliseconds: 20),
       );
       watch = FreshnessWatch(
@@ -180,7 +178,7 @@ void main() {
       write('lib/review.dart', 'void review() { print(1); }\n');
       await _until(() => watch.freshness!.stale);
 
-      write(graphFileName, jsonEncode((await describe()).toJson()));
+      putGraphOf(dir.path, 'review', graph: await describe());
       await _until(() => !watch.freshness!.stale);
     });
   });

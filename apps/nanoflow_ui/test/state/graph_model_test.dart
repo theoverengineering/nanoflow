@@ -72,8 +72,8 @@ void main() {
   ]);
 
   group('the session the app was started on', () {
-    test('is selected with its workflow once the feed gives it, though it '
-        'started after the graph opened; none is selected before', () {
+    test('is selected once the feed gives it, though it started after the '
+        'graph opened; none is selected before', () {
       run(session: 'e5f6-session', (async) {
         give(async, twoWorkflows());
         expect(model.selection.currentGraph, isTrue);
@@ -81,13 +81,18 @@ void main() {
         give(
           async,
           changesOf([
-            Journal('e5f6-session', workflow: 'release', startedAt: 2000)
-              ..effect('plan', 2001),
+            Journal('e5f6-session', startedAt: 2000)..effect('collect', 2001),
           ]),
         );
 
-        expect(model.workflow!.name, 'release');
         expect(model.selection.sessionId, 'e5f6-session');
+      });
+    });
+
+    test("one of another graph gives way to the newest of the graph's", () {
+      run(session: 'c3d4-session', (async) {
+        give(async, twoWorkflows());
+        expect(model.selection.sessionId, 'a1b2-session');
       });
     });
 
@@ -96,26 +101,30 @@ void main() {
         give(async, twoWorkflows());
         expect(model.selection.sessionId, 'a1b2-session');
 
-        model.selectWorkflow('lib/release.dart#release');
+        model.selection.showCurrentGraph();
+        give(
+          async,
+          changesOf([
+            Journal('e5f6-session', startedAt: 2000)..effect('collect', 2001),
+          ]),
+        );
 
-        expect(model.selection.sessionId, 'c3d4-session');
+        expect(model.selection.currentGraph, isTrue);
       });
     });
   });
 
-  group('the workflows', () {
-    test('are those of the graph file; the first is selected', () {
+  group('the workflow', () {
+    test("is the graph file's graph, drawn", () {
       run((async) {
-        expect(
-          [for (final w in model.workflows) w.name],
-          ['review', 'release'],
-        );
         expect(model.workflow!.id, 'lib/review.dart#review');
+        expect(model.mainGraph, same(model.workflow));
+        expect(model.calledGraph, isNull);
       });
     });
 
-    test('list the sessions of the selected one, and select the newest of '
-        'those', () {
+    test('lists its sessions, not those of other graphs, and selects the '
+        'newest', () {
       run((async) {
         give(async, twoWorkflows());
         expect(
@@ -126,37 +135,10 @@ void main() {
       });
     });
 
-    test('another one selected lists its sessions, and opens the newest '
-        'of them', () {
-      run((async) {
-        give(async, twoWorkflows());
-        model.showSession('a1b2-session');
-        model.selectWorkflow('lib/release.dart#release');
-        expect(model.workflow!.name, 'release');
-        expect(
-          [for (final s in model.sessions(at(746))) s.id],
-          ['c3d4-session'],
-        );
-        expect(model.selection.sessionId, 'c3d4-session');
-      });
-    });
-
-    test('one the graph file no longer has gives way to its first', () {
-      run((async) {
-        model.selectWorkflow('lib/release.dart#release');
-        graphFile.graph = GraphFile.fromJson({
-          ...graphFileJson(),
-          'workflows': ['lib/review.dart#review'],
-        });
-        expect(model.workflow!.name, 'review');
-      });
-    });
-
     test('while no graph file has been read: every session is listed', () {
       run((async) {
         graphFile.graph = null;
         give(async, twoWorkflows());
-        expect(model.workflows, isEmpty);
         expect(model.workflow, isNull);
         expect(model.sessions(at(746)), hasLength(2));
         expect(model.selection.sessionId, 'c3d4-session');
@@ -182,147 +164,18 @@ void main() {
     });
   });
 
-  group('workflows the graph file does not have', () {
-    /// A snapshot of a graph file that had the deploy workflow.
-    final withDeploy = {
-      ...graphFileJson(),
-      'workflows': ['lib/deploy.dart#deploy'],
-      'functions': {
-        'lib/deploy.dart#deploy': {
-          'name': 'deploy',
-          'place': 'lib/deploy.dart:3',
-          'body': {'nodes': <Object?>[], 'edges': <Object?>[]},
-        },
-      },
-    };
-
-    /// Review session a1b2, and deploy sessions d1 (with a snapshot that has
-    /// deploy) and the newer d2 (without a snapshot).
-    List<Change> sessions() => changesOf([
-      Journal('a1b2-session'),
-      Journal(
-        'd1d1-session',
-        workflow: 'deploy',
-        graph: withDeploy,
-        startedAt: 20,
-      ),
-      Journal(
-        'd2d2-session',
-        workflow: 'deploy',
-        snapshot: false,
-        startedAt: 30,
-      ),
-    ]);
-
-    const unknownNote = GraphNote(
-      '2 sessions of a workflow not in nanoflow.graph.json',
-      lines: ['deploy'],
-      text: notInGraphFileDetail,
-    );
-    final notInFile = GraphNote(
-      workflowNotInFile('deploy', 'nanoflow.graph.json'),
-      text: graphFileMayBeStale,
-    );
-
-    test('are noted over any other workflow, and listed after the file\'s '
-        'own', () {
-      run((async) {
-        give(async, sessions());
-        expect(
-          [for (final w in model.workflows) (w.name, w.inGraphFile)],
-          [('review', true), ('release', true), ('deploy', false)],
-        );
-        expect(
-          [for (final s in model.sessions(at(746))) s.id],
-          ['a1b2-session'],
-        );
-        expect(model.canvas.notes, [unknownNote]);
-        model.selection.showCurrentGraph();
-        expect(model.canvas.notes, [unknownNote]);
-      });
-    });
-
-    test('are not noted nor listed for a graph\'s own file: its runs/ has '
-        'the sessions of other graphs', () {
-      run((async) {
-        graphFile.oneGraph = true;
-        give(async, sessions());
-        expect(
-          [for (final w in model.workflows) (w.name, w.inGraphFile)],
-          [('review', true), ('release', true)],
-        );
-        expect(model.canvas.notes, isEmpty);
-      });
-    });
-
-    test('chosen, list their sessions; each is drawn on its own snapshot, '
-        'else not at all', () {
-      run((async) {
-        give(async, sessions());
-        model.selectWorkflow('deploy');
-        expect(
-          [for (final s in model.sessions(at(746))) s.id],
-          ['d2d2-session', 'd1d1-session'],
-        );
-        expect(model.selection.sessionId, 'd2d2-session');
-        expect(model.canvas.workflow, isNull);
-        expect(model.canvas.placeholder, noWorkflowNamed('deploy'));
-        expect(model.canvas.notes, [
-          const GraphNote(sessionHasNoSnapshot, text: noSnapshotDetail),
-          notInFile,
-        ]);
-
-        model.showSession('d1d1-session');
-        expect(model.canvas.workflow!.id, 'lib/deploy.dart#deploy');
-        expect(model.canvas.placeholder, isNull);
-        expect(model.canvas.notes, [notInFile]);
-
-        model.selection.showCurrentGraph();
-        expect(model.canvas.workflow, isNull);
-        expect(model.canvas.placeholder, noWorkflowNamed('deploy'));
-        expect(model.canvas.notes, [notInFile]);
-      });
-    });
-
-    test('one chosen stays chosen by its name once describe writes it to '
-        'the graph file', () {
-      run((async) {
-        give(async, sessions());
-        model.selectWorkflow('deploy');
-        graphFile.graph = GraphFile.fromJson({
-          ...graphFileJson(),
-          'workflows': [
-            'lib/review.dart#review',
-            'lib/release.dart#release',
-            'lib/deploy.dart#deploy',
-          ],
-          'functions': {
-            ...graphFileJson()['functions']! as Map<String, Object?>,
-            ...withDeploy['functions']! as Map<String, Object?>,
-          },
-        });
-        expect(model.workflow!.id, 'lib/deploy.dart#deploy');
-        expect(model.workflow!.inGraphFile, isTrue);
-        expect(model.selection.sessionId, 'd2d2-session');
-        model.selection.showCurrentGraph();
-        expect(model.canvas.workflow!.id, 'lib/deploy.dart#deploy');
-      });
-    });
-
-    test('are counted in the note as they read: a workflow, or how many', () {
-      List<GraphNote> notes(Map<String, int> notInGraph) => workflowNotes(
-        file: '/p/$graphFileName',
-        workflow: null,
-        notInGraph: notInGraph,
+  test('sessions of other graphs are neither listed nor noted: runs/ has '
+      'those of every graph of the package', () {
+    run((async) {
+      give(
+        async,
+        changesOf([
+          Journal('a1b2-session'),
+          Journal('d1d1-session', workflow: 'deploy', startedAt: 20),
+        ]),
       );
-      expect(
-        notes({'deploy': 1}).single.title,
-        '1 session of a workflow not in nanoflow.graph.json',
-      );
-      expect(
-        notes({'build': 1, 'deploy': 2}).single.title,
-        '3 sessions of 2 workflows not in nanoflow.graph.json',
-      );
+      expect([for (final s in model.sessions(at(746))) s.id], ['a1b2-session']);
+      expect(model.canvas.notes, isEmpty);
     });
   });
 
@@ -402,20 +255,14 @@ void main() {
       });
     });
 
-    test('start again at the top of another workflow chosen, or of the '
-        'same', () {
+    test('start again at the top as a called graph opens or closes', () {
       run((async) {
-        graphFile.graph = GraphFile.fromJson({
-          ...release.toJson(),
-          'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
-        });
+        graphFile.graph = release;
         model.open(publish);
-        model.selectWorkflow('lib/publish.dart#publish');
+        model.openAsGraph('lib/publish.dart#publish');
         expect(titles(), ['publish']);
-        model.selectWorkflow('lib/release.dart#release');
-        expect(titles(), ['release']);
-        model.open(publish);
-        model.selectWorkflow('lib/release.dart#release');
+        model.open(const Opened('1'));
+        model.closeCalledGraph();
         expect(titles(), ['release']);
       });
     });
@@ -440,8 +287,6 @@ void main() {
     List<String> titles() => [
       for (final level in model.canvas.levels) level.title,
     ];
-
-    List<String> names() => [for (final w in model.workflows) w.name];
 
     /// The sessions listed, newest first, with whose they are.
     List<(String, String?)> listed() => [
@@ -472,7 +317,7 @@ void main() {
     ]);
 
     /// The release fixture with publish, which release calls, a workflow
-    /// too.
+    /// too: what an older snapshot had.
     final both = GraphFile.fromJson({
       ...loadGraphFile('release').toJson(),
       'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
@@ -500,9 +345,8 @@ void main() {
       )..effect('plan', 21, end: 22, place: 'lib/release.dart:16'),
     ]);
 
-    test('is drawn from its top, its name the first crumb, listed first '
-        'among the workflows and drawn; the levels opened and the nodes '
-        'expanded go', () {
+    test('is drawn from its top, its name the first title; the levels '
+        'opened and the nodes expanded go, as it opens and as it closes', () {
       run((async) {
         graphFile.graph = chain;
         model.open(lead);
@@ -510,10 +354,9 @@ void main() {
         notified = 0;
         model.openAsGraph(carry);
         expect(notified, greaterThan(0));
-        expect(model.workflow!.id, carry);
-        expect(model.workflow!.called, isTrue);
+        expect(model.workflow!.id, 'lib/chain.dart#chain');
         expect(model.calledGraph!.id, carry);
-        expect(names(), ['carry', 'chain', 'task']);
+        expect(model.mainGraph!.id, carry);
         expect(titles(), ['carry']);
         expect(model.canvas.body, chain.functions[carry]!.body);
 
@@ -522,8 +365,9 @@ void main() {
         model.openLevel(0);
         model.expandNode(const [], work);
         expect(model.canvas.frames, hasLength(1));
-        model.selectWorkflow('lib/chain.dart#chain');
+        model.closeCalledGraph();
         expect(model.calledGraph, isNull);
+        expect(titles(), ['chain']);
         model.openAsGraph(carry);
         expect(model.canvas.frames, isEmpty);
       });
@@ -543,15 +387,12 @@ void main() {
       });
     });
 
-    test('a workflow opened as a called graph lists its own sessions too, '
-        'which say nothing of whose they are, and stays where it is among '
-        'the workflows', () {
+    test('lists its own sessions too, which say nothing of whose they '
+        "are; closed, the workflow's are listed again", () {
       run((async) {
-        graphFile.graph = both;
+        graphFile.graph = loadGraphFile('release');
         give(async, publishSessions());
         model.openAsGraph(publish);
-        expect(names(), ['release', 'publish']);
-        expect(model.workflow!.id, publish);
         expect(listed(), [
           ('r1r1-session', 'from release'),
           ('p1p1-session', null),
@@ -560,11 +401,9 @@ void main() {
         expect(model.canvas.workflow!.id, publish);
         expect(model.canvas.places.isWorkflow(model.canvas.body!), isTrue);
 
-        // Chosen in the workflow picker, it is the workflow again.
-        model.selectWorkflow(publish);
-        expect(listed(), [('p1p1-session', null)]);
-        expect(model.workflow!.called, isFalse);
-        expect(model.selection.sessionId, 'p1p1-session');
+        model.closeCalledGraph();
+        expect(listed(), [('r2r2-session', null), ('r1r1-session', null)]);
+        expect(model.selection.sessionId, 'r2r2-session');
       });
     });
 
@@ -641,7 +480,7 @@ void main() {
         model.openAsGraph(carry);
         expect(model.selection.sessionId, 'c1c1-session');
 
-        model.selectWorkflow('lib/chain.dart#chain');
+        model.closeCalledGraph();
         expect(model.selection.sessionId, 'c1c1-session');
         model.showSession('c2c2-session');
         model.openAsGraph(carry);
@@ -673,7 +512,7 @@ void main() {
     });
 
     test('keeps the session selected as it opens, going back to the '
-        'workflow of the session', () {
+        'workflow', () {
       run((async) {
         graphFile.graph = chain;
         give(
@@ -698,27 +537,26 @@ void main() {
         expect(model.selection.sessionId, 'c2c2-session');
         model.openAsGraph(carry);
         expect(model.selection.sessionId, 'c1c1-session');
-        model.selectWorkflow('lib/chain.dart#chain');
+        model.closeCalledGraph();
         expect(model.selection.sessionId, 'c1c1-session');
       });
     });
 
-    test('goes once a workflow is chosen: it leaves the list; chosen itself, '
-        'it is drawn from its top', () {
+    test('closed, the workflow is drawn from its top, with its own '
+        'sessions; closing none changes nothing', () {
       run((async) {
         graphFile.graph = chain;
         give(async, sessions());
         model.openAsGraph(carry);
         model.open(work);
-        model.selectWorkflow(carry);
-        expect(model.workflow!.id, carry);
-        expect(titles(), ['carry']);
+        model.closeCalledGraph();
+        expect(model.calledGraph, isNull);
+        expect(titles(), ['chain']);
+        expect(listed(), [('c2c2-session', null), ('c1c1-session', null)]);
 
-        model.selectWorkflow('lib/task_graph.dart#task');
-        expect(model.workflow!.name, 'task');
-        expect(names(), ['chain', 'task']);
-        expect(titles(), ['task']);
-        expect(listed(), [('t1t1-session', null)]);
+        notified = 0;
+        model.closeCalledGraph();
+        expect(notified, 0);
       });
     });
 
@@ -748,8 +586,8 @@ void main() {
       run((async) {
         graphFile.graph = chain;
         model.openAsGraph('lib/task_graph.dart#gone');
-        expect(model.workflow!.name, 'chain');
-        expect(names(), ['chain', 'task']);
+        expect(model.calledGraph, isNull);
+        expect(model.mainGraph!.name, 'chain');
       });
     });
   });
@@ -940,7 +778,7 @@ void main() {
   group('the canvas of Current graph', () {
     test('draws the selected workflow of the graph file', () {
       final canvas = fileCanvas(
-        file: '/p/nanoflow.graph.json',
+        file: '/p/lib/review.graph.json',
         graph: reviewGraphFile(),
         workflowId: 'lib/release.dart#release',
       );
@@ -953,7 +791,7 @@ void main() {
 
     test('says No valid graph yet until a graph file has been read', () {
       final canvas = fileCanvas(
-        file: '/p/nanoflow.graph.json',
+        file: '/p/lib/review.graph.json',
         graph: null,
         workflowId: null,
         error: 'Unexpected end of input at line 1, column 14',
@@ -962,7 +800,7 @@ void main() {
       expect(canvas.placeholder, noValidGraphYet);
       expect(canvas.notes, [
         const GraphNote(
-          'nanoflow.graph.json cannot be read',
+          'review.graph.json cannot be read',
           danger: true,
           lines: ['Unexpected end of input at line 1, column 14'],
         ),
@@ -971,7 +809,7 @@ void main() {
 
     test('a file gone before any graph was read keeps none', () {
       final canvas = fileCanvas(
-        file: '/p/nanoflow.graph.json',
+        file: '/p/lib/review.graph.json',
         graph: null,
         workflowId: null,
         fileMissing: true,
@@ -980,7 +818,7 @@ void main() {
         const GraphNote(
           fileUnavailable,
           danger: true,
-          text: 'nanoflow.graph.json is gone.',
+          text: 'review.graph.json is gone.',
         ),
       ]);
     });
@@ -988,7 +826,7 @@ void main() {
     test('says so when the graph file has no workflows', () {
       final graph = GraphFile.fromJson({...graphFileJson(), 'workflows': []});
       final canvas = fileCanvas(
-        file: '/p/nanoflow.graph.json',
+        file: '/p/lib/review.graph.json',
         graph: graph,
         workflowId: null,
       );
@@ -998,7 +836,7 @@ void main() {
     test('notes a file that is gone or cannot be read, over the last graph '
         'read', () {
       final canvas = fileCanvas(
-        file: '/p/nanoflow.graph.json',
+        file: '/p/lib/review.graph.json',
         graph: reviewGraphFile(),
         workflowId: 'lib/review.dart#review',
         fileMissing: true,
@@ -1010,11 +848,11 @@ void main() {
           fileUnavailable,
           danger: true,
           text:
-              'nanoflow.graph.json is gone; the canvas keeps the last graph '
+              'review.graph.json is gone; the canvas keeps the last graph '
               'read from it.',
         ),
         const GraphNote(
-          'nanoflow.graph.json cannot be read',
+          'review.graph.json cannot be read',
           danger: true,
           lines: ['workflows: missing'],
           text: lastGraphShown,
@@ -1024,7 +862,7 @@ void main() {
 
     test('notes a graph that may not match the code, with what changed', () {
       final canvas = fileCanvas(
-        file: '/p/nanoflow.graph.json',
+        file: '/p/lib/review.graph.json',
         graph: reviewGraphFile(),
         workflowId: 'lib/review.dart#review',
         freshness: const Freshness(
@@ -1041,7 +879,7 @@ void main() {
       ]);
       expect(
         fileCanvas(
-          file: '/p/nanoflow.graph.json',
+          file: '/p/lib/review.graph.json',
           graph: reviewGraphFile(),
           workflowId: 'lib/review.dart#review',
           freshness: const Freshness(stale: false, changed: []),
@@ -1052,7 +890,7 @@ void main() {
 
     test('lists the warnings of the graph file', () {
       final canvas = fileCanvas(
-        file: '/p/nanoflow.graph.json',
+        file: '/p/lib/review.graph.json',
         graph: reviewGraphFile(
           warnings: [
             {
@@ -1066,7 +904,7 @@ void main() {
       );
       expect(canvas.notes, [
         const GraphNote(
-          '2 warnings in nanoflow.graph.json',
+          '2 warnings in review.graph.json',
           lines: [
             'lib/review.dart:40  effects in a closure passed on are not drawn',
             'a catch is not drawn',
@@ -1264,13 +1102,10 @@ void main() {
       });
     });
 
-    test('stay as another session or Current graph is shown, and go for '
-        'another workflow', () {
+    test('stay as another session or Current graph is shown, and go as a '
+        'called graph opens', () {
       run((async) {
-        graphFile.graph = GraphFile.fromJson({
-          ...release.toJson(),
-          'workflows': ['lib/release.dart#release', 'lib/publish.dart#publish'],
-        });
+        graphFile.graph = release;
         give(
           async,
           changesOf([
@@ -1293,10 +1128,10 @@ void main() {
         model.selection.showCurrentGraph();
         expect(frames(), ['publish()']);
 
-        model.selectWorkflow('lib/release.dart#release');
-        expect(frames(), ['publish()'], reason: 'the same workflow');
-        model.selectWorkflow('lib/publish.dart#publish');
-        model.selectWorkflow('lib/release.dart#release');
+        model.closeCalledGraph();
+        expect(frames(), ['publish()'], reason: 'no called graph was open');
+        model.openAsGraph('lib/publish.dart#publish');
+        model.closeCalledGraph();
         expect(frames(), isEmpty);
 
         model.expandNode(const [], publish);
@@ -1420,8 +1255,10 @@ void main() {
 
       test('a node in a frame opens one level down from the frame', () {
         run((async) {
-          graphFile.graph = packagesGraphFile();
-          model.selectWorkflow('lib/packages.dart#nested');
+          graphFile.graph = GraphFile.fromJson({
+            ...packagesGraphJson(),
+            'workflows': ['lib/packages.dart#nested'],
+          });
           const prepare = Opened('1', functionId: 'lib/packages.dart#prepare');
           model.expandNode(const [], prepare);
           model.open(
@@ -1437,12 +1274,11 @@ void main() {
     });
   });
 
-  test('opens a graph file whose runs/ has a session of a workflow it does '
-      'not have: noted, and reachable', () async {
+  test("opens a graph's file whose runs/ has the sessions of another graph: "
+      'they are not its own, nor noted', () async {
     final dir = await Directory.systemTemp.createTemp('nanoflow_model_test');
     addTearDown(() => dir.delete(recursive: true));
-    final file = p.join(dir.path, graphFileName);
-    File(file).writeAsStringSync(jsonEncode(graphFileJson()));
+    final file = putGraphOf(dir.path, 'review');
     final review = newId();
     final deploy = newId();
     for (final (id, workflow) in [(review, 'review'), (deploy, 'deploy')]) {
@@ -1478,31 +1314,15 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
     expect(model.selection.sessionId, review);
-    expect(model.canvas.notes, [
-      const GraphNote(
-        '1 session of a workflow not in nanoflow.graph.json',
-        lines: ['deploy'],
-        text: notInGraphFileDetail,
-      ),
-    ]);
-
-    model.selectWorkflow('deploy');
-    expect(model.selection.sessionId, deploy);
-    expect(model.canvas.placeholder, noWorkflowNamed('deploy'));
-    expect(model.canvas.notes, [
-      GraphNote(
-        workflowNotInFile('deploy', graphFileName),
-        text: graphFileMayBeStale,
-      ),
-    ]);
+    expect(model.workflowSessions.map((s) => s.id), [review]);
+    expect(model.canvas.notes, isEmpty);
   });
 
-  test('opens a graph file: its graph, and the sessions in runs/ next to '
-      'it', () async {
+  test("opens a graph's file: its graph, and the sessions in runs/ of its "
+      'project', () async {
     final dir = await Directory.systemTemp.createTemp('nanoflow_model_test');
     addTearDown(() => dir.delete(recursive: true));
-    final file = p.join(dir.path, graphFileName);
-    File(file).writeAsStringSync(jsonEncode(graphFileJson()));
+    final file = putGraphOf(dir.path, 'review');
     final id = newId();
     final sessionDir = p.join(
       runsDirOf(dir.path),
@@ -1542,8 +1362,7 @@ void main() {
       'the store has no files', () async {
     final dir = await Directory.systemTemp.createTemp('nanoflow_model_test');
     addTearDown(() => dir.delete(recursive: true));
-    final file = p.join(dir.path, graphFileName);
-    File(file).writeAsStringSync(jsonEncode(graphFileJson()));
+    final file = putGraphOf(dir.path, 'release');
     final db = p.join(dir.path, 'app.db');
     final store = SqliteStore(db);
     addTearDown(store.close);

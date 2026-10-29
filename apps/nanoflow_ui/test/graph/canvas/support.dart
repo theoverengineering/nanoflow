@@ -29,7 +29,7 @@ GraphFile graphFileNamed(String name) => loadGraphFile(name);
 /// every session of the tests, so the newest is selected.
 GraphModel modelOf({
   GraphFile? graph,
-  String file = '/nowhere/$graphFileName',
+  String file = '/nowhere/lib/release.graph.json',
   List<Change> changes = const [],
   Stream<Change> more = const Stream.empty(),
   Map<String, Object?> documents = const {},
@@ -54,7 +54,7 @@ GraphModel modelOf({
 /// all when [noGraph]. Effects' logs and documents are [files].
 GraphModel ownedModel({
   GraphFile? graph,
-  String file = '/nowhere/$graphFileName',
+  String file = '/nowhere/lib/release.graph.json',
   List<Change> changes = const [],
   Stream<Change> more = const Stream.empty(),
   Map<String, Object?> documents = const {},

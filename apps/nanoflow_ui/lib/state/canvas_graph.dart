@@ -65,8 +65,7 @@ const unreadableSessionGraph = 'Graph of this session cannot be read';
 const noWorkflows = 'The graph file has no workflows';
 
 /// What the canvas says for a workflow [name] whose graph has no function
-/// of it: a workflow the graph file does not have, or a session whose
-/// snapshot does not.
+/// of it: a session whose snapshot does not have its workflow.
 String noWorkflowNamed(String name) => 'The graph has no workflow $name';
 
 /// What the canvas says for a parent's session whose snapshot has no
@@ -129,21 +128,6 @@ const notOnGraphLines = 5;
 const notOnGraphDetail =
     'They match no effect on the graph: the code may differ from the one it '
     'was read from.';
-
-/// The chosen workflow [workflow] is not in the graph file [fileName]: its
-/// sessions ran it, the file does not have it.
-String workflowNotInFile(String workflow, String fileName) =>
-    'Workflow $workflow is not in $fileName';
-
-/// Said under [workflowNotInFile].
-const graphFileMayBeStale =
-    'The graph file may be stale: run describe to write it again.';
-
-/// Said under the workflows that sessions ran and the graph file does not
-/// have.
-const notInGraphFileDetail =
-    'The graph file may be stale: run describe to write it again. '
-    'Choose such a workflow to see its sessions.';
 
 /// The graph the canvas shows (spec §9 «Граф», «Сессия»): a workflow of the
 /// graph file for `Current graph`, the session's own graph for a session;
@@ -218,11 +202,11 @@ final class CanvasGraph {
   List<Opened> get path => [for (final level in levels.skip(1)) level.opened!];
 }
 
-/// The canvas of `Current graph`: the workflow [workflowId] (a
-/// `WorkflowChoice.id`) of [graph], the graph file [file] last read, down
-/// [path], the nodes [expansions] has expanded in place; noted when the
-/// file is gone, its latest [error], its [freshness], its warnings of what
-/// the canvas can show, then [extraNotes] ([workflowNotes]).
+/// The canvas of `Current graph`: the function [workflowId] of [graph] —
+/// its workflow, or the called graph opened —, the graph file [file] last
+/// read, down [path], the nodes [expansions] has expanded in place; noted
+/// when the file is gone, its latest [error], its [freshness], its warnings
+/// of what the canvas can show.
 CanvasGraph fileCanvas({
   required String file,
   required GraphFile? graph,
@@ -232,7 +216,6 @@ CanvasGraph fileCanvas({
   String? error,
   bool fileMissing = false,
   Freshness? freshness,
-  List<GraphNote> extraNotes = const [],
 }) {
   final name = p.basename(file);
   final workflow = graph?.functions[workflowId];
@@ -290,7 +273,6 @@ CanvasGraph fileCanvas({
               place == null ? message : '$place  $message',
           ],
         ),
-      ...extraNotes,
     ]),
   );
 }
@@ -319,15 +301,13 @@ Set<String> _shownFrom(String id, Map<String, GraphFunction> functions) {
 /// parent's session, the function [calledGraph] its workflow calls, the
 /// called graph opened (`CanvasGraph.calledGraph`) —, down [path], the nodes
 /// [expansions] has expanded in place; noted when the session has no
-/// snapshot, when its code is not that of the graph or was not recorded,
-/// then [extraNotes] ([workflowNotes]).
+/// snapshot, when its code is not that of the graph or was not recorded.
 CanvasGraph sessionCanvas(
   SessionData session,
   SessionGraph graph, {
   String? calledGraph,
   List<Opened> path = const [],
   Expansions? expansions,
-  List<GraphNote> extraNotes = const [],
 }) {
   final file = graph.graph;
   final name = session.session.workflow;
@@ -375,39 +355,6 @@ CanvasGraph sessionCanvas(
           ],
           text: notOnGraphDetail,
         ),
-      ...extraNotes,
     ]),
   );
-}
-
-/// What to know of the workflows of the graph file [file], over any canvas:
-/// that the chosen [workflow] is not in the file; else, how many sessions
-/// ran workflows the file does not have ([notInGraph], by name), which are
-/// otherwise easy to miss: only the workflow picker lists them.
-List<GraphNote> workflowNotes({
-  required String file,
-  required WorkflowChoice? workflow,
-  required Map<String, int> notInGraph,
-}) {
-  final name = p.basename(file);
-  if (workflow != null && !workflow.inGraphFile) {
-    return [
-      GraphNote(
-        workflowNotInFile(workflow.name, name),
-        text: graphFileMayBeStale,
-      ),
-    ];
-  }
-  if (notInGraph.isEmpty) return const [];
-  final sessions = notInGraph.values.fold(0, (sum, n) => sum + n);
-  final workflows = notInGraph.length == 1
-      ? 'a workflow'
-      : '${notInGraph.length} workflows';
-  return [
-    GraphNote(
-      '${count(sessions, 'session')} of $workflows not in $name',
-      lines: [...notInGraph.keys],
-      text: notInGraphFileDetail,
-    ),
-  ];
 }

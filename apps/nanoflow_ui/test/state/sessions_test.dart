@@ -272,13 +272,13 @@ and 2 more''');
       'come from', () {
     expect(noSessionsYet, 'No sessions yet');
     expect(
-      noSessionsHint('/Users/me/Projects/review/nanoflow.graph.json'),
+      noSessionsHint('/Users/me/Projects/review/lib/src/review.graph.json'),
       'Sessions of the workflow appear as it runs: '
-      'they are read from runs/ next to nanoflow.graph.json.',
+      'they are read from runs/ in review/.',
     );
     expect(
       noSessionsHint(
-        '/Users/me/Projects/ideaforge/nanoflow.graph.json',
+        '/Users/me/Projects/ideaforge/lib/ideas.graph.json',
         watching: 'ideas.db',
       ),
       'Sessions of the workflow appear as it runs: '
@@ -334,74 +334,6 @@ and 2 more''');
         sessionsOfWorkflow([...all, later], reviewGraphFile(), 'renamed'),
         [gone, later],
       );
-    });
-  });
-
-  group('the workflows to choose from', () {
-    final sessions = [
-      Journal('revi-session').data,
-      Journal('depl-session', workflow: 'deploy').data,
-      Journal('dep2-session', workflow: 'deploy').data,
-      Journal('back-session', workflow: 'backup').data,
-    ];
-
-    test('are those of the graph file in its order, then those sessions ran '
-        'that it does not have, by name', () {
-      final choices = workflowChoices(reviewGraphFile(), sessions);
-      expect(
-        [for (final w in choices) (w.id, w.name, w.inGraphFile)],
-        [
-          ('lib/review.dart#review', 'review', true),
-          ('lib/release.dart#release', 'release', true),
-          ('backup', 'backup', false),
-          ('deploy', 'deploy', false),
-        ],
-      );
-      expect(choices.first.function, reviewGraphFile().functions.values.first);
-      expect(choices.last.function, isNull);
-    });
-
-    test('have a called graph opened first, marked so; a workflow opened as '
-        'one stays where it is', () {
-      final graph = GraphFile.fromJson({
-        ...graphFileJson(),
-        'workflows': ['lib/review.dart#review'],
-      });
-      final choices = workflowChoices(
-        graph,
-        sessions.take(1),
-        called: 'lib/release.dart#release',
-      );
-      expect(
-        [for (final w in choices) (w.id, w.name, w.called, w.inGraphFile)],
-        [
-          ('lib/release.dart#release', 'release', true, true),
-          ('lib/review.dart#review', 'review', false, true),
-        ],
-      );
-      expect(
-        [
-          for (final w in workflowChoices(
-            reviewGraphFile(),
-            sessions.take(1),
-            called: 'lib/release.dart#release',
-          ))
-            (w.name, w.called),
-        ],
-        [('review', false), ('release', false)],
-      );
-      expect(
-        workflowChoices(graph, sessions.take(1), called: 'lib/gone.dart#gone'),
-        hasLength(1),
-      );
-    });
-
-    test('count the sessions of workflows the graph file does not have', () {
-      expect(sessionsNotInGraph(reviewGraphFile(), sessions), {
-        'backup': 1,
-        'deploy': 2,
-      });
-      expect(sessionsNotInGraph(reviewGraphFile(), sessions.take(1)), isEmpty);
     });
   });
 }

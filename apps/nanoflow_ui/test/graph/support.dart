@@ -9,15 +9,16 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/graph_screen.dart';
 import 'package:nanoflow_ui/platform/shell.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
+import 'package:nanoflow_ui/state/project_dir.dart';
 import 'package:path/path.dart' as p;
 
 import '../state/support.dart';
 import '../support/golden.dart';
 import 'canvas/support.dart';
 
-/// The graph file the screen opens: ~/Projects/release/nanoflow.graph.json.
+/// The graph file the screen opens: ~/Projects/release/lib/release.graph.json.
 final releaseFile =
-    '${Platform.environment['HOME']}/Projects/release/$graphFileName';
+    '${Platform.environment['HOME']}/Projects/release/lib/release.graph.json';
 
 /// A shell that notes the files it is asked to open at a line, and opens
 /// them but when told not to.
@@ -90,9 +91,9 @@ GraphModel columnModel() => ownedModel(
 final columnNow = at(746);
 
 /// The graph file of the review example the screen opens:
-/// ~/Projects/review/nanoflow.graph.json.
+/// ~/Projects/review/lib/review.graph.json.
 final reviewFile =
-    '${Platform.environment['HOME']}/Projects/review/$graphFileName';
+    '${Platform.environment['HOME']}/Projects/review/lib/review.graph.json';
 
 /// Session a1b2 of the review example as docs/design/graph.png has it, on
 /// the example's code: collect, inspect, fix, inspect again — started twice
@@ -160,7 +161,7 @@ subscriber 3: 429 too many requests, retrying in 120s
 
 /// The directory of [reviewSession], under [reviewFile]'s `runs`.
 final reviewSessionDir = p.join(
-  runsDirOf(p.dirname(reviewFile)),
+  runsDirOf(projectDirOf(reviewFile)),
   sessionDirName('review', t0, 'a1b2-session'),
 );
 
@@ -213,9 +214,9 @@ FakeFiles reviewFiles() => FakeFiles(
 );
 
 /// The graph file of the describe fixture `inline` the screen opens:
-/// ~/Projects/inline/nanoflow.graph.json.
+/// ~/Projects/inline/lib/inline.graph.json.
 final inlineFile =
-    '${Platform.environment['HOME']}/Projects/inline/$graphFileName';
+    '${Platform.environment['HOME']}/Projects/inline/lib/inline.graph.json';
 
 /// Pumps the graph screen of [reviewFile] owning [model], by default
 /// [reviewModel], at [now], by default [columnNow]. Returns the model.

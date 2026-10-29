@@ -14,6 +14,7 @@ import 'package:nanoflow_ui/state/graph_file_source.dart';
 import 'package:nanoflow_ui/state/log_rows.dart';
 import 'package:nanoflow_ui/state/outcomes.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
+import 'package:path/path.dart' as p;
 
 /// The fingerprint of the code [reviewGraphFile] was read from.
 const reviewCode = 'sha256:review-code';
@@ -213,6 +214,30 @@ Map<String, Object?> packagesGraphJson() => {
 
 /// [packagesGraphJson] read.
 GraphFile packagesGraphFile() => GraphFile.fromJson(packagesGraphJson());
+
+/// Writes the graph [name] of [graph], by default [reviewGraphFile] — `review`
+/// or `release` —, to its own file under `lib/` of the package in [dir], with
+/// the package's `pubspec.yaml`, as describe does; gives the file's path.
+String putGraphOf(String dir, String name, {GraphFile? graph}) {
+  graph ??= reviewGraphFile();
+  final function = graph.functions.values.firstWhere((f) => f.name == name);
+  File(p.join(dir, 'pubspec.yaml')).writeAsStringSync('name: review_example\n');
+  final file = File(p.join(dir, 'lib', '$name$graphFileSuffix'))
+    ..parent.createSync(recursive: true);
+  final own = OneGraphFile(
+    package: graph.package,
+    name: function.name,
+    place: function.place,
+    doc: function.doc,
+    body: function.body,
+    warnings: const [],
+    fingerprint: graph.fingerprint,
+    sources: graph.sources,
+    builds: graph.builds,
+  );
+  file.writeAsStringSync(jsonEncode(own.toJson()));
+  return file.path;
+}
 
 /// What a recording tool wrote into a fixture directory: the graph file, and
 /// the sessions as the real library wrote them, by workflow, with the values
@@ -524,7 +549,7 @@ final class FakeFiles implements EffectFiles {
 /// A graph file, its error and whether it is missing, as the test sets
 /// them; nothing is read.
 final class FixedGraphFile extends GraphFileSource {
-  FixedGraphFile([this._graph, String file = '/nowhere/$graphFileName'])
+  FixedGraphFile([this._graph, String file = '/nowhere/lib/review.graph.json'])
     : super(file: file);
 
   GraphFile? _graph;
@@ -559,16 +584,6 @@ final class FixedGraphFile extends GraphFileSource {
 
   set fileMissing(bool missing) {
     _fileMissing = missing;
-    notifyListeners();
-  }
-
-  bool _oneGraph = false;
-
-  @override
-  bool get oneGraph => _oneGraph;
-
-  set oneGraph(bool oneGraph) {
-    _oneGraph = oneGraph;
     notifyListeners();
   }
 

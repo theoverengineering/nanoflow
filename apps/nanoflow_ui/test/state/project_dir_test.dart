@@ -15,16 +15,7 @@ void main() {
 
   void put(String path) => File(p.join(dir, path)).createSync(recursive: true);
 
-  test('is the directory of the graph file of a whole package', () {
-    put('lib/nanoflow.graph.json');
-    expect(
-      projectDirOf(p.join(dir, 'lib', 'nanoflow.graph.json')),
-      p.join(dir, 'lib'),
-    );
-  });
-
-  test('is the one over the nearest lib/ or bin/ with a pubspec.yaml, for a '
-      "graph's own file", () {
+  test('is the one over the nearest lib/ or bin/ with a pubspec.yaml', () {
     put('app/pubspec.yaml');
     expect(
       projectDirOf(
