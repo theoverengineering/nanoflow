@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow/src/flow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -79,7 +80,7 @@ Future<List<String>> printedOutside(
   final printed = <String>[];
   await runZoned(
     () async {
-      await Flow(directory: dir).run(workflow, 'x');
+      await Flow(directory: dir).runWorkflow(workflow, 'x');
       await until;
     },
     zoneSpecification: ZoneSpecification(
@@ -128,7 +129,7 @@ void main() {
     final keys = <bool, List<String>>{};
 
     for (final loud in [false, true]) {
-      final session = await flow.start(printsBeforeEffect, loud);
+      final session = await flow.startWorkflow(printsBeforeEffect, loud);
       await session.result;
       keys[loud] = [
         for (final effect in await (await openSession(
@@ -148,7 +149,8 @@ void main() {
     final dir = await tempDir();
     gate = Completer();
     atGate = Completer();
-    final session = await Flow(directory: dir).start(printsAfterGate, 'x');
+    final session = await Flow(directory: dir)
+        .startWorkflow(printsAfterGate, 'x');
     await atGate.future;
 
     final effects = p.join(sessionDirOf(dir, session.id), effectsDirName);
@@ -172,7 +174,7 @@ void main() {
     final printed = <String>[];
     final flow = Flow(directory: dir);
     final session = await runZoned(
-      () => flow.start(printsAfterGate, 'x'),
+      () => flow.startWorkflow(printsAfterGate, 'x'),
       zoneSpecification: ZoneSpecification(
         print: (self, parent, zone, line) => printed.add(line),
       ),

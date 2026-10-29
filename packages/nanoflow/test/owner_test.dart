@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow/src/flow.dart';
 import 'package:nanoflow/src/owner.dart' show currentOwner;
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_process/nanoflow_process.dart';
@@ -91,7 +92,7 @@ void main() {
     final dir = await tempDir();
     hold('runs');
 
-    final session = await Flow(directory: dir).start(held, 'runs');
+    final session = await Flow(directory: dir).startWorkflow(held, 'runs');
     await entered['runs']!.future;
 
     expect(lockOf(dir, session.id), recordOfThisProcess);
@@ -102,7 +103,7 @@ void main() {
   test('a session that finished leaves .owner.lock empty', () async {
     final dir = await tempDir();
     hold('finishes');
-    final session = await Flow(directory: dir).start(held, 'finishes');
+    final session = await Flow(directory: dir).startWorkflow(held, 'finishes');
     await entered['finishes']!.future;
     expect(lockOf(dir, session.id), recordOfThisProcess);
 
@@ -115,7 +116,8 @@ void main() {
   test('a session that failed leaves .owner.lock empty', () async {
     final dir = await tempDir();
     hold('fails');
-    final session = await Flow(directory: dir).start(failsAfterHold, 'fails');
+    final session = await Flow(directory: dir)
+        .startWorkflow(failsAfterHold, 'fails');
     await entered['fails']!.future;
     expect(lockOf(dir, session.id), recordOfThisProcess);
 
@@ -128,7 +130,7 @@ void main() {
   test('a session whose store failed leaves .owner.lock empty', () async {
     final dir = await tempDir();
     hold('store');
-    final session = await Flow(directory: dir).start(held, 'store');
+    final session = await Flow(directory: dir).startWorkflow(held, 'store');
     await entered['store']!.future;
     expect(lockOf(dir, session.id), recordOfThisProcess);
 
@@ -147,7 +149,7 @@ void main() {
       final dir = await tempDir();
       final flow = Flow(directory: dir);
       hold('stopped');
-      final session = await flow.start(held, 'stopped');
+      final session = await flow.startWorkflow(held, 'stopped');
       await entered['stopped']!.future;
       expect(lockOf(dir, session.id), recordOfThisProcess);
 
@@ -164,7 +166,7 @@ void main() {
     final dir = await tempDir();
     final flow = Flow(directory: dir);
     hold('first');
-    final first = await flow.start(held, 'first');
+    final first = await flow.startWorkflow(held, 'first');
     await entered['first']!.future;
     flow.stop();
     gates['first']!.complete();
@@ -172,7 +174,7 @@ void main() {
     expect(lockOf(dir, first.id), isEmpty);
 
     hold('first');
-    final resumed = await Flow(directory: dir).resume(held, first.id);
+    final resumed = await Flow(directory: dir).resumeWorkflow(held, first.id);
     await entered['first']!.future;
 
     expect(resumed.id, first.id);

@@ -2,7 +2,7 @@
 // runs in a process of its own, which the test kills.
 import 'dart:io';
 
-import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow/src/flow.dart';
 import 'package:path/path.dart' as p;
 
 /// Three effects, the second of which waits until there is a file `go` in the

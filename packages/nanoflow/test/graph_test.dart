@@ -2,9 +2,7 @@
 // shape it is built into, what a call of a node or a graph gives, and what is
 // not a graph.
 
-import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow/src/graph.dart';
-import 'package:nanoflow/src/project.dart';
 import 'package:test/test.dart';
 
 final a = node('a', (String s) async => s.length);
@@ -15,8 +13,6 @@ final c = node('c', (String s) async => s);
 
 /// Another node named as [a].
 final otherA = node('a', (String s) async => 0);
-
-Future<String> workflow(Flow f, String s) async => s;
 
 Matcher rejects(String part) => throwsA(
   isA<ArgumentError>().having((e) => '${e.message}', 'message', contains(part)),
@@ -91,13 +87,6 @@ void main() {
     expect(ran, 0);
     expect(counted.body('x'), 'x');
     expect(ran, 1);
-  });
-
-  test('graphOfRun finds a graph by its run', () {
-    final g = Graph<String, Object?>('g', [Graph.start(a)]);
-    expect(graphOfRun(g.run), same(g));
-    expect(graphOfRun(workflow), isNull);
-    expect(workflowNameOf(g.run), 'g');
   });
 
   group('rejects', () {

@@ -12,10 +12,10 @@ import 'graph.dart';
 import 'owner.dart';
 import 'project.dart';
 
-/// Runs workflows: ordinary async functions of a [Flow] and an input, whose
-/// effects are calls of [effect].
+/// Runs workflows: graphs of nodes ([Graph]), each node of which runs as an
+/// effect.
 ///
-/// Every call of a workflow is a session: the library writes it to its store
+/// Every run of a graph is a session: the library writes it to its store
 /// as it goes — the input, every effect that runs with its result, the
 /// workflow's result — so that [resume] can take a session on after its
 /// process ended, taking the effects that finished from its journal. The
@@ -23,7 +23,7 @@ import 'project.dart';
 /// effect a key that is the same on every run of the same code (spec §4.3);
 /// several sessions of one flow may run at once.
 ///
-/// The input, the result and every effect's result are kept as JSON (spec
+/// The input, the result and every node's result are kept as JSON (spec
 /// §4.4): a value of a JSON type — `null`, a `bool`, a number, a `String`,
 /// and lists and maps with `String` keys of them — as it is, a value of
 /// another type through its `toJson`, which comes back through the
@@ -77,26 +77,27 @@ final class Flow {
   /// too, as [addCodec] does.
   void addEnum<T extends Enum>(List<T> values) => _codecs.addEnum(values);
 
-  /// Starts a session of [workflow] with [input]: the session is written and
-  /// owned by this process, and [workflow] runs.
+  /// Starts a session of [graph] with [input]: the session is written and
+  /// owned by this process, and [graph] runs.
   ///
-  /// The session's id is [id] when given — so that the caller knows it before
-  /// the session is written —, else a new one. The session records the graph
-  /// file as it is now and the hash of the code. Throws, having written
-  /// nothing: an [ArgumentError] when [workflow] is not a top-level function
-  /// or a static method, whose name names the session, or when [id] is not
-  /// a lowercase UUID; a [CodecException] when [input] would not come back
-  /// from JSON; a [FlowStoppedException] once the flow is stopped; a
+  /// The session is named after the graph. Its id is [id] when given — so
+  /// that the caller knows it before the session is written —, else a new
+  /// one. The session records the graph file as it is now and the hash of the
+  /// code. Throws, having written nothing: an [ArgumentError] when [id] is
+  /// not a lowercase UUID; a [CodecException] when [input] would not come
+  /// back from JSON; a [FlowStoppedException] once the flow is stopped; a
   /// [SessionExistsException] when the store has a session [id] already; a
   /// [StorageException] when the session cannot be written.
   Future<FlowSession<R>> start<I, R>(
-    Future<R> Function(Flow f, I input) workflow,
+    Graph<I, R> graph,
     I input, {
     String? id,
-  }) => _start(workflow, input, const _Journal(), id: id);
+  }) => _start(graph.name, _workflowOf(graph), input, const _Journal(), id: id);
 
-  /// [start], for a session whose effects in [journal] have run before.
+  /// [start] of the workflow function [workflow] named [name], for a session
+  /// whose effects in [journal] have run before.
   Future<FlowSession<R>> _start<I, R>(
+    String name,
     Future<R> Function(Flow f, I input) workflow,
     I input,
     _Journal journal, {
@@ -105,7 +106,6 @@ final class Flow {
     if (id != null && !isId(id)) {
       throw ArgumentError.value(id, 'id', 'not a lowercase UUID');
     }
-    final name = workflowNameOf(workflow);
     final inputJson = _codecs.encode<I>(input);
     final graph = await graphSnapshotOf(directory);
     final package = await packageOf(directory, graph);
@@ -128,16 +128,14 @@ final class Flow {
     );
   }
 
-  /// Runs a session of [workflow] with [input] to its end: [start], then the
+  /// Runs a session of [graph] with [input] to its end: [start], then the
   /// session's [FlowSession.result].
-  Future<R> run<I, R>(
-    Future<R> Function(Flow f, I input) workflow,
-    I input,
-  ) async => (await start(workflow, input)).result;
+  Future<R> run<I, R>(Graph<I, R> graph, I input) async =>
+      (await start(graph, input)).result;
 
-  /// Takes on the session [sessionId] of [workflow] in this process (spec
-  /// §4.6): it runs [workflow] again with the session's input, and every
-  /// effect that finished before gives its saved result instead of running.
+  /// Takes on the session [sessionId] of [graph] in this process (spec
+  /// §4.6): it runs [graph] again with the session's input, and every node
+  /// that finished before gives its saved result instead of running.
   ///
   /// An effect is taken from the journal when its key has an `effect-finished`
   /// there, the effect it followed then (`after`) is the one it follows now,
@@ -160,19 +158,21 @@ final class Flow {
   /// code declares (see [addCodec]); one that does not is a
   /// [CodecException]: for the result, the session's.
   ///
-  /// Throws, having written no event: an [ArgumentError] when [workflow] is
-  /// not a top-level function or a static method; a [FlowStoppedException]
-  /// once the flow is stopped; a [SessionNotFoundException] when the store
-  /// has no session [sessionId]; a [SessionBusyException] when another process
-  /// owns it, or this one runs it already; a [WorkflowMismatchException]
-  /// when it is a session of another workflow; a [CodecException] when its
-  /// saved input does not come back; a [StorageException] when it cannot be
-  /// read.
-  Future<FlowSession<R>> resume<I, R>(
+  /// Throws, having written no event: a [FlowStoppedException] once the flow
+  /// is stopped; a [SessionNotFoundException] when the store has no session
+  /// [sessionId]; a [SessionBusyException] when another process owns it, or
+  /// this one runs it already; a [WorkflowMismatchException] when it is a
+  /// session of another graph; a [CodecException] when its saved input does
+  /// not come back; a [StorageException] when it cannot be read.
+  Future<FlowSession<R>> resume<I, R>(Graph<I, R> graph, String sessionId) =>
+      _resume(graph.name, _workflowOf(graph), sessionId);
+
+  /// [resume] of the workflow function [workflow] named [name].
+  Future<FlowSession<R>> _resume<I, R>(
+    String name,
     Future<R> Function(Flow f, I input) workflow,
     String sessionId,
   ) async {
-    final name = workflowNameOf(workflow);
     _checkNotStopped();
     final handle =
         await _stored(
@@ -287,26 +287,27 @@ final class Flow {
     return _Journal(saved: saved, records: records);
   }
 
-  /// The ids of the sessions of [workflow] that have not ended, newest
-  /// first, whether a process runs them or not.
+  /// The ids of the sessions of [graph] that have not ended, newest first,
+  /// whether a process runs them or not.
   ///
-  /// Throws an [ArgumentError] when [workflow] is not a top-level function
-  /// or a static method; a [StorageException] when the store cannot be read.
-  Future<List<String>> unfinished(Function workflow) async {
-    final name = workflowNameOf(workflow);
-    return _stored(() => _store.unfinishedSessions(name));
-  }
+  /// Throws a [StorageException] when the store cannot be read.
+  Future<List<String>> unfinished(Graph<Object?, Object?> graph) =>
+      _unfinished(graph.name);
 
-  /// Stops the flow: no effect starts in its sessions any more — [effect]
-  /// throws a [FlowStoppedException] — and nothing more is written to them, so
+  /// [unfinished] of the workflow named [name].
+  Future<List<String>> _unfinished(String name) =>
+      _stored(() => _store.unfinishedSessions(name));
+
+  /// Stops the flow: no node starts in its sessions any more — it throws a
+  /// [FlowStoppedException] — and nothing more is written to them, so
   /// each can be resumed; no session starts or resumes either.
   ///
   /// Every program that `exec` runs in the sessions is stopped, with every
   /// process it started, and none starts any more: `exec` throws a
-  /// [FlowStoppedException]. An effect that runs goes on, and its outcome is
-  /// not written: it throws a [FlowStoppedException] at the workflow. A
-  /// session's result is a [FlowStoppedException] once its workflow and its
-  /// effects have ended, and then the session is let go.
+  /// [FlowStoppedException]. A node that runs goes on, and its outcome is
+  /// not written: it throws a [FlowStoppedException] at the graph. A
+  /// session's result is a [FlowStoppedException] once its graph and its
+  /// nodes have ended, and then the session is let go.
   void stop() {
     _stopped = true;
     for (final session in _sessions) {
@@ -316,37 +317,6 @@ final class Flow {
 
   void _checkNotStopped() {
     if (_stopped) throw const FlowStoppedException();
-  }
-
-  /// Runs the effect [name] of the session this is called in: [body] runs, and
-  /// what it returns is written to the session and returned.
-  ///
-  /// What [body] prints goes to the effect's log, and so does the stderr of
-  /// the programs `exec` runs in it.
-  ///
-  /// When [body] throws, the effect fails: the exception is written, and
-  /// thrown on into the workflow. A result that would not come back from
-  /// JSON as a [T] fails the effect with a [CodecException] (see [addCodec]).
-  ///
-  /// Throws a [StateError] when called outside a session of this flow: from
-  /// anywhere but the code of a workflow that [start], [run] or [resume]
-  /// runs, or after its session has ended. Throws a [FlowStoppedException]
-  /// once the flow is stopped, and what ended the session once it has
-  /// ended early: the [StorageException] of a failure of its store, or the
-  /// [CodecException] of a saved result whose type has no codec.
-  Future<T> effect<T>(String name, FutureOr<T> Function() body) {
-    final session = _sessionHere(name);
-    final trace = StackTrace.current;
-    return session.effect(
-      name,
-      body,
-      codec: _codecs.of<T>(),
-      place: () => placeOf(
-        trace,
-        projectDir: session._projectDir,
-        package: session._package,
-      ),
-    );
   }
 
   /// The session of this flow the code that calls the effect [name] runs in.
@@ -364,12 +334,91 @@ final class Flow {
   }
 }
 
+/// The workflow function the engine runs for [graph]: the graph, run in the
+/// session of the flow it is given.
+Future<R> Function(Flow f, I input) _workflowOf<I, R>(Graph<I, R> graph) =>
+    (f, input) async => await graph.runWith(f, input) as R;
+
+/// The engine under the graphs, which the package does not export: a
+/// workflow function of a [Flow] and an input, whose effects are calls of
+/// [effect]. A graph runs as one — its nodes are its effects —, and the
+/// library's tests run the engine with them; nothing else writes a workflow
+/// so.
+extension WorkflowFunctions on Flow {
+  /// [Flow.start] of the workflow function [workflow], named after it.
+  ///
+  /// Throws an [ArgumentError] when [workflow] is not a top-level function
+  /// or a static method, and as [Flow.start] does.
+  Future<FlowSession<R>> startWorkflow<I, R>(
+    Future<R> Function(Flow f, I input) workflow,
+    I input, {
+    String? id,
+  }) => _start(
+    workflowNameOf(workflow),
+    workflow,
+    input,
+    const _Journal(),
+    id: id,
+  );
+
+  /// [Flow.run] of the workflow function [workflow].
+  Future<R> runWorkflow<I, R>(
+    Future<R> Function(Flow f, I input) workflow,
+    I input,
+  ) async => (await startWorkflow(workflow, input)).result;
+
+  /// [Flow.resume] of the workflow function [workflow].
+  ///
+  /// Throws an [ArgumentError] when [workflow] is not a top-level function
+  /// or a static method, and as [Flow.resume] does.
+  Future<FlowSession<R>> resumeWorkflow<I, R>(
+    Future<R> Function(Flow f, I input) workflow,
+    String sessionId,
+  ) => _resume(workflowNameOf(workflow), workflow, sessionId);
+
+  /// [Flow.unfinished] of the workflow function [workflow].
+  Future<List<String>> unfinishedOf(Function workflow) =>
+      _unfinished(workflowNameOf(workflow));
+
+  /// Runs the effect [name] of the session this is called in: [body] runs, and
+  /// what it returns is written to the session and returned.
+  ///
+  /// What [body] prints goes to the effect's log, and so does the stderr of
+  /// the programs `exec` runs in it.
+  ///
+  /// When [body] throws, the effect fails: the exception is written, and
+  /// thrown on into the workflow. A result that would not come back from
+  /// JSON as a [T] fails the effect with a [CodecException] (see
+  /// [Flow.addCodec]).
+  ///
+  /// Throws a [StateError] when called outside a session of this flow: from
+  /// anywhere but the code of a workflow the flow runs, or after its session
+  /// has ended. Throws a [FlowStoppedException] once the flow is stopped,
+  /// and what ended the session once it has ended early: the
+  /// [StorageException] of a failure of its store, or the [CodecException]
+  /// of a saved result whose type has no codec.
+  Future<T> effect<T>(String name, FutureOr<T> Function() body) {
+    final session = _sessionHere(name);
+    final trace = StackTrace.current;
+    return session.effect(
+      name,
+      body,
+      codec: _codecs.of<T>(),
+      place: () => placeOf(
+        trace,
+        projectDir: session._projectDir,
+        package: session._package,
+      ),
+    );
+  }
+}
+
 /// Runs [node] of the graph named [graph] on [input] as an effect of the
 /// session of [flow] this is called in (graph node objects design §3): named
 /// after the node, at the place the graph file gives the node in that graph,
 /// its result journaled with the codec of the node's output type.
 ///
-/// Throws as [Flow.effect] does.
+/// Throws as [WorkflowFunctions.effect] does.
 Future<Object?> nodeEffect(
   Flow flow,
   String graph,
@@ -385,11 +434,11 @@ Future<Object?> nodeEffect(
   );
 }
 
-/// Starts a session of [workflow] as [Flow.start] does, as one whose effects of
-/// the keys in [saved] have finished before, following the effect `after`,
-/// with the result whose JSON is `value`: such an effect returns its result
-/// when it follows that effect, and neither runs nor writes anything (spec
-/// §4.6, an effect from the journal).
+/// Starts a session of the workflow function [workflow] as [Flow.start] does,
+/// as one whose effects of the keys in [saved] have finished before,
+/// following the effect `after`, with the result whose JSON is `value`: such
+/// an effect returns its result when it follows that effect, and neither runs
+/// nor writes anything (spec §4.6, an effect from the journal).
 ///
 /// For tests of the keys under many timings, which would otherwise write a
 /// journal for each.
@@ -398,7 +447,12 @@ Future<FlowSession<R>> startWithSaved<I, R>(
   Future<R> Function(Flow f, I input) workflow,
   I input,
   Map<String, ({String? after, Object? value})> saved,
-) => flow._start(workflow, input, _Journal(saved: saved));
+) => flow._start(
+  workflowNameOf(workflow),
+  workflow,
+  input,
+  _Journal(saved: saved),
+);
 
 /// A session [Flow.start] or [Flow.resume] has started.
 final class FlowSession<R> {

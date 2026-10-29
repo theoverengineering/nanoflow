@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow/src/flow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart' show FsStore;
 import 'package:path/path.dart' as p;
@@ -78,7 +79,7 @@ void main() {
         final dir = await tempDir();
         prepare('in effect');
         final session = await Flow(directory: dir)
-            .start(waitInEffect, 'in effect');
+            .startWorkflow(waitInEffect, 'in effect');
         await waiting['in effect']!.future;
 
         Directory(sessionDirOf(dir, session.id)).deleteSync(recursive: true);
@@ -102,7 +103,8 @@ void main() {
         'is its result; nothing is written again', () async {
       final dir = await tempDir();
       prepare('between');
-      final session = await Flow(directory: dir).start(waitBetween, 'between');
+      final session = await Flow(directory: dir)
+          .startWorkflow(waitBetween, 'between');
       await waiting['between']!.future;
 
       Directory(sessionDirOf(dir, session.id)).deleteSync(recursive: true);
@@ -127,7 +129,8 @@ void main() {
       'write would succeed', () async {
     final dir = await tempDir();
     prepare('documents');
-    final session = await Flow(directory: dir).start(waitInEffect, 'documents');
+    final session = await Flow(directory: dir)
+        .startWorkflow(waitInEffect, 'documents');
     await waiting['documents']!.future;
     final sessionDir = sessionDirOf(dir, session.id);
 
@@ -150,7 +153,7 @@ void main() {
     File(runsDirOf(dir)).writeAsStringSync('not a directory');
 
     await expectLater(
-      Flow(directory: dir).start(waitBetween, 'x'),
+      Flow(directory: dir).startWorkflow(waitBetween, 'x'),
       throwsA(
         isA<StorageException>().having(
           (e) => e.cause,
@@ -176,7 +179,7 @@ void main() {
     final files = filesUnder(handle.dir);
 
     await expectLater(
-      Flow(directory: dir).resume(waitBetween, handle.session.id),
+      Flow(directory: dir).resumeWorkflow(waitBetween, handle.session.id),
       throwsA(
         isA<StorageException>().having(
           (e) => e.cause,
@@ -196,7 +199,7 @@ void main() {
       final dir = await tempDir();
       final flow = Flow(directory: dir);
       prepare('stopped');
-      final session = await flow.start(waitInEffect, 'stopped');
+      final session = await flow.startWorkflow(waitInEffect, 'stopped');
       await waiting['stopped']!.future;
       final sessionDir = sessionDirOf(dir, session.id);
       final files = filesUnder(sessionDir, withOwner: false);
@@ -214,7 +217,8 @@ void main() {
       expect(await ownerCheck(dir, session.id), 'opened');
 
       waiting['stopped'] = Completer();
-      final again = await Flow(directory: dir).resume(waitInEffect, session.id);
+      final again = await Flow(directory: dir)
+          .resumeWorkflow(waitInEffect, session.id);
       expect(await again.result, 'echo');
       expect(ranIn('stopped'), ['first', 'wait', 'wait', 'echo']);
       final handle = await openSession(dir, session.id);
@@ -228,7 +232,7 @@ void main() {
       final flow = Flow(directory: dir)..stop();
 
       await expectLater(
-        flow.start(waitBetween, 'x'),
+        flow.startWorkflow(waitBetween, 'x'),
         throwsA(isA<FlowStoppedException>()),
       );
       expect(Directory(runsDirOf(dir)).existsSync(), isFalse);
@@ -242,7 +246,7 @@ void main() {
       await handle.release();
       final files = filesUnder(handle.dir);
       await expectLater(
-        flow.resume(waitBetween, handle.session.id),
+        flow.resumeWorkflow(waitBetween, handle.session.id),
         throwsA(isA<FlowStoppedException>()),
       );
       expect(filesUnder(handle.dir), files);

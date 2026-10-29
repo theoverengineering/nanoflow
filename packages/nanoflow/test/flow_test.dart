@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:nanoflow/nanoflow.dart';
-import 'package:nanoflow/src/flow.dart' show startWithSaved;
+import 'package:nanoflow/src/flow.dart' show startWithSaved, WorkflowFunctions;
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart' show FsStore;
 import 'package:path/path.dart' as p;
@@ -156,7 +156,7 @@ void main() {
       final flow = Flow(directory: dir);
       expect(flow.directory, dir);
 
-      expect(await flow.run(review, 'main'), 'change of main: clean');
+      expect(await flow.runWorkflow(review, 'main'), 'change of main: clean');
 
       final handle = await onlySession(dir);
       final session = handle.session;
@@ -228,7 +228,7 @@ void main() {
       File(p.join(dir, 'nanoflow.graph.json'))
           .writeAsStringSync(jsonEncode(graph));
 
-      await Flow(directory: dir).run(review, 'main');
+      await Flow(directory: dir).runWorkflow(review, 'main');
 
       final handle = await onlySession(dir);
       expect(handle.session.graph, graph);
@@ -247,7 +247,7 @@ void main() {
     final dir = await tempDir();
 
     expect(
-      await Flow(directory: dir).run(flaky, 'prod'),
+      await Flow(directory: dir).runWorkflow(flaky, 'prod'),
       'rolled back prod: no\r\ndisk',
     );
 
@@ -279,7 +279,7 @@ void main() {
       'exception', () async {
     final dir = await tempDir();
 
-    final session = await Flow(directory: dir).start(broken, 'main');
+    final session = await Flow(directory: dir).startWorkflow(broken, 'main');
     await expectLater(
       session.result,
       throwsA(
@@ -312,7 +312,7 @@ void main() {
     final dir = await tempDir();
     gates['owner'] = Completer();
 
-    final session = await Flow(directory: dir).start(gated, 'owner');
+    final session = await Flow(directory: dir).startWorkflow(gated, 'owner');
     expect(sessionIds(dir), [session.id]);
     expect(await ownerCheck(dir, session.id), 'busy');
 
@@ -326,7 +326,8 @@ void main() {
         'written before the session\'s', () async {
       final dir = await tempDir();
       gates['left'] = Completer();
-      final session = await Flow(directory: dir).start(leavesEffect, 'left');
+      final session = await Flow(directory: dir)
+          .startWorkflow(leavesEffect, 'left');
       var ended = false;
       unawaited(session.result.then((_) => ended = true));
 
@@ -353,7 +354,10 @@ void main() {
     test('lets no effect start after it', () async {
       final dir = await tempDir();
 
-      expect(await Flow(directory: dir).run(callsLate, 'late'), 'returned');
+      expect(
+        await Flow(directory: dir).runWorkflow(callsLate, 'late'),
+        'returned',
+      );
 
       expect(await lateEffects['late'], isStateError);
       final handle = await onlySession(dir);
@@ -371,8 +375,8 @@ void main() {
     gates['a'] = Completer();
     gates['b'] = Completer();
 
-    final a = await flow.start(gated, 'a');
-    final b = await flow.start(gated, 'b');
+    final a = await flow.startWorkflow(gated, 'a');
+    final b = await flow.startWorkflow(gated, 'b');
     gates['b']!.complete('B');
     expect(await b.result, 'b after B');
     gates['a']!.complete('A');
@@ -411,7 +415,7 @@ void main() {
         Map<String, String?>? expected;
         for (var seed = 1; seed <= 10; seed++) {
           random = Random(seed);
-          final session = await flow.start(workflow, '1.0');
+          final session = await flow.startWorkflow(workflow, '1.0');
           await session.result;
           final effects = await effectsOf(dir, session.id);
           final afters = {for (final s in effects) s.key: s.after};
@@ -425,7 +429,7 @@ void main() {
         final dir = await tempDir();
         final flow = Flow(directory: dir);
         random = Random(1);
-        final first = await flow.start(workflow, '1.0');
+        final first = await flow.startWorkflow(workflow, '1.0');
         final expected = await first.result;
         final handle = await openSession(dir, first.id);
         // In the order the effects were created.
@@ -470,7 +474,7 @@ void main() {
       final session = await Flow(
         directory: dir,
         store: store,
-      ).start(review, 'main');
+      ).startWorkflow(review, 'main');
       expect(await session.result, 'change of main: clean');
 
       expect(Directory(runsDirOf(dir)).existsSync(), isFalse);
@@ -478,7 +482,7 @@ void main() {
       final resumed = await Flow(
         directory: dir,
         store: store,
-      ).resume(review, session.id);
+      ).resumeWorkflow(review, session.id);
       expect(await resumed.result, 'change of main: clean');
     });
 
@@ -486,7 +490,8 @@ void main() {
       final dir = await tempDir();
       final id = newId();
 
-      final session = await Flow(directory: dir).start(review, 'main', id: id);
+      final session = await Flow(directory: dir)
+          .startWorkflow(review, 'main', id: id);
 
       expect(session.id, id);
       expect(await session.result, 'change of main: clean');
@@ -497,12 +502,12 @@ void main() {
         'SessionExistsException, and writes nothing', () async {
       final dir = await tempDir();
       final flow = Flow(directory: dir);
-      final first = await flow.start(review, 'main');
+      final first = await flow.startWorkflow(review, 'main');
       await first.result;
       final before = filesUnder(runsDirOf(dir));
 
       await expectLater(
-        flow.start(review, 'main', id: first.id),
+        flow.startWorkflow(review, 'main', id: first.id),
         throwsA(
           isA<SessionExistsException>().having(
             (e) => e.sessionId,
@@ -519,7 +524,8 @@ void main() {
       final dir = await tempDir();
 
       await expectLater(
-        Flow(directory: dir).start(review, 'main', id: newId().toUpperCase()),
+        Flow(directory: dir)
+            .startWorkflow(review, 'main', id: newId().toUpperCase()),
         throwsArgumentError,
       );
       expect(Directory(runsDirOf(dir)).existsSync(), isFalse);
@@ -536,7 +542,7 @@ void main() {
       final dir = await tempDir();
       otherFlow = Flow(directory: dir);
       await expectLater(
-        Flow(directory: dir).run(otherFlowEffect, 'x'),
+        Flow(directory: dir).runWorkflow(otherFlowEffect, 'x'),
         throwsStateError,
       );
     });
@@ -546,7 +552,8 @@ void main() {
     test('as the input fails start, and no session is written', () async {
       final dir = await tempDir();
       await expectLater(
-        Flow(directory: dir).start(describeDate, DateTime.utc(2026, 10, 3)),
+        Flow(directory: dir)
+            .startWorkflow(describeDate, DateTime.utc(2026, 10, 3)),
         throwsA(isA<CodecException>().having((e) => e.type, 'type', DateTime)),
       );
       expect(Directory(p.join(dir, 'runs')).existsSync(), isFalse);
@@ -557,7 +564,7 @@ void main() {
       () async {
         final dir = await tempDir();
         expect(
-          await Flow(directory: dir).run(datedEffect, 'x'),
+          await Flow(directory: dir).runWorkflow(datedEffect, 'x'),
           startsWith('failed: CodecException: DateTime'),
         );
         final handle = await onlySession(dir);
@@ -577,7 +584,7 @@ void main() {
     test('as the result fails the session with a CodecException', () async {
       final dir = await tempDir();
       await expectLater(
-        Flow(directory: dir).run(datedResult, 'x'),
+        Flow(directory: dir).runWorkflow(datedResult, 'x'),
         throwsA(isA<CodecException>().having((e) => e.type, 'type', DateTime)),
       );
       final events = await eventsOf(await onlySession(dir));

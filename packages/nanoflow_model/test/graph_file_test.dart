@@ -41,34 +41,13 @@ Map<String, Object?> _fileJson() => {
             'functions': [_publish],
             'place': 'lib/review.dart:24',
           },
-          {
-            'id': '4',
-            'kind': 'copies',
-            'label': 'pkg in packages',
-            'place': 'lib/review.dart:25',
-            'body': {
-              'nodes': [
-                {
-                  'id': '1',
-                  'kind': 'effect',
-                  'name': 'lint',
-                  'place': null,
-                  'doc': null,
-                },
-              ],
-              'edges': [
-                {'from': null, 'to': '1', 'label': null},
-                {'from': '1', 'to': null, 'label': null},
-              ],
-            },
-          },
         ],
         'edges': [
           {'from': null, 'to': '1', 'label': null},
           {'from': '1', 'to': '2', 'label': null},
           {'from': '2', 'to': '3', 'label': 'true'},
           {'from': '2', 'to': null, 'label': 'false'},
-          {'from': '3', 'to': '4', 'label': null},
+          {'from': '3', 'to': null, 'label': null},
         ],
       },
     },
@@ -205,7 +184,6 @@ void main() {
           ['id', 'kind', 'name', 'place', 'doc'],
           ['id', 'kind', 'label', 'place'],
           ['id', 'kind', 'functions', 'place'],
-          ['id', 'kind', 'label', 'place', 'body'],
         ],
       );
       final edge = (body['edges'] as List<Object?>).first;
@@ -245,18 +223,6 @@ void main() {
           place: 'lib/review.dart:24',
           functions: [_publish],
         ),
-        const CopiesNode(
-          id: '4',
-          place: 'lib/review.dart:25',
-          label: 'pkg in packages',
-          body: GraphBody(
-            nodes: [EffectNode(id: '1', place: null, name: 'lint')],
-            edges: [
-              GraphEdge(from: null, to: '1', label: null),
-              GraphEdge(from: '1', to: null, label: null),
-            ],
-          ),
-        ),
       ]);
     });
 
@@ -290,8 +256,6 @@ void main() {
       );
       expect(file.functions[_publish]!.doc, isNull);
       expect((review.body.node('1')! as EffectNode).doc, startsWith('Takes'));
-      final copies = review.body.node('4')! as CopiesNode;
-      expect((copies.body.node('1')! as EffectNode).doc, isNull);
       expect(review.toString(), contains('Reviews the change'));
       expect(review.body.node('1').toString(), contains('Takes the change'));
     });
@@ -305,8 +269,6 @@ void main() {
       expect(file.functions[_review]!.doc, isNull);
       final body = file.functions[_review]!.body;
       expect((body.node('1')! as EffectNode).doc, isNull);
-      final copies = body.node('4')! as CopiesNode;
-      expect((copies.body.node('1')! as EffectNode).doc, isNull);
       expect(
         file.functions[_review]!.body.nodes.skip(1),
         docless.functions[_review]!.body.nodes.skip(1),
@@ -325,7 +287,6 @@ void main() {
     test('finds a node of a body by its id', () {
       final body = GraphFile.fromJson(_fileJson()).functions[_review]!.body;
       expect(body.node('2'), isA<ConditionNode>());
-      expect((body.node('4') as CopiesNode).body.node('1'), isA<EffectNode>());
       expect(body.node('9'), isNull);
     });
 
@@ -345,8 +306,6 @@ void main() {
         _edited(['functions', _review, 'doc'], value: null),
         _edited([..._body, 'nodes', 1, 'label'], value: 'other'),
         _edited([..._body, 'nodes', 2, 'functions', 0], value: 'other'),
-        _edited([..._body, 'nodes', 3, 'body', 'edges', 0, 'to'], value: '2'),
-        _edited([..._body, 'nodes', 3, 'body', 'nodes', 0, 'name'], value: 'x'),
         _edited(['warnings', 0, 'message'], value: 'other'),
       ]) {
         expect(GraphFile.fromJson(changed), isNot(file), reason: '$changed');
@@ -387,20 +346,6 @@ void main() {
       expect(
         _problem(_edited([..._body, 'nodes', 0, 'doc'], remove: true)),
         'functions.$_review.body.nodes[0].doc: missing',
-      );
-      expect(
-        _problem(
-          _edited([
-            ..._body,
-            'nodes',
-            3,
-            'body',
-            'nodes',
-            0,
-            'doc',
-          ], remove: true),
-        ),
-        'functions.$_review.body.nodes[3].body.nodes[0].doc: missing',
       );
       expect(
         _problem(_edited(['functions', _review, 'doc'], value: 1)),
@@ -477,34 +422,6 @@ void main() {
       );
     });
 
-    test('names the path of a problem in a nested body', () {
-      expect(
-        _problem(
-          _edited([
-            ..._body,
-            'nodes',
-            3,
-            'body',
-            'nodes',
-            0,
-            'kind',
-          ], value: 'loop'),
-        ),
-        startsWith('functions.$_review.body.nodes[3].body.nodes[0].kind:'),
-      );
-      expect(
-        _problem(
-          _edited([..._body, 'nodes', 3, 'body', 'edges', 1, 'to'], value: 1),
-        ),
-        'functions.$_review.body.nodes[3].body.edges[1].to: '
-        'expected a string or null',
-      );
-      expect(
-        _problem(_edited([..._body, 'nodes', 3, 'body'], value: 'none')),
-        'functions.$_review.body.nodes[3].body: expected an object',
-      );
-    });
-
     test('names the field of a node that is missing or mistyped', () {
       const node = 'functions.$_review.body.nodes';
       expect(
@@ -530,10 +447,6 @@ void main() {
       expect(
         _problem(_edited([..._body, 'nodes', 2, 'functions', 0], value: 1)),
         '$node[2].functions[0]: expected a string',
-      );
-      expect(
-        _problem(_edited([..._body, 'nodes', 3, 'body'], remove: true)),
-        '$node[3].body: missing',
       );
       expect(
         _problem(_edited([..._body, 'nodes', 1], value: 'fork')),

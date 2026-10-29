@@ -2,9 +2,8 @@
 // unit of work that runs as one effect and knows neither what ran before it
 // nor what runs after it; the graph says what follows what, by routes:
 // functions of a node's output that call the next node with what it needs.
-// It is the other way to write a workflow, beside the workflow function, and
-// the two nest: a graph may be a node of another graph, and a workflow
-// function may run a graph.
+// It is the way to write a workflow: a graph runs as a session of a flow,
+// and a graph may be a node of another graph.
 //
 // The graph is declared as a list of parts, each from a node or from a join
 // with the route that follows it, checked as a whole when the graph is made,
@@ -77,9 +76,8 @@ final class Next {
   String toString() => 'Next(${target.name})';
 }
 
-/// A graph of nodes, a workflow of its own: `flow.start(review.run, input)`
-/// runs it as a session, a workflow function runs it as
-/// `review.run(f, input)`, and it may be a node of another graph.
+/// A graph of nodes, a workflow: `flow.start(review, input)` runs it as a
+/// session, and it may be a node of another graph.
 ///
 /// ```dart
 /// final review = Graph<String, void>('review', [
@@ -105,9 +103,7 @@ final class Graph<I, O> extends Nodelike<I, O> {
   /// Throws an [ArgumentError] listing what makes [parts] no graph: no
   /// start; arrows of a node or a join declared twice; two nodes of one name;
   /// a join of fewer than 2, more than 6 or repeated nodes.
-  Graph(this.name, List<Part<Object?>> parts) : _shape = _build(name, parts) {
-    _graphs.add(this);
-  }
+  Graph(this.name, List<Part<Object?>> parts) : _shape = _build(name, parts);
 
   @override
   final String name;
@@ -132,16 +128,14 @@ final class Graph<I, O> extends Nodelike<I, O> {
   @override
   Next call(I input) => Next._(this, input);
 
-  /// Runs the graph with [input] in the session of [f] this is called in;
-  /// gives the output that went nowhere last, `null` when none did.
+  /// Runs the graph with [input], which is an [I], in the session of [f]
+  /// this is called in; gives the output that went nowhere last, `null`
+  /// when none did.
   ///
   /// Throws what a node or a route threw, once the other branches have
   /// ended; a [TypeError] when that output is not an [O].
-  Future<O> run(Flow f, I input) async => await runGraph(_shape, f, input) as O;
-
-  /// [run] with [input], which is an [I]: cast here, where [I] is the
-  /// graph's own.
-  Future<Object?> _runWith(Flow f, Object? input) => run(f, input as I);
+  Future<Object?> _runWith(Flow f, Object? input) async =>
+      await runGraph(_shape, f, input as I) as O;
 
   @override
   String toString() => 'Graph($name)';
@@ -157,10 +151,11 @@ extension NodeRun on Node<Object?, Object?> {
   TypeCodec outputCodec(Codecs codecs) => _outputCodec(codecs);
 }
 
-/// What the runner calls on a graph that is a node, which the package does
-/// not export.
+/// What the runner and the flow call on a graph, which the package does not
+/// export: a graph runs only as a session of a flow, or as a node.
 extension GraphRun on Graph<Object?, Object?> {
-  /// [Graph.run] with [input].
+  /// Runs the graph with [input], an input of the graph, in the session of
+  /// [f] this is called in; gives the output that went nowhere last.
   Future<Object?> runWith(Flow f, Object? input) => _runWith(f, input);
 }
 
@@ -202,18 +197,6 @@ final class Part<O> {
 
 /// How a part starts.
 enum _Head { start, part, join }
-
-/// The graphs made so far, which [graphOfRun] looks in.
-final _graphs = <Graph<Object?, Object?>>[];
-
-/// The graph whose `run` [function] is: what `flow.start(review.run, …)` is
-/// given for a graph; `null` for any other function.
-Graph<Object?, Object?>? graphOfRun(Function function) {
-  for (final graph in _graphs) {
-    if (graph.run == function) return graph;
-  }
-  return null;
-}
 
 /// A graph as it runs: its nodes and what follows each.
 final class GraphShape {

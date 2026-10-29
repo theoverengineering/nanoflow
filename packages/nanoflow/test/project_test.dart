@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow/src/flow.dart' show WorkflowFunctions;
 import 'package:nanoflow/src/project.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
@@ -268,9 +269,9 @@ void main() {
       final dir = await tempDir();
       put(dir, 'lib/review.dart', 'void review() {}\n');
       final flow = Flow(directory: dir);
-      await flow.run(review, 'before');
+      await flow.runWorkflow(review, 'before');
       put(dir, 'lib/review.dart', 'void review() { edited(); }\n');
-      await flow.run(review, 'after');
+      await flow.runWorkflow(review, 'after');
 
       final codes = [
         for (final id in sessionIds(dir))

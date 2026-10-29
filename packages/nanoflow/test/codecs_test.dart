@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow/src/flow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart' show FsStore, FsSession;
 import 'package:path/path.dart' as p;
@@ -167,14 +168,14 @@ Future<FlowSession<R>> resumedPastGate<I, R>(
   gate = Completer();
   atGate = Completer();
   final flow = make();
-  final first = await flow.start(workflow, input);
+  final first = await flow.startWorkflow(workflow, input);
   await atGate.future;
   flow.stop();
   gate.complete();
   await expectLater(first.result, throwsA(isA<FlowStoppedException>()));
   ran.clear();
   got.clear();
-  return make().resume(workflow, first.id);
+  return make().resumeWorkflow(workflow, first.id);
 }
 
 /// Calls the effect `value`, which gives [value] as a [T]; gives the text of
@@ -330,7 +331,8 @@ void main() {
     expect(got['maybeAll'], const [Report('m', 4)]);
 
     // A session that has finished gives its saved result.
-    final finished = await withCodecs(dir).resume(keepsReports, session.id);
+    final finished = await withCodecs(dir)
+        .resumeWorkflow(keepsReports, session.id);
     expect(await finished.result, const Report('main: done', 0));
     expect(ran, ['gate', 'result']);
   });
@@ -380,7 +382,7 @@ void main() {
     ]) {
       test(title, () async {
         final dir = await tempDir();
-        final caught = await flowOf(dir).run(workflow, 'x');
+        final caught = await flowOf(dir).runWorkflow(workflow, 'x');
 
         expect(caught, startsWith(error));
         final events = await eventsOf(await onlySession(dir));
@@ -400,7 +402,7 @@ void main() {
     final dir = await tempDir();
 
     await expectLater(
-      Flow(directory: dir).start(describeChange, const Change('main')),
+      Flow(directory: dir).startWorkflow(describeChange, const Change('main')),
       throwsA(isA<CodecException>().having((e) => e.type, 'type', Change)),
     );
     expect(Directory(p.join(dir, 'runs')).existsSync(), isFalse);
@@ -411,7 +413,7 @@ void main() {
     final dir = await tempDir();
 
     await expectLater(
-      Flow(directory: dir).run(reportResult, 'x'),
+      Flow(directory: dir).runWorkflow(reportResult, 'x'),
       throwsA(isA<CodecException>().having((e) => e.type, 'type', Report)),
     );
     final events = await eventsOf(await onlySession(dir));
@@ -433,7 +435,7 @@ void main() {
       final files = filesUnder(sessionDirOf(dir, id));
 
       await expectLater(
-        withCodecs(dir).resume(describeChange, id),
+        withCodecs(dir).resumeWorkflow(describeChange, id),
         throwsA(isA<CodecException>().having((e) => e.type, 'type', Change)),
       );
       expect(filesUnder(sessionDirOf(dir, id)), files);
@@ -454,7 +456,7 @@ void main() {
         },
       );
 
-      final session = await withCodecs(dir).resume(reportResult, id);
+      final session = await withCodecs(dir).resumeWorkflow(reportResult, id);
 
       await expectLater(
         session.result,
@@ -470,7 +472,7 @@ void main() {
     gate = Completer();
     atGate = Completer();
     final flow = withCodecs(dir);
-    final first = await flow.start(reportThenGate, 'x');
+    final first = await flow.startWorkflow(reportThenGate, 'x');
     await atGate.future;
     flow.stop();
     gate.complete();
@@ -479,7 +481,8 @@ void main() {
     ran.clear();
     final written = eventNamesOf(dir, first.id);
 
-    final withoutCodec = await plain(dir).resume(reportThenGate, first.id);
+    final withoutCodec = await plain(dir)
+        .resumeWorkflow(reportThenGate, first.id);
 
     await expectLater(
       withoutCodec.result,
@@ -493,7 +496,8 @@ void main() {
     expect(eventNamesOf(dir, first.id), [...written, 'session-resumed']);
     expect(await ownerCheck(dir, first.id), 'opened');
 
-    final resumed = await withCodecs(dir).resume(reportThenGate, first.id);
+    final resumed = await withCodecs(dir)
+        .resumeWorkflow(reportThenGate, first.id);
 
     expect(await resumed.result, const Report('x', 0));
     expect(ran, ['gate', 'result']);
@@ -536,7 +540,7 @@ void main() {
       },
     );
 
-    final session = await withCodecs(dir).resume(takesReport, id);
+    final session = await withCodecs(dir).resumeWorkflow(takesReport, id);
 
     expect(await session.result, 'no CodecException');
     expect(ran, ['report']);

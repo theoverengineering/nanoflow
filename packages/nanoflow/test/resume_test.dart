@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
+import 'package:nanoflow/src/flow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart' show FsStore, FsSession;
 import 'package:path/path.dart' as p;
@@ -147,7 +148,7 @@ void main() {
       final running = await startUntilInspect(dir, work);
 
       await expectLater(
-        Flow(directory: dir).resume(review, running.sessionId),
+        Flow(directory: dir).resumeWorkflow(review, running.sessionId),
         throwsA(
           isA<SessionBusyException>().having(
             (e) => e.sessionId,
@@ -166,7 +167,7 @@ void main() {
       File(p.join(work, 'go')).createSync();
 
       final session = await Flow(directory: dir)
-          .resume(review, running.sessionId);
+          .resumeWorkflow(review, running.sessionId);
       expect(session.id, running.sessionId);
       expect(await session.result, 'published change: clean');
       expect(
@@ -223,7 +224,7 @@ void main() {
       final (:dir, :work) = await project();
       final finished = await tempDir();
       File(p.join(finished, 'go')).createSync();
-      await Flow(directory: dir).run(review, finished);
+      await Flow(directory: dir).runWorkflow(review, finished);
       final other = await FsStore(runsDirOf(dir)).createSession(
         workflow: 'failing',
         graph: null,
@@ -234,7 +235,7 @@ void main() {
       final running = await startUntilInspect(dir, work);
       await kill(running.process);
 
-      expect(await Flow(directory: dir).unfinished(review), [
+      expect(await Flow(directory: dir).unfinishedOf(review), [
         running.sessionId,
       ]);
     });
@@ -245,11 +246,12 @@ void main() {
         'writes anything', () async {
       final (:dir, :work) = await project();
       File(p.join(work, 'go')).createSync();
-      final first = await Flow(directory: dir).start(review, work);
+      final first = await Flow(directory: dir).startWorkflow(review, work);
       await first.result;
       final files = filesUnder(sessionDirOf(dir, first.id));
 
-      final session = await Flow(directory: dir).resume(review, first.id);
+      final session = await Flow(directory: dir)
+          .resumeWorkflow(review, first.id);
 
       expect(session.id, first.id);
       expect(await session.result, 'published change: clean');
@@ -268,12 +270,12 @@ void main() {
         'session stays owned', () async {
       final (:dir, :work) = await project();
       final flow = Flow(directory: dir);
-      final running = await flow.start(review, work);
+      final running = await flow.startWorkflow(review, work);
       await until(() => runsOf(work, 'inspect') == 1, 'the effect inspect');
 
       for (final resume in [
-        () => Flow(directory: dir).resume(failing, running.id),
-        () => flow.resume(review, running.id),
+        () => Flow(directory: dir).resumeWorkflow(failing, running.id),
+        () => flow.resumeWorkflow(review, running.id),
       ]) {
         await expectLater(
           resume(),
@@ -302,11 +304,12 @@ void main() {
 
     test('of a failed session gives its error', () async {
       final (:dir, :work) = await project();
-      final first = await Flow(directory: dir).start(failing, work);
+      final first = await Flow(directory: dir).startWorkflow(failing, work);
       await expectLater(first.result, throwsStateError);
       final files = filesUnder(sessionDirOf(dir, first.id));
 
-      final session = await Flow(directory: dir).resume(failing, first.id);
+      final session = await Flow(directory: dir)
+          .resumeWorkflow(failing, first.id);
 
       Object? error;
       StackTrace? stack;
@@ -332,7 +335,7 @@ void main() {
         'SessionNotFoundException', () async {
       final id = newId();
       await expectLater(
-        Flow(directory: await tempDir()).resume(review, id),
+        Flow(directory: await tempDir()).resumeWorkflow(review, id),
         throwsA(
           isA<SessionNotFoundException>().having(
             (e) => e.sessionId,
@@ -350,7 +353,7 @@ void main() {
       final files = filesUnder(sessionDirOf(dir, id));
 
       await expectLater(
-        Flow(directory: dir).resume(failing, id),
+        Flow(directory: dir).resumeWorkflow(failing, id),
         throwsA(
           isA<WorkflowMismatchException>()
               .having((e) => e.sessionId, 'sessionId', id)
@@ -374,7 +377,7 @@ void main() {
         ..parent.createSync()
         ..writeAsStringSync('// review\n');
 
-      await (await Flow(directory: dir).resume(review, id)).result;
+      await (await Flow(directory: dir).resumeWorkflow(review, id)).result;
 
       final handle = await openSession(dir, id);
       final resumed = (await eventsOf(handle))
@@ -396,7 +399,7 @@ void main() {
       File(p.join(work, 'go')).createSync();
       final id = await writeSession(dir, work, code: 'sha256:old');
 
-      await (await Flow(directory: dir).resume(review, id)).result;
+      await (await Flow(directory: dir).resumeWorkflow(review, id)).result;
 
       final handle = await openSession(dir, id);
       final events = await eventsOf(handle);
@@ -424,7 +427,7 @@ void main() {
         ),
       );
 
-      final session = await Flow(directory: dir).resume(review, id);
+      final session = await Flow(directory: dir).resumeWorkflow(review, id);
 
       expect(await session.result, 'published change: clean');
       expect(runsOf(work, 'collect'), 1);
@@ -460,7 +463,7 @@ void main() {
         ),
       );
 
-      final session = await Flow(directory: dir).resume(review, id);
+      final session = await Flow(directory: dir).resumeWorkflow(review, id);
 
       expect(await session.result, 'published saved change: clean');
       expect(runsOf(work, 'collect'), 0);

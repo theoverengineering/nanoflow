@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow/src/exec.dart' show execIn, inGroupScript;
+import 'package:nanoflow/src/flow.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -503,7 +504,7 @@ void main() {
       expect(
         await withStderr(
           stderr,
-          () => Flow(directory: dir).run(complainsInEffect, 'x'),
+          () => Flow(directory: dir).runWorkflow(complainsInEffect, 'x'),
         ),
         'out\n',
       );
@@ -516,7 +517,7 @@ void main() {
     });
 
     test('writes all of a flood of stderr to the effect\'s log', () async {
-      expect(await Flow(directory: dir).run(floodsLog, 'x'), 'done\n');
+      expect(await Flow(directory: dir).runWorkflow(floodsLog, 'x'), 'done\n');
 
       expect(await logOfEffect(await onlySession(dir), 'flood'), 'x' * 3000000);
     });
@@ -528,7 +529,7 @@ void main() {
       expect(
         await withStderr(
           stderr,
-          () => Flow(directory: dir).run(complainsOutside, 'x'),
+          () => Flow(directory: dir).runWorkflow(complainsOutside, 'x'),
         ),
         'out\n',
       );
@@ -540,7 +541,7 @@ void main() {
     test('flow.stop() ends the group of a program that runs, and exec throws '
         'a FlowStoppedException then, and at once after', () async {
       final flow = Flow(directory: dir);
-      final session = await flow.start(sleepsInEffect, 'x');
+      final session = await flow.startWorkflow(sleepsInEffect, 'x');
       final [sleep] = await pidsIn(pidFile, 1);
 
       flow.stop();
@@ -559,9 +560,9 @@ void main() {
       shellPath = '/bin/./bash';
       final flow = Flow(directory: dir);
 
-      final first = await flow.start(execsThenEffects, 'x');
+      final first = await flow.startWorkflow(execsThenEffects, 'x');
       await first.result;
-      final second = await flow.start(execsThenEffects, 'x');
+      final second = await flow.startWorkflow(execsThenEffects, 'x');
       await second.result;
 
       final keys = await keysOf(dir, first.id);
@@ -572,7 +573,8 @@ void main() {
     test('a failure of the store ends the group of a program that runs, and '
         'exec throws the StorageException', () async {
       gate = Completer();
-      final session = await Flow(directory: dir).start(sleepsBeside, 'x');
+      final session = await Flow(directory: dir)
+          .startWorkflow(sleepsBeside, 'x');
       final [sleep] = await pidsIn(pidFile, 1);
 
       Directory(sessionDirOf(dir, session.id)).deleteSync(recursive: true);

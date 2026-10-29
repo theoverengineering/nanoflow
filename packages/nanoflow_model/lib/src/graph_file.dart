@@ -1,5 +1,5 @@
-// The graph file of a package, `nanoflow.graph.json`: the graph of every
-// function with effects, read from the package's code. Written by the describe
+// The graph file of a package, `nanoflow.graph.json`: every graph of nodes
+// of the package, read from its code. Written by the describe
 // tool, read by the workflow library and the UI.
 
 import 'package:collection/collection.dart';
@@ -77,8 +77,9 @@ final class GraphFile {
   /// `Flow.resume`.
   final List<String> workflows;
 
-  /// The functions with effects by their ids: `path#name`, and
-  /// `path#Class.name` for a method.
+  /// The graphs by their ids: `path#<variable>`. Snapshots of sessions
+  /// written before workflows were graphs only have functions here too:
+  /// `path#name`, and `path#Class.name` for a method.
   final Map<String, GraphFunction> functions;
 
   /// What the describe tool could not draw.
@@ -168,8 +169,7 @@ Map<String, Object?> _withDocs(Map<String, Object?> json) => {
     },
 };
 
-/// [body] of a format-2 file with `doc: null` on its effects, those of
-/// copies in it too.
+/// [body] of a format-2 file with `doc: null` on its effects.
 Object? _bodyWithDocs(Object? body) => switch (body) {
   {'nodes': final List<Object?> nodes} => {
     ...body as Map<String, Object?>,
@@ -177,10 +177,6 @@ Object? _bodyWithDocs(Object? body) => switch (body) {
       for (final node in nodes)
         switch (node) {
           {'kind': 'effect'} => {...node as Map<String, Object?>, 'doc': null},
-          {'kind': 'copies'} => {
-            ...node as Map<String, Object?>,
-            'body': _bodyWithDocs(node['body']),
-          },
           _ => node,
         },
     ],
@@ -188,7 +184,8 @@ Object? _bodyWithDocs(Object? body) => switch (body) {
   _ => body,
 };
 
-/// A function with effects and the graph of its body.
+/// A graph — or, in an older snapshot, a function with effects — and the
+/// graph of its body.
 final class GraphFunction {
   const GraphFunction({
     required this.id,
@@ -289,7 +286,7 @@ final class GraphBody {
   String toString() => 'GraphBody(nodes: $nodes, edges: $edges)';
 }
 
-/// A node of a [GraphBody]: an effect, a condition, a call or copies of a body.
+/// A node of a [GraphBody]: an effect, a condition or a call.
 sealed class GraphNode {
   const GraphNode({required this.id, required this.place});
 
@@ -314,14 +311,8 @@ sealed class GraphNode {
         place: readStringOrNull(json, 'place'),
         functions: readStrings(json, 'functions'),
       ),
-      'copies' => CopiesNode(
-        id: id,
-        place: readStringOrNull(json, 'place'),
-        label: readString(json, 'label'),
-        body: readNested(json, 'body', GraphBody.fromJson),
-      ),
       _ => throw FormatException(
-        'kind: unknown kind "$kind", expected effect, fork, call or copies',
+        'kind: unknown kind "$kind", expected effect, fork or call',
       ),
     };
   }
@@ -443,46 +434,6 @@ final class CallNode extends GraphNode {
   @override
   String toString() =>
       'CallNode(id: $id, place: $place, functions: $functions)';
-}
-
-/// A body that `Future.wait` runs in as many copies as a list has items.
-final class CopiesNode extends GraphNode {
-  const CopiesNode({
-    required super.id,
-    required super.place,
-    required this.label,
-    required this.body,
-  });
-
-  /// `<variable> in <expression>`.
-  final String label;
-
-  /// The graph of one copy.
-  final GraphBody body;
-
-  @override
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'kind': 'copies',
-    'label': label,
-    'place': place,
-    'body': body.toJson(),
-  };
-
-  @override
-  bool operator ==(Object other) =>
-      other is CopiesNode &&
-      other.id == id &&
-      other.place == place &&
-      other.label == label &&
-      other.body == body;
-
-  @override
-  int get hashCode => Object.hash(CopiesNode, id, place, label, body);
-
-  @override
-  String toString() =>
-      'CopiesNode(id: $id, place: $place, label: $label, body: $body)';
 }
 
 /// An edge between two nodes of a body.

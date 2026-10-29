@@ -312,11 +312,6 @@ final judged = Graph<String, String>('judged', [
 
 final shouting = Graph<String, String>('shouting', [Graph.start(shout)]);
 
-Future<String> callsGraph(Flow f, String text) async {
-  final before = await f.effect('before', () => '$text<');
-  return shouting.run(f, before);
-}
-
 /// Opened to let a [waits] node finish.
 var gate = Completer<void>();
 
@@ -440,7 +435,7 @@ void main() {
       'the codec of O', () async {
     expect(collect, isA<Node<String, Collected>>());
     final dir = await tempDir();
-    expect(await flowIn(dir).run(review.run, ''), 'discarded');
+    expect(await flowIn(dir).run(review, ''), 'discarded');
     final handle = await onlySession(dir);
     final [collected, discarded] = await handle.effects();
     expect(collected.name, 'collect');
@@ -462,7 +457,7 @@ void main() {
     test('a switch on a sealed output gives each case its own next node and '
         'argument', () async {
       final dir = await tempDir();
-      final result = await flowIn(dir).run(review.run, 'main');
+      final result = await flowIn(dir).run(review, 'main');
       expect(result, 'published main! with 0 findings');
       // publish and notify run side by side: their bodies run in the order
       // their effects are written.
@@ -504,19 +499,19 @@ void main() {
 
     test('the other way of the same graph', () async {
       final dir = await tempDir();
-      expect(await flowIn(dir).run(review.run, ''), 'discarded');
+      expect(await flowIn(dir).run(review, ''), 'discarded');
       expect(calls, ['collect ', 'discard ']);
     });
 
     test('?: on a bool picks one', () async {
       final dir = await tempDir();
-      expect(await flowIn(dir).run(measured.run, 'long text'), 'long');
-      expect(await flowIn(dir).run(measured.run, 'ab'), 'short');
+      expect(await flowIn(dir).run(measured, 'long text'), 'long');
+      expect(await flowIn(dir).run(measured, 'ab'), 'short');
     });
 
     test('a set runs both side by side', () async {
       final dir = await tempDir();
-      expect(await flowIn(dir).run(fanned.run, 'x'), anyOf('left', 'right'));
+      expect(await flowIn(dir).run(fanned, 'x'), anyOf('left', 'right'));
       expect(calls, unorderedEquals(['left X', 'right X']));
       final [shouted, ...others] = await effectsIn(dir);
       expect(shouted.name, 'shout');
@@ -528,8 +523,8 @@ void main() {
 
     test('null ends the branch and its output is the result', () async {
       final dir = await tempDir();
-      expect(await flowIn(dir).run(longOnly.run, 'ab'), false);
-      expect(await flowIn(dir).run(longOnly.run, 'long text'), 'long');
+      expect(await flowIn(dir).run(longOnly, 'ab'), false);
+      expect(await flowIn(dir).run(longOnly, 'long text'), 'long');
     });
 
     test('a result that is not the graph\'s type is a TypeError', () async {
@@ -538,14 +533,14 @@ void main() {
         Graph.start(isLong).next((yes) => yes ? long(yes) : null),
       ]);
       await expectLater(
-        flowIn(dir).run(longOnlyString.run, 'ab'),
+        flowIn(dir).run(longOnlyString, 'ab'),
         throwsA(isA<TypeError>()),
       );
     });
 
     test('a loop goes round until the route leaves it', () async {
       final dir = await tempDir();
-      expect(await flowIn(dir).run(counting.run, 0), 3);
+      expect(await flowIn(dir).run(counting, 0), 3);
       expect(calls, ['tick 0', 'tick 1', 'tick 2']);
       final effects = await effectsIn(dir);
       expect([for (final e in effects) e.name], ['tick', 'tick', 'tick']);
@@ -560,7 +555,7 @@ void main() {
       () async {
         final dir = await tempDir();
         await expectLater(
-          flowIn(dir).run(listing.run, 'x'),
+          flowIn(dir).run(listing, 'x'),
           throwsA(
             isA<StateError>().having(
               (e) => e.message,
@@ -583,7 +578,7 @@ void main() {
         'ended', () async {
       final dir = await tempDir();
       slowGate = Completer();
-      final session = await flowIn(dir).start(routeThrows.run, 'x');
+      final session = await flowIn(dir).start(routeThrows, 'x');
       final failed = expectLater(
         session.result,
         throwsA(
@@ -610,7 +605,7 @@ void main() {
         'ended, and its join does not hold it', () async {
       final dir = await tempDir();
       slowGate = Completer();
-      final session = await flowIn(dir).start(failing.run, 'x');
+      final session = await flowIn(dir).start(failing, 'x');
       final failed = expectLater(
         session.result,
         throwsA(
@@ -631,7 +626,7 @@ void main() {
       () async {
         final dir = await tempDir();
         await expectLater(
-          flowIn(dir).run(clashing.run, 'x'),
+          flowIn(dir).run(clashing, 'x'),
           throwsA(
             isA<StateError>().having(
               (e) => e.message,
@@ -648,23 +643,23 @@ void main() {
   group('joins', () {
     test('fire once for each full set, round a loop', () async {
       final dir = await tempDir();
-      expect(await flowIn(dir).run(ticking.run, 0), 3);
+      expect(await flowIn(dir).run(ticking, 0), 3);
       expect(calls, ['tick 0', 'sum 10 100', 'tick 1', 'sum 20 200', 'tick 2']);
     });
 
     test('that never fill up end their branch, and the graph ends', () async {
       final dir = await tempDir();
-      expect(await flowIn(dir).run(halfJoined.run, true), isNull);
+      expect(await flowIn(dir).run(halfJoined, true), isNull);
       expect(calls, isNot(contains('joined')));
     });
 
     test('a join without a route, or whose route gives null, gives its '
         'record as the graph\'s result', () async {
-      expect(await flowIn(await tempDir()).run(joinEnds.run, 'x'), (
+      expect(await flowIn(await tempDir()).run(joinEnds, 'x'), (
         'left',
         'right',
       ));
-      expect(await flowIn(await tempDir()).run(joinGivesNull.run, 'x'), (
+      expect(await flowIn(await tempDir()).run(joinGivesNull, 'x'), (
         'left',
         'right',
       ));
@@ -674,7 +669,7 @@ void main() {
         'does not hang', () async {
       final dir = await tempDir();
       slowGate = Completer();
-      final session = await flowIn(dir).start(joinRouteThrows.run, 'x');
+      final session = await flowIn(dir).start(joinRouteThrows, 'x');
       final failed = expectLater(
         session.result.timeout(const Duration(seconds: 5)),
         throwsA(isA<StateError>().having((e) => e.message, 'message', 'boom')),
@@ -688,7 +683,7 @@ void main() {
         'StateError naming the graph and the join', () async {
       await expectLater(
         flowIn(await tempDir())
-            .run(joinWrongRecord.run, 'x')
+            .run(joinWrongRecord, 'x')
             .timeout(const Duration(seconds: 5)),
         throwsA(
           isA<StateError>().having(
@@ -711,7 +706,7 @@ void main() {
         final dir = await tempDir();
         targetRan = Completer();
         expect(
-          await flowIn(dir).run(membersNoEnds.run, 'x'),
+          await flowIn(dir).run(membersNoEnds, 'x'),
           'target of early x, twice x',
         );
         expect(calls, ['twice x', 'twice later x']);
@@ -721,9 +716,9 @@ void main() {
 
   test('a graph is a node: it runs on its own effects, and its result goes '
       'into the outer route', () async {
-    expect(await flowIn(await tempDir()).run(judged.run, 'ab'), 'refused');
+    expect(await flowIn(await tempDir()).run(judged, 'ab'), 'refused');
     final dir = await tempDir();
-    expect(await flowIn(dir).run(judged.run, 'long text'), 'accepted');
+    expect(await flowIn(dir).run(judged, 'long text'), 'accepted');
     final effects = await effectsIn(dir);
     expect([for (final e in effects) e.name], ['judge', 'accept']);
   });
@@ -734,23 +729,15 @@ void main() {
     gate = Completer();
     atGate = Completer();
     final flow = flowIn(dir);
-    final first = await flow.start(judgedGated.run, 'long text');
+    final first = await flow.start(judgedGated, 'long text');
     await atGate.future;
     flow.stop();
     gate.complete();
     await expectLater(first.result, throwsA(isA<FlowStoppedException>()));
     gate = Completer()..complete();
-    final resumed = await flowIn(dir).resume(judgedGated.run, first.id);
+    final resumed = await flowIn(dir).resume(judgedGated, first.id);
     expect(await resumed.result, 'past pass');
     expect(calls, ['judge long text', 'waits pass', 'waits pass']);
-  });
-
-  test('a workflow function runs a graph with run', () async {
-    final dir = await tempDir();
-    expect(await flowIn(dir).run(callsGraph, 'x'), 'X<');
-    final effects = await effectsIn(dir);
-    expect([for (final e in effects) e.name], ['before', 'shout']);
-    expect(effects[1].after, effects[0].key);
   });
 
   test('a session of a graph is named after it, unfinished finds it, and '
@@ -760,14 +747,14 @@ void main() {
     gate = Completer();
     atGate = Completer();
     final flow = flowIn(dir);
-    final first = await flow.start(gated.run, 'main');
+    final first = await flow.start(gated, 'main');
     await atGate.future;
-    expect(await flowIn(dir).unfinished(gated.run), [first.id]);
+    expect(await flowIn(dir).unfinished(gated), [first.id]);
     flow.stop();
     gate.complete();
     await expectLater(first.result, throwsA(isA<FlowStoppedException>()));
     gate = Completer()..complete();
-    final resumed = await flowIn(dir).resume(gated.run, first.id);
+    final resumed = await flowIn(dir).resume(gated, first.id);
     expect(await resumed.result, 'past main of 4');
     // measure ran once, its output a record from the journal on resume;
     // waits had not finished, and ran again.
@@ -780,7 +767,7 @@ void main() {
       'CodecException', () async {
     final dir = await tempDir();
     await expectLater(
-      flowIn(dir).run(unregistered.run, 'x'),
+      flowIn(dir).run(unregistered, 'x'),
       throwsA(
         isA<CodecException>().having((e) => e.type, 'type', Unregistered),
       ),
@@ -800,7 +787,7 @@ void main() {
       });
       await File(p.join(dir, graphFileName))
           .writeAsString(jsonEncode(file.toJson()));
-      expect(await flowIn(dir).run(placedOuter.run, 'x'), 'X');
+      expect(await flowIn(dir).run(placedOuter, 'x'), 'X');
       expect(
         [for (final e in await effectsIn(dir)) e.place],
         ['lib/g.dart:3', 'lib/g.dart:7'],
@@ -809,7 +796,7 @@ void main() {
 
     test('is null without a graph file', () async {
       final dir = await tempDir();
-      await flowIn(dir).run(placedOuter.run, 'x');
+      await flowIn(dir).run(placedOuter, 'x');
       expect([for (final e in await effectsIn(dir)) e.place], [null, null]);
     });
   });
@@ -818,7 +805,7 @@ void main() {
     Future<Map<String, String?>> keysAt(int seed) async {
       random = Random(seed);
       final dir = await tempDir();
-      expect(await flowIn(dir).run(paced.run, 0), 3);
+      expect(await flowIn(dir).run(paced, 0), 3);
       return {for (final e in await effectsIn(dir)) e.key: e.after};
     }
 
