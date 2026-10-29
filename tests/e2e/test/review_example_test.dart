@@ -290,12 +290,6 @@ void main() {
       'place': graphPlaceOf(graphNodeLines[name]!),
       'doc': doc,
     };
-    Map<String, Object?> fork(String id, String label) => {
-      'id': id,
-      'kind': 'fork',
-      'label': label,
-      'place': graphPlaceOf(label),
-    };
     Map<String, Object?> edge(String? from, String? to, [String? label]) => {
       'from': from,
       'to': to,
@@ -308,7 +302,7 @@ void main() {
       'body': {
         'nodes': [
           // collect's route decides by its switch first: collect's own
-          // exits, no fork.
+          // exits, no fork; so is inspect's ?:, its condition and else.
           effect(
             '1',
             'collect',
@@ -325,17 +319,16 @@ void main() {
             "Checks the name of the change's file with a program, as a "
                 'reviewer\nsuch as `claude -p` would be run.',
           ),
-          fork('4', 'r.findings.isEmpty'),
-          effect('5', 'publish', 'Puts the change out.'),
-          effect('6', 'notify', "Tells the branch's author it is accepted."),
+          effect('4', 'publish', 'Puts the change out.'),
+          effect('5', 'notify', "Tells the branch's author it is accepted."),
           effect(
-            '7',
+            '6',
             'fix',
             'Renames the file to lower_snake_case, for inspect to check '
                 'again.',
           ),
           effect(
-            '8',
+            '7',
             'report',
             'Sums up the review once the change is out and the author is '
                 'told.',
@@ -346,16 +339,15 @@ void main() {
           edge('1', '2', 'Empty'),
           edge('1', '3', 'Found'),
           edge('2', null),
-          edge('3', '4'),
           // publish and notify side by side.
-          edge('4', '5', 'true'),
-          edge('4', '6', 'true'),
-          edge('4', '7', 'false'),
+          edge('3', '4', 'r.findings.isEmpty'),
+          edge('3', '5', 'r.findings.isEmpty'),
+          edge('3', '6', 'else'),
           // The join of publish and notify goes to report.
-          edge('5', '8'),
-          edge('6', '8'),
-          edge('7', '3'),
-          edge('8', null),
+          edge('4', '7'),
+          edge('5', '7'),
+          edge('6', '3'),
+          edge('7', null),
         ],
       },
     });

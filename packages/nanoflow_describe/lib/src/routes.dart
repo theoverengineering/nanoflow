@@ -3,7 +3,11 @@
 // body is. Its `if`, `switch` and `?:` are forks labelled as there — but a
 // `switch` the route decides by first, right after the node it follows, is no
 // fork: its cases are that node's own exits, so a node that ends several ways
-// is one tile with an exit for each. Each node or graph called in what it
+// is one tile with an exit for each. So is an `if` or a `?:` it decides by
+// first: its exits are the condition and `else`, and an `if` or a `?:` that
+// `else` decides by — an else-if — adds its condition before it. Unless they
+// all lead to the same place: then the node has an arrow, as a fork that
+// decides nothing is not drawn. Each node or graph called in what it
 // returns is an edge to that node, a set an edge to each of its nodes — a
 // `for` element in it a fork labelled as a loop, whose `each` goes to its
 // node —, and `null` or the end of its body an edge to the end of the graph. A `throw`
@@ -74,13 +78,12 @@ extension on _GraphBody {
           final c? => '${_source(s.expression)} ${_source(c)}',
           null => _source(s.expression),
         };
-        final fork = _points._fork(label, s.expression, _ifOutcomes);
-        _connect(from, fork);
+        final (fork, yes, no) = _ifFork(label, s.expression, from);
         return [
-          ..._statement(s.thenStatement, [(fork, 'true')]),
+          ..._statement(s.thenStatement, [(fork, yes)]),
           ...switch (s.elseStatement) {
-            final e? => _statement(e, [(fork, 'false')]),
-            null => [(fork, 'false')],
+            final e? => _statement(e, [(fork, no)]),
+            null => [(fork, no)],
           },
         ];
       case SwitchStatement():
@@ -211,10 +214,9 @@ extension on _GraphBody {
         :final thenExpression,
         :final elseExpression,
       ):
-        final fork = _points._fork(_source(condition), condition, _ifOutcomes);
-        _connect(from, fork);
-        _value(thenExpression, [(fork, 'true')]);
-        _value(elseExpression, [(fork, 'false')]);
+        final (fork, yes, no) = _ifFork(_source(condition), condition, from);
+        _value(thenExpression, [(fork, yes)]);
+        _value(elseExpression, [(fork, no)]);
       default:
         _notRead(value, 'route value not drawn: ${_source(value)}');
     }
@@ -227,6 +229,26 @@ extension on _GraphBody {
       'for ${_points._loopVariable(each)} in ${_source(each.iterable)}',
     _ => 'for (${_source(parts)})',
   };
+
+  /// The fork of an `if` or a `?:` on [condition], labelled [label], that
+  /// comes [from], and the outcomes it goes on by when the condition holds
+  /// and when not: the condition and `else` when it is the exits of the node
+  /// the route follows, or of such a fork it is the `else` of; `true` and
+  /// `false` anywhere else.
+  (_Fork, String, String) _ifFork(
+    String label,
+    Expression condition,
+    List<_Out> from,
+  ) {
+    final exitsOf = switch (from) {
+      [(final _Fork fork, 'else')] when fork.exitsOf != null => fork,
+      _ => _exitsOf(from),
+    };
+    final (yes, no) = exitsOf == null ? ('true', 'false') : (label, 'else');
+    final fork = _points._fork(label, condition, [yes, no], exitsOf: exitsOf);
+    _connect(from, fork);
+    return (fork, yes, no);
+  }
 
   /// The node a `switch` that comes [from] it goes out of by its own exits:
   /// the node the route follows, when the route decides by the switch first;

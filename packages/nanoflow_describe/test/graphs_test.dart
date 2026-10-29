@@ -76,96 +76,93 @@ const _polishDoc =
     'Fixes a change until its report has no findings, or gives up.';
 
 void main() {
-  test(
-    'draws graphs of nodes: effects at their first mention, the switch a '
-    'route decides by first as its node\'s exits, forks for ?:, if and a '
-    'later switch, edges for sets and null, joins, a graph as a call',
-    () async {
-      final graph = await describeFixture('graphs');
-      expectFile(
-        graph,
-        await expectedFile(
-          'graphs',
-          workflows: ['$_file#review', '$_file#reviewed'],
-          functions: {
-            '$_file#announce': _function(
-              'announce',
-              112,
-              [_effect('1', 'publish', 113), _effect('2', 'notify', 114)],
-              [
-                _edge(null, '1'),
-                _edge(null, '2'),
-                _edge('1', null),
-                _edge('2', null),
-              ],
-            ),
-            '$_file#polish': _function(
-              'polish',
-              87,
-              [
-                _effect('1', 'fix', 88),
-                _effect('2', 'inspect', 90, doc: _inspectDoc),
-                _fork('3', 'report.findings == 0', 97),
-                _fork('4', 'switch (report.verdict)', 98),
-                _effect('5', 'giveUp', 104),
-              ],
-              [
-                _edge(null, '1'),
-                _edge('1', '2'),
-                _edge('2', '3'),
-                _edge('3', null, 'true'),
-                _edge('3', '4', 'false'),
-                _edge('4', '1', 'Verdict.retry'),
-                _edge('4', '5', 'Verdict.fail'),
-                _edge('4', null, 'Verdict.pass'),
-                _edge('5', null),
-              ],
-              doc: _polishDoc,
-            ),
-            '$_file#review': _function(
-              'review',
-              67,
-              [
-                // The switch collect's route decides by first is collect's own
-                // exits, no fork.
-                _effect('1', 'collect', 68, doc: _collectDoc),
-                _effect('2', 'discard', 70),
-                _effect('3', 'inspect', 74, doc: _inspectDoc),
-                _fork('4', 'report.findings == 0', 78),
-                _effect('5', 'publish', 79),
-                _effect('6', 'notify', 79),
-                _call('7', 'polish', 80),
-                _effect('8', 'summarize', 83),
-              ],
-              [
-                _edge(null, '1'),
-                _edge('1', '2', 'Empty'),
-                _edge('1', '2', "Found when change.path.endsWith('.md')"),
-                _edge('1', '3', 'Found'),
-                _edge('2', null),
-                _edge('3', '4'),
-                _edge('4', '5', 'true'),
-                _edge('4', '6', 'true'),
-                _edge('4', '7', 'false'),
-                _edge('5', '8'),
-                _edge('6', '8'),
-                _edge('7', '5'),
-                _edge('7', '6'),
-                _edge('8', null),
-              ],
-              doc: _reviewDoc,
-            ),
-            '$_file#reviewed': _function(
-              'reviewed',
-              121,
-              [_effect('1', 'check', 122), _call('2', 'review', 123)],
-              [_edge(null, '1'), _edge('1', '2'), _edge('2', null)],
-            ),
-          },
-        ),
-      );
-    },
-  );
+  test('draws graphs of nodes: effects at their first mention, the switch, ?: '
+      'or if a route decides by first as its node\'s exits, a fork for a later '
+      'switch, edges for sets and null, joins, a graph as a call', () async {
+    final graph = await describeFixture('graphs');
+    expectFile(
+      graph,
+      await expectedFile(
+        'graphs',
+        workflows: ['$_file#review', '$_file#reviewed'],
+        functions: {
+          '$_file#announce': _function(
+            'announce',
+            112,
+            [_effect('1', 'publish', 113), _effect('2', 'notify', 114)],
+            [
+              _edge(null, '1'),
+              _edge(null, '2'),
+              _edge('1', null),
+              _edge('2', null),
+            ],
+          ),
+          '$_file#polish': _function(
+            'polish',
+            87,
+            [
+              // The ?: of fix's route goes to inspect either way: an arrow.
+              _effect('1', 'fix', 88),
+              // The if inspect's route decides by first is inspect's own
+              // exits; the switch in its else is a fork.
+              _effect('2', 'inspect', 90, doc: _inspectDoc),
+              _fork('3', 'switch (report.verdict)', 98),
+              _effect('4', 'giveUp', 104),
+            ],
+            [
+              _edge(null, '1'),
+              _edge('1', '2'),
+              _edge('2', null, 'report.findings == 0'),
+              _edge('2', '3', 'else'),
+              _edge('3', '1', 'Verdict.retry'),
+              _edge('3', '4', 'Verdict.fail'),
+              _edge('3', null, 'Verdict.pass'),
+              _edge('4', null),
+            ],
+            doc: _polishDoc,
+          ),
+          '$_file#review': _function(
+            'review',
+            67,
+            [
+              // The switch collect's route decides by first is collect's own
+              // exits, no fork.
+              _effect('1', 'collect', 68, doc: _collectDoc),
+              _effect('2', 'discard', 70),
+              // So is the ?: of inspect's: its condition and else.
+              _effect('3', 'inspect', 74, doc: _inspectDoc),
+              _effect('4', 'publish', 79),
+              _effect('5', 'notify', 79),
+              _call('6', 'polish', 80),
+              _effect('7', 'summarize', 83),
+            ],
+            [
+              _edge(null, '1'),
+              _edge('1', '2', 'Empty'),
+              _edge('1', '2', "Found when change.path.endsWith('.md')"),
+              _edge('1', '3', 'Found'),
+              _edge('2', null),
+              _edge('3', '4', 'report.findings == 0'),
+              _edge('3', '5', 'report.findings == 0'),
+              _edge('3', '6', 'else'),
+              _edge('4', '7'),
+              _edge('5', '7'),
+              _edge('6', '4'),
+              _edge('6', '5'),
+              _edge('7', null),
+            ],
+            doc: _reviewDoc,
+          ),
+          '$_file#reviewed': _function(
+            'reviewed',
+            121,
+            [_effect('1', 'check', 122), _call('2', 'review', 123)],
+            [_edge(null, '1'), _edge('1', '2'), _edge('2', null)],
+          ),
+        },
+      ),
+    );
+  });
 
   test('draws a for element of a set as a fork labelled as a loop, whose '
       'each goes to the node it runs once per item', () async {
@@ -182,17 +179,15 @@ void main() {
     expect(body('fan'), {
       'nodes': [
         at(_effect('1', 'split', 0), 12),
-        at(_fork('2', 'items.isEmpty', 0), 13),
-        at(_fork('3', 'for item in items', 0), 13),
-        at(_effect('4', 'work', 0), 13),
+        at(_fork('2', 'for item in items', 0), 13),
+        at(_effect('3', 'work', 0), 13),
       ],
       'edges': [
         _edge(null, '1'),
-        _edge('1', '2'),
-        _edge('2', null, 'true'),
-        _edge('2', '3', 'false'),
-        _edge('3', '4', 'each'),
-        _edge('4', null),
+        _edge('1', null, 'items.isEmpty'),
+        _edge('1', '2', 'else'),
+        _edge('2', '3', 'each'),
+        _edge('3', null),
       ],
     });
     expect(body('count'), {
@@ -219,6 +214,90 @@ void main() {
             'work(i)',
       },
     ]);
+  });
+
+  test('draws the if or ?: a route decides by first as its node\'s exits, '
+      'the condition and else, and those its else decides by as more of '
+      'them', () async {
+    const file = 'lib/graph_ifs.dart';
+    final graph = await describeFixture('graph_ifs');
+
+    Map<String, Object?> body(String name) =>
+        _functionOf(graph, '$file#$name')['body']! as Map<String, Object?>;
+    Map<String, Object?> at(Map<String, Object?> node, int line) => {
+      ...node,
+      'place': '$file:$line',
+    };
+
+    // An else-if chain: an exit for each condition, in order, and else.
+    Map<String, Object?> sizes(int start, int small, int big, int huge) => {
+      'nodes': [
+        at(_effect('1', 'read', 0), start),
+        at(_effect('2', 'small', 0), small),
+        at(_effect('3', 'big', 0), big),
+        at(_effect('4', 'huge', 0), huge),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2', 'n < 10'),
+        _edge('1', '3', 'n < 100'),
+        _edge('1', '4', 'else'),
+        _edge('2', null),
+        _edge('3', null),
+        _edge('4', null),
+      ],
+    };
+    expect(body('sizes'), sizes(20, 22, 24, 26));
+    expect(body('chained'), sizes(32, 34, 36, 37));
+    // With no else, else goes where the code after the if does.
+    expect(body('returns'), {
+      'nodes': [
+        at(_effect('1', 'read', 0), 42),
+        at(_effect('2', 'small', 0), 43),
+        at(_effect('3', 'big', 0), 44),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2', 'n < 10'),
+        _edge('1', '3', 'n < 100'),
+        _edge('1', null, 'else'),
+        _edge('2', null),
+        _edge('3', null),
+      ],
+    });
+    expect(body('cases'), {
+      'nodes': [
+        at(_effect('1', 'write', 0), 50),
+        at(_effect('2', 'skip', 0), 51),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2', "draft case Draft(text: '')"),
+        _edge('1', null, 'else'),
+        _edge('2', null),
+      ],
+    });
+    // A ?: the condition's way decides by is a fork.
+    expect(body('nested'), {
+      'nodes': [
+        at(_effect('1', 'read', 0), 57),
+        at(_fork('2', 'n < 5', 0), 57),
+        at(_effect('3', 'small', 0), 57),
+        at(_effect('4', 'big', 0), 57),
+        at(_effect('5', 'huge', 0), 57),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2', 'n < 10'),
+        _edge('1', '5', 'else'),
+        _edge('2', '3', 'true'),
+        _edge('2', '4', 'false'),
+        _edge('3', null),
+        _edge('4', null),
+        _edge('5', null),
+      ],
+    });
+    expect(graph['warnings'], isEmpty);
   });
 
   test('the same node in two graphs has a place of its own in each', () async {

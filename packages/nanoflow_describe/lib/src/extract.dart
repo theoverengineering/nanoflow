@@ -782,12 +782,17 @@ final class _Effect extends _Drawn {
 }
 
 final class _Fork extends _Drawn {
-  _Fork(this.label, this.outcomes, super.place);
+  _Fork(this.label, this.outcomes, super.place, {this.exitsOf});
   final String label;
 
   /// The labels of the ways out of the fork. One the flow cannot go on from
   /// (a `throw`) has no edge.
   final List<String> outcomes;
+
+  /// The point whose own exits the fork's ways out are, drawn so when the
+  /// fork is: no node, its ways out leave that point, labelled as they are
+  /// (routes.dart).
+  final _V? exitsOf;
 
   @override
   GraphNode node(String id) =>
@@ -1875,8 +1880,8 @@ final class _Body {
     );
   }
 
-  _Fork _fork(String label, AstNode at, List<String> outcomes) =>
-      _add(_Fork(label, outcomes, _package._place(at)));
+  _Fork _fork(String label, AstNode at, List<String> outcomes, {_V? exitsOf}) =>
+      _add(_Fork(label, outcomes, _package._place(at), exitsOf: exitsOf));
 
   _Join _join() => _add(_Join());
 
@@ -1953,15 +1958,24 @@ final class _Body {
         }
       }
     }
-    // Node ids: decimal, in the order the nodes were made.
+    // Node ids: decimal, in the order the nodes were made. A fork that is
+    // the exits of a point is no node.
     final ids = <_Drawn, String>{};
     for (final v in _vertices.whereType<_Drawn>()) {
-      if (!hidden.contains(v)) ids[v] = '${ids.length + 1}';
+      if (!hidden.contains(v) && !(v is _Fork && v.exitsOf != null)) {
+        ids[v] = '${ids.length + 1}';
+      }
     }
     final edges = <GraphEdge>[];
     final seen = <(String?, String?, String?)>{};
     void edgesOf(_V from, String? fromId) {
       for (final (label, to) in _edges[from] ?? const <(String?, _V)>[]) {
+        if (to is _Fork &&
+            identical(to.exitsOf, from) &&
+            !hidden.contains(to)) {
+          edgesOf(to, fromId);
+          continue;
+        }
         for (final target in _resolve({to}, hidden)) {
           final toId = ids[target];
           if (seen.add((fromId, toId, label))) {

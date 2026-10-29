@@ -168,33 +168,27 @@
           },
           {
             "id": "4",
-            "kind": "fork",
-            "label": "r.findings.isEmpty",
-            "place": "lib/review_graph.dart:97"
-          },
-          {
-            "id": "5",
             "kind": "effect",
             "name": "publish",
             "place": "lib/review_graph.dart:97",
             "doc": "Puts the change out."
           },
           {
-            "id": "6",
+            "id": "5",
             "kind": "effect",
             "name": "notify",
             "place": "lib/review_graph.dart:97",
             "doc": "Tells the branch's author it is accepted."
           },
           {
-            "id": "7",
+            "id": "6",
             "kind": "effect",
             "name": "fix",
             "place": "lib/review_graph.dart:97",
             "doc": "Renames the file to lower_snake_case, for inspect to check again."
           },
           {
-            "id": "8",
+            "id": "7",
             "kind": "effect",
             "name": "report",
             "place": "lib/review_graph.dart:99",
@@ -225,40 +219,35 @@
           {
             "from": "3",
             "to": "4",
-            "label": null
+            "label": "r.findings.isEmpty"
           },
           {
-            "from": "4",
+            "from": "3",
             "to": "5",
-            "label": "true"
+            "label": "r.findings.isEmpty"
           },
           {
-            "from": "4",
+            "from": "3",
             "to": "6",
-            "label": "true"
+            "label": "else"
           },
           {
             "from": "4",
             "to": "7",
-            "label": "false"
+            "label": null
           },
           {
             "from": "5",
-            "to": "8",
+            "to": "7",
             "label": null
           },
           {
             "from": "6",
-            "to": "8",
-            "label": null
-          },
-          {
-            "from": "7",
             "to": "3",
             "label": null
           },
           {
-            "from": "8",
+            "from": "7",
             "to": null,
             "label": null
           }
