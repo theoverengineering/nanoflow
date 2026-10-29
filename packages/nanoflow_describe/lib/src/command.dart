@@ -1,6 +1,7 @@
-// The describe command (spec §7): writes the graph file of a package, keeps it
-// fresh while the sources change, tells whether it is fresh, and records a
-// built binary in it (§6.3).
+// The describe command (spec §7; file per graph design §3): writes the graph
+// file of every graph of a package, keeps them fresh while the sources
+// change, tells whether they are fresh, and records a built binary in them
+// (§6.3).
 
 import 'dart:async';
 import 'dart:convert';
@@ -15,14 +16,15 @@ const String _usage = '''
 Usage: nanoflow_describe [--package <dir>] [--watch | --check]
        nanoflow_describe [--package <dir>] stamp <binary>
 
-Writes nanoflow.graph.json, the graph of the package's workflows, in the
-package root: <dir>, or the current directory.
+Writes <graph>.graph.json, the graph file of every graph of the package,
+next to the Dart file of the graph; the package root is <dir>, or the
+current directory.
 
-  --watch          write it again whenever a source under lib/ or bin/
+  --watch          write them again whenever a source under lib/ or bin/
                    changes, until interrupted
-  --check          exit 1 when it differs from what would be written
-  stamp <binary>   record the hash of <binary> in its builds, and copy it
-                   next to <binary>''';
+  --check          exit 1 when they differ from what would be written
+  stamp <binary>   record the hash of <binary> in their builds, and copy
+                   them next to <binary>''';
 
 /// How long the sources must stay unchanged before `--watch` reads them.
 const Duration _settle = Duration(milliseconds: 200);
@@ -114,79 +116,108 @@ final class _Command {
   final StringSink err;
   final Future<DescribeResult> Function(String packageDir) describe;
 
-  String get _file => p.join(root, graphFileName);
+  /// [path], from the package root, as an absolute path.
+  String _absolute(String path) => p.joinAll([root, ...path.split('/')]);
 
   /// [path] as the user would write it from [cwd].
   String shown(String path) => p.relative(path, from: cwd);
 
-  /// Writes the graph file when it changed; the compile errors otherwise.
+  /// Writes the graph files that changed, and removes those of graphs that
+  /// are gone; prints the compile errors, and then writes only the files of
+  /// graphs whose sources compile and removes nothing.
   Future<int> write() async {
     final errors = await _update();
     errors.forEach(err.writeln);
     return errors.isEmpty ? 0 : 1;
   }
 
-  /// Whether the graph file is what [write] would write, its `builds`
-  /// aside: a stamped file is fresh.
+  /// Whether the graph files are what [write] would write, their `builds`
+  /// aside — a stamped file is fresh —, and there is no other.
   Future<int> check() async {
     final result = await describe(root);
-    final graph = result.graph;
-    if (graph == null) {
-      result.errors.forEach(err.writeln);
-      return 1;
+    result.errors.forEach(err.writeln);
+    var fresh = result.errors.isEmpty;
+    for (final MapEntry(key: path, value: graph) in result.files.entries) {
+      final file = _absolute(path);
+      final text = await _read(file);
+      if (text == null) {
+        err.writeln('${shown(file)} is missing: run nanoflow_describe');
+        fresh = false;
+      } else if (text != _render(graph, _parse(text)?.builds ?? const {})) {
+        err.writeln('${shown(file)} is stale: run nanoflow_describe');
+        fresh = false;
+      }
     }
-    final text = await _read(_file);
-    if (text == null) {
-      err.writeln('${shown(_file)} is missing: run nanoflow_describe');
-      return 1;
+    if (result.errors.isEmpty) {
+      for (final file in await _left(result.files.keys)) {
+        err.writeln(
+          '${shown(file)} is no graph of the package: run nanoflow_describe',
+        );
+        fresh = false;
+      }
     }
-    if (text != _render(graph, _parse(text)?.builds ?? const {})) {
-      err.writeln('${shown(_file)} is stale: run nanoflow_describe');
-      return 1;
-    }
-    return 0;
+    return fresh ? 0 : 1;
   }
 
-  /// Records the hash of [binary] in the `builds` of the graph file, and
-  /// copies the file next to [binary]; refuses a file whose fingerprint is
-  /// not that of the sources.
+  /// Records the hash of [binary] in the `builds` of every graph file, and
+  /// copies each next to [binary], by its path from the package root;
+  /// refuses when a file's fingerprint is not that of its sources.
   Future<int> stamp(String binary) async {
-    final text = await _read(_file);
-    final graph = text == null ? null : _parse(text);
-    if (graph == null) {
-      err.writeln(
-        '${shown(_file)} is ${text == null ? 'missing' : 'not a graph file'}: '
-        'run nanoflow_describe before stamp',
-      );
+    final graphs = <String, OneGraphFile>{};
+    for (final path in await packageGraphFilePaths(root)) {
+      final file = _absolute(path);
+      final text = await _read(file);
+      final graph = text == null ? null : _parse(text);
+      if (graph == null) {
+        err.writeln(
+          '${shown(file)} is not a graph file: '
+          'run nanoflow_describe before stamp',
+        );
+        return 1;
+      }
+      final sources = await hashSources(root, graph.sources.keys);
+      if (fingerprintOf(sources) != graph.fingerprint) {
+        err.writeln(
+          '${shown(file)} is stale: run nanoflow_describe before stamp',
+        );
+        return 1;
+      }
+      graphs[path] = graph;
+    }
+    if (graphs.isEmpty) {
+      err.writeln('no graph files: run nanoflow_describe before stamp');
       return 1;
     }
-    if (await _fingerprint() != graph.fingerprint) {
-      err.writeln(
-        '${shown(_file)} is stale: run nanoflow_describe before stamp',
-      );
-      return 1;
-    }
-    final path = p.normalize(p.join(cwd, binary));
+    final binaryPath = p.normalize(p.join(cwd, binary));
     final List<int> bytes;
     try {
-      bytes = await File(path).readAsBytes();
+      bytes = await File(binaryPath).readAsBytes();
     } on FileSystemException catch (e) {
-      err.writeln('cannot read ${shown(path)}: ${e.osError?.message ?? e}');
+      err.writeln(
+        'cannot read ${shown(binaryPath)}: ${e.osError?.message ?? e}',
+      );
       return 1;
     }
-    final stamped = _render(graph, {
-      ...graph.builds,
-      p.basename(path): bytesHash(bytes),
-    });
-    for (final file in {_file, p.join(p.dirname(path), graphFileName)}) {
-      if (await _writeIfChanged(file, stamped)) {
-        out.writeln('wrote ${shown(file)}');
+    final built = p.dirname(binaryPath);
+    for (final MapEntry(key: path, value: graph) in graphs.entries) {
+      final stamped = _render(graph, {
+        ...graph.builds,
+        p.basename(binaryPath): bytesHash(bytes),
+      });
+      for (final file in {
+        _absolute(path),
+        p.joinAll([built, ...path.split('/')]),
+      }) {
+        await Directory(p.dirname(file)).create(recursive: true);
+        if (await _writeIfChanged(file, stamped)) {
+          out.writeln('wrote ${shown(file)}');
+        }
       }
     }
     return 0;
   }
 
-  /// Writes the graph file, then again whenever a source changes, until
+  /// Writes the graph files, then again whenever a source changes, until
   /// [stop] completes (SIGINT without [stop]).
   ///
   /// Prints a line for every write and for every describe that failed. A
@@ -313,29 +344,51 @@ final class _Command {
   Future<String> _fingerprint() async =>
       fingerprintOf(await hashSources(root, await packageSourcePaths(root)));
 
-  /// Describes the package and writes its graph file when it changed;
-  /// returns the compile errors of the sources instead when there are any.
+  /// Describes the package and writes the graph files that changed; once
+  /// the package compiles, removes the graph files no graph has and the
+  /// graph file of the whole package from before (`nanoflow.graph.json`).
+  /// Returns the compile errors of the sources.
   ///
-  /// The file keeps the `builds` it has while the sources are the ones it
-  /// was stamped with.
+  /// A file keeps the `builds` it has while its sources are the ones it was
+  /// stamped with.
   Future<List<String>> _update() async {
     final result = await describe(root);
-    final graph = result.graph;
-    if (graph == null) return result.errors;
-    final old = _parse(await _read(_file));
-    final builds = old != null && old.fingerprint == graph.fingerprint
-        ? old.builds
-        : const <String, String>{};
-    if (await _writeIfChanged(_file, _render(graph, builds))) {
-      out.writeln('wrote ${shown(_file)}');
+    for (final MapEntry(key: path, value: graph) in result.files.entries) {
+      final file = _absolute(path);
+      final old = _parse(await _read(file));
+      final builds = old != null && old.fingerprint == graph.fingerprint
+          ? old.builds
+          : const <String, String>{};
+      if (await _writeIfChanged(file, _render(graph, builds))) {
+        out.writeln('wrote ${shown(file)}');
+      }
     }
-    return const [];
+    // A graph a compile error kept out of the files keeps its own.
+    if (result.errors.isEmpty) {
+      for (final file in await _left(result.files.keys)) {
+        await File(file).delete();
+        out.writeln('removed ${shown(file)}');
+      }
+    }
+    return result.errors;
+  }
+
+  /// The graph files of the package that are not at [paths], and the graph
+  /// file of the whole package from before: what describe would remove.
+  Future<List<String>> _left(Iterable<String> paths) async {
+    final kept = paths.toSet();
+    return [
+      if (await File(p.join(root, graphFileName)).exists())
+        p.join(root, graphFileName),
+      for (final path in await packageGraphFilePaths(root))
+        if (!kept.contains(path)) _absolute(path),
+    ];
   }
 }
 
 /// The text of [graph] with [builds] as its `builds`, sorted by name:
 /// pretty-printed with a two-space indent and a newline at the end.
-String _render(GraphFile graph, Map<String, String> builds) {
+String _render(OneGraphFile graph, Map<String, String> builds) {
   final json = graph.toJson();
   json['builds'] = {
     for (final name in builds.keys.toList()..sort()) name: builds[name],
@@ -343,12 +396,13 @@ String _render(GraphFile graph, Map<String, String> builds) {
   return '${const JsonEncoder.withIndent('  ').convert(json)}\n';
 }
 
-/// The graph file in [text], or `null` when [text] is none or not one.
-GraphFile? _parse(String? text) {
+/// The graph file of one graph in [text], or `null` when [text] is none or
+/// not one.
+OneGraphFile? _parse(String? text) {
   if (text == null) return null;
   try {
     final json = jsonDecode(text);
-    return json is Map<String, Object?> ? GraphFile.fromJson(json) : null;
+    return json is Map<String, Object?> ? OneGraphFile.fromJson(json) : null;
   } on FormatException {
     return null;
   }

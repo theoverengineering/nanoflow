@@ -253,6 +253,23 @@ void main() {
       );
     });
 
+    test('is the fingerprint of the sources given, as they are now, a '
+        'missing one left out', () async {
+      final dir = await tempDir();
+      put(dir, 'lib/review.dart', 'void review() {}\n');
+      put(dir, 'lib/other.dart', 'void other() {}\n');
+      expect(
+        await codeHashOf(
+          dir,
+          sources: ['lib/review.dart', 'lib/gone.dart'],
+          compiled: false,
+        ),
+        fingerprintOf({
+          'lib/review.dart': sourceHash(utf8.encode('void review() {}\n')),
+        }),
+      );
+    });
+
     test('is the hash of the binary in a compiled program', () async {
       final dir = await tempDir();
       final binary = p.join(dir, 'review');
@@ -310,34 +327,74 @@ void main() {
     });
   });
 
-  group('the snapshot of the graph file', () {
-    test('is the file decoded', () async {
+  group('the snapshot of a graph', () {
+    test('is its graph file and those of its subgraphs, by chain, put '
+        'together', () async {
       final dir = await tempDir();
-      const graph = {
-        'format': 2,
-        'package': 'review_example',
-        'workflows': ['lib/review.dart#review'],
+      final files = {
+        'lib/src/review.graph.json': oneGraphFile(
+          'review',
+          calls: ['lib/polish.graph.json'],
+        ),
+        'lib/polish.graph.json': oneGraphFile(
+          'polish',
+          calls: ['bin/fix.graph.json', 'lib/src/review.graph.json'],
+        ),
+        'bin/fix.graph.json': oneGraphFile('fix'),
+        'lib/other.graph.json': oneGraphFile('other'),
       };
-      put(dir, 'nanoflow.graph.json', jsonEncode(graph));
-      expect(await graphSnapshotOf(dir), graph);
+      files.forEach((path, file) => putGraphFile(dir, path, file));
+      expect(
+        await graphSnapshotOf(dir, 'review'),
+        assembleGraphFile('lib/src/review.graph.json', files)!.toJson(),
+      );
+      expect((await graphSnapshotOf(dir, 'polish'))!['workflows'], [
+        'lib/polish.graph.json',
+      ]);
     });
 
-    test('is null when there is no file', () async {
-      expect(await graphSnapshotOf(await tempDir()), isNull);
+    test('takes the first file of the graph by path, and leaves out a '
+        'subgraph whose file cannot be read', () async {
+      final dir = await tempDir();
+      putGraphFile(
+        dir,
+        'lib/b/review.graph.json',
+        oneGraphFile('review', calls: ['lib/gone.graph.json']),
+      );
+      putGraphFile(dir, 'lib/c/review.graph.json', oneGraphFile('review'));
+      put(dir, 'lib/a/review.graph.txt', '');
+      put(dir, 'lib/bad.graph.json', '{"format": 3}');
+      putGraphFile(
+        dir,
+        'lib/d/review.graph.json',
+        oneGraphFile('review', calls: ['lib/bad.graph.json']),
+      );
+      final snapshot = await graphSnapshotOf(dir, 'review');
+      expect(snapshot!['workflows'], ['lib/b/review.graph.json']);
+      expect((snapshot['functions']! as Map).keys, ['lib/b/review.graph.json']);
     });
 
-    test('is null when the file cannot be read as a JSON object', () async {
-      for (final text in ['{"format": 2', '[1, 2]']) {
-        final dir = await tempDir();
-        put(dir, 'nanoflow.graph.json', text);
-        expect(await graphSnapshotOf(dir), isNull, reason: text);
+    test('is null when the graph has no file, or it cannot be read', () async {
+      final dir = await tempDir();
+      expect(await graphSnapshotOf(dir, 'review'), isNull);
+      put(dir, graphFileName, '{}');
+      put(dir, 'test/review.graph.json', '{}');
+      expect(await graphSnapshotOf(dir, 'review'), isNull);
+      for (final text in ['{"format": 4', '[1, 2]', '{"format": 3}']) {
+        put(dir, 'lib/review.graph.json', text);
+        expect(await graphSnapshotOf(dir, 'review'), isNull, reason: text);
       }
-      final notUtf8 = await tempDir();
-      File(p.join(notUtf8, 'nanoflow.graph.json')).writeAsBytesSync([0xff]);
-      expect(await graphSnapshotOf(notUtf8), isNull);
-      final directory = await tempDir();
-      Directory(p.join(directory, 'nanoflow.graph.json')).createSync();
-      expect(await graphSnapshotOf(directory), isNull);
+      File(p.join(dir, 'lib', 'review.graph.json')).writeAsBytesSync([0xff]);
+      expect(await graphSnapshotOf(dir, 'review'), isNull);
+    });
+
+    test('gives the sources it was read from', () {
+      expect(sourcesOfSnapshot(null), isNull);
+      final file = oneGraphFile('review', sources: {'lib/a.dart': 'sha256:1'});
+      final snapshot = assembleGraphFile('lib/review.graph.json', {
+        'lib/review.graph.json': file,
+      })!.toJson();
+      expect(sourcesOfSnapshot(snapshot), ['lib/a.dart']);
     });
   });
 

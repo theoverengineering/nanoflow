@@ -365,17 +365,21 @@ void main() {
       expect(await ownerCheck(dir, id), 'opened');
     });
 
-    test('on other code writes the graph file as it is now, and '
-        'session-resumed names it', () async {
+    test('on other code writes the graph files as they are now, and '
+        'session-resumed names them', () async {
       final (:dir, :work) = await project();
       File(p.join(work, 'go')).createSync();
       final id = await writeSession(dir, work, code: 'sha256:old');
-      const graph = {'format': 2, 'package': 'review_fixture'};
-      File(p.join(dir, 'nanoflow.graph.json'))
-          .writeAsStringSync(jsonEncode(graph));
       File(p.join(dir, 'lib', 'review.dart'))
         ..parent.createSync()
         ..writeAsStringSync('// review\n');
+      final sources = {
+        'lib/review.dart': sourceHash(utf8.encode('// review\n')),
+      };
+      final files = {
+        'lib/review.graph.json': oneGraphFile('review', sources: sources),
+      };
+      files.forEach((path, file) => putGraphFile(dir, path, file));
 
       await (await Flow(directory: dir).resumeWorkflow(review, id)).result;
 
@@ -383,14 +387,39 @@ void main() {
       final resumed = (await eventsOf(handle))
           .whereType<SessionResumed>()
           .single;
+      expect(resumed.code, fingerprintOf(sources));
       expect(
-        resumed.code,
-        fingerprintOf({
-          'lib/review.dart': sourceHash(utf8.encode('// review\n')),
-        }),
+        await handle.documentValue(resumed.graphId!),
+        assembleGraphFile('lib/review.graph.json', files)!.toJson(),
       );
-      expect(await handle.documentValue(resumed.graphId!), graph);
       expect(handle.session.graph, isNull);
+    });
+
+    test('on code changed outside the sources of the graph writes no '
+        'snapshot', () async {
+      final (:dir, :work) = await project();
+      File(p.join(work, 'go')).createSync();
+      File(p.join(dir, 'lib', 'review.dart'))
+        ..parent.createSync()
+        ..writeAsStringSync('// review\n');
+      final sources = {
+        'lib/review.dart': sourceHash(utf8.encode('// review\n')),
+      };
+      putGraphFile(
+        dir,
+        'lib/review.graph.json',
+        oneGraphFile('review', sources: sources),
+      );
+      final id = await writeSession(dir, work, code: fingerprintOf(sources));
+      File(p.join(dir, 'lib', 'other.dart')).writeAsStringSync('// other\n');
+
+      await (await Flow(directory: dir).resumeWorkflow(review, id)).result;
+
+      final resumed = (await eventsOf(await openSession(dir, id)))
+          .whereType<SessionResumed>()
+          .single;
+      expect(resumed.code, fingerprintOf(sources));
+      expect(resumed.graphId, isNull);
     });
 
     test('on other code without a graph file writes no snapshot, and '

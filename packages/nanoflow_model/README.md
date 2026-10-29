@@ -43,8 +43,17 @@
   UTC с точностью до миллисекунд. У известных событий общий предок
   `KnownEvent` с `time`: `switch` по `Event` исчерпывается им и
   `UnknownEvent`.
-- **Файл графа.** `GraphFile.fromJson` разбирает `nanoflow.graph.json`
-  (`graphFileName`, формат `graphFileFormat`): графы (`GraphFunction`; в
+- **Файл графа.** `OneGraphFile.fromJson` разбирает файл одного графа,
+  `<граф>.graph.json` (`graphFileNameOf`, формат `oneGraphFileFormat`, 4):
+  граф — `name`, `place`, `doc`, тело, где узел `call` — путь файла
+  подграфа (`graph` в JSON, единственная из `functions` в модели;
+  `subgraphs` — их список), предупреждения, `fingerprint`, `sources`,
+  `builds`. `assembleGraphFile(путь, файлы)` собирает граф и его подграфы,
+  по цепочке, в `GraphFile` формата 3 — графы по пути их файлов, воркфлоу —
+  граф: так их хранит снимок сессии и показывает UI.
+- **Снимок.** `GraphFile.fromJson` разбирает формат 3 — снимок сессии или
+  прежний файл всего пакета `nanoflow.graph.json` (`graphFileName`, формат
+  `graphFileFormat`): графы (`GraphFunction`; в
   снимках старых сессий — и функции с эффектами), их тела (`GraphBody`) из
   узлов `EffectNode`, `ConditionNode` и `CallNode` и рёбер `GraphEdge`, а
   также `GraphWarning` (с `function` — графом, в чьём объявлении оно; нет
@@ -58,7 +67,8 @@
   `workflowNamed(name)` находит воркфлоу по имени.
 - **Исходники и отпечаток.** `packageSourcePaths`, `sourceHash` (`\r\n` читается
   как `\n`), `bytesHash`, `hashSources` и `fingerprintOf` считают `sources` и
-  `fingerprint` файла графа одним кодом для `describe`, библиотеки и UI.
+  `fingerprint` файла графа одним кодом для `describe`, библиотеки и UI;
+  `packageGraphFilePaths` — файлы графов под `lib/` и `bin/`.
 - **Порт хранилища** (`storage.dart`) — интерфейсы, которые реализуют
   адаптеры (файловые `nanoflow_store` и `nanoflow_reader`, `nanoflow_sqlite`)
   и через которые пишет `nanoflow`, а читают UI и приложения:

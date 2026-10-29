@@ -1,32 +1,35 @@
-// The graph file of a package as a whole: the same every time, named by
-// its pubspec.yaml, and none while its sources do not compile or it has no
-// name.
+// The graph files of a package as a whole: the same every time, named by its
+// pubspec.yaml, none for a graph while its sources do not compile, and none
+// without a name.
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:nanoflow_describe/nanoflow_describe.dart';
-import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'support.dart';
 
 void main() {
-  test('writes the same file every time', () async {
+  test('writes the same files every time', () async {
+    String text(DescribeResult result) => jsonEncode({
+      for (final MapEntry(:key, :value) in result.files.entries)
+        key: value.toJson(),
+    });
     final first = await describePackage(fixture('graphs'), packageName: 'x');
     final second = await describePackage(fixture('graphs'), packageName: 'x');
-    expect(
-      jsonEncode(second.graph!.toJson()),
-      jsonEncode(first.graph!.toJson()),
-    );
+    expect(text(second), text(first));
   });
 
   group('a package of its own', () {
+    // Inside the workspace, so that the analyzer finds `package:nanoflow`,
+    // in a directory whose name starts with `.`, which `dart analyze` and
+    // `dart format` of the workspace pass by.
     late Directory dir;
 
     setUp(() async {
-      dir = await Directory.systemTemp.createTemp('nanoflow_describe_test');
+      dir = await Directory(fixture('')).createTemp('.tmp-');
     });
 
     tearDown(() async {
@@ -39,42 +42,42 @@ void main() {
       await file.writeAsString(text);
     }
 
+    /// A graph [name] of one node, importing [imports].
+    String graph(String name, {List<String> imports = const []}) =>
+        "import 'package:nanoflow/nanoflow.dart';\n"
+        "${[for (final i in imports) "import '$i';\n"].join()}"
+        "final ${name}Node = node('$name', (String s) async => s);\n"
+        "final $name = Graph<String, String>('$name', "
+        '[Graph.start(${name}Node)]);\n';
+
     test('is named by its pubspec.yaml', () async {
       await write('pubspec.yaml', 'name: tiny_app # the app\n');
-      await write('lib/tiny.dart', 'int answer() => 42;\n');
+      await write('lib/tiny.dart', graph('tiny'));
       final result = await describePackage(dir.path);
       expect(result.errors, isEmpty);
-      final sources = {
-        'lib/tiny.dart': sourceHash(utf8.encode('int answer() => 42;\n')),
-      };
-      expectFile(result.graph!.toJson(), {
-        'format': 3,
-        'package': 'tiny_app',
-        'fingerprint': fingerprintOf(sources),
-        'sources': sources,
-        'builds': <String, Object?>{},
-        'workflows': <Object?>[],
-        'functions': <String, Object?>{},
-        'warnings': <Object?>[],
-      });
+      expect(result.files.keys, ['lib/tiny.graph.json']);
+      expect(result.files.values.single.package, 'tiny_app');
     });
 
-    test('has no graph while it does not compile', () async {
-      await write('lib/fine.dart', 'int answer() => 42;\n');
+    test('has no file for a graph whose sources do not compile, and has the '
+        'others', () async {
+      await write('lib/fine.dart', graph('fine'));
       await write('lib/broken.dart', "int answer() => 'forty-two';\n");
+      await write('lib/uses.dart', graph('uses', imports: ['broken.dart']));
       final result = await describePackage(dir.path, packageName: 'broken');
-      expect(result.graph, isNull);
+      expect(result.files.keys, ['lib/fine.graph.json']);
+      expect(result.graphs.keys, ['lib/fine.dart#fine']);
       expect(result.errors, [
         allOf(startsWith('lib/broken.dart:1:17: '), contains("'String'")),
       ]);
     });
 
-    test('has no graph without a name', () async {
-      await write('lib/tiny.dart', 'int answer() => 42;\n');
+    test('has no graphs without a name', () async {
+      await write('lib/tiny.dart', graph('tiny'));
       final result = await describePackage(dir.path);
-      expect(result.graph, isNull);
+      expect(result.files, isEmpty);
       expect(result.errors, [
-        '${p.join(dir.path, 'pubspec.yaml')}: no package name',
+        '${p.join(p.absolute(dir.path), 'pubspec.yaml')}: no package name',
       ]);
     });
   });

@@ -56,8 +56,21 @@ void main() {
   Future<int> run(List<String> args) =>
       runDescribe(args, cwd: dir, out: out, err: err);
 
-  File graphFile([String? inDir]) => File(p.join(inDir ?? dir, graphFileName));
+  /// The graph files of the fixture, by their paths from the package root.
+  const files = [
+    'lib/announce.graph.json',
+    'lib/polish.graph.json',
+    'lib/review.graph.json',
+  ];
+
+  /// The graph file of review, in the package or in [inDir].
+  File graphFile([String? inDir]) =>
+      File(p.join(inDir ?? dir, 'lib', 'review.graph.json'));
   File source() => File(p.join(dir, 'lib', 'graphs.dart'));
+
+  /// A line for each graph file, [verb] and its path, after [prefix].
+  String each(String verb, {String prefix = ''}) =>
+      [for (final file in files) '$verb $prefix$file\n'].join();
 
   /// Changes the text of `lib/graphs.dart` with [change].
   Future<void> edit(String Function(String text) change) async =>
@@ -66,9 +79,9 @@ void main() {
   /// A line that does not compile, added to the end of `lib/graphs.dart`.
   Future<void> breakSource() => edit((text) => "${text}int broken = '';\n");
 
-  /// The graph file describe gives, as the command writes it.
+  /// The graph file of review describe gives, as the command writes it.
   Future<String> described() async {
-    final graph = (await describePackage(dir)).graph!;
+    final graph = (await describePackage(dir)).files['lib/review.graph.json']!;
     return '${const JsonEncoder.withIndent('  ').convert(graph.toJson())}\n';
   }
 
@@ -79,12 +92,12 @@ void main() {
       if (p.basename(entity.path).startsWith('.')) p.basename(entity.path),
   ];
 
-  test('writes the graph file, pretty, and only when it changed', () async {
+  test('writes the graph files, pretty, and only when they changed', () async {
     expect(await run([]), 0);
     expect(await graphFile().readAsString(), await described());
-    expect(out.toString(), 'wrote nanoflow.graph.json\n');
+    expect(out.toString(), each('wrote'));
     expect(err.toString(), isEmpty);
-    expect(hidden(dir), isEmpty);
+    expect(hidden(p.join(dir, 'lib')), isEmpty);
 
     final old = DateTime(2000);
     await graphFile().setLastModified(old);
@@ -93,11 +106,44 @@ void main() {
     expect(await graphFile().lastModified(), old);
     expect(out.toString(), isEmpty);
 
+    // Each graph's sources are the one file, so each file changes.
     await edit((text) => text.replaceFirst("'collect'", "'gather'"));
     expect(await run([]), 0);
     expect(await graphFile().readAsString(), contains('"name": "gather"'));
     expect(await graphFile().readAsString(), await described());
-    expect(out.toString(), 'wrote nanoflow.graph.json\n');
+    expect(out.toString(), each('wrote'));
+  });
+
+  test('writes the files of the graphs a compile error does not reach, and '
+      'fails', () async {
+    await File(p.join(dir, 'lib', 'broken.dart'))
+        .writeAsString("int broken = '';\n");
+    expect(await run([]), 1);
+    expect(out.toString(), each('wrote'));
+    expect(err.toString(), matches(RegExp(r'^lib/broken\.dart:1:\d+: .+\n$')));
+    expect(await graphFile().readAsString(), await described());
+  });
+
+  test('removes the files of graphs that are gone and the graph file of the '
+      'package from before, once the package compiles', () async {
+    final gone = File(p.join(dir, 'lib', 'gone.graph.json'));
+    final before = File(p.join(dir, graphFileName));
+    await gone.writeAsString('{}');
+    await before.writeAsString('{}');
+    await breakSource();
+    expect(await run([]), 1);
+    expect(gone.existsSync(), isTrue);
+    expect(before.existsSync(), isTrue);
+
+    await edit((text) => text.replaceFirst("int broken = '';\n", ''));
+    out.clear();
+    expect(await run([]), 0);
+    expect(gone.existsSync(), isFalse);
+    expect(before.existsSync(), isFalse);
+    expect(
+      out.toString(),
+      '${each('wrote')}removed $graphFileName\nremoved lib/gone.graph.json\n',
+    );
   });
 
   test('describes the package given by --package', () async {
@@ -110,7 +156,7 @@ void main() {
     );
     expect(code, 0);
     expect(await graphFile().readAsString(), await described());
-    expect(out.toString(), 'wrote ${p.join(p.basename(dir), graphFileName)}\n');
+    expect(out.toString(), each('wrote', prefix: '${p.basename(dir)}/'));
 
     out.clear();
     expect(await run(['--package', 'none']), 1);
@@ -118,7 +164,7 @@ void main() {
     expect(out.toString(), isEmpty);
   });
 
-  test('leaves the file alone while the sources do not compile', () async {
+  test('leaves the files alone while their sources do not compile', () async {
     expect(await run([]), 0);
     final text = await graphFile().readAsString();
     final old = DateTime(2000);
@@ -136,11 +182,12 @@ void main() {
     expect(await graphFile().lastModified(), old);
   });
 
-  test('--check tells whether the file is what would be written', () async {
+  test('--check tells whether the files are what would be written', () async {
     expect(await run(['--check']), 1);
     expect(
       err.toString(),
-      'nanoflow.graph.json is missing: run nanoflow_describe\n',
+      [for (final file in files) '$file is missing: run nanoflow_describe\n']
+          .join(),
     );
     expect(graphFile().existsSync(), isFalse);
 
@@ -151,11 +198,24 @@ void main() {
     expect(out.toString(), isEmpty);
     expect(err.toString(), isEmpty);
 
-    await edit((text) => '$text// edited\n');
+    await File(p.join(dir, 'lib', 'gone.graph.json')).writeAsString('{}');
+    await File(p.join(dir, graphFileName)).writeAsString('{}');
     expect(await run(['--check']), 1);
     expect(
       err.toString(),
-      'nanoflow.graph.json is stale: run nanoflow_describe\n',
+      '$graphFileName is no graph of the package: run nanoflow_describe\n'
+      'lib/gone.graph.json is no graph of the package: run '
+      'nanoflow_describe\n',
+    );
+    await run([]);
+
+    await edit((text) => '$text// edited\n');
+    err.clear();
+    expect(await run(['--check']), 1);
+    expect(
+      err.toString(),
+      [for (final file in files) '$file is stale: run nanoflow_describe\n']
+          .join(),
     );
 
     await breakSource();
@@ -176,7 +236,8 @@ void main() {
       await binary.writeAsBytes([0x7f, 0x45, 0x4c, 0x46, 1, 2, 3]);
     });
 
-    test('records the binary and copies the file next to it', () async {
+    test('records the binary in every file and copies each next to it, by '
+        'its path', () async {
       await run([]);
       out.clear();
       expect(await run(['stamp', 'build/review']), 0);
@@ -191,9 +252,9 @@ void main() {
       expect(await graphFile(binary.parent.path).readAsString(), stamped);
       expect(
         out.toString(),
-        'wrote nanoflow.graph.json\nwrote build/nanoflow.graph.json\n',
+        [for (final file in files) 'wrote $file\nwrote build/$file\n'].join(),
       );
-      expect(hidden(binary.parent.path), isEmpty);
+      expect(hidden(p.join(binary.parent.path, 'lib')), isEmpty);
 
       // Builds stay sorted by name.
       await File(p.join(dir, 'build', 'review-arm')).writeAsBytes([9]);
@@ -232,18 +293,18 @@ void main() {
       expect(await run(['stamp', 'build/review']), 1);
       expect(
         err.toString(),
-        'nanoflow.graph.json is stale: run nanoflow_describe before stamp\n',
+        '${files.first} is stale: run nanoflow_describe before stamp\n',
       );
       expect(out.toString(), isEmpty);
       expect(await graphFile().readAsString(), text);
       expect(graphFile(binary.parent.path).existsSync(), isFalse);
     });
 
-    test('refuses without a graph file or a binary', () async {
+    test('refuses without graph files or a binary', () async {
       expect(await run(['stamp', 'build/review']), 1);
       expect(
         err.toString(),
-        'nanoflow.graph.json is missing: run nanoflow_describe before stamp\n',
+        'no graph files: run nanoflow_describe before stamp\n',
       );
       expect(graphFile(binary.parent.path).existsSync(), isFalse);
 
@@ -260,7 +321,7 @@ void main() {
     ('watching the file system', null),
     ('polling', const Duration(milliseconds: 100)),
   ]) {
-    test('--watch rewrites the file on every change, $how', () async {
+    test('--watch rewrites the files on every change, $how', () async {
       final stop = Completer<void>();
       // A test that fails leaves no watcher running.
       addTearDown(() {
@@ -274,7 +335,7 @@ void main() {
         stop: stop.future,
         poll: poll,
       );
-      const wrote = 'wrote nanoflow.graph.json\n';
+      final wrote = each('wrote');
       await until('the first write', () => out.toString() == wrote);
 
       await edit((text) => text.replaceFirst("'collect'", "'gather'"));
@@ -328,8 +389,7 @@ void main() {
     );
 
     await edit((text) => text.replaceFirst("'collect'", "'gather'"));
-    await until('the write', () => out.toString().isNotEmpty);
-    expect(out.toString(), 'wrote nanoflow.graph.json\n');
+    await until('the writes', () => out.toString() == each('wrote'));
     expect(await graphFile().readAsString(), await described());
 
     stop.complete();

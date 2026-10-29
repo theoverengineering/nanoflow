@@ -218,27 +218,36 @@ void main() {
       expect(replaySession(events).status, SessionStatus.finished);
     });
 
-    test('records the graph file and the code hash the session starts '
-        'with', () async {
+    test('records the graph files of the graph and its subgraphs, and the '
+        'code hash of its sources, the session starts with', () async {
       final dir = await tempDir();
       File(p.join(dir, 'lib', 'review.dart'))
         ..parent.createSync()
         ..writeAsStringSync('// review\n');
-      const graph = {'format': 2, 'package': 'review_example'};
-      File(p.join(dir, 'nanoflow.graph.json'))
-          .writeAsStringSync(jsonEncode(graph));
+      // Not among the graph's sources: no part of its code hash.
+      File(p.join(dir, 'lib', 'other.dart')).writeAsStringSync('// other\n');
+      final sources = {
+        'lib/review.dart': sourceHash(utf8.encode('// review\n')),
+      };
+      final files = {
+        'lib/review.graph.json': oneGraphFile(
+          'review',
+          calls: ['lib/polish.graph.json'],
+          sources: sources,
+        ),
+        'lib/polish.graph.json': oneGraphFile('polish'),
+      };
+      files.forEach((path, file) => putGraphFile(dir, path, file));
 
       await Flow(directory: dir).runWorkflow(review, 'main');
 
       final handle = await onlySession(dir);
-      expect(handle.session.graph, graph);
-      final started = (await eventsOf(handle)).first as SessionStarted;
       expect(
-        started.code,
-        fingerprintOf({
-          'lib/review.dart': sourceHash(utf8.encode('// review\n')),
-        }),
+        handle.session.graph,
+        assembleGraphFile('lib/review.graph.json', files)!.toJson(),
       );
+      final started = (await eventsOf(handle)).first as SessionStarted;
+      expect(started.code, fingerprintOf(sources));
     });
   });
 

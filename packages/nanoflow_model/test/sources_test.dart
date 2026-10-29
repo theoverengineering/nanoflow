@@ -114,6 +114,24 @@ void main() {
     });
   });
 
+  test('packageGraphFilePaths lists the graph files under lib/ and bin/, '
+      'skipping what packageSourcePaths skips', () async {
+    final dir = _package({
+      'nanoflow.graph.json': '',
+      'lib/src/a.graph.json': '',
+      'lib/src/a.dart': '',
+      'lib/.hidden/b.graph.json': '',
+      'lib/build/c.graph.json': '',
+      'bin/main.graph.json': '',
+      'lib/graph.json': '',
+      'test/t.graph.json': '',
+    });
+    expect(await packageGraphFilePaths(dir.path), [
+      'bin/main.graph.json',
+      'lib/src/a.graph.json',
+    ]);
+  });
+
   group('hashes', () {
     test('bytesHash is sha256 of the bytes as they are', () {
       expect(bytesHash(_bytes('abc')), _abc);

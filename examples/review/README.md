@@ -49,8 +49,10 @@ dart run bin/main.dart --resume <id>        # продолжает сессию
 
 ## Файл графа
 
-`nanoflow.graph.json` — граф, прочитанный из кода (`nanoflow_describe` —
-`dev_dependency` примера); CI проверяет, что он свежий. Узел нарисован
+`lib/review.graph.json` — граф, прочитанный из кода (`nanoflow_describe` —
+`dev_dependency` примера), рядом с `lib/review.dart`; CI проверяет, что он
+свежий. Его исходники — `lib/review.dart` и `lib/change.dart`, который тот
+импортирует. Узел нарисован
 эффектом на строке, где граф впервые называет узел, с комментарием над его
 переменной. `switch` и `?:`, которыми переход решает сразу после узла, —
 выходы этого узла (`collect` — `Empty` и `Found`, `inspect` —
@@ -60,13 +62,13 @@ dart run bin/main.dart --resume <id>        # продолжает сессию
 dart run nanoflow_describe            # переписать после правки кода
 dart run nanoflow_describe --check    # код 1, если файл устарел
 mkdir -p build && dart compile exe bin/main.dart -o build/review
-dart run nanoflow_describe stamp build/review   # хэш бинарника в builds и копия файла рядом
+dart run nanoflow_describe stamp build/review   # хэш бинарника в builds и копия файла в build/lib/
 ```
 
-`stamp` переписывает и `nanoflow.graph.json` из репозитория — в его
+`stamp` переписывает и `lib/review.graph.json` из репозитория — в его
 `builds` появляется хэш бинарника, и git покажет файл изменённым. `--check`
 `builds` не сравнивает, так что CI это не ломает; вернуть файл —
-`git checkout nanoflow.graph.json`.
+`git checkout lib/review.graph.json`.
 
 Запуск, граф, хэш кода, Ctrl+C и продолжение проверяет
 `tests/e2e/test/review_example_test.dart`.

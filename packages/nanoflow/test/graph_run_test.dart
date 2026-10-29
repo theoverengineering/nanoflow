@@ -4,13 +4,10 @@
 // effects.
 
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
-import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'support.dart';
@@ -400,34 +397,6 @@ Flow flowIn(String dir) => Flow(directory: dir)
 Future<List<Effect>> effectsIn(String dir) async =>
     (await onlySession(dir)).effects();
 
-/// A graph file of [functions], each a graph by its name with the places of
-/// its nodes by their names, all in `lib/g.dart`.
-GraphFile graphFileOf(Map<String, Map<String, String>> functions) => GraphFile(
-  format: graphFileFormat,
-  package: 'g',
-  fingerprint: 'sha256:0',
-  sources: const {},
-  builds: const {},
-  workflows: [for (final name in functions.keys) 'lib/g.dart#$name'],
-  functions: {
-    for (final MapEntry(key: name, value: places) in functions.entries)
-      'lib/g.dart#$name': GraphFunction(
-        id: 'lib/g.dart#$name',
-        name: name,
-        place: 'lib/g.dart:1',
-        body: GraphBody(
-          nodes: [
-            for (final (i, MapEntry(key: node, value: place))
-                in places.entries.indexed)
-              EffectNode(id: '${i + 1}', place: place, name: node),
-          ],
-          edges: const [],
-        ),
-      ),
-  },
-  warnings: const [],
-);
-
 void main() {
   setUp(calls.clear);
 
@@ -779,14 +748,22 @@ void main() {
   });
 
   group('the place of a node\'s effect', () {
-    test('is the one the graph file gives the node in that graph', () async {
+    test('is the one the graph files give the node in that graph', () async {
       final dir = await tempDir();
-      final file = graphFileOf({
-        'placedOuter': {'shout': 'lib/g.dart:3'},
-        'placedInner': {'shout': 'lib/g.dart:7'},
-      });
-      await File(p.join(dir, graphFileName))
-          .writeAsString(jsonEncode(file.toJson()));
+      putGraphFile(
+        dir,
+        'lib/placedOuter.graph.json',
+        oneGraphFile(
+          'placedOuter',
+          effects: {'shout': 'lib/g.dart:3'},
+          calls: ['lib/inner/placedInner.graph.json'],
+        ),
+      );
+      putGraphFile(
+        dir,
+        'lib/inner/placedInner.graph.json',
+        oneGraphFile('placedInner', effects: {'shout': 'lib/g.dart:7'}),
+      );
       expect(await flowIn(dir).run(placedOuter, 'x'), 'X');
       expect(
         [for (final e in await effectsIn(dir)) e.place],

@@ -22,6 +22,44 @@ Future<String> tempDir() async {
   return dir.path;
 }
 
+/// The graph file of one graph [name], read from [sources]: an effect node
+/// for each of [effects] (its name and place), then a call to each graph
+/// file of [calls].
+OneGraphFile oneGraphFile(
+  String name, {
+  Map<String, String> effects = const {},
+  List<String> calls = const [],
+  Map<String, String> sources = const {},
+}) => OneGraphFile(
+  package: 'g',
+  name: name,
+  place: 'lib/g.dart:1',
+  body: GraphBody(
+    nodes: [
+      for (final (i, MapEntry(key: node, value: place))
+          in effects.entries.indexed)
+        EffectNode(id: '${i + 1}', place: place, name: node),
+      for (final (i, call) in calls.indexed)
+        CallNode(
+          id: '${effects.length + i + 1}',
+          place: 'lib/g.dart:1',
+          functions: [call],
+        ),
+    ],
+    edges: const [],
+  ),
+  warnings: const [],
+  fingerprint: fingerprintOf(sources),
+  sources: sources,
+  builds: const {},
+);
+
+/// Writes [file] to [path], from the project directory [dir].
+void putGraphFile(String dir, String path, OneGraphFile file) =>
+    File(p.joinAll([dir, ...path.split('/')]))
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync(jsonEncode(file.toJson()));
+
 /// The ids of the sessions in the project directory [projectDir], sorted.
 List<String> sessionIds(String projectDir) {
   final runs = Directory(runsDirOf(projectDir));

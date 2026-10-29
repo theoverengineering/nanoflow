@@ -1,5 +1,5 @@
-// `dart run nanoflow_describe`: writes nanoflow.graph.json in the root of the
-// package it runs in (spec §7).
+// `dart run nanoflow_describe`: writes the graph file of every graph of the
+// package it runs in, next to its Dart file (file per graph design §3).
 import 'dart:io';
 
 import 'package:nanoflow_describe/nanoflow_describe.dart';

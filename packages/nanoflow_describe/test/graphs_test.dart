@@ -85,9 +85,7 @@ void main() {
     final graph = await describeFixture('graphs');
     expectFile(
       graph,
-      await expectedFile(
-        'graphs',
-        workflows: ['$_file#review'],
+      expectedGraphs(
         functions: {
           '$_file#announce': _function(
             'announce',

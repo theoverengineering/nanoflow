@@ -3,6 +3,7 @@ export 'src/entities.dart';
 export 'src/events.dart';
 export 'src/graph_file.dart';
 export 'src/ids.dart';
+export 'src/one_graph_file.dart';
 export 'src/owner.dart';
 export 'src/replay.dart';
 export 'src/sources.dart';

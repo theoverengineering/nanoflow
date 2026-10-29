@@ -168,13 +168,6 @@ extension on _Package {
     _ => null,
   };
 
-  /// The graph [expression] names; `null` for anything else.
-  _GraphDeclaration? _graphIn(Expression? expression) =>
-      switch (_nodelikeIn(expression)) {
-        final _GraphDeclaration graph => graph,
-        _ => null,
-      };
-
   /// The graphs of the sources, each drawn as a function, by id; and the
   /// bodies of their routes, whose side effects outside effects warn.
   ///

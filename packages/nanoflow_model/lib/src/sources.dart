@@ -1,6 +1,7 @@
-// The sources of a package and their hashes: what the graph file's
+// The sources of a package and their hashes: what a graph file's
 // `fingerprint` and `sources` are made of. The describe tool writes them and
 // the workflow library compares against them, so both must count the same way.
+// And the graph files among them, which describe writes next to the sources.
 
 import 'dart:convert';
 import 'dart:io';
@@ -9,31 +10,51 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
+import 'one_graph_file.dart';
+
 /// Paths, relative to [packageDir] and written with `/`, of the `.dart` files
 /// under `lib/` and `bin/`, sorted.
 ///
 /// A directory whose name starts with `.` or is `build` is left out with all
 /// that is in it, and so are symbolic links. A missing `lib/` or `bin/` is
 /// fine.
-Future<List<String>> packageSourcePaths(String packageDir) async {
+Future<List<String>> packageSourcePaths(String packageDir) =>
+    _packageFiles(packageDir, (name) => name.endsWith('.dart'));
+
+/// Paths, relative to [packageDir] and written with `/`, of the graph files
+/// (`*.graph.json`) under `lib/` and `bin/`, sorted, the directories left out
+/// as [packageSourcePaths] leaves them out.
+Future<List<String>> packageGraphFilePaths(String packageDir) =>
+    _packageFiles(packageDir, (name) => name.endsWith(graphFileSuffix));
+
+/// Paths of the files under `lib/` and `bin/` whose name [wanted] takes.
+Future<List<String>> _packageFiles(
+  String packageDir,
+  bool Function(String name) wanted,
+) async {
   final paths = <String>[];
   for (final top in const ['lib', 'bin']) {
     final dir = Directory(p.join(packageDir, top));
-    if (await dir.exists()) await _collect(dir, top, paths);
+    if (await dir.exists()) await _collect(dir, top, wanted, paths);
   }
   return paths..sort();
 }
 
-/// Adds the `.dart` files in [dir], which is [path] from the package root, and
-/// in the directories below it to [paths].
-Future<void> _collect(Directory dir, String path, List<String> paths) async {
+/// Adds the files [wanted] in [dir], which is [path] from the package root,
+/// and in the directories below it to [paths].
+Future<void> _collect(
+  Directory dir,
+  String path,
+  bool Function(String name) wanted,
+  List<String> paths,
+) async {
   await for (final entity in dir.list(followLinks: false)) {
     final name = p.basename(entity.path);
     if (entity is Directory) {
       if (!name.startsWith('.') && name != 'build') {
-        await _collect(entity, '$path/$name', paths);
+        await _collect(entity, '$path/$name', wanted, paths);
       }
-    } else if (entity is File && name.endsWith('.dart')) {
+    } else if (entity is File && wanted(name)) {
       paths.add('$path/$name');
     }
   }

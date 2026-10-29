@@ -43,9 +43,9 @@ final class Flow {
   Flow._(this.directory, SessionStore? store)
     : _store = store ?? FsStore(runsDirOf(directory));
 
-  /// The project directory: the graph file `nanoflow.graph.json` is read from
-  /// it, and the sessions go to `runs/` in it when the flow is given no
-  /// store.
+  /// The project directory: the graph files are read from under its `lib/`
+  /// and `bin/`, and the sessions go to `runs/` in it when the flow is given
+  /// no store.
   final String directory;
 
   /// Where the sessions go. This process owns those it runs.
@@ -82,8 +82,9 @@ final class Flow {
   ///
   /// The session is named after the graph. Its id is [id] when given — so
   /// that the caller knows it before the session is written —, else a new
-  /// one. The session records the graph file as it is now and the hash of the
-  /// code. Throws, having written nothing: an [ArgumentError] when [id] is
+  /// one. The session records the graph files of [graph] and of its
+  /// subgraphs as they are now, and the hash of the code: of the graph's
+  /// sources. Throws, having written nothing: an [ArgumentError] when [id] is
   /// not a lowercase UUID; a [CodecException] when [input] would not come
   /// back from JSON; a [FlowStoppedException] once the flow is stopped; a
   /// [SessionExistsException] when the store has a session [id] already; a
@@ -107,9 +108,12 @@ final class Flow {
       throw ArgumentError.value(id, 'id', 'not a lowercase UUID');
     }
     final inputJson = _codecs.encode<I>(input);
-    final graph = await graphSnapshotOf(directory);
+    final graph = await graphSnapshotOf(directory, name);
     final package = await packageOf(directory, graph);
-    final code = await runningCodeHashOf(directory);
+    final code = await runningCodeHashOf(
+      directory,
+      sources: sourcesOfSnapshot(graph),
+    );
     _checkNotStopped();
     final handle = await _stored(
       () => _store.createSession(
@@ -147,8 +151,8 @@ final class Flow {
   /// is registered.
   ///
   /// Writes `session-resumed` with the hash of the code, and when that is
-  /// not the code the session ran last and there is a graph file, the graph
-  /// file as it is now.
+  /// not the code the session ran last and [graph] has a graph file, the
+  /// graph files of it and its subgraphs as they are now.
   ///
   /// A session that has ended runs nothing, and nothing is written to it:
   /// the result is its saved result, or a [SessionFailedException] with its
@@ -205,8 +209,11 @@ final class Flow {
             : await _stored(() => handle.documentValue(inputId)),
       );
       final journal = await _journalOf(handle, state);
-      final graph = await graphSnapshotOf(directory);
-      final code = await runningCodeHashOf(directory);
+      final graph = await graphSnapshotOf(directory, name);
+      final code = await runningCodeHashOf(
+        directory,
+        sources: sourcesOfSnapshot(graph),
+      );
       String? graphId;
       // Without a graph file there is no snapshot: the session has none
       // for this code, as `graph: null` says at its start.
@@ -415,7 +422,7 @@ extension WorkflowFunctions on Flow {
 
 /// Runs [node] of the graph named [graph] on [input] as an effect of the
 /// session of [flow] this is called in (graph node objects design §3): named
-/// after the node, at the place the graph file gives the node in that graph,
+/// after the node, at the place the graph's file gives the node in that graph,
 /// its result journaled with the codec of the node's output type.
 ///
 /// Throws as [WorkflowFunctions.effect] does.
@@ -506,8 +513,8 @@ final class _Session {
   /// What the session's journal had of its effects when it started.
   final _Journal _journal;
 
-  /// The graph file as it was when the session started or resumed; `null`
-  /// when there was none.
+  /// The snapshot of the graph's files as they were when the session
+  /// started or resumed (`graphSnapshotOf`); `null` when there was none.
   final Map<String, Object?>? _graph;
 
   /// [_graph] read; `null` when there is none or it cannot be read.
@@ -523,7 +530,7 @@ final class _Session {
 
   /// Where the effect of the node [node] of the graph [graph] is: the place of
   /// the effect node of that name in the body of the graph of that name in the
-  /// graph file, the place of the graph; `null` when the file has none.
+  /// snapshot, the place of the graph; `null` when the snapshot has none.
   String? placeOfNode(String graph, String node) {
     for (final function
         in _graphFile?.functions.values ?? const <GraphFunction>[]) {

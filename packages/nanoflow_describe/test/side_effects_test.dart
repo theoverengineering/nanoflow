@@ -15,11 +15,11 @@ void main() {
       packageName: 'side_effects',
     );
     expect(result.errors, isEmpty);
-    warnings = result.graph!.warnings;
+    warnings = result.warnings;
   });
 
-  /// The warnings about side effects at places in `lib/<file>`, in the order
-  /// of the graph file, as `line: message`.
+  /// The warnings about side effects at places in `lib/<file>`, by place,
+  /// as `line: message`.
   List<String> sideEffectsIn(String file) => [
     for (final GraphWarning(:place, :message) in warnings)
       if (place!.startsWith('lib/$file:') &&

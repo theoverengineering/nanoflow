@@ -1,6 +1,7 @@
 // What the library learns about the project it runs in: the project
 // directory (spec §3), the name of a workflow and the place of an effect
-// (§4.1, §5.2), the code hash and the snapshot of the graph file (§4.7).
+// (§4.1, §5.2), the code hash and the snapshot of a graph's files (§4.7;
+// file per graph design §4).
 
 import 'dart:convert';
 import 'dart:io';
@@ -11,7 +12,8 @@ import 'package:path/path.dart' as p;
 /// Whether this is a compiled program, as `dart compile exe` builds it.
 const bool isCompiled = bool.fromEnvironment('dart.vm.product');
 
-/// The project directory: where the graph file is and `runs/` goes.
+/// The project directory: where the graph files are, under `lib/` and
+/// `bin/`, and `runs/` goes.
 ///
 /// [directory] when given, made absolute. Otherwise, in a [compiled]
 /// program, the directory of [executable]; otherwise, when [script] is a
@@ -147,10 +149,12 @@ String _relative(String uri, String projectDir, String? package) {
 
 /// The hash of the code that runs: in a [compiled] program the hash of the
 /// bytes of [executable] (the running program's by default), otherwise the
-/// fingerprint of the sources of the package in [projectDir]; `null` when it
-/// cannot be computed.
+/// fingerprint of [sources] of the package in [projectDir] as they are now —
+/// those of the graph the session runs, by their paths from the package root
+/// —, or of all its sources without them; `null` when it cannot be computed.
 Future<String?> codeHashOf(
   String projectDir, {
+  Iterable<String>? sources,
   bool compiled = isCompiled,
   String? executable,
 }) async {
@@ -161,45 +165,98 @@ Future<String?> codeHashOf(
       );
     }
     return fingerprintOf(
-      await hashSources(projectDir, await packageSourcePaths(projectDir)),
+      await hashSources(
+        projectDir,
+        sources ?? await packageSourcePaths(projectDir),
+      ),
     );
   } on FileSystemException {
     return null;
   }
 }
 
-/// The hash of the code this process runs, by project directory, as
-/// [runningCodeHashOf] took it.
+/// The hash of the code this process runs, by project directory and
+/// sources, as [runningCodeHashOf] took it.
 final _codeHashes = <String, Future<String?>>{};
 
-/// The hash of the code this process runs ([codeHashOf] of [projectDir]),
-/// taken once per process, on first use: the code does not change while the
-/// process runs, though its sources and its binary may. Sessions started
-/// after the sources are edited so have the hash the first one has.
-Future<String?> runningCodeHashOf(String projectDir) {
+/// The hash of the code this process runs ([codeHashOf] of [projectDir] and
+/// [sources]), taken once per process and sources, on first use: the code
+/// does not change while the process runs, though its sources and its
+/// binary may. Sessions started after the sources are edited so have the
+/// hash the first one has.
+Future<String?> runningCodeHashOf(
+  String projectDir, {
+  Iterable<String>? sources,
+}) {
   // A compiled program's hash is its binary's, whatever the directory.
-  final key = isCompiled ? '' : projectDir;
-  return _codeHashes.putIfAbsent(key, () => codeHashOf(projectDir));
+  final key = isCompiled
+      ? ''
+      : [projectDir, ...?(sources?.toList()?..sort())].join('\n');
+  return _codeHashes.putIfAbsent(
+    key,
+    () => codeHashOf(projectDir, sources: sources),
+  );
 }
 
 /// Forgets the hashes [runningCodeHashOf] took: for tests, which change the
 /// sources of a project in this process.
 void forgetCodeHashes() => _codeHashes.clear();
 
-/// The graph file in [projectDir] as it is now, decoded; `null` when there is
-/// none or it is not a JSON object.
-Future<Map<String, Object?>?> graphSnapshotOf(String projectDir) async {
+/// The snapshot of the graph [name] (file per graph design §4): its graph
+/// file — `<name>.graph.json` under `lib/` or `bin/` of [projectDir], the
+/// first by path — and those of its subgraphs, by chain, as they are now,
+/// put together as one graph file of format 3 (`assembleGraphFile`), in its
+/// JSON form. A subgraph whose file cannot be read is left out. `null` when
+/// the graph has no file, or it cannot be read.
+Future<Map<String, Object?>?> graphSnapshotOf(
+  String projectDir,
+  String name,
+) async {
+  final fileName = graphFileNameOf(name);
+  final String? path;
+  try {
+    path = (await packageGraphFilePaths(projectDir))
+        .where((path) => p.url.basename(path) == fileName)
+        .firstOrNull;
+  } on FileSystemException {
+    return null;
+  }
+  if (path == null) return null;
+  final files = <String, OneGraphFile>{};
+  final pending = [path];
+  while (pending.isNotEmpty) {
+    final next = pending.removeLast();
+    if (files.containsKey(next)) continue;
+    final file = await _graphFileAt(projectDir, next);
+    if (file == null) continue;
+    files[next] = file;
+    pending.addAll(file.subgraphs);
+  }
+  return assembleGraphFile(path, files)?.toJson();
+}
+
+/// The graph file of one graph at [path] from [projectDir]; `null` when
+/// there is none, or it is not one.
+Future<OneGraphFile?> _graphFileAt(String projectDir, String path) async {
   try {
     final json = jsonDecode(
-      await File(p.join(projectDir, graphFileName)).readAsString(),
+      await File(p.joinAll([projectDir, ...path.split('/')])).readAsString(),
     );
-    return json is Map<String, Object?> ? json : null;
+    return json is Map<String, Object?> ? OneGraphFile.fromJson(json) : null;
   } on FileSystemException {
     return null;
   } on FormatException {
     return null;
   }
 }
+
+/// The paths of the sources [snapshot] was read from — its graph's —, by
+/// their paths from the package root; `null` without a snapshot.
+Iterable<String>? sourcesOfSnapshot(Map<String, Object?>? snapshot) =>
+    switch (snapshot?['sources']) {
+      final Map<String, Object?> sources => sources.keys,
+      _ => null,
+    };
 
 final _pubspecName = RegExp(
   r'^name:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$',

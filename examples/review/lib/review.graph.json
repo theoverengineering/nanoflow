@@ -1,0 +1,124 @@
+{
+  "format": 4,
+  "package": "review_example",
+  "name": "review",
+  "place": "lib/review.dart:88",
+  "doc": "Reviews the change of a branch.",
+  "body": {
+    "nodes": [
+      {
+        "id": "1",
+        "kind": "effect",
+        "name": "collect",
+        "place": "lib/review.dart:89",
+        "doc": "The change of the branch, or Empty when it changes nothing."
+      },
+      {
+        "id": "2",
+        "kind": "effect",
+        "name": "discard",
+        "place": "lib/review.dart:91",
+        "doc": "Ends the review of a branch that changes nothing."
+      },
+      {
+        "id": "3",
+        "kind": "effect",
+        "name": "inspect",
+        "place": "lib/review.dart:92",
+        "doc": "Checks the name of the change's file with a program, as a reviewer\nsuch as `claude -p` would be run."
+      },
+      {
+        "id": "4",
+        "kind": "effect",
+        "name": "publish",
+        "place": "lib/review.dart:96",
+        "doc": "Puts the change out."
+      },
+      {
+        "id": "5",
+        "kind": "effect",
+        "name": "notify",
+        "place": "lib/review.dart:96",
+        "doc": "Tells the branch's author it is accepted."
+      },
+      {
+        "id": "6",
+        "kind": "effect",
+        "name": "fix",
+        "place": "lib/review.dart:96",
+        "doc": "Renames the file to lower_snake_case, for inspect to check again."
+      },
+      {
+        "id": "7",
+        "kind": "effect",
+        "name": "report",
+        "place": "lib/review.dart:98",
+        "doc": "Sums up the review once the change is out and the author is told."
+      }
+    ],
+    "edges": [
+      {
+        "from": null,
+        "to": "1",
+        "label": null
+      },
+      {
+        "from": "1",
+        "to": "2",
+        "label": "Empty"
+      },
+      {
+        "from": "1",
+        "to": "3",
+        "label": "Found"
+      },
+      {
+        "from": "2",
+        "to": null,
+        "label": null
+      },
+      {
+        "from": "3",
+        "to": "4",
+        "label": "r.findings.isEmpty"
+      },
+      {
+        "from": "3",
+        "to": "5",
+        "label": "r.findings.isEmpty"
+      },
+      {
+        "from": "3",
+        "to": "6",
+        "label": "else"
+      },
+      {
+        "from": "4",
+        "to": "7",
+        "label": null
+      },
+      {
+        "from": "5",
+        "to": "7",
+        "label": null
+      },
+      {
+        "from": "6",
+        "to": "3",
+        "label": null
+      },
+      {
+        "from": "7",
+        "to": null,
+        "label": null
+      }
+    ]
+  },
+  "warnings": [],
+  "fingerprint": "sha256:d7956628ec303e3c4d287069eb64ed3c4e391133f4a5d3c5c1a6d468dd8af042",
+  "sources": {
+    "lib/change.dart": "sha256:812879caea98caeaad26e80dad07c659acc33cfcfda81449bba1ffc8541782a4",
+    "lib/review.dart": "sha256:0b188351913aef3a28bc0ec986bb2636ef024ebf98e3dab7702f5e2845425531"
+  },
+  "builds": {}
+}

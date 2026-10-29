@@ -1,7 +1,7 @@
 // Reads the graphs of nodes of a package from its resolved sources, without
 // running them (spec §7.1; graph node objects design §8–§9): every top-level
-// variable made by `Graph(…)` is a function of the graph file, and the graphs
-// passed to `Flow.start`, `run`, `resume` or `unfinished` are its workflows.
+// variable made by `Graph(…)` is a graph, which describe.dart gives a graph
+// file of its own.
 //
 // graphs.dart reads the parts of a graph and routes.dart its routes into the
 // points of its body (_Points): its nodes, the forks of its routes and its
@@ -20,11 +20,7 @@ part 'routes.dart';
 
 /// What [extract] read from the sources of a package.
 typedef Extracted = ({
-  /// The ids of the graphs passed first to `Flow.start`, `Flow.run`,
-  /// `Flow.resume` or `Flow.unfinished`, sorted.
-  List<String> workflows,
-
-  /// The graphs, by id, sorted by id.
+  /// The graphs, by id (`path#variable`), sorted by id.
   Map<String, GraphFunction> functions,
 
   /// The bodies of the routes of the graphs, whose side effects outside
@@ -82,9 +78,8 @@ final class _Package {
 
   Extracted _extract() {
     _index();
-    final workflows = <_GraphDeclaration>{};
     for (final unit in _units) {
-      _walk(unit.unit, (node) => _look(node, workflows));
+      _walk(unit.unit, _look);
     }
     final (functions, routes) = _drawGraphs();
     // A session is named after its graph, and a node's effect is found by
@@ -113,7 +108,6 @@ final class _Package {
     }
 
     return (
-      workflows: [for (final graph in workflows) graph.id]..sort(),
       functions: {
         for (final id in functions.keys.toList()..sort()) id: functions[id]!,
       },
@@ -151,9 +145,9 @@ final class _Package {
     }
   }
 
-  /// Takes the workflows from [node], and warns of a node or a graph made
-  /// outside a top-level variable.
-  void _look(AstNode node, Set<_GraphDeclaration> workflows) {
+  /// Warns of [node] when it is a node or a graph made outside a top-level
+  /// variable.
+  void _look(AstNode node) {
     switch (node) {
       case final InstanceCreationExpression made
           when _makesGraph(made) && !_isDeclared(made):
@@ -161,10 +155,6 @@ final class _Package {
       case final MethodInvocation made
           when _makesNode(made) && !_isDeclared(made):
         _warn(made, 'a node outside a top-level variable is not drawn');
-      case final MethodInvocation start when _runsSession(start):
-        if (_graphIn(_firstPositional(start.argumentList)) case final graph?) {
-          workflows.add(graph);
-        }
       default:
     }
   }
@@ -194,14 +184,6 @@ final class _Package {
 
   void _warn(AstNode node, String message) =>
       _warnings.add(GraphWarning(place: _place(node), message: message));
-}
-
-/// Whether [node] calls `Flow.start`, `run`, `resume` or `unfinished` of
-/// `package:nanoflow`, whose first argument is the graph of the session.
-bool _runsSession(MethodInvocation node) {
-  final name = node.methodName.name;
-  return const {'start', 'run', 'resume', 'unfinished'}.contains(name) &&
-      _isNanoflowMethod(node, 'Flow', name);
 }
 
 /// [code] on one line: a line break and the indents around it are one space,

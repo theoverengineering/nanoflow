@@ -1,6 +1,9 @@
-// The graph file of a package, `nanoflow.graph.json`: every graph of nodes
-// of the package, read from its code. Written by the describe
-// tool, read by the workflow library and the UI.
+// A graph file of format 3: graphs of nodes by id, and the workflows among
+// them. Describe wrote one for a whole package, `nanoflow.graph.json`, until
+// every graph had a file of its own (one_graph_file.dart); now it is what a
+// session's snapshot keeps — a graph and its subgraphs put together
+// (assembleGraphFile) — and what the UI draws, and the files of whole
+// packages and the snapshots of older sessions are still read.
 
 import 'package:collection/collection.dart';
 
@@ -8,17 +11,19 @@ import 'json_fields.dart';
 
 const DeepCollectionEquality _deep = DeepCollectionEquality();
 
-/// The name of the graph file, in the project directory.
+/// The name of the graph file of a whole package, in its root: what describe
+/// wrote before every graph had a file of its own.
 const String graphFileName = 'nanoflow.graph.json';
 
-/// The format of the graph file describe writes.
+/// The format of a graph file of several graphs: a snapshot, or the file of
+/// a whole package.
 const int graphFileFormat = 3;
 
 /// The format before functions and effects had `doc`: still read, as
 /// format 3 with no docs, so that the snapshots of older sessions are.
 const int _withoutDocs = 2;
 
-/// The graph file of a package.
+/// A graph file of format 3: a snapshot, or the file of a whole package.
 final class GraphFile {
   const GraphFile({
     required this.format,

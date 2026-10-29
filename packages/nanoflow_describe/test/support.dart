@@ -1,21 +1,27 @@
-// What the tests of describe share: the fixture packages and the graph file
-// each must give.
+// What the tests of describe share: the fixture packages and the graphs each
+// must give.
 
 import 'dart:convert';
 
 import 'package:nanoflow_describe/nanoflow_describe.dart';
-import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 /// A fixture package under `test/fixtures/`: `lib/`, `bin/`, no pubspec.
 String fixture(String name) => p.join('test', 'fixtures', name);
 
-/// The graph file of the fixture [name], whose package is called [name].
+/// The graphs and the warnings of the fixture [name], whose package is
+/// called [name], as `functions` and `warnings` of a graph file have them.
 Future<Map<String, Object?>> describeFixture(String name) async {
   final result = await describePackage(fixture(name), packageName: name);
   expect(result.errors, isEmpty);
-  return result.graph!.toJson();
+  return {
+    'functions': {
+      for (final MapEntry(:key, :value) in result.graphs.entries)
+        key: value.toJson(),
+    },
+    'warnings': [for (final warning in result.warnings) warning.toJson()],
+  };
 }
 
 /// [functions] as the file has them: `doc: null` on a graph and on an effect
@@ -50,27 +56,11 @@ Object? _bodyWithDocs(Object? body) => {
   ],
 };
 
-/// The graph file the fixture [name] must give: its sources hashed as the
-/// model hashes them, nothing built, the rest as given.
-Future<Map<String, Object?>> expectedFile(
-  String name, {
-  required List<String> workflows,
+/// The graphs and the warnings a fixture must give ([describeFixture]).
+Map<String, Object?> expectedGraphs({
   required Map<String, Object?> functions,
   List<Object?> warnings = const [],
-}) async {
-  final dir = fixture(name);
-  final sources = await hashSources(dir, await packageSourcePaths(dir));
-  return {
-    'format': 3,
-    'package': name,
-    'fingerprint': fingerprintOf(sources),
-    'sources': sources,
-    'builds': <String, Object?>{},
-    'workflows': workflows,
-    'functions': withDocs(functions),
-    'warnings': warnings,
-  };
-}
+}) => {'functions': withDocs(functions), 'warnings': warnings};
 
 /// [actual] equals [expected], keys in the same order: the file is written
 /// as it iterates.

@@ -19,11 +19,20 @@ import 'support/wait.dart';
 /// The example package.
 final String example = p.join(repoRoot, 'examples', 'review');
 
-/// The example's graph file, as the repository has it.
-Map<String, Object?> exampleGraph() => readJson(p.join(example, graphFileName));
+/// The path of the graph file of the example's review graph, from the
+/// package root.
+const reviewFile = 'lib/review.graph.json';
 
-/// The id of the example's review graph in its graph file.
-const reviewId = 'lib/review.dart#review';
+/// The graph file of the example's review graph, as the repository has it.
+Map<String, Object?> exampleGraph() => readJson(p.join(example, reviewFile));
+
+/// The snapshot a session of review keeps of the graph file [file] — by
+/// default the repository's —: the graph put together with its subgraphs,
+/// of which it has none.
+Map<String, Object?> snapshotOf([Map<String, Object?>? file]) =>
+    assembleGraphFile(reviewFile, {
+      reviewFile: OneGraphFile.fromJson(file ?? exampleGraph()),
+    })!.toJson();
 
 /// `lib/review.dart:<line>` of the one line of the example's
 /// `lib/review.dart` that holds [code].
@@ -51,7 +60,7 @@ const nodeLines = {
 };
 
 /// Copies what the library and describe read of the example — its sources,
-/// its graph file and the name of its package — into [dir].
+/// its graph file next to them and the name of its package — into [dir].
 ///
 /// The copy gives a project directory only: where `runs/` goes, the graph
 /// file, the package's name and the sources the code hash is taken of. The
@@ -68,7 +77,6 @@ void copyExample(String dir) {
   File(
     p.join(dir, 'pubspec.yaml'),
   ).writeAsStringSync('name: review_example\nenvironment:\n  sdk: ^3.13.0\n');
-  File(p.join(example, graphFileName)).copySync(p.join(dir, graphFileName));
   for (final sources in ['lib', 'bin']) {
     for (final file in Directory(
       p.join(example, sources),
@@ -187,9 +195,11 @@ void main() {
       'nodes at their first mention in it', () {
     final graph = exampleGraph();
     expect(graph['package'], 'review_example');
-    expect(graph['workflows'], [reviewId]);
     expect(graph['warnings'], isEmpty);
-    expect((graph['functions']! as Map).keys, [reviewId]);
+    expect(graph['sources'], {
+      for (final path in ['lib/change.dart', 'lib/review.dart'])
+        path: sourceHash(File(p.join(example, path)).readAsBytesSync()),
+    });
     Map<String, Object?> effect(String id, String name, String doc) => {
       'id': id,
       'kind': 'effect',
@@ -202,62 +212,67 @@ void main() {
       'to': to,
       'label': label,
     };
-    expect((graph['functions']! as Map)[reviewId], {
-      'name': 'review',
-      'place': placeOf('final review = '),
-      'doc': 'Reviews the change of a branch.',
-      'body': {
-        'nodes': [
-          // collect's route decides by its switch first: collect's own
-          // exits, no fork; so is inspect's ?:, its condition and else.
-          effect(
-            '1',
-            'collect',
-            'The change of the branch, or Empty when it changes nothing.',
-          ),
-          effect(
-            '2',
-            'discard',
-            'Ends the review of a branch that changes nothing.',
-          ),
-          effect(
-            '3',
-            'inspect',
-            "Checks the name of the change's file with a program, as a "
-                'reviewer\nsuch as `claude -p` would be run.',
-          ),
-          effect('4', 'publish', 'Puts the change out.'),
-          effect('5', 'notify', "Tells the branch's author it is accepted."),
-          effect(
-            '6',
-            'fix',
-            'Renames the file to lower_snake_case, for inspect to check '
-                'again.',
-          ),
-          effect(
-            '7',
-            'report',
-            'Sums up the review once the change is out and the author is '
-                'told.',
-          ),
-        ],
-        'edges': [
-          edge(null, '1'),
-          edge('1', '2', 'Empty'),
-          edge('1', '3', 'Found'),
-          edge('2', null),
-          // publish and notify side by side.
-          edge('3', '4', 'r.findings.isEmpty'),
-          edge('3', '5', 'r.findings.isEmpty'),
-          edge('3', '6', 'else'),
-          // The join of publish and notify goes to report.
-          edge('4', '7'),
-          edge('5', '7'),
-          edge('6', '3'),
-          edge('7', null),
-        ],
+    expect(
+      {
+        for (final key in ['name', 'place', 'doc', 'body']) key: graph[key],
       },
-    });
+      {
+        'name': 'review',
+        'place': placeOf('final review = '),
+        'doc': 'Reviews the change of a branch.',
+        'body': {
+          'nodes': [
+            // collect's route decides by its switch first: collect's own
+            // exits, no fork; so is inspect's ?:, its condition and else.
+            effect(
+              '1',
+              'collect',
+              'The change of the branch, or Empty when it changes nothing.',
+            ),
+            effect(
+              '2',
+              'discard',
+              'Ends the review of a branch that changes nothing.',
+            ),
+            effect(
+              '3',
+              'inspect',
+              "Checks the name of the change's file with a program, as a "
+                  'reviewer\nsuch as `claude -p` would be run.',
+            ),
+            effect('4', 'publish', 'Puts the change out.'),
+            effect('5', 'notify', "Tells the branch's author it is accepted."),
+            effect(
+              '6',
+              'fix',
+              'Renames the file to lower_snake_case, for inspect to check '
+                  'again.',
+            ),
+            effect(
+              '7',
+              'report',
+              'Sums up the review once the change is out and the author is '
+                  'told.',
+            ),
+          ],
+          'edges': [
+            edge(null, '1'),
+            edge('1', '2', 'Empty'),
+            edge('1', '3', 'Found'),
+            edge('2', null),
+            // publish and notify side by side.
+            edge('3', '4', 'r.findings.isEmpty'),
+            edge('3', '5', 'r.findings.isEmpty'),
+            edge('3', '6', 'else'),
+            // The join of publish and notify goes to report.
+            edge('4', '7'),
+            edge('5', '7'),
+            edge('6', '3'),
+            edge('7', null),
+          ],
+        },
+      },
+    );
   });
 
   group('dart run', () {
@@ -290,12 +305,11 @@ void main() {
       expect(await running.exitCode, 0, reason: '${running.err}');
       expect(running.lines, [id]);
       expect('${running.err}', isEmpty);
-      final graph = exampleGraph();
       await expectReviewed(
         dir,
         id,
-        graph: graph,
-        codes: [graph['fingerprint']! as String],
+        graph: snapshotOf(),
+        codes: [exampleGraph()['fingerprint']! as String],
       );
     });
 
@@ -373,11 +387,16 @@ void main() {
       final id = outcome.out.trim();
       expect(outcome, (code: 0, out: '$id\n', err: ''));
 
-      final graph = readJson(p.join(build, graphFileName));
+      final graph = readJson(p.join(build, reviewFile));
       expect((graph['builds']! as Map)['review'], binaryHash());
       const noBuilds = {'builds': <String, Object?>{}};
       expect({...graph, ...noBuilds}, {...exampleGraph(), ...noBuilds});
-      await expectReviewed(build, id, graph: graph, codes: [binaryHash()]);
+      await expectReviewed(
+        build,
+        id,
+        graph: snapshotOf(graph),
+        codes: [binaryHash()],
+      );
     });
 
     test('Ctrl+C stops the session, which no other process can take on '
