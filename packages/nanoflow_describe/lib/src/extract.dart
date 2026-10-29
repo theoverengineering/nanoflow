@@ -37,6 +37,11 @@ typedef Extracted = ({
 
   /// What could not be drawn, each once.
   List<GraphWarning> warnings,
+
+  /// The id of the function of [functions] whose declaration holds the line
+  /// [line] of the file [path] — a graph's is its `Graph(…)`; `null` when
+  /// none does.
+  String? Function(String path, int line) functionAt,
 });
 
 /// The functions with effects of the package whose sources are [units].
@@ -192,6 +197,29 @@ final class _Package {
         ),
       ...graphs,
     };
+    // Where each function is declared, by its first and last lines.
+    final spans = {
+      for (final d in drawn)
+        d.id: _span(d.body.thisOrAncestorOfType<Declaration>()!),
+      for (final graph in _graphs) graph.id: _span(graph.made),
+    };
+    String? functionAt(String path, int line) {
+      String? found;
+      var size = 0;
+      for (final MapEntry(key: id, value: (inPath, first, last))
+          in spans.entries) {
+        // The innermost, should one hold another.
+        if (inPath == path &&
+            first <= line &&
+            line <= last &&
+            (found == null || last - first < size)) {
+          found = id;
+          size = last - first;
+        }
+      }
+      return found;
+    }
+
     return (
       workflows: [
         for (final d in workflows) d.id,
@@ -202,6 +230,7 @@ final class _Package {
       },
       bodies: [for (final d in drawn) d.body, ...routes],
       warnings: _warnings.toList(),
+      functionAt: functionAt,
     );
   }
 
@@ -542,6 +571,16 @@ final class _Package {
     final unit = node.root as CompilationUnit;
     final line = unit.lineInfo.getLocation(offset ?? node.offset).lineNumber;
     return '${_paths[unit]}:$line';
+  }
+
+  /// The path of [node]'s file, and its first and last lines.
+  (String, int, int) _span(AstNode node) {
+    final unit = node.root as CompilationUnit;
+    return (
+      _paths[unit]!,
+      unit.lineInfo.getLocation(node.offset).lineNumber,
+      unit.lineInfo.getLocation(node.end).lineNumber,
+    );
   }
 
   void _warn(AstNode node, String message, {int? offset}) => _warnings.add(

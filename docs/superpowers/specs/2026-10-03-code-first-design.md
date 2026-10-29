@@ -429,7 +429,7 @@ runs/
   "functions": {
     "lib/review.dart#review": { "name": "review", "place": "lib/review.dart:21", "doc": "Reviews the change of [branch].", "body": { "nodes": [], "edges": [] } }
   },
-  "warnings": [ { "place": "lib/review.dart:40", "message": "effects in a closure passed on are not drawn" } ]
+  "warnings": [ { "place": "lib/review.dart:40", "message": "effects in a closure passed on are not drawn", "function": "lib/review.dart#review" } ]
 }
 ```
 
@@ -555,6 +555,14 @@ dart run nanoflow_describe stamp build/review   # §6.3; копия файла �
 эффекта — `///` прямо перед ним или перед простым оператором, где он
 единственный эффект ([документация узлов](2026-10-10-node-docs-design.md),
 §2).
+
+У предупреждения `function` — id функции из `functions`, в чьём объявлении
+его место (у графа из узлов — его `Graph(…)`), или `null`: на графе UI
+показывает только предупреждения воркфлоу, функций, которые он вызывает, и
+те, что ни в чьём объявлении (решено 2026-10-29: предупреждения графа
+`developIdea` стояли на `generateIdeas` из того же файла). Ключ не
+обязателен — нет его, `null`, — поэтому формат остаётся 3, а прежние файлы и
+снимки сессий читаются.
 
 Предупреждения (`warnings`): имя эффекта — не литерал; эффекты в замыкании,
 переданном дальше; эффекты в локальной функции; вызов функции с эффектами вне

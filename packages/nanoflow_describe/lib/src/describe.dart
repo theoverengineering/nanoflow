@@ -86,10 +86,18 @@ Future<DescribeResult> describePackage(
         builds: const {},
         workflows: extracted.workflows,
         functions: extracted.functions,
-        // Each once, by place.
+        // Each once, by place, with the function it is in.
         warnings: {
-          ...extracted.warnings,
-          ...sideEffectWarnings(resolved, paths, extracted.bodies),
+          for (final warning in {
+            ...extracted.warnings,
+            ...sideEffectWarnings(resolved, paths, extracted.bodies),
+          })
+            if (_split(warning.place!) case (final path, final line))
+              GraphWarning(
+                place: warning.place,
+                message: warning.message,
+                function: extracted.functionAt(path, line),
+              ),
         }.toList()..sort(_byPlace),
       ),
     );

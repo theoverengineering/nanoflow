@@ -738,24 +738,29 @@ void main() {
           {
             'place': 'lib/migrate.dart:10',
             'message': 'effect name is not a string literal',
+            'function': 'lib/migrate.dart#migrate',
           },
           {
             'place': 'lib/migrate.dart:12',
             'message': 'effects in a local function are not drawn',
+            'function': 'lib/migrate.dart#migrate',
           },
           {
             'place': 'lib/migrate.dart:19',
             'message': 'catch clauses are not drawn',
+            'function': 'lib/migrate.dart#migrate',
           },
           {
             'place': 'lib/migrate.dart:22',
             'message':
                 'effects of notifyTeam are not drawn: '
                 'it is outside the package sources',
+            'function': 'lib/migrate.dart#migrate',
           },
           {
             'place': 'lib/migrate.dart:27',
             'message': 'effects in a closure passed on are not drawn',
+            'function': 'lib/migrate.dart#check',
           },
         ],
       ),
@@ -1597,14 +1602,17 @@ void main() {
           {
             'place': 'lib/throws.dart:13',
             'message': 'effect name is not a string literal',
+            'function': 'lib/throws.dart#cleanUp',
           },
           {
             'place': 'lib/throws.dart:33',
             'message': 'catch clauses are not drawn',
+            'function': 'lib/throws.dart#sync',
           },
           {
             'place': 'lib/throws.dart:48',
             'message': 'catch clauses are not drawn',
+            'function': 'lib/throws.dart#mirror',
           },
         ],
       ),
@@ -1916,10 +1924,18 @@ void main() {
           },
         },
         warnings: [
-          for (final line in [16, 28, 41, 52, 67, 79])
+          for (final (line, function) in [
+            (16, 'upload'),
+            (28, 'backup'),
+            (41, 'fetch'),
+            (52, 'deploy'),
+            (67, 'rotate'),
+            (79, 'convert'),
+          ])
             {
               'place': 'lib/catches.dart:$line',
               'message': 'catch clauses are not drawn',
+              'function': 'lib/catches.dart#$function',
             },
         ],
       ),

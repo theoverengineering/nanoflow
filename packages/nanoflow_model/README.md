@@ -47,7 +47,8 @@
   (`graphFileName`, формат `graphFileFormat`): функции с эффектами
   (`GraphFunction`), их тела (`GraphBody`) из узлов `EffectNode`,
   `ConditionNode`, `CallNode` и `CopiesNode` и рёбер `GraphEdge`, а также
-  `GraphWarning`; у функции и эффекта — `doc`, их документация. `toJson`
+  `GraphWarning` (с `function` — функцией, в чьём объявлении оно; нет ключа —
+  `null`); у функции и эффекта — `doc`, их документация. `toJson`
   пишет формат 3 и ключи в порядке спецификации; `fromJson` бросает
   `FormatException`, начинающийся с пути в JSON
   (`functions.lib/a.dart#f.body.nodes[2].kind`). Формат 2, до `doc`,

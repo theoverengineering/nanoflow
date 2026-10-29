@@ -83,8 +83,9 @@ Map<String, Object?> _fileJson() => {
     {
       'place': 'lib/review.dart:40',
       'message': 'effects in a closure passed on are not drawn',
+      'function': _review,
     },
-    {'place': null, 'message': 'a warning without a place'},
+    {'place': null, 'message': 'a warning without a place', 'function': null},
   ],
 };
 
@@ -210,7 +211,11 @@ void main() {
       final edge = (body['edges'] as List<Object?>).first;
       expect((edge as Map<String, Object?>).keys, ['from', 'to', 'label']);
       final warning = (json['warnings'] as List<Object?>).first;
-      expect((warning as Map<String, Object?>).keys, ['place', 'message']);
+      expect((warning as Map<String, Object?>).keys, [
+        'place',
+        'message',
+        'function',
+      ]);
     });
 
     test('does not repeat the id inside a function', () {
@@ -262,6 +267,18 @@ void main() {
       expect(edges[3], const GraphEdge(from: '2', to: null, label: 'false'));
       expect(file.functions[_publish]!.place, isNull);
       expect(file.warnings.last.place, isNull);
+    });
+
+    test('reads the function of a warning, and none from a warning written '
+        'before warnings had one', () {
+      final file = GraphFile.fromJson(_fileJson());
+      expect(file.warnings.first.function, _review);
+      expect(file.warnings.last.function, isNull);
+      final before = GraphFile.fromJson(
+        _edited(['warnings', 0, 'function'], remove: true),
+      );
+      expect(before.warnings.first.function, isNull);
+      expect(before.warnings.first.message, file.warnings.first.message);
     });
 
     test('reads the doc of a function and of an effect', () {
@@ -552,6 +569,10 @@ void main() {
       expect(
         _problem(_edited(['warnings', 0, 'place'], value: 1)),
         'warnings[0].place: expected a string or null',
+      );
+      expect(
+        _problem(_edited(['warnings', 0, 'function'], value: 1)),
+        'warnings[0].function: expected a string or null',
       );
     });
   });

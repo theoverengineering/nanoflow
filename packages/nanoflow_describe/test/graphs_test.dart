@@ -51,9 +51,12 @@ Map<String, Object?> _function(
   'body': {'nodes': nodes, 'edges': edges},
 };
 
-Map<String, Object?> _warning(int line, String message) => {
+/// A warning of lib/graph_warnings.dart, in the declaration of the graph
+/// [function] — its variable —, or of none.
+Map<String, Object?> _warning(int line, String message, [String? function]) => {
   'place': 'lib/graph_warnings.dart:$line',
   'message': message,
+  'function': function == null ? null : 'lib/graph_warnings.dart#$function',
 };
 
 /// The function [id] of the graph file [graph].
@@ -212,6 +215,7 @@ void main() {
         'message':
             'route value not drawn: for (final i in [n]) if (i > 0) '
             'work(i)',
+        'function': '$file#count',
       },
     ]);
   });
@@ -335,43 +339,50 @@ void main() {
     });
   });
 
-  test('warns', () async {
+  test('warns, of the graph whose declaration each warning is in', () async {
     final graph = await describeFixture('graph_warnings');
     expect(graph['warnings'], [
+      // In functions with no effects, and in a node's declaration: no graph.
       _warning(32, 'a node outside a top-level variable is not drawn'),
       _warning(34, 'a graph outside a top-level variable is not drawn'),
       _warning(38, 'node name is not a string literal'),
-      _warning(42, 'graph name is not a string literal'),
-      _warning(46, 'two nodes are named check in graph twins'),
-      _warning(51, 'route not drawn: check'),
-      _warning(52, 'route value not drawn: [done(report)]'),
-      _warning(57, 'left cannot be reached'),
+      _warning(42, 'graph name is not a string literal', 'namedGraph'),
+      _warning(46, 'two nodes are named check in graph twins', 'twins'),
+      _warning(51, 'route not drawn: check', 'unread'),
+      _warning(52, 'route value not drawn: [done(report)]', 'unread'),
+      _warning(57, 'left cannot be reached', 'orphaned'),
       _warning(
         63,
         'the route of the join takes (String, String), not the record of its '
-        "nodes' outputs",
+            "nodes' outputs",
+        'joined',
       ),
-      _warning(68, 'side effect outside an effect: DateTime.now()'),
+      _warning(68, 'side effect outside an effect: DateTime.now()', 'timed'),
       _warning(
         71,
         'graph fanned is a node and can end in several ends at once',
+        'fanned',
       ),
       _warning(
         75,
         'graph started is a node and can end in several ends at once',
+        'started',
       ),
-      _warning(88, 'graph part not drawn: aPart'),
+      _warning(88, 'graph part not drawn: aPart', 'indirect'),
       _warning(
         94,
         'graph name twin is also the name of lib/graph_warnings.dart#twin',
+        'twinGraph',
       ),
       _warning(
         97,
         'route is async or a generator: (change) async => check(change)',
+        'awaited',
       ),
       _warning(
         98,
         'route is async or a generator: (report) sync* {yield done(report);}',
+        'awaited',
       ),
     ]);
     // A name that is not a literal is the name of the variable.

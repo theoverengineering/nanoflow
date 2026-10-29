@@ -525,12 +525,21 @@ final class GraphEdge {
 
 /// Something in the code the describe tool could not draw.
 final class GraphWarning {
-  const GraphWarning({required this.place, required this.message});
+  const GraphWarning({
+    required this.place,
+    required this.message,
+    this.function,
+  });
 
-  /// Reads a warning from its JSON form.
+  /// Reads a warning from its JSON form. A warning written before warnings
+  /// had a function has no `function`: it reads as `null`, so the format
+  /// stays the same.
   factory GraphWarning.fromJson(Map<String, Object?> json) => GraphWarning(
     place: readStringOrNull(json, 'place'),
     message: readString(json, 'message'),
+    function: json.containsKey('function')
+        ? readStringOrNull(json, 'function')
+        : null,
   );
 
   /// `path:line` from the package root; `null` when unknown.
@@ -538,15 +547,27 @@ final class GraphWarning {
 
   final String message;
 
-  Map<String, Object?> toJson() => {'place': place, 'message': message};
+  /// The id of the function of [GraphFile.functions] whose declaration
+  /// [place] is in — a graph's is its `Graph(…)`; `null` when it is in none.
+  final String? function;
+
+  Map<String, Object?> toJson() => {
+    'place': place,
+    'message': message,
+    'function': function,
+  };
 
   @override
   bool operator ==(Object other) =>
-      other is GraphWarning && other.place == place && other.message == message;
+      other is GraphWarning &&
+      other.place == place &&
+      other.message == message &&
+      other.function == function;
 
   @override
-  int get hashCode => Object.hash(place, message);
+  int get hashCode => Object.hash(place, message, function);
 
   @override
-  String toString() => 'GraphWarning(place: $place, message: $message)';
+  String toString() =>
+      'GraphWarning(place: $place, message: $message, function: $function)';
 }

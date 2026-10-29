@@ -221,8 +221,8 @@ final class CanvasGraph {
 /// The canvas of `Current graph`: the workflow [workflowId] (a
 /// `WorkflowChoice.id`) of [graph], the graph file [file] last read, down
 /// [path], the nodes [expansions] has expanded in place; noted when the
-/// file is gone, its latest [error], its [freshness], its warnings, then
-/// [extraNotes] ([workflowNotes]).
+/// file is gone, its latest [error], its [freshness], its warnings of what
+/// the canvas can show, then [extraNotes] ([workflowNotes]).
 CanvasGraph fileCanvas({
   required String file,
   required GraphFile? graph,
@@ -236,7 +236,19 @@ CanvasGraph fileCanvas({
 }) {
   final name = p.basename(file);
   final workflow = graph?.functions[workflowId];
-  final warnings = graph?.warnings ?? const [];
+  // The warnings of what the canvas can show: the workflow and the
+  // functions it calls, and those of no function; all of them with no
+  // workflow.
+  final shown = workflow == null
+      ? null
+      : _shownFrom(workflowId!, graph!.functions);
+  final warnings = [
+    for (final warning in graph?.warnings ?? const <GraphWarning>[])
+      if (shown == null ||
+          warning.function == null ||
+          shown.contains(warning.function))
+        warning,
+  ];
   return CanvasGraph._(
     file: graph,
     workflow: workflow,
@@ -281,6 +293,27 @@ CanvasGraph fileCanvas({
       ...extraNotes,
     ]),
   );
+}
+
+/// [id] and the functions of [functions] it calls, in its copies too, and
+/// those they call: what a canvas of [id] can show.
+Set<String> _shownFrom(String id, Map<String, GraphFunction> functions) {
+  final shown = {id};
+  void visit(GraphBody body) {
+    for (final node in body.nodes) {
+      if (node case CopiesNode(:final body)) visit(body);
+      if (node case CallNode(functions: final called)) {
+        for (final callee in called) {
+          if (shown.add(callee)) {
+            if (functions[callee] case final function?) visit(function.body);
+          }
+        }
+      }
+    }
+  }
+
+  if (functions[id] case final function?) visit(function.body);
+  return shown;
 }
 
 /// The canvas of [session], shown on [graph]: its workflow on it — or, in a

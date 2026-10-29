@@ -435,7 +435,7 @@ UUID v4 в нижнем регистре.
   "functions": {
     "lib/review.dart#review": { "name": "review", "place": "lib/review.dart:48", "doc": "Reviews the change of [branch].", "body": { "nodes": [], "edges": [] } }
   },
-  "warnings": [ { "place": "lib/review.dart:40", "message": "effects in a closure passed on are not drawn" } ]
+  "warnings": [ { "place": "lib/review.dart:40", "message": "effects in a closure passed on are not drawn", "function": "lib/review.dart#review" } ]
 }
 ```
 
@@ -447,7 +447,12 @@ UUID v4 в нижнем регистре.
 - **`workflows`** — функции и графы, переданные первым аргументом в
   `Flow.start`, `Flow.run` или `Flow.resume` (граф — его `run`:
   `review.run`); у каждого есть запись в `functions`, даже без эффектов.
-- **`warnings`** — что извлечение не нарисовало, с местом.
+- **`warnings`** — что извлечение не нарисовало, с местом. `function` — id
+  функции из `functions`, в чьём объявлении это место (у графа из узлов —
+  его `Graph(…)`), или `null`, когда ни в чьём. UI показывает на воркфлоу
+  предупреждения его самого, функций, которые он вызывает, и `null`.
+  Ключ не обязателен: предупреждение без него читается с `null`, так что
+  файлы и снимки, записанные до него, читаются, и формат остаётся 3.
 - **`place`** — `путь:строка` от корня пакета.
 - **`doc`** — у функции и у эффекта: текст его комментария документации
   `///` без `///`, Markdown как есть; нет комментария — `null`

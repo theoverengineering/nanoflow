@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/graph/graph_notes.dart';
 import 'package:nanoflow_ui/state/freshness.dart';
 import 'package:nanoflow_ui/state/graph_model.dart';
@@ -109,6 +110,53 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  test('the warnings of the workflow shown, of the functions it calls and '
+      'of no function: not those of another workflow', () {
+    final graph = GraphFile.fromJson({
+      ...copiesGraphJson(),
+      'warnings': [
+        {
+          'place': 'lib/copies.dart:5',
+          'message': 'in inPlace',
+          'function': 'lib/copies.dart#inPlace',
+        },
+        // viaCall calls publish in its copies.
+        {
+          'place': 'lib/copies.dart:20',
+          'message': 'in publish',
+          'function': 'lib/copies.dart#publish',
+        },
+        {'place': 'lib/copies.dart:40', 'message': 'in none', 'function': null},
+      ],
+    });
+    List<GraphNote> notesOn(String workflow) => fileCanvas(
+      file: file,
+      graph: graph,
+      workflowId: 'lib/copies.dart#$workflow',
+    ).notes;
+    expect(notesOn('inPlace'), [
+      const GraphNote(
+        '2 warnings in nanoflow.graph.json',
+        lines: ['lib/copies.dart:5  in inPlace', 'lib/copies.dart:40  in none'],
+      ),
+    ]);
+    expect(notesOn('viaCall'), [
+      const GraphNote(
+        '2 warnings in nanoflow.graph.json',
+        lines: [
+          'lib/copies.dart:20  in publish',
+          'lib/copies.dart:40  in none',
+        ],
+      ),
+    ]);
+    expect(notesOn('nested'), [
+      const GraphNote(
+        '1 warning in nanoflow.graph.json',
+        lines: ['lib/copies.dart:40  in none'],
+      ),
+    ]);
   });
 
   testWidgets('a graph file gone or broken: red, over the last graph read', (
