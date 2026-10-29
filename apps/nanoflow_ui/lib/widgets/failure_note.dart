@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../platform/shell.dart';
+import '../state/project_dir.dart';
 import '../theme.dart';
 
 /// How long a note about a failure stays.
@@ -41,7 +42,8 @@ Future<void> openPath(
 }
 
 /// Opens [place], `lib/review.dart:49` from the package root — the
-/// directory of [graphFile] —, at its line in the editor
+/// project directory of [graphFile] ([projectDirOf]) —, at its line in the
+/// editor
 /// ([Shell.openAtLine]), and says `Could not open review.dart:49` when that
 /// fails.
 Future<void> openPlace(
@@ -53,7 +55,7 @@ Future<void> openPlace(
   final colon = place.lastIndexOf(':');
   final line = colon < 0 ? null : int.tryParse(place.substring(colon + 1));
   final file = line == null ? place : place.substring(0, colon);
-  final path = p.join(p.dirname(graphFile), file);
+  final path = p.join(projectDirOf(graphFile), file);
   if (await shell.openAtLine(path, line ?? 1) || !context.mounted) return;
   showFailureNote(context, 'Could not open ${p.basename(place)}');
 }

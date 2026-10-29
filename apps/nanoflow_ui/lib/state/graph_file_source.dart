@@ -7,32 +7,44 @@ import 'package:flutter/foundation.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
+import 'project_dir.dart';
+
 /// The graph file a graph screen shows, live (spec §9 «Открыть»): read when
 /// started, and read again whenever it changes.
 ///
+/// A graph's own file (file per graph design §5) is read with the files of
+/// its subgraphs, by chain, from its project directory, and put together as
+/// one graph file, as a session's snapshot is (`assembleGraphFile`); a
+/// subgraph whose file cannot be read is left out. A graph file of a whole
+/// package is read as it is.
+///
 /// It is looked at on every file system event in its directory and every
-/// [pollInterval] besides, since events come late and get merged. A file
-/// that cannot be read is an [error], and the last [graph] read stays: the
-/// developer is likely in the middle of an edit. So does a file that is
-/// gone ([fileMissing]): an editor may save a file by deleting it first.
+/// [pollInterval] besides, since events come late and get merged; the files
+/// of its subgraphs only so. A file that cannot be read is an [error], and
+/// the last [graph] read stays: the developer is likely in the middle of an
+/// edit. So does a file that is gone ([fileMissing]): an editor may save a
+/// file by deleting it first.
 class GraphFileSource extends ChangeNotifier {
   GraphFileSource({
     required this.file,
     this.pollInterval = const Duration(milliseconds: 500),
   });
 
-  /// The graph file: `nanoflow.graph.json`.
+  /// The graph file: a graph's own `<name>.graph.json`, or a whole
+  /// package's `nanoflow.graph.json`.
   final String file;
 
   /// How often the file is looked at when no file system event tells.
   final Duration pollInterval;
 
   GraphFile? _graph;
+  bool _oneGraph = false;
   String? _error;
   bool _fileMissing = false;
 
-  /// The text last read from the file.
-  String? _text;
+  /// The texts last read: the file's, and those of its subgraphs' files, by
+  /// their paths.
+  Map<String, String>? _texts;
 
   Timer? _poll;
   StreamSubscription<FileSystemEvent>? _events;
@@ -42,6 +54,11 @@ class GraphFileSource extends ChangeNotifier {
 
   /// The last graph file read; `null` while none has been.
   GraphFile? get graph => _graph;
+
+  /// Whether [graph] was read from a graph's own file: it has that graph
+  /// only, with its subgraphs, and the sessions of other graphs are not of a
+  /// workflow it lacks.
+  bool get oneGraph => _oneGraph;
 
   /// Why the file as it is now cannot be read: it is not JSON, or not a
   /// graph file (the message starts with the path of the field that is
@@ -97,36 +114,96 @@ class GraphFileSource extends ChangeNotifier {
       text = await File(file).readAsString();
     } on PathNotFoundException {
       // What comes back is read anew, even if it is what was there.
-      _text = null;
+      _texts = null;
       if (!_disposed) _update(missing: true, error: null);
       return;
     } on FileSystemException catch (e) {
-      _text = null;
+      _texts = null;
       if (!_disposed) _update(error: 'cannot be read: ${e.message}');
       return;
     }
     if (_disposed) return;
-    if (text == _text) {
+    final read = await _readGraph(text);
+    if (_disposed) return;
+    if (mapEquals(read.texts, _texts)) {
       _update(error: _error);
       return;
     }
-    _text = text;
-    final Object? json;
+    _texts = read.texts;
+    if (read.error case final error?) {
+      _update(error: error);
+      return;
+    }
+    final graph = read.graph!;
+    _update(
+      error: null,
+      graph: graph == _graph ? _graph : graph,
+      oneGraph: read.oneGraph,
+    );
+  }
+
+  /// Reads [text], the file's: a graph file of format 3 as it is; a graph's
+  /// own file with those of its subgraphs, by chain. Gives the texts read by
+  /// path, and the graph file or why there is none.
+  Future<
+    ({
+      Map<String, String> texts,
+      GraphFile? graph,
+      bool oneGraph,
+      String? error,
+    })
+  >
+  _readGraph(String text) async {
+    final texts = {file: text};
+    Object? json;
+    String? error;
     try {
       json = jsonDecode(text);
     } on FormatException catch (e) {
-      _update(error: _jsonError(e));
-      return;
+      error = _jsonError(e);
     }
-    if (json is! Map<String, Object?>) {
-      _update(error: 'the file is not a JSON object');
-      return;
+    if (error == null && json is! Map<String, Object?>) {
+      error = 'the file is not a JSON object';
+    }
+    if (error != null || json is! Map<String, Object?>) {
+      return (texts: texts, graph: null, oneGraph: false, error: error);
     }
     try {
-      final graph = GraphFile.fromJson(json);
-      _update(error: null, graph: graph == _graph ? _graph : graph);
+      if (json['format'] != oneGraphFileFormat) {
+        final graph = GraphFile.fromJson(json);
+        return (texts: texts, graph: graph, oneGraph: false, error: null);
+      }
+      final root = projectDirOf(file);
+      String pathOf(String file) =>
+          p.split(p.relative(file, from: root)).join('/');
+      final own = pathOf(file);
+      final files = {own: OneGraphFile.fromJson(json)};
+      final pending = [...files[own]!.subgraphs];
+      while (pending.isNotEmpty) {
+        final path = pending.removeLast();
+        if (files.containsKey(path)) continue;
+        final subgraph = p.joinAll([root, ...path.split('/')]);
+        try {
+          final text = await File(subgraph).readAsString();
+          texts[subgraph] = text;
+          if (jsonDecode(text) case final Map<String, Object?> json) {
+            files[path] = OneGraphFile.fromJson(json);
+            pending.addAll(files[path]!.subgraphs);
+          }
+        } on FileSystemException {
+          continue;
+        } on FormatException {
+          continue;
+        }
+      }
+      return (
+        texts: texts,
+        graph: assembleGraphFile(own, files),
+        oneGraph: true,
+        error: null,
+      );
     } on FormatException catch (e) {
-      _update(error: e.message);
+      return (texts: texts, graph: null, oneGraph: false, error: e.message);
     }
   }
 
@@ -134,11 +211,17 @@ class GraphFileSource extends ChangeNotifier {
   void _update({
     required String? error,
     GraphFile? graph,
+    bool? oneGraph,
     bool missing = false,
   }) {
     final next = graph ?? _graph;
-    if ((next, error, missing) == (_graph, _error, _fileMissing)) return;
+    final nextOneGraph = oneGraph ?? _oneGraph;
+    if ((next, nextOneGraph, error, missing) ==
+        (_graph, _oneGraph, _error, _fileMissing)) {
+      return;
+    }
     _graph = next;
+    _oneGraph = nextOneGraph;
     _error = error;
     _fileMissing = missing;
     notifyListeners();

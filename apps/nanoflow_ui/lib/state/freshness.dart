@@ -12,6 +12,7 @@ import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
 import 'graph_file_source.dart';
+import 'project_dir.dart';
 
 /// How a graph file stands against the code next to it.
 final class Freshness {
@@ -21,7 +22,8 @@ final class Freshness {
   final bool stale;
 
   /// What next to the file differs from what the file says, by its path
-  /// from the file's directory: its sources, edited or gone (`lib/review.dart`),
+  /// from the file's project directory: its sources, edited or gone
+  /// (`lib/review.dart`),
   /// then the binaries of its `builds` built again (`review`). May be empty
   /// when [stale]: the file's fingerprint is not that of its own sources.
   final List<String> changed;
@@ -39,7 +41,8 @@ final class Freshness {
   String toString() => 'Freshness(stale: $stale, changed: $changed)';
 }
 
-/// How [graph], the graph file in [dir], stands against the code next to it.
+/// How [graph], a graph file of the project directory [dir], stands against
+/// the code next to it.
 ///
 /// When any of its `sources` is in [dir], their fingerprint (spec §6.2) is
 /// computed as they are now and compared with the file's; sources that are
@@ -203,7 +206,7 @@ class FreshnessWatch extends ChangeNotifier {
             ? null
             : await checkFreshness(
                 graph,
-                p.dirname(source.file),
+                projectDirOf(source.file),
                 hashes: _hashes,
               );
         if (_disposed) return;

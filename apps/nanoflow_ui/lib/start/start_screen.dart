@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:path/path.dart' as p;
 
 import '../platform/home_path.dart';
@@ -19,10 +20,10 @@ import 'relative_time.dart';
 typedef PickFile = Future<String?> Function();
 
 /// Opens the graph file [path], its sessions read from [store]: by default
-/// `runs/` next to it.
+/// `runs/` in its project directory.
 typedef OpenGraph = void Function(String path, {StorePlace? store});
 
-/// The system open dialog for a graph file, `nanoflow.graph.json`: it
+/// The system open dialog for a graph file, `*.graph.json`: it
 /// offers JSON files, since macOS tells files apart by their last extension
 /// only.
 Future<String?> pickGraphFile() async {
@@ -34,13 +35,19 @@ Future<String?> pickGraphFile() async {
   return file?.path;
 }
 
-/// How the start screen names the graph file at [path]: by the directory
-/// it is in, the project's, since every graph file is `nanoflow.graph.json`.
-String graphTitle(String path) => p.basename(p.dirname(path));
+/// How the start screen names the graph file at [path]: a graph's own file
+/// by its name, without `.graph.json`; the graph file of a whole package,
+/// `nanoflow.graph.json`, by the directory it is in, the project's.
+String graphTitle(String path) {
+  final name = p.basename(path);
+  return name == graphFileName
+      ? p.basename(p.dirname(path))
+      : name.substring(0, name.length - graphFileSuffix.length);
+}
 
 /// Said when the file chosen in the open dialog is not a graph file.
 String notAGraphFile(String path) =>
-    '${p.basename(path)} is not a graph file: open nanoflow.graph.json';
+    '${p.basename(path)} is not a graph file: open a *.graph.json file';
 
 /// Whether a file is still at [path].
 bool fileExists(String path) => File(path).existsSync();

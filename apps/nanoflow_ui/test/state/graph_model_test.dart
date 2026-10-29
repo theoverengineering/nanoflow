@@ -242,6 +242,19 @@ void main() {
       });
     });
 
+    test('are not noted nor listed for a graph\'s own file: its runs/ has '
+        'the sessions of other graphs', () {
+      run((async) {
+        graphFile.oneGraph = true;
+        give(async, sessions());
+        expect(
+          [for (final w in model.workflows) (w.name, w.inGraphFile)],
+          [('review', true), ('release', true)],
+        );
+        expect(model.canvas.notes, isEmpty);
+      });
+    });
+
     test('chosen, list their sessions; each is drawn on its own snapshot, '
         'else not at all', () {
       run((async) {

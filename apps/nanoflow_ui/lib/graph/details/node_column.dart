@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 
 import '../../platform/shell.dart';
 import '../../state/effect_files.dart';
+import '../../state/project_dir.dart';
 import '../../state/visit_details.dart';
 import '../../state/visits.dart' show StartOutcome;
 import '../../theme.dart';
@@ -97,7 +98,7 @@ class NodeColumn extends StatelessWidget {
             if (path != null)
               PathBar(
                 path: path,
-                root: p.dirname(graphFile),
+                root: projectDirOf(graphFile),
                 height: 44,
                 padding: 22,
                 style: AppText.effectPath,

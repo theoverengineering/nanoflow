@@ -562,6 +562,16 @@ final class FixedGraphFile extends GraphFileSource {
     notifyListeners();
   }
 
+  bool _oneGraph = false;
+
+  @override
+  bool get oneGraph => _oneGraph;
+
+  set oneGraph(bool oneGraph) {
+    _oneGraph = oneGraph;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     disposed = true;

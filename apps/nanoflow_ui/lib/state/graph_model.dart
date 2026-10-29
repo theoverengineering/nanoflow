@@ -160,14 +160,20 @@ class GraphModel extends ChangeNotifier {
 
   /// The workflows to choose from: the called graph open first, unless it
   /// is one of them; the graph file's in its order, then those sessions ran
-  /// that it does not have (`workflowChoices`); none while no graph file
-  /// has been read.
+  /// that it does not have (`workflowChoices`) — but for a graph's own file,
+  /// whose `runs/` has the sessions of other graphs too; none while no
+  /// graph file has been read.
   List<WorkflowChoice> get workflows {
     final graph = graphFile.graph;
     return graph == null
         ? const []
-        : workflowChoices(graph, feed.sessions.values, called: _called);
+        : workflowChoices(graph, _othersRan, called: _called);
   }
+
+  /// The sessions that may have run workflows the graph file lacks: none
+  /// for a graph's own file, which lacks those of the other graphs.
+  Iterable<SessionData> get _othersRan =>
+      graphFile.oneGraph ? const [] : feed.sessions.values;
 
   /// The selected workflow: the called graph while one is open; else the
   /// one chosen while it is listed, by its id or else its name; else the
@@ -419,7 +425,7 @@ class GraphModel extends ChangeNotifier {
         : workflowNotes(
             file: graphFile.file,
             workflow: workflow,
-            notInGraph: sessionsNotInGraph(graph, feed.sessions.values),
+            notInGraph: sessionsNotInGraph(graph, _othersRan),
           );
     final canvas = session == null
         ? fileCanvas(

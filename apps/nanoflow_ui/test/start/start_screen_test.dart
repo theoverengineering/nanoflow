@@ -44,6 +44,15 @@ void main() {
     ),
   );
 
+  test("names a graph's own file by its graph, and a package's by its "
+      'directory', () {
+    expect(
+      graphTitle('$home/app/lib/src/generateIdeas.graph.json'),
+      'generateIdeas',
+    );
+    expect(graphTitle(review), 'review');
+  });
+
   testWidgets('recently opened graphs are listed newest first, by their '
       'directory, with path and time', (tester) async {
     await recent.opened(
@@ -85,7 +94,7 @@ void main() {
 
     expect(opened, isEmpty);
     expect(
-      find.text('package.json is not a graph file: open nanoflow.graph.json'),
+      find.text('package.json is not a graph file: open a *.graph.json file'),
       findsOneWidget,
     );
     await tester.pumpAndSettle(const Duration(seconds: 5));

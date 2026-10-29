@@ -5,6 +5,8 @@ import 'package:nanoflow_reader/nanoflow_reader.dart';
 import 'package:nanoflow_sqlite/nanoflow_sqlite.dart';
 import 'package:path/path.dart' as p;
 
+import 'project_dir.dart';
+
 /// Where the sessions of a graph are (storage design §6.8), named as on the
 /// command line: `fs:<runs directory>` or `sqlite:<database file>`. The app
 /// cannot be given the code of an adapter, only this.
@@ -50,9 +52,9 @@ final class StorePlace {
   }
 
   /// The place of the sessions of the graph file [file] when none is given:
-  /// `runs/` next to it.
+  /// `runs/` in its project directory ([projectDirOf]).
   factory StorePlace.nextTo(String file) =>
-      StorePlace.files(runsDirOf(p.dirname(file)));
+      StorePlace.files(runsDirOf(projectDirOf(file)));
 
   /// `fs` or `sqlite`.
   final String scheme;

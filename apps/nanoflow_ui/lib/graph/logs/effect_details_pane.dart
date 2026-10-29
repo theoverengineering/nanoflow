@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 
 import '../../platform/shell.dart';
 import '../../state/effect_details.dart';
 import '../../state/effect_files.dart';
+import '../../state/project_dir.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
 import 'document_view.dart';
@@ -145,7 +145,7 @@ class _EffectDetailsPaneState extends State<EffectDetailsPane> {
         if (path != null)
           FileFooter(
             path: path,
-            root: p.dirname(widget.graphFile),
+            root: projectDirOf(widget.graphFile),
             shell: widget.shell,
           ),
       ],

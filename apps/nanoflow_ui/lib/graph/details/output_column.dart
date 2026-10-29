@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import '../../platform/shell.dart';
 import '../../state/effect_details.dart';
 import '../../state/effect_files.dart';
+import '../../state/project_dir.dart';
 import '../../state/visit_details.dart';
 import '../../theme.dart';
 import '../../widgets/clickable.dart';
@@ -123,7 +124,7 @@ class _OutputColumnState extends State<OutputColumn> {
         if (path != null)
           PathBar(
             path: path,
-            root: p.dirname(widget.graphFile),
+            root: projectDirOf(widget.graphFile),
             buttons: [
               FileButton(
                 'Open in editor',

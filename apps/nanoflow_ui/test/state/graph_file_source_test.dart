@@ -136,6 +136,105 @@ void main() {
     expect(disposed.graph, reviewGraphFile());
   });
 
+  group("a graph's own file", () {
+    late String root;
+    late GraphFileSource own;
+
+    /// The graph file of the graph [name] whose effect is [effect], calling
+    /// the graph files [calls].
+    OneGraphFile graphOf(
+      String name, {
+      String effect = 'collect',
+      List<String> calls = const [],
+    }) => OneGraphFile(
+      package: 'review_example',
+      name: name,
+      place: 'lib/review.dart:1',
+      body: GraphBody(
+        nodes: [
+          EffectNode(id: '1', place: 'lib/review.dart:2', name: effect),
+          for (final (i, call) in calls.indexed)
+            CallNode(
+              id: '${i + 2}',
+              place: 'lib/review.dart:3',
+              functions: [call],
+            ),
+        ],
+        edges: const [],
+      ),
+      warnings: const [],
+      fingerprint: 'sha256:0',
+      sources: const {},
+      builds: const {},
+    );
+
+    /// Writes [graph] to [path] from the package root, as describe does.
+    void put(String path, OneGraphFile graph) {
+      final target = File(p.joinAll([root, ...path.split('/')]))
+        ..parent.createSync(recursive: true);
+      File('${target.path}.tmp')
+        ..writeAsStringSync(jsonEncode(graph.toJson()))
+        ..renameSync(target.path);
+    }
+
+    setUp(() {
+      root = p.join(dir.path, 'review');
+      File(p.join(root, 'pubspec.yaml')).createSync(recursive: true);
+      own = GraphFileSource(
+        file: p.join(root, 'lib', 'review.graph.json'),
+        pollInterval: const Duration(milliseconds: 20),
+      );
+    });
+
+    tearDown(() => own.dispose());
+
+    const review = 'lib/review.graph.json';
+    const polish = 'lib/src/polish.graph.json';
+
+    test('is read with the files of its subgraphs, put together', () async {
+      final files = {
+        review: graphOf('review', calls: [polish]),
+        polish: graphOf('polish', effect: 'fix'),
+      };
+      files.forEach(put);
+      await own.start();
+      expect(own.graph, assembleGraphFile(review, files));
+      expect(own.oneGraph, isTrue);
+      expect(own.error, isNull);
+    });
+
+    test("is read again when a subgraph's file changes, or comes", () async {
+      put(review, graphOf('review', calls: [polish]));
+      await own.start();
+      expect(own.graph!.functions.keys, [review]);
+
+      final files = {
+        review: graphOf('review', calls: [polish]),
+        polish: graphOf('polish', effect: 'fix'),
+      };
+      put(polish, files[polish]!);
+      await _until(() => own.graph == assembleGraphFile(review, files));
+
+      files[polish] = graphOf('polish', effect: 'mend');
+      put(polish, files[polish]!);
+      await _until(() => own.graph == assembleGraphFile(review, files));
+    });
+
+    test("says what is wrong with it, but not with a subgraph's", () async {
+      put(review, graphOf('review', calls: [polish]));
+      File(p.join(root, 'lib', 'src', 'polish.graph.json'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync('{}');
+      await own.start();
+      expect(own.graph!.functions.keys, [review]);
+      expect(own.error, isNull);
+
+      File(own.file).writeAsStringSync('{"format": 4}');
+      await _until(() => own.error != null);
+      expect(own.error, 'package: missing');
+    });
+  });
+
   group('readGraphFile', () {
     test('reads a snapshot of the graph file', () {
       expect(readGraphFile(graphFileJson()), reviewGraphFile());
