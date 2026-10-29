@@ -235,6 +235,28 @@ void main() {
       expect(file.warnings.last.place, isNull);
     });
 
+    test("reads an edge's each, writes it only when set, and none from an "
+        'edge written before edges had one', () {
+      const copies = GraphEdge(
+        from: '2',
+        to: '3',
+        label: 'else',
+        each: 'for item in items',
+      );
+      expect(copies.toJson(), {
+        'from': '2',
+        'to': '3',
+        'label': 'else',
+        'each': 'for item in items',
+      });
+      expect(GraphEdge.fromJson(copies.toJson()), copies);
+      const once = GraphEdge(from: '2', to: '3', label: 'else');
+      expect(once.toJson(), {'from': '2', 'to': '3', 'label': 'else'});
+      expect(GraphEdge.fromJson(once.toJson()).each, isNull);
+      expect(copies, isNot(once));
+      expect(copies.toString(), contains('each: for item in items'));
+    });
+
     test('reads the function of a warning, and none from a warning written '
         'before warnings had one', () {
       final file = GraphFile.fromJson(_fileJson());

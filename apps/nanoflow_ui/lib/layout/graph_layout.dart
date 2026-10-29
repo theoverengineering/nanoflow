@@ -208,6 +208,8 @@ final class EdgePath {
     required this.points,
     required this.tip,
     required this.pieces,
+    this.each,
+    this.eachRect,
   });
 
   /// The id of the node the arrow leaves.
@@ -237,6 +239,15 @@ final class EdgePath {
 
   /// The path to draw from [points].first: lines and rounded corners.
   final List<PathPiece> pieces;
+
+  /// The header of the `for` element the arrow runs its node in once per
+  /// item, for the tooltip of its label `each`; `null` for an arrow taken
+  /// once (each-edge design).
+  final String? each;
+
+  /// The chip of the label `each` over the arrow's last straight piece,
+  /// before its head; `null` without [each].
+  final Rect? eachRect;
 
   /// A back arrow is drawn dashed.
   bool get isDashed => kind == EdgeKind.back;

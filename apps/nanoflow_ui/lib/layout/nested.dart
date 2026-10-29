@@ -106,7 +106,7 @@ final class FramedBody {
     final r = options.tileRadius;
     final inputs = node.inEdges.isEmpty
         ? 0.0
-        : barLength(node.inEdges.length, options) / 2;
+        : barLength(mostInputsSpan(node.inEdges, options), options) / 2;
     final exits =
         node.exits.fold(0.0, (sum, x) => sum + exitUnits(x)) *
         options.exitGap /
@@ -241,6 +241,8 @@ EdgePath _runOn(EdgePath edge, double by, LayoutOptions options) {
     points: points,
     tip: edge.tip + shift,
     pieces: roundCorners(points, options.cornerRadius),
+    each: edge.each,
+    eachRect: edge.eachRect?.shift(shift),
   );
 }
 
@@ -322,6 +324,8 @@ GraphLayout shiftLayout(GraphLayout layout, Point by) {
                   ArcPiece(to + by, radius: radius, clockwise: clockwise),
               },
           ],
+          each: e.each,
+          eachRect: e.eachRect?.shift(by),
         ),
     ],
     bounds: rect(layout.bounds),

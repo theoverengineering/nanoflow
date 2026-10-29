@@ -43,6 +43,7 @@ final class LayoutOptions {
     this.cornerRadius = 10,
     this.laneGap = 10,
     this.portGap = 10,
+    this.eachGap = 20,
     this.capsuleGap = 14,
     this.exitGap = 25,
     this.minInputStraight = 20,
@@ -78,6 +79,11 @@ final class LayoutOptions {
 
   /// The distance between inputs on a bar.
   final double portGap;
+
+  /// The distance between an input whose arrow runs its node once per item
+  /// ([GEdge.each]) and the input over it: room for its label `each` over
+  /// the arrow.
+  final double eachGap;
 
   /// The distance between the arrows leaving one capsule.
   final double capsuleGap;
@@ -248,6 +254,29 @@ String shortName(String name) => name.runes.length <= nameLength
 String? shortPlace(String? place) =>
     place?.substring(place.lastIndexOf('/') + 1);
 
+/// What an arrow that runs its node once per item says before its head
+/// (each-edge design).
+const String eachLabel = 'each';
+
+/// How far the label `each` ends before its arrowhead.
+const double eachSpacing = 4;
+
+/// The width of the chip of the label `each`.
+double eachChipWidth(LayoutOptions options) =>
+    options.measure(eachLabel, LabelKind.exitLabel) + 2 * options.chipPadding;
+
+/// The least straight piece before the arrowhead of [edge]: the least input
+/// straight, or room for the label `each` and its spacing on either side.
+double inputStraight(GEdge edge, LayoutOptions options) =>
+    edge.each == null ? options.minInputStraight : eachStraight(options);
+
+/// The least straight piece before the arrowhead of an arrow with the
+/// label `each`.
+double eachStraight(LayoutOptions options) => math.max(
+  options.minInputStraight,
+  eachChipWidth(options) + 2 * eachSpacing,
+);
+
 /// A node of the graph being laid out.
 final class GNode {
   GNode._(
@@ -365,7 +394,14 @@ final class GExit {
 
 /// One arrow: from an exit (and a place in its list) to a node.
 final class GEdge {
-  GEdge._(this.exit, this.listIndex, this.to, this.index, this.edgeIndex);
+  GEdge._(
+    this.exit,
+    this.listIndex,
+    this.to,
+    this.index,
+    this.edgeIndex,
+    this.each,
+  );
 
   final GExit exit;
 
@@ -380,6 +416,11 @@ final class GEdge {
   /// The index of the edge it draws in the body's edges, those left out
   /// counted.
   final int edgeIndex;
+
+  /// The header of the `for` element the arrow runs its node in once per
+  /// item (`GraphEdge.each`): the arrow has the label `each` before its
+  /// head. `null` for an arrow taken once.
+  final String? each;
 
   GNode get from => exit.node;
 
@@ -472,7 +513,14 @@ final class LayoutGraph {
         exit = GExit._(from, from.exits.length, edge.label);
         from.exits.add(exit);
       }
-      final arrow = GEdge._(exit, exit.edges.length, to, edges.length, i);
+      final arrow = GEdge._(
+        exit,
+        exit.edges.length,
+        to,
+        edges.length,
+        i,
+        edge.each,
+      );
       exit.edges.add(arrow);
       to.inEdges.add(arrow);
       edges.add(arrow);

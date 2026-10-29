@@ -24,3 +24,14 @@ final count = Graph<int, int>('count', [
     },
   ),
 ]);
+
+// Runs work once, or once per item.
+final either = Graph<int, int>('either', [
+  Graph.start(first).next(
+    (n) => n > 0
+        ? work(n)
+        : {
+            for (final i in [n, n]) work(i),
+          },
+  ),
+]);

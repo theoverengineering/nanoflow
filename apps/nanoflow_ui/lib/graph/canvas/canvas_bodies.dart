@@ -4,6 +4,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:nanoflow_model/nanoflow_model.dart'
     show CallNode, GraphBody, GraphFunction, GraphNode, EffectNode;
@@ -156,6 +157,17 @@ final class BodyDrawer {
         ),
       )
       ..add(Positioned.fill(child: CustomPaint(painter: ExitsPainter(graph))));
+    // The header of the loop of an arrow's `each`, under the pointer.
+    for (final edge in graph.edges) {
+      if ((edge.each, edge.eachRect) case (final each?, final rect?)) {
+        layers.tiles.add(
+          Positioned.fromRect(
+            rect: rect.toRect(),
+            child: Tooltip(message: each, child: const SizedBox.expand()),
+          ),
+        );
+      }
+    }
     for (final node in graph.nodes.values) {
       if (node.port) continue;
       final id = [...ids, node.id].join('/');

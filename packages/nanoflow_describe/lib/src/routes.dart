@@ -9,7 +9,8 @@
 // lead to the same place: then the node has an arrow, as a fork that decides
 // nothing is not drawn. Each node or graph called in what it returns is an
 // edge to that node, a set an edge to each of its nodes — a `for` element in
-// it a fork labelled as a loop, whose `each` goes to its node —, and `null`
+// it an edge marked with the loop's header, `each` (each-edge design) —, and
+// `null`
 // or the end of its body an edge to the end of the graph. A `throw` ends its
 // way: the branch fails. A route that is async or a generator is not read:
 // it gives a Future or an Iterable, no Next.
@@ -176,18 +177,11 @@ extension on _GraphBody {
             points.add(point);
             continue;
           }
-          // A fork labelled as a loop is, whose `each` goes to the node; its
-          // copies may end at once, as two nodes of a set may. Its `done` has
-          // no edge — when the items run out, this element starts nothing
-          // more —, so the fork is drawn though `each` is its only way.
-          final fork = _points._fork(
-            _loopLabel(loop.forLoopParts),
-            loop,
-            const ['each', 'done'],
-          );
+          // An edge marked with the loop's header: no fork, which would have
+          // one way only. Its copies may end at once, as two nodes of a set
+          // may.
           final point = _point(node, called);
-          _connect(from, fork);
-          _connect([(fork, 'each')], point);
+          _connect(from, point, each: _loopLabel(loop.forLoopParts));
           points.addAll([point, point]);
         }
         _parallels.add(points);
@@ -222,8 +216,9 @@ extension on _GraphBody {
     }
   }
 
-  /// The label of a loop's fork: `for x in xs` as a `for` statement's, or
-  /// the parts as written, `for (var i = 0; i < n; i++)`.
+  /// The header of a `for` element, an edge's `each`: `for x in xs` as a
+  /// `for` statement's fork is labelled, or the parts as written,
+  /// `for (var i = 0; i < n; i++)`.
   String _loopLabel(ForLoopParts parts) => switch (parts) {
     final ForEachParts each =>
       'for ${_points._loopVariable(each)} in ${_source(each.iterable)}',

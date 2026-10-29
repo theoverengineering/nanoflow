@@ -591,6 +591,7 @@ final class NodeFrame {
     this.status,
     this.bar,
     this.exits,
+    this.eachLabels,
   );
 
   final Rect tile;
@@ -613,6 +614,11 @@ final class NodeFrame {
 
   final Map<GExit, ExitFrame> exits;
 
+  /// The chip of the label `each` over every arrow in that runs the node
+  /// once per item ([GEdge.each]), by the arrow: before its head, over its
+  /// last straight piece.
+  final Map<GEdge, Rect> eachLabels;
+
   /// Everything an arrow must keep off, besides the tile.
   Iterable<Rect> get obstacles sync* {
     yield name;
@@ -623,6 +629,7 @@ final class NodeFrame {
     for (final exit in exits.values) {
       yield exit.area;
     }
+    yield* eachLabels.values;
   }
 }
 
@@ -725,7 +732,18 @@ NodeFrame frameOf(GNode node, Ports port, double y, LayoutOptions options) {
       area: area,
     );
   }
-  return NodeFrame._(tile, name, place, marks, status, bar, exits);
+  final head = tile.left - o.barWidth / 2 - o.arrowGap - o.arrowLength;
+  final eachLabels = <GEdge, Rect>{
+    for (final edge in port.inputs)
+      if (edge.each != null)
+        edge: Rect.fromLTWH(
+          head - eachSpacing - eachChipWidth(o),
+          y + port.inputAt[edge]! - _chipLift - o.chipHeight,
+          eachChipWidth(o),
+          o.chipHeight,
+        ),
+  };
+  return NodeFrame._(tile, name, place, marks, status, bar, exits, eachLabels);
 }
 
 /// Where a label's chip starts right of the exit, how much room an arrow

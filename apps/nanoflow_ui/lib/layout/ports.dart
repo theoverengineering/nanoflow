@@ -106,7 +106,8 @@ double tileHeight(GNode node, LayoutOptions options) {
   final exits = units == 0 ? 0.0 : (units + 1) * options.exitGap;
   final inputs = node.inEdges.isEmpty
       ? 0.0
-      : barLength(node.inEdges.length, options) + 2 * options.tileRadius;
+      : barLength(mostInputsSpan(node.inEdges, options), options) +
+            2 * options.tileRadius;
   final least = node.isMarker ? options.marker : options.tile;
   return math.max(least, math.max(exits, inputs));
 }
@@ -115,15 +116,39 @@ double tileHeight(GNode node, LayoutOptions options) {
 double exitUnits(GExit exit) =>
     exit.isCapsule ? 1 + 0.5 * (exit.edges.length - 1) : 1;
 
-/// The length of an input bar with [count] inputs a port gap apart: half a
-/// gap beyond the outer inputs, never shorter than the least bar.
-double barLength(int count, LayoutOptions options) =>
-    math.max(options.minBar, count * options.portGap);
+/// The length of an input bar whose inputs span [span] from the first to
+/// the last: half a port gap beyond the outer inputs, never shorter than the
+/// least bar.
+double barLength(double span, LayoutOptions options) =>
+    math.max(options.minBar, span + options.portGap);
 
-/// Half the length of the input bar of [node], which arrows come in to: the
-/// end of a body in a frame reaches past the frame's arrows out too.
-double _barHalf(GNode node, LayoutOptions options) =>
-    math.max(barLength(node.inEdges.length, options) / 2, node.leastBarHalf);
+/// How far [inputs] span in their order: a port gap from one to the next,
+/// an each gap to one with the label `each` ([GEdge.each]).
+double inputsSpan(List<GEdge> inputs, LayoutOptions options) {
+  var span = 0.0;
+  for (var i = 1; i < inputs.length; i++) {
+    span += inputs[i].each == null ? options.portGap : options.eachGap;
+  }
+  return span;
+}
+
+/// The most [inputs] may span in any order ([inputsSpan]): an each gap to
+/// every one with the label `each`, but the first.
+double mostInputsSpan(List<GEdge> inputs, LayoutOptions options) {
+  if (inputs.isEmpty) return 0;
+  final labelled = inputs.where((edge) => edge.each != null).length;
+  return (inputs.length - 1) * options.portGap +
+      math.min(labelled, inputs.length - 1) *
+          (options.eachGap - options.portGap);
+}
+
+/// Half the length of the input bar of [node], which arrows come in to, in
+/// any order of its inputs: the end of a body in a frame reaches past the
+/// frame's arrows out too.
+double _barHalf(GNode node, LayoutOptions options) => math.max(
+  barLength(mostInputsSpan(node.inEdges, options), options) / 2,
+  node.leastBarHalf,
+);
 
 /// How far from the middle of [node]'s exits its outermost arrow is, in
 /// whatever order the exits stand: with one exit, half its capsule.
@@ -327,10 +352,15 @@ void _orderInputs(
     ...back,
     ...port.loopsBelow.reversed,
   ]);
-  final count = port.inputs.length;
-  for (var i = 0; i < count; i++) {
-    port.inputAt[port.inputs[i]] =
-        port.inputCentre + (i - (count - 1) / 2) * options.portGap;
+  // Symmetric round the middle, a port gap apart — an each gap over an
+  // input with the label `each`.
+  final span = inputsSpan(port.inputs, options);
+  var at = port.inputCentre - span / 2;
+  for (final (i, edge) in port.inputs.indexed) {
+    if (i > 0) at += edge.each == null ? options.portGap : options.eachGap;
+    port.inputAt[edge] = at;
   }
-  port.barHalf = count == 0 ? 0 : _barHalf(port.node, options);
+  port.barHalf = port.inputs.isEmpty
+      ? 0
+      : math.max(barLength(span, options) / 2, port.node.leastBarHalf);
 }

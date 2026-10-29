@@ -15,14 +15,17 @@ final class ExitChip {
 /// Paints the exits of a layout (docs/ui-spec.md «Граф»): dots, capsules —
 /// none on a frame drawn in place whose arrows out leave the bar of its
 /// body's end —, and the labels on chips of the canvas's color that arrows
-/// go behind. Over the arrows, under the tiles: a tile covers the half of a
-/// dot on its side, as in the mockups. Clicks go through it.
+/// go behind: the exits', and `each` before the head of an arrow that runs
+/// its node once per item (each-edge design). Over the arrows, under the
+/// tiles: a tile covers the half of a dot on its side, as in the mockups.
+/// Clicks go through it.
 class ExitsPainter extends CustomPainter {
   ExitsPainter(this.graph) : chips = List.unmodifiable(_chipsOf(graph));
 
   final layout.GraphLayout graph;
 
-  /// The labels, each where the layout put it.
+  /// The labels, each where the layout put it: the exits', then the arrows'
+  /// `each`.
   final List<ExitChip> chips;
 
   /// A dot's radius and the outline of the canvas's color round it.
@@ -36,6 +39,9 @@ class ExitsPainter extends CustomPainter {
     for (final exit in graph.exits)
       if ((exit.label, exit.labelRect) case (final label?, final rect?))
         ExitChip(rect.toRect(), label),
+    for (final edge in graph.edges)
+      if (edge.eachRect case final rect?)
+        ExitChip(rect.toRect(), layout.eachLabel),
   ];
 
   @override

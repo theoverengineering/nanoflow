@@ -443,13 +443,21 @@ final class CallNode extends GraphNode {
 
 /// An edge between two nodes of a body.
 final class GraphEdge {
-  const GraphEdge({required this.from, required this.to, required this.label});
+  const GraphEdge({
+    required this.from,
+    required this.to,
+    required this.label,
+    this.each,
+  });
 
-  /// Reads an edge from its JSON form.
+  /// Reads an edge from its JSON form. An edge written before edges could
+  /// run their node once per item has no `each`: it reads as `null`, so the
+  /// format stays the same.
   factory GraphEdge.fromJson(Map<String, Object?> json) => GraphEdge(
     from: readStringOrNull(json, 'from'),
     to: readStringOrNull(json, 'to'),
     label: readStringOrNull(json, 'label'),
+    each: json.containsKey('each') ? readStringOrNull(json, 'each') : null,
   );
 
   /// The id of the node the edge leaves; `null` for the entry of the body.
@@ -459,24 +467,38 @@ final class GraphEdge {
   final String? to;
 
   /// What makes the flow take the edge out of a condition (`true`, `false`,
-  /// `each`, `done`, the source of a `switch` case, `default`); `null` for any
-  /// other edge.
+  /// the source of a `switch` case, `default`; `each` and `done` of a loop's
+  /// fork in a file written before [each]); `null` for any other edge.
   final String? label;
 
-  Map<String, Object?> toJson() => {'from': from, 'to': to, 'label': label};
+  /// The header of the `for` element of a route's set that runs [to] once
+  /// per item, all at once, as written: `for item in items`,
+  /// `for (var i = 0; i < n; i++)` (each-edge design); `null` for an edge
+  /// taken once. Written only when set.
+  final String? each;
+
+  Map<String, Object?> toJson() => {
+    'from': from,
+    'to': to,
+    'label': label,
+    if (each != null) 'each': each,
+  };
 
   @override
   bool operator ==(Object other) =>
       other is GraphEdge &&
       other.from == from &&
       other.to == to &&
-      other.label == label;
+      other.label == label &&
+      other.each == each;
 
   @override
-  int get hashCode => Object.hash(from, to, label);
+  int get hashCode => Object.hash(from, to, label, each);
 
   @override
-  String toString() => 'GraphEdge(from: $from, to: $to, label: $label)';
+  String toString() =>
+      'GraphEdge(from: $from, to: $to, label: $label'
+      '${each == null ? '' : ', each: $each'})';
 }
 
 /// Something in the code the describe tool could not draw.

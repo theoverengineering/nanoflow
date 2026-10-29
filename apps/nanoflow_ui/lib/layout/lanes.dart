@@ -139,8 +139,10 @@ Lanes assignLanes(
   ];
   final r = options.cornerRadius;
   final r45 = r * math.tan(math.pi / 8);
-  final entry =
-      options.minInputStraight +
+  // The straight piece before an input, the arrowhead and its gap: room
+  // for the label `each` on an arrow that has it.
+  double entry(GEdge edge) =>
+      inputStraight(edge, options) +
       options.arrowLength +
       options.arrowGap +
       options.barWidth / 2;
@@ -206,7 +208,7 @@ Lanes assignLanes(
           TurnKind.backIn || TurnKind.loopIn => true,
           _ => false,
         };
-        final straight = toInput ? entry : options.laneGap / 2;
+        final straight = toInput ? entry(turn.edge) : options.laneGap / 2;
         room = r + straight;
         roomDiagonal = r45 + straight;
       }
@@ -252,7 +254,7 @@ Lanes assignLanes(
           final from = outY(seg, ports);
           final to = inY(seg, ports);
           final start = item.isPass ? leftEdge : reachOf(seg.edge);
-          final finish = seg.to.isPass ? options.laneGap : entry;
+          final finish = seg.to.isPass ? options.laneGap : entry(seg.edge);
           if ((to - from).abs() > _flat) {
             final turn = Turn._(TurnKind.forward, seg.edge, [
               (from, true),

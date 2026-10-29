@@ -15,7 +15,8 @@ import 'nested.dart';
 ///   through an exit's dot, capsule or label.
 /// - An arrow leaves its exit going right, straight for at least its label,
 ///   and enters its input going right, straight for at least the least input
-///   straight.
+///   straight — for room for its label `each`, when it has one.
+/// - No arrow passes through a label `each`.
 /// - The arrowhead's tip points at the bar, an arrow gap before it.
 /// - A bar is in the middle of its tile's side, off the rounded corners;
 ///   inputs on it are at least a port gap apart.
@@ -82,13 +83,27 @@ List<String> _check(GraphLayout layout, {required bool deep}) {
     final straight = segments.length > 1
         ? last.length - lastTurn
         : last.length - exit.reach;
+    final least = edge.each == null ? o.minInputStraight : eachStraight(o);
     if (!last.isHorizontal || last.b.x <= last.a.x) {
       problems.add('${_name(edge)}: does not enter its input going right');
-    } else if (straight < o.minInputStraight - 1e-6) {
+    } else if (straight < least - 1e-6) {
       problems.add(
         '${_name(edge)}: straight piece at the input ${_n(straight)} is '
-        'shorter than ${_n(o.minInputStraight)}',
+        'shorter than ${_n(least)}',
       );
+    }
+    // Through the label `each` of an arrow, its own too.
+    for (final other in edges) {
+      final label = other.eachRect;
+      if (label == null) continue;
+      for (final s in segments) {
+        if (s.entersInterior(label)) {
+          problems.add(
+            '${_name(edge)}: piece $s passes through the label each of '
+            '${_name(other)}',
+          );
+        }
+      }
     }
     // The arrowhead.
     final target = layout.nodes[edge.to]!;
@@ -207,6 +222,8 @@ List<String> _check(GraphLayout layout, {required bool deep}) {
   final chips = [
     for (final exit in layout.exits)
       if (exit.labelRect case final rect?) ('${exit.node}#${exit.index}', rect),
+    for (final edge in edges)
+      if (edge.eachRect case final rect?) ('${_name(edge)} each', rect),
   ];
   for (final (owner, chip) in chips) {
     for (final node in layout.nodes.values) {

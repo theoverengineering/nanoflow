@@ -109,6 +109,51 @@ void main() {
       expect(_chips(tester), containsAll(['each', 'done', 'Channel.dev']));
     });
 
+    testWidgets('an arrow that runs its node once per item says each before '
+        "its head, the loop's header under the pointer (each-edge design)", (
+      tester,
+    ) async {
+      const header = 'for (var i = 0; i < picked.picks.length; i++)';
+      const id = 'lib/generate.dart#generate';
+      final copies = GraphFile.fromJson({
+        ...graphFileJson(),
+        'workflows': [id],
+        'functions': {
+          id: {
+            'name': 'generate',
+            'place': 'lib/generate.dart:1',
+            'body': {
+              'nodes': [
+                for (final (i, name) in ['critique', 'compress'].indexed)
+                  {
+                    'id': '${i + 1}',
+                    'kind': 'effect',
+                    'name': name,
+                    'place': 'lib/generate.dart:${i + 2}',
+                  },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': null, 'label': 'picked.picks.isEmpty'},
+                {'from': '1', 'to': '2', 'label': 'else', 'each': header},
+                {'from': '2', 'to': null, 'label': null},
+              ],
+            },
+          },
+        },
+      });
+      await pumpCanvas(tester, modelOf(graph: copies));
+      expect(_chips(tester), ['picked.picks.isEmpty', 'else', 'each']);
+      expect(find.text(header), findsNothing);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(
+        location: tester.getCenter(find.byTooltip(header)),
+      );
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text(header), findsOneWidget);
+    });
+
     testWidgets('a double click on a call opens it, on another node does '
         'nothing', (tester) async {
       final opened = <(String, Offset)>[];

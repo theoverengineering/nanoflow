@@ -32,11 +32,12 @@ Map<String, Object?> _call(String id, String function, int line) => {
   'place': '$_file:$line',
 };
 
-Map<String, Object?> _edge(String? from, String? to, [String? label]) => {
-  'from': from,
-  'to': to,
-  'label': label,
-};
+Map<String, Object?> _edge(
+  String? from,
+  String? to, [
+  String? label,
+  String? each,
+]) => {'from': from, 'to': to, 'label': label, 'each': ?each};
 
 Map<String, Object?> _function(
   String name,
@@ -159,8 +160,9 @@ void main() {
     );
   });
 
-  test('draws a for element of a set as a fork labelled as a loop, whose '
-      'each goes to the node it runs once per item', () async {
+  test('draws a for element of a set as an edge to the node it runs once per '
+      "item, marked with the loop's header, without a fork (each-edge "
+      'design)', () async {
     const file = 'lib/graph_sets.dart';
     final graph = await describeFixture('graph_sets');
 
@@ -174,31 +176,41 @@ void main() {
     expect(body('fan'), {
       'nodes': [
         at(_effect('1', 'split', 0), 12),
-        at(_fork('2', 'for item in items', 0), 13),
-        at(_effect('3', 'work', 0), 13),
+        at(_effect('2', 'work', 0), 13),
       ],
       'edges': [
         _edge(null, '1'),
         _edge('1', null, 'items.isEmpty'),
-        _edge('1', '2', 'else'),
-        _edge('2', '3', 'each'),
-        _edge('3', null),
+        _edge('1', '2', 'else', 'for item in items'),
+        _edge('2', null),
       ],
     });
     expect(body('count'), {
       'nodes': [
         at(_effect('1', 'first', 0), 18),
         at(_effect('2', 'skip', 0), 20),
-        at(_fork('3', 'for (var i = 0; i < n; i++)', 0), 21),
-        at(_effect('4', 'work', 0), 21),
+        at(_effect('3', 'work', 0), 21),
       ],
       'edges': [
         _edge(null, '1'),
         _edge('1', '2'),
-        _edge('1', '3'),
+        _edge('1', '3', null, 'for (var i = 0; i < n; i++)'),
         _edge('2', null),
-        _edge('3', '4', 'each'),
-        _edge('4', null),
+        _edge('3', null),
+      ],
+    });
+    // Once or once per item: the if decides something, though both go to
+    // work.
+    expect(body('either'), {
+      'nodes': [
+        at(_effect('1', 'first', 0), 30),
+        at(_effect('2', 'work', 0), 32),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2', 'n > 0'),
+        _edge('1', '2', 'else', 'for i in [n, n]'),
+        _edge('2', null),
       ],
     });
     expect(graph['warnings'], [
