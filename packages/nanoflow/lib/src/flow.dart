@@ -438,6 +438,7 @@ Future<Object?> nodeEffect(
     () => node.runWith(input),
     codec: node.outputCodec(flow._codecs),
     place: () => session.placeOfNode(graph, node.name),
+    slots: node.slots,
   );
 }
 
@@ -634,6 +635,7 @@ final class _Session {
     FutureOr<T> Function() body, {
     required TypeCodec codec,
     required String? Function() place,
+    Slots? slots,
   }) {
     _checkWritable();
     if (_ended) {
@@ -659,23 +661,29 @@ final class _Session {
             // not. It runs again (spec §4.4).
           }
         }
-        return _live(effect, body, codec, place);
+        return _live(effect, body, codec, place, slots);
       }),
     );
   }
 
   /// Runs [body] as [effect] and writes it: `effect-started`, then its result
   /// and `effect-finished`, or `effect-failed`. What the body prints goes to
-  /// the effect's log, which is written before the effect's outcome.
+  /// the effect's log, which is written before the effect's outcome. Waits for
+  /// a slot of [slots] first when there are some, writing nothing; the slot is
+  /// given back once the outcome is written.
   Future<T> _live<T>(
     KeyedEffect effect,
     FutureOr<T> Function() body,
     TypeCodec codec,
     String? Function() place,
+    Slots? slots,
   ) async {
     final ended = Completer<void>();
     _running.add(ended.future);
+    var taken = false;
     try {
+      await slots?.take();
+      taken = true;
       final record = await _started(effect, place);
       final output = _EffectOutput(this, record.id);
       final T value;
@@ -713,6 +721,7 @@ final class _Session {
       await _write(() => _handle.setEffectOutput(record, outputId));
       return value;
     } finally {
+      if (taken) slots?.release();
       _running.remove(ended.future);
       ended.complete();
     }

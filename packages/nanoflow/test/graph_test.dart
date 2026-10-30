@@ -89,6 +89,13 @@ void main() {
     expect(ran, 1);
   });
 
+  test('a node takes a concurrency of 1 or more, none by default', () {
+    expect(node('x', (int n) => n).concurrency, isNull);
+    expect(node('x', (int n) => n, concurrency: 1).concurrency, 1);
+    expect(() => node('x', (int n) => n, concurrency: 0), throwsArgumentError);
+    expect(() => node('x', (int n) => n, concurrency: -1), throwsArgumentError);
+  });
+
   group('rejects', () {
     test('a graph without a start', () {
       expect(

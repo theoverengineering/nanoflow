@@ -12,6 +12,7 @@
 // is there.
 
 import 'dart:async';
+import 'dart:collection';
 
 import 'codecs.dart';
 import 'flow.dart';
@@ -34,13 +35,21 @@ sealed class Nodelike<I, O> {
 ///
 /// Made by [node], in a top-level variable; a node may be in several graphs.
 final class Node<I, O> extends Nodelike<I, O> {
-  Node._(this.name, this.body);
+  Node._(this.name, this.body, this.concurrency)
+    : _slots = concurrency == null ? null : Slots(concurrency);
 
   @override
   final String name;
 
   /// The work of the node, to run it without a graph, as a test does.
   final FutureOr<O> Function(I input) body;
+
+  /// How many effects of the node run at once in the process, whichever
+  /// sessions and graphs they are of; the others wait, in the order they were
+  /// called, and write nothing until they run. `null` for no limit.
+  final int? concurrency;
+
+  final Slots? _slots;
 
   @override
   Next call(I input) => Next._(this, input);
@@ -61,8 +70,57 @@ final class Node<I, O> extends Nodelike<I, O> {
 /// ```dart
 /// final inspect = node('inspect', (Change change) async => Report(...));
 /// ```
-Node<I, O> node<I, O>(String name, FutureOr<O> Function(I input) body) =>
-    Node._(name, body);
+///
+/// With a [concurrency], no more of the node's effects run at once in the
+/// process; a node run once per item of a hundred then does not start a
+/// hundred at a time:
+///
+/// ```dart
+/// final compress = node('compress', body, concurrency: 4);
+/// ```
+///
+/// Throws an [ArgumentError] when [concurrency] is less than 1.
+Node<I, O> node<I, O>(
+  String name,
+  FutureOr<O> Function(I input) body, {
+  int? concurrency,
+}) {
+  if (concurrency != null && concurrency < 1) {
+    throw ArgumentError.value(concurrency, 'concurrency', 'must be 1 or more');
+  }
+  return Node._(name, body, concurrency);
+}
+
+/// The slots of a node with a concurrency: [take] one before the effect
+/// starts and [release] it after, so no more than `count` are taken at once.
+/// Those waiting are given a slot in the order they asked.
+final class Slots {
+  Slots(this.count);
+
+  final int count;
+  int _taken = 0;
+  final Queue<Completer<void>> _waiting = Queue();
+
+  /// Completes once a slot is the caller's.
+  Future<void> take() {
+    if (_taken < count) {
+      _taken++;
+      return Future.value();
+    }
+    final waiter = Completer<void>();
+    _waiting.add(waiter);
+    return waiter.future;
+  }
+
+  /// Gives the slot back: to the first waiting, when there is one.
+  void release() {
+    if (_waiting.isNotEmpty) {
+      _waiting.removeFirst().complete();
+    } else {
+      _taken--;
+    }
+  }
+}
 
 /// What a route gives: [target] runs next, with [input]. Made by calling a
 /// node or a graph, `inspect(change)`.
@@ -149,6 +207,9 @@ extension NodeRun on Node<Object?, Object?> {
   /// How the node's output becomes JSON and comes back: the codec of its
   /// output type.
   TypeCodec outputCodec(Codecs codecs) => _outputCodec(codecs);
+
+  /// The node's slots; `null` when it has no concurrency.
+  Slots? get slots => _slots;
 }
 
 /// What the runner and the flow call on a graph, which the package does not

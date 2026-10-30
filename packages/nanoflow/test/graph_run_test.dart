@@ -4,10 +4,12 @@
 // effects.
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:nanoflow/nanoflow.dart';
 import 'package:nanoflow_model/nanoflow_model.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'support.dart';
@@ -384,6 +386,66 @@ final paced = Graph<int, int>('paced', [
   Graph.start(paceA).next((n) => {paceB(n), paceC(n)}),
   Graph.join([paceB, paceC]).next(((int, int) parts) => paceD(parts)),
   Graph.part(paceD).next((n) => n < 3 ? paceA(n) : null),
+]);
+
+final upTo = node('upTo', (int n) async => n);
+
+var running = 0;
+var mostRunning = 0;
+final entered = <int>[];
+
+final counted = node('counted', (int i) async {
+  entered.add(i);
+  mostRunning = max(mostRunning, ++running);
+  await pause();
+  running--;
+  return i * 10;
+}, concurrency: 3);
+
+final countedAll = Graph<int, Object?>('countedAll', [
+  Graph.start(upTo).next((n) => {for (var i = 0; i < n; i++) counted(i)}),
+]);
+
+final pacedLimited = node('pacedLimited', (int i) async {
+  await pause();
+  return i;
+}, concurrency: 2);
+
+final pacedLimitedAll = Graph<int, Object?>('pacedLimitedAll', [
+  Graph.start(upTo).next((n) => {for (var i = 0; i < n; i++) pacedLimited(i)}),
+]);
+
+/// Opened to let [limited] nodes finish.
+var limitGate = Completer<void>();
+
+final limited = node('limited', (int i) async {
+  entered.add(i);
+  await limitGate.future;
+  if (i < 0) throw StateError('negative $i');
+  return i;
+}, concurrency: 3);
+
+final limitedAll = Graph<int, Object?>('limitedAll', [
+  Graph.start(upTo).next((n) => {for (var i = 0; i < n; i++) limited(i)}),
+]);
+
+/// Runs [limited] once, on -n: its body throws.
+final limitedFails = Graph<int, Object?>('limitedFails', [
+  Graph.start(upTo).next((n) => limited(-n)),
+]);
+
+var heldGate = Completer<void>()..complete();
+var atHeld = Completer<void>();
+
+final held = node('held', (String text) async {
+  calls.add('held $text');
+  if (!atHeld.isCompleted) atHeld.complete();
+  await heldGate.future;
+  return 'held $text';
+}, concurrency: 1);
+
+final heldThenWaits = Graph<String, String>('heldThenWaits', [
+  Graph.start(held).next((text) => waits(text)),
 ]);
 
 /// A flow in [dir] with the codecs of the values above.
@@ -791,5 +853,158 @@ void main() {
     for (var seed = 2; seed < 12; seed++) {
       expect(await keysAt(seed), first, reason: 'seed $seed');
     }
+  });
+
+  group('concurrency', () {
+    setUp(() {
+      running = 0;
+      mostRunning = 0;
+      entered.clear();
+      limitGate = Completer();
+    });
+
+    test('runs at most concurrency effects of a node at once, starting them '
+        'in the order they were called', () async {
+      random = Random(1);
+      final dir = await tempDir();
+      await flowIn(dir).run(countedAll, 10);
+      expect(mostRunning, 3);
+      // Slots go in the order of the calls; the bodies of those that hold
+      // slots together start as their records are written, in any order.
+      expect(entered.take(3), unorderedEquals([0, 1, 2]));
+      expect(entered..sort(), [for (var i = 0; i < 10; i++) i]);
+      final handle = await onlySession(dir);
+      final effects = [
+        for (final e in await handle.effects())
+          if (e.name == 'counted') e,
+      ];
+      expect(effects, hasLength(10));
+      expect(
+        [for (final e in effects) await handle.documentValue(e.outputId!)],
+        [for (var i = 0; i < 10; i++) i * 10],
+      );
+    });
+
+    test('an effect waiting for a slot writes nothing, whichever session it '
+        'is of', () async {
+      final dir = await tempDir();
+      final flow = flowIn(dir);
+      final one = await flow.start(limitedAll, 2);
+      final two = await flow.start(limitedAll, 2);
+      await until(() => entered.length == 3, 'three limited nodes');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(entered, hasLength(3));
+      // The sessions are locked while they run: look at the directories of
+      // their effects instead of opening them.
+      var written = 0;
+      for (final id in [one.id, two.id]) {
+        final effects = Directory(p.join(sessionDirOf(dir, id), 'effects'));
+        if (!effects.existsSync()) continue;
+        written += effects
+            .listSync()
+            .where((e) => p.basename(e.path).contains('-limited-'))
+            .length;
+      }
+      expect(written, 3);
+      limitGate.complete();
+      await Future.wait([one.result, two.result]);
+      expect(entered, hasLength(4));
+      for (final id in [one.id, two.id]) {
+        final handle = await openSession(dir, id);
+        final events = await eventsOf(handle);
+        for (final e in await handle.effects()) {
+          if (e.name != 'limited') continue;
+          expect(
+            events.whereType<EffectStarted>().where((s) => s.effectId == e.id),
+            hasLength(1),
+          );
+        }
+      }
+    });
+
+    test('an effect from the journal takes no slot: it gives its result '
+        'while the slots are taken', () async {
+      final dir = await tempDir();
+      gate = Completer();
+      atGate = Completer();
+      final firstFlow = flowIn(dir);
+      final first = await firstFlow.start(heldThenWaits, 'a');
+      await atGate.future;
+      firstFlow.stop();
+      gate.complete();
+      await expectLater(first.result, throwsA(isA<FlowStoppedException>()));
+
+      heldGate = Completer();
+      atHeld = Completer();
+      final other = await flowIn(dir).start(heldThenWaits, 'b');
+      await atHeld.future;
+
+      gate = Completer()..complete();
+      final resumed = await flowIn(dir).resume(heldThenWaits, first.id);
+      expect(
+        await resumed.result.timeout(const Duration(seconds: 5)),
+        'past held a',
+      );
+      expect(calls, ['held a', 'waits held a', 'held b', 'waits held a']);
+      final handle = await openSession(dir, first.id);
+      final heldEffect = (await handle.effects()).singleWhere(
+        (e) => e.name == 'held',
+      );
+      expect(
+        (await eventsOf(handle))
+            .whereType<EffectStarted>()
+            .where((s) => s.effectId == heldEffect.id),
+        hasLength(1),
+      );
+      heldGate.complete();
+      expect(await other.result, 'past held b');
+    });
+
+    test('gives the same keys and the same after whatever the timing, with a '
+        'limit', () async {
+      Future<Map<String, String?>> keysAt(int seed) async {
+        random = Random(seed);
+        final dir = await tempDir();
+        await flowIn(dir).run(pacedLimitedAll, 5);
+        return {for (final e in await effectsIn(dir)) e.key: e.after};
+      }
+
+      final first = await keysAt(1);
+      expect(first, hasLength(6));
+      for (var seed = 2; seed < 12; seed++) {
+        expect(await keysAt(seed), first, reason: 'seed $seed');
+      }
+    });
+
+    test('a node that threw gives its slot back', () async {
+      limitGate.complete();
+      final dir = await tempDir();
+      for (var i = 0; i < 3; i++) {
+        await expectLater(
+          flowIn(dir).run(limitedFails, 1),
+          throwsA(isA<StateError>()),
+        );
+      }
+      await flowIn(dir).run(limitedAll, 3).timeout(const Duration(seconds: 5));
+      expect(entered.take(3), [-1, -1, -1]);
+      expect(entered.skip(3), unorderedEquals([0, 1, 2]));
+    });
+
+    test('a stop while effects wait ends the session, writes nothing for '
+        'those waiting and leaves the slots free', () async {
+      final dir = await tempDir();
+      final flow = flowIn(dir);
+      final session = await flow.start(limitedAll, 5);
+      await until(() => entered.length == 3, 'three limited nodes');
+      flow.stop();
+      limitGate.complete();
+      await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
+      final handle = await openSession(dir, session.id);
+      expect([
+        for (final e in await handle.effects())
+          if (e.name == 'limited') e,
+      ], hasLength(3));
+      await flowIn(dir).run(limitedAll, 3).timeout(const Duration(seconds: 5));
+    });
   });
 }
