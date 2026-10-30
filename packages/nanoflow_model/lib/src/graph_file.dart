@@ -350,7 +350,7 @@ final class EffectNode extends GraphNode {
   /// it has none.
   final String? doc;
 
-  /// How many of this node's effects run at once; `null` when there is no limit.
+  /// How many of this node's effects run at once; `null` for no limit.
   final int? concurrency;
 
   @override
@@ -378,7 +378,8 @@ final class EffectNode extends GraphNode {
 
   @override
   String toString() =>
-      'EffectNode(id: $id, place: $place, name: $name, doc: $doc, concurrency: $concurrency)';
+      'EffectNode(id: $id, place: $place, name: $name, '
+      'doc: $doc, concurrency: $concurrency)';
 }
 
 /// A condition the flow goes one of several ways on; kind `fork`.

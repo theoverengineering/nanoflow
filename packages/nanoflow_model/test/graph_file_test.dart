@@ -282,7 +282,7 @@ void main() {
       expect(review.body.node('1').toString(), contains('Takes the change'));
     });
 
-    test('reads and writes the concurrency of an effect, and none when its key is missing', () {
+    test('reads and writes an effect concurrency, absent when not set', () {
       const limited = EffectNode(
         id: '1',
         place: null,
