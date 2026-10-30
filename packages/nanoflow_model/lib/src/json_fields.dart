@@ -38,6 +38,15 @@ int readInt(Map<String, Object?> json, String key) {
   throw FormatException('$key: expected an integer');
 }
 
+/// The integer at [key], or `null`. Missing key reads as `null`.
+int? readIntOrNull(Map<String, Object?> json, String key) {
+  if (!json.containsKey(key)) return null;
+  final value = json[key];
+  if (value == null) return null;
+  if (value is int) return value;
+  throw FormatException('$key: expected an integer or null');
+}
+
 /// [value] as an object, or `null` when it is not a map with string keys.
 ///
 /// Also takes a `Map<dynamic, dynamic>` with string keys, which is what an

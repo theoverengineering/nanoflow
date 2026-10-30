@@ -282,6 +282,27 @@ void main() {
       expect(review.body.node('1').toString(), contains('Takes the change'));
     });
 
+    test('reads and writes the concurrency of an effect, and none when its key is missing', () {
+      const limited = EffectNode(id: '1', place: null, name: 'x', concurrency: 4);
+      expect(limited.toJson()['concurrency'], 4);
+      expect(GraphNode.fromJson(limited.toJson()), limited);
+      const free = EffectNode(id: '1', place: null, name: 'x');
+      expect(free.toJson().containsKey('concurrency'), isFalse);
+      expect(
+        GraphNode.fromJson({'id': '1', 'kind': 'effect', 'name': 'x', 'place': null, 'doc': null}),
+        free,
+      );
+      expect(limited, isNot(free));
+      expect('$limited', contains('concurrency: 4'));
+    });
+
+    test('names a concurrency that is not an integer', () {
+      expect(
+        () => GraphNode.fromJson({'id': '1', 'kind': 'effect', 'name': 'x', 'place': null, 'doc': null, 'concurrency': '4'}),
+        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('concurrency'))),
+      );
+    });
+
     test('reads format 2, from before docs, with no docs', () {
       final file = GraphFile.fromJson(_format2Json());
       final docless = GraphFile.fromJson(

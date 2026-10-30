@@ -305,6 +305,7 @@ sealed class GraphNode {
         place: readStringOrNull(json, 'place'),
         name: readString(json, 'name'),
         doc: readStringOrNull(json, 'doc'),
+        concurrency: readIntOrNull(json, 'concurrency'),
       ),
       'fork' => ConditionNode(
         id: id,
@@ -338,6 +339,7 @@ final class EffectNode extends GraphNode {
     required super.place,
     required this.name,
     this.doc,
+    this.concurrency,
   });
 
   /// The literal name of the effect, or the source of the expression that gives
@@ -348,6 +350,9 @@ final class EffectNode extends GraphNode {
   /// it has none.
   final String? doc;
 
+  /// How many of this node's effects run at once; `null` when there is no limit.
+  final int? concurrency;
+
   @override
   Map<String, Object?> toJson() => {
     'id': id,
@@ -355,6 +360,7 @@ final class EffectNode extends GraphNode {
     'name': name,
     'place': place,
     'doc': doc,
+    if (concurrency != null) 'concurrency': concurrency,
   };
 
   @override
@@ -363,14 +369,15 @@ final class EffectNode extends GraphNode {
       other.id == id &&
       other.place == place &&
       other.name == name &&
-      other.doc == doc;
+      other.doc == doc &&
+      other.concurrency == concurrency;
 
   @override
-  int get hashCode => Object.hash(EffectNode, id, place, name, doc);
+  int get hashCode => Object.hash(EffectNode, id, place, name, doc, concurrency);
 
   @override
   String toString() =>
-      'EffectNode(id: $id, place: $place, name: $name, doc: $doc)';
+      'EffectNode(id: $id, place: $place, name: $name, doc: $doc, concurrency: $concurrency)';
 }
 
 /// A condition the flow goes one of several ways on; kind `fork`.
