@@ -481,4 +481,41 @@ void main() {
       ['begin', 'check', 'left'],
     );
   });
+
+  test('gives an effect the concurrency of its node when it is an integer '
+      'literal, and warns of one that is not', () async {
+    const file = 'lib/graph_concurrency.dart';
+    final graph = await describeFixture('graph_concurrency');
+    expect(_effectsOf(graph, '$file#limited'), [
+      {
+        'id': '1',
+        'kind': 'effect',
+        'name': 'heavy',
+        'place': '$file:12',
+        'doc': null,
+        'concurrency': 4,
+      },
+      {
+        'id': '2',
+        'kind': 'effect',
+        'name': 'light',
+        'place': '$file:12',
+        'doc': null,
+      },
+      {
+        'id': '3',
+        'kind': 'effect',
+        'name': 'counted',
+        'place': '$file:13',
+        'doc': null,
+      },
+    ]);
+    expect(graph['warnings'], [
+      {
+        'place': '$file:9',
+        'message': 'node concurrency is not an integer literal',
+        'function': null,
+      },
+    ]);
+  });
 }

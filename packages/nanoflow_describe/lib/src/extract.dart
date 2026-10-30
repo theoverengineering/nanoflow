@@ -258,13 +258,19 @@ sealed class _Drawn extends _V {
 
 /// A node of the graph: an effect.
 final class _Effect extends _Drawn {
-  _Effect(this.name, super.place, this.doc);
+  _Effect(this.name, super.place, this.doc, {this.concurrency});
   final String name;
   final String? doc;
+  final int? concurrency;
 
   @override
-  GraphNode node(String id) =>
-      EffectNode(id: id, place: place, name: name, doc: doc);
+  GraphNode node(String id) => EffectNode(
+    id: id,
+    place: place,
+    name: name,
+    doc: doc,
+    concurrency: concurrency,
+  );
 }
 
 /// A fork of a route.

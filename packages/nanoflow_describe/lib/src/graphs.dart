@@ -32,7 +32,17 @@ sealed class _Nodelike {
 
 /// A node made by `node(…)`: drawn as an effect.
 final class _NodeDeclaration extends _Nodelike {
-  _NodeDeclaration(super.name, super.variable, super.doc, this.made);
+  _NodeDeclaration(
+    super.name,
+    super.variable,
+    super.doc,
+    this.made, {
+    this.concurrency,
+  });
+
+  /// The limit of its effects at once, when `node(…)` gives one as a
+  /// literal.
+  final int? concurrency;
 
   @override
   final MethodInvocation made;
@@ -113,6 +123,7 @@ extension on _Package {
           element,
           doc,
           made,
+          concurrency: _concurrencyIn(made),
         );
       default:
     }
@@ -133,6 +144,21 @@ extension on _Package {
     }
     _warn(made, '$kind name is not a string literal');
     return variable.name.lexeme;
+  }
+
+  /// The `concurrency` [made], a `node(…)`, is given: an integer literal;
+  /// or, which it warns of, none.
+  int? _concurrencyIn(MethodInvocation made) {
+    for (final argument in made.argumentList.arguments) {
+      if (argument is! NamedArgument || argument.name.lexeme != 'concurrency') {
+        continue;
+      }
+      if (argument.argumentExpression case IntegerLiteral(:final value?)) {
+        return value;
+      }
+      _warn(made, 'node concurrency is not an integer literal');
+    }
+    return null;
   }
 
   /// Whether [made], `node(…)` or `Graph(…)`, is in a top-level variable.
@@ -323,7 +349,12 @@ final class _GraphBody {
     }
     final place = _package._place(mention);
     final point = _points._add<_Drawn>(switch (node) {
-      _NodeDeclaration() => _Effect(node.name, place, node.doc),
+      _NodeDeclaration() => _Effect(
+        node.name,
+        place,
+        node.doc,
+        concurrency: node.concurrency,
+      ),
       _GraphDeclaration(:final id) => _Call([id], place),
     });
     _made[node] = (point, mention);
