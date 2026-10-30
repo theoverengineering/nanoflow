@@ -86,10 +86,16 @@ Future<({String out, String err})> runInGroup(
 }
 
 /// The `nanoflow-exec-*` entries in the system temp dir.
-List<String> execTempEntries() => [
+Set<String> execTempEntries() => {
   for (final entry in Directory.systemTemp.listSync())
     if (p.basename(entry.path).startsWith('nanoflow-exec-')) entry.path,
-];
+};
+
+/// The `nanoflow-exec-*` entries that [before] did not have: the system temp
+/// dir is shared with every process of the user, so a test looks only at what
+/// appeared during it.
+Set<String> newExecTempEntries(Set<String> before) =>
+    execTempEntries().difference(before);
 
 /// An effect that runs a program given 3 MB on stdin that, after it has
 /// opened its stdin, writes its pid to [pidFile] and sleeps.
@@ -223,7 +229,11 @@ final String? noPerl = File('/usr/bin/perl').existsSync()
 void main() {
   late Directory temp;
 
-  setUp(() => temp = Directory.systemTemp.createTempSync('nanoflow_exec_'));
+  late Set<String> execTempBefore;
+  setUp(() {
+    temp = Directory.systemTemp.createTempSync('nanoflow_exec_');
+    execTempBefore = execTempEntries();
+  });
   tearDown(() => temp.deleteSync(recursive: true));
 
   test('returns what the program printed on stdout', () async {
@@ -307,8 +317,6 @@ void main() {
   });
 
   group('with stdin', () {
-    setUp(() => expect(execTempEntries(), isEmpty));
-
     test('gives the program the text, then EOF', () async {
       expect(
         (await exec('wc', ['-c'], stdin: 'x' * 1000000)).trim(),
@@ -325,15 +333,19 @@ void main() {
       final left = await exec('/bin/sh', [
         '-c',
         r'cat >/dev/null; sleep 0.2; '
-            r'for d in "$0"/nanoflow-exec-*; do ls -A "$d"; done 2>/dev/null',
+            // The dirs that were there before the test are other processes'.
+            r'for d in "$0"/nanoflow-exec-*; do '
+            r'case " $* " in *" $d "*) ;; *) ls -A "$d";; esac; '
+            r'done 2>/dev/null',
         Directory.systemTemp.path,
+        ...execTempBefore,
       ], stdin: 'text');
       expect(left, isEmpty);
     });
 
     test('leaves no temp dir after a normal exit', () async {
       await exec('cat', [], stdin: 'x');
-      expect(execTempEntries(), isEmpty);
+      expect(newExecTempEntries(execTempBefore), isEmpty);
     });
 
     test('leaves no temp dir after a non-zero exit', () async {
@@ -341,7 +353,7 @@ void main() {
         exec('/bin/sh', ['-c', 'exit 3'], stdin: 'x'),
         throwsA(isA<ExecException>()),
       );
-      expect(execTempEntries(), isEmpty);
+      expect(newExecTempEntries(execTempBefore), isEmpty);
     });
 
     test('leaves no temp dir when the program is not there', () async {
@@ -353,7 +365,7 @@ void main() {
         ),
         throwsA(isA<ExecException>()),
       );
-      expect(execTempEntries(), isEmpty);
+      expect(newExecTempEntries(execTempBefore), isEmpty);
     });
 
     test(
@@ -648,7 +660,7 @@ void main() {
       await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
       expect(execErrors, [isA<FlowStoppedException>()]);
       expect(isRunning(sleep), isFalse);
-      expect(execTempEntries(), isEmpty);
+      expect(newExecTempEntries(execTempBefore), isEmpty);
     });
 
     test('moves no effect key: the first program through a shell, which '
