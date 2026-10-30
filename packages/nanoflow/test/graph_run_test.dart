@@ -863,8 +863,8 @@ void main() {
       limitGate = Completer();
     });
 
-    test('runs at most concurrency effects of a node at once, starting them '
-        'in the order they were called', () async {
+    test('runs at most concurrency effects of a node at once, each of the '
+        'calls once', () async {
       random = Random(1);
       final dir = await tempDir();
       await flowIn(dir).run(countedAll, 10);

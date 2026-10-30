@@ -96,6 +96,35 @@ void main() {
     expect(() => node('x', (int n) => n, concurrency: -1), throwsArgumentError);
   });
 
+  test(
+    'slots go to the waiting in the order they asked, one per release',
+    () async {
+      final slots = Slots(2);
+      final granted = <int>[];
+      await slots.take();
+      await slots.take();
+      for (var i = 0; i < 4; i++) {
+        slots.take().then((_) => granted.add(i));
+      }
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, isEmpty);
+      for (var n = 1; n <= 4; n++) {
+        slots.release();
+        await Future<void>.delayed(Duration.zero);
+        expect(granted, [for (var i = 0; i < n; i++) i]);
+      }
+      // Two of the slots are still taken: releasing them frees them.
+      slots.release();
+      slots.release();
+      await slots.take();
+      await slots.take();
+      var third = false;
+      slots.take().then((_) => third = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(third, isFalse);
+    },
+  );
+
   group('rejects', () {
     test('a graph without a start', () {
       expect(
