@@ -283,13 +283,24 @@ void main() {
     });
 
     test('reads and writes the concurrency of an effect, and none when its key is missing', () {
-      const limited = EffectNode(id: '1', place: null, name: 'x', concurrency: 4);
+      const limited = EffectNode(
+        id: '1',
+        place: null,
+        name: 'x',
+        concurrency: 4,
+      );
       expect(limited.toJson()['concurrency'], 4);
       expect(GraphNode.fromJson(limited.toJson()), limited);
       const free = EffectNode(id: '1', place: null, name: 'x');
       expect(free.toJson().containsKey('concurrency'), isFalse);
       expect(
-        GraphNode.fromJson({'id': '1', 'kind': 'effect', 'name': 'x', 'place': null, 'doc': null}),
+        GraphNode.fromJson({
+          'id': '1',
+          'kind': 'effect',
+          'name': 'x',
+          'place': null,
+          'doc': null,
+        }),
         free,
       );
       expect(limited, isNot(free));
@@ -298,8 +309,21 @@ void main() {
 
     test('names a concurrency that is not an integer', () {
       expect(
-        () => GraphNode.fromJson({'id': '1', 'kind': 'effect', 'name': 'x', 'place': null, 'doc': null, 'concurrency': '4'}),
-        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('concurrency'))),
+        () => GraphNode.fromJson({
+          'id': '1',
+          'kind': 'effect',
+          'name': 'x',
+          'place': null,
+          'doc': null,
+          'concurrency': '4',
+        }),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('concurrency'),
+          ),
+        ),
       );
     });
 

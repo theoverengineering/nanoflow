@@ -373,7 +373,8 @@ final class EffectNode extends GraphNode {
       other.concurrency == concurrency;
 
   @override
-  int get hashCode => Object.hash(EffectNode, id, place, name, doc, concurrency);
+  int get hashCode =>
+      Object.hash(EffectNode, id, place, name, doc, concurrency);
 
   @override
   String toString() =>

@@ -40,7 +40,6 @@ int readInt(Map<String, Object?> json, String key) {
 
 /// The integer at [key], or `null`. Missing key reads as `null`.
 int? readIntOrNull(Map<String, Object?> json, String key) {
-  if (!json.containsKey(key)) return null;
   final value = json[key];
   if (value == null) return null;
   if (value is int) return value;
