@@ -14,6 +14,7 @@ import 'describe.dart';
 
 const String _usage = '''
 Usage: nanoflow_describe [--package <dir>] [--watch | --check]
+                         [--fatal-warnings]
        nanoflow_describe [--package <dir>] stamp <binary>
 
 Writes <graph>.graph.json, the graph file of every graph of the package,
@@ -23,6 +24,8 @@ current directory.
   --watch          write them again whenever a source under lib/ or bin/
                    changes, until interrupted
   --check          exit 1 when they differ from what would be written
+  --fatal-warnings exit 1 when the graphs have warnings (with or without
+                   --check)
   stamp <binary>   record the hash of <binary> in their builds, and copy
                    them next to <binary>''';
 
@@ -54,6 +57,7 @@ Future<int> runDescribe(
   String? package;
   String? binary;
   final modes = <String>[];
+  var fatalWarnings = false;
   // Whether a value follows the argument at i: a flag is none.
   bool valueAfter(int i) =>
       i + 1 < args.length && !args[i + 1].startsWith('--');
@@ -61,6 +65,8 @@ Future<int> runDescribe(
     switch (args[i]) {
       case '--package' when package == null && valueAfter(i):
         package = args[++i];
+      case '--fatal-warnings' when !fatalWarnings:
+        fatalWarnings = true;
       case '--watch' || '--check':
         modes.add(args[i]);
       case 'stamp' when valueAfter(i):
@@ -71,7 +77,8 @@ Future<int> runDescribe(
         return 2;
     }
   }
-  if (modes.length > 1) {
+  if (modes.length > 1 ||
+      (fatalWarnings && modes.any((mode) => mode != '--check'))) {
     errors.writeln(_usage);
     return 2;
   }
@@ -89,8 +96,8 @@ Future<int> runDescribe(
   }
   try {
     return switch (modes.singleOrNull) {
-      null => await command.write(),
-      '--check' => await command.check(),
+      null => await command.write(fatalWarnings),
+      '--check' => await command.check(fatalWarnings),
       '--watch' => await command.watch(stop, poll),
       _ => await command.stamp(binary!),
     };
@@ -125,15 +132,35 @@ final class _Command {
   /// Writes the graph files that changed, and removes those of graphs that
   /// are gone; prints the compile errors, and then writes only the files of
   /// graphs whose sources compile and removes nothing.
-  Future<int> write() async {
-    final errors = await _update();
-    errors.forEach(err.writeln);
-    return errors.isEmpty ? 0 : 1;
+  Future<int> write(bool fatalWarnings) async {
+    final result = await _update();
+    result.errors.forEach(err.writeln);
+    _printWarnings(result.warnings);
+    return result.errors.isEmpty &&
+            !(fatalWarnings && result.warnings.isNotEmpty)
+        ? 0
+        : 1;
+  }
+
+  /// Prints [warnings] as `path:line: message`, the path from [cwd].
+  void _printWarnings(Iterable<GraphWarning> warnings) {
+    for (final warning in warnings) {
+      final place = warning.place;
+      final where = place == null ? '' : '${_shownPlace(place)}: ';
+      err.writeln('$where${warning.message}');
+    }
+  }
+
+  /// [place], `path:line` from the package root, with the path from [cwd].
+  String _shownPlace(String place) {
+    final at = place.lastIndexOf(':');
+    if (at < 0) return place;
+    return '${shown(_absolute(place.substring(0, at)))}${place.substring(at)}';
   }
 
   /// Whether the graph files are what [write] would write, their `builds`
   /// aside — a stamped file is fresh —, and there is no other.
-  Future<int> check() async {
+  Future<int> check(bool fatalWarnings) async {
     final result = await describe(root);
     result.errors.forEach(err.writeln);
     var fresh = result.errors.isEmpty;
@@ -156,7 +183,8 @@ final class _Command {
         fresh = false;
       }
     }
-    return fresh ? 0 : 1;
+    _printWarnings(result.warnings);
+    return fresh && !(fatalWarnings && result.warnings.isNotEmpty) ? 0 : 1;
   }
 
   /// Records the hash of [binary] in the `builds` of every graph file, and
@@ -237,13 +265,26 @@ final class _Command {
     }
 
     String? described; // the fingerprint of the sources last described
+    // The (place, message) of the warnings of the last describe that
+    // completed.
+    var known = <(String?, String)>{};
     Future<void> describeOnce() async {
       try {
         final fingerprint = await _fingerprint();
         if (fingerprint == described) return;
         described = fingerprint;
-        final errors = await _update();
-        if (errors.isNotEmpty) err.writeln('describe failed: ${errors.first}');
+        final result = await _update();
+        if (result.errors.isNotEmpty) {
+          err.writeln('describe failed: ${result.errors.first}');
+        }
+        _printWarnings([
+          for (final warning in result.warnings)
+            if (!known.contains((warning.place, warning.message))) warning,
+        ]);
+        known = {
+          for (final warning in result.warnings)
+            (warning.place, warning.message),
+        };
       } catch (e) {
         // Anything — a file that cannot be read, the analyzer or the
         // extractor tripping on some code — ends this describe, not the
@@ -347,11 +388,11 @@ final class _Command {
   /// Describes the package and writes the graph files that changed; once
   /// the package compiles, removes the graph files no graph has and the
   /// graph file of the whole package from before (`nanoflow.graph.json`).
-  /// Returns the compile errors of the sources.
+  /// Returns what was described: its compile errors and warnings.
   ///
   /// A file keeps the `builds` it has while its sources are the ones it was
   /// stamped with.
-  Future<List<String>> _update() async {
+  Future<DescribeResult> _update() async {
     final result = await describe(root);
     for (final MapEntry(key: path, value: graph) in result.files.entries) {
       final file = _absolute(path);
@@ -370,7 +411,7 @@ final class _Command {
         out.writeln('removed ${shown(file)}');
       }
     }
-    return result.errors;
+    return result;
   }
 
   /// The graph files of the package that are not at [paths], and the graph

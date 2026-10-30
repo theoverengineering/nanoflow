@@ -396,6 +396,112 @@ void main() {
     expect(await code, 0);
   });
 
+  group('warnings', () {
+    const first = GraphWarning(place: 'lib/graphs.dart:3', message: 'first');
+    const second = GraphWarning(place: 'lib/graphs.dart:9', message: 'second');
+    const third = GraphWarning(place: 'lib/graphs.dart:12', message: 'third');
+
+    /// Runs with a describe that finds the fixture's files and [warnings].
+    Future<int> runWith(
+      List<String> args,
+      List<GraphWarning> warnings, {
+      String? cwd,
+    }) async {
+      final real = await describePackage(dir);
+      return runDescribe(
+        args,
+        cwd: cwd ?? dir,
+        out: out,
+        err: err,
+        describe: (_) async =>
+            DescribeResult(warnings: warnings, files: real.files),
+      );
+    }
+
+    test('are printed as path:line: message by default, exit code 0', () async {
+      expect(await runWith([], [first, second]), 0);
+      expect(
+        err.toString(),
+        'lib/graphs.dart:3: first\nlib/graphs.dart:9: second\n',
+      );
+    });
+
+    test('are printed with the path from the cwd for --package', () async {
+      final parent = p.dirname(dir);
+      final package = p.basename(dir);
+      expect(await runWith(['--package', package], [first], cwd: parent), 0);
+      expect(err.toString(), '$package/lib/graphs.dart:3: first\n');
+    });
+
+    test('--fatal-warnings exits 1 with warnings, 0 without', () async {
+      expect(await runWith(['--fatal-warnings'], [first]), 1);
+      expect(err.toString(), 'lib/graphs.dart:3: first\n');
+      err.clear();
+      expect(await runWith(['--fatal-warnings'], []), 0);
+      expect(err.toString(), isEmpty);
+    });
+
+    test('--check prints them, and fails on them only with '
+        '--fatal-warnings', () async {
+      expect(await run([]), 0);
+      out.clear();
+      err.clear();
+      expect(await runWith(['--check'], [first]), 0);
+      expect(err.toString(), 'lib/graphs.dart:3: first\n');
+      err.clear();
+      expect(await runWith(['--check', '--fatal-warnings'], [first]), 1);
+      expect(err.toString(), 'lib/graphs.dart:3: first\n');
+      err.clear();
+      expect(await runWith(['--fatal-warnings', '--check'], []), 0);
+    });
+
+    test('--fatal-warnings is refused with --watch, stamp and twice', () async {
+      for (final args in [
+        ['--fatal-warnings', '--watch'],
+        ['--watch', '--fatal-warnings'],
+        ['--fatal-warnings', 'stamp', 'x'],
+        ['--fatal-warnings', '--fatal-warnings'],
+      ]) {
+        err.clear();
+        expect(await run(args), 2, reason: '$args');
+        expect(err.toString(), contains('Usage: nanoflow_describe'));
+      }
+    });
+
+    test('--watch prints only the warnings that are new', () async {
+      final real = await describePackage(dir);
+      final stop = Completer<void>();
+      addTearDown(() {
+        if (!stop.isCompleted) stop.complete();
+      });
+      var calls = 0;
+      final code = runDescribe(
+        ['--watch'],
+        cwd: dir,
+        out: out,
+        err: err,
+        stop: stop.future,
+        poll: const Duration(milliseconds: 100),
+        describe: (_) async => DescribeResult(
+          files: real.files,
+          warnings: ++calls == 1 ? [first, second] : [second, third],
+        ),
+      );
+      const firstLines =
+          'lib/graphs.dart:3: first\nlib/graphs.dart:9: second\n';
+      await until('the first warnings', () => err.toString() == firstLines);
+
+      await edit((text) => text.replaceFirst("'collect'", "'gather'"));
+      await until(
+        'the new warning',
+        () => err.toString() == '${firstLines}lib/graphs.dart:12: third\n',
+      );
+
+      stop.complete();
+      expect(await code, 0);
+    });
+  });
+
   test('the program stops watching on SIGINT', () async {
     final process = await Process.start(Platform.resolvedExecutable, [
       'run',
