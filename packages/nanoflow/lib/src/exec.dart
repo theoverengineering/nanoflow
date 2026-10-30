@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:path/path.dart' as p;
+
 /// A program that [exec] ran exited with a code other than 0.
 final class ExecException implements Exception {
   ExecException(this.executable, this.exitCode);
@@ -20,7 +22,8 @@ final class ExecException implements Exception {
 ///
 /// The program runs in [workingDirectory], the current directory by
 /// default, with [environment] added to the environment of this process,
-/// and with an empty stdin. Its stderr goes, as it arrives, to the log of
+/// and with [stdin], if given, on its stdin, UTF-8 encoded and followed by
+/// EOF, else with an empty stdin. Its stderr goes, as it arrives, to the log of
 /// the effect `exec` is called in — from the body of `f.effect` or from code
 /// the body calls — and anywhere else to the stderr of this process. A
 /// program that writes to an effect's log faster than the log is written
@@ -48,6 +51,11 @@ final class ExecException implements Exception {
 /// - when this process ends, however it ends, even killed with SIGKILL: the
 ///   shell that runs the program watches a pipe from this process, which
 ///   the system closes then.
+///
+/// [stdin] does not go through the arguments, which the system limits in size
+/// and any user can read with `ps`. It is written to a file in a private
+/// directory of the system's temp dir, which the shell opens as the program's
+/// stdin and removes at once; the directory is removed when `exec` ends.
 ///
 /// A program started in another isolate, as `Isolate.run` runs code,
 /// belongs to no session: only the end of the process stops it. Start
@@ -90,6 +98,7 @@ Future<String> exec(
   String? workingDirectory,
   Map<String, String>? environment,
   bool color = false,
+  String? stdin,
 }) => execIn(
   _shell,
   executable,
@@ -97,6 +106,7 @@ Future<String> exec(
   workingDirectory: workingDirectory,
   environment: environment,
   color: color,
+  stdin: stdin,
 );
 
 /// [exec] through [shell].
@@ -107,6 +117,7 @@ Future<String> execIn(
   String? workingDirectory,
   Map<String, String>? environment,
   bool color = false,
+  String? stdin,
 }) {
   final scope = Zone.current[_scopeKey] as ExecScope?;
   final log = Zone.current[_logKey] as ProgramLog?;
@@ -119,6 +130,7 @@ Future<String> execIn(
     workingDirectory: workingDirectory,
     environment: environment,
     color: color,
+    stdin: stdin,
     scope: scope,
     log: log,
     stderr: processStderr,
@@ -209,6 +221,7 @@ Future<String> _exec(
   required String? workingDirectory,
   required Map<String, String>? environment,
   required bool color,
+  required String? stdin,
   required ExecScope? scope,
   required ProgramLog? log,
   required IOSink stderr,
@@ -221,10 +234,56 @@ Future<String> _exec(
       'off without a terminal; install bash',
     );
   }
-  scope?._refuseWhenStopped();
+  // Private to the owner: mkdtemp makes the directory 0700.
+  final stdinDir = stdin == null
+      ? null
+      : await Directory.systemTemp.createTemp('nanoflow-exec-');
+  try {
+    String? stdinFile;
+    if (stdinDir != null) {
+      stdinFile = p.join(stdinDir.path, 'stdin');
+      await File(stdinFile).writeAsBytes(utf8.encode(stdin!));
+    }
+    scope?._refuseWhenStopped();
+    return await _execIn(
+      shell,
+      executable,
+      arguments,
+      workingDirectory: workingDirectory,
+      environment: environment,
+      color: color,
+      stdinFile: stdinFile,
+      scope: scope,
+      log: log,
+      stderr: stderr,
+    );
+  } finally {
+    try {
+      await stdinDir?.delete(recursive: true);
+    } on FileSystemException {
+      // Nothing more to be done about it.
+    }
+  }
+}
+
+/// [_exec] once the shell is known to give groups and the file of the stdin,
+/// if any, is written.
+Future<String> _execIn(
+  String shell,
+  String executable,
+  List<String> arguments, {
+  required String? workingDirectory,
+  required Map<String, String>? environment,
+  required bool color,
+  required String? stdinFile,
+  required ExecScope? scope,
+  required ProgramLog? log,
+  required IOSink stderr,
+}) async {
   final process = await _startInGroup(
     shell,
     [executable, ...arguments],
+    stdinFile: stdinFile,
     workingDirectory: workingDirectory,
     environment: color ? {..._colorEnvironment, ...?environment} : environment,
   );
@@ -257,16 +316,18 @@ Future<String> _exec(
   }
 }
 
-/// Starts [shell] running [program] with [inGroupScript]. The shell's stdin
+/// Starts [shell] running [program] with [inGroupScript], with the file
+/// [stdinFile] as its stdin if given. The shell's stdin
 /// is the pipe it watches: it must stay open until the shell has exited.
 Future<Process> _startInGroup(
   String shell,
   List<String> program, {
+  String? stdinFile,
   String? workingDirectory,
   Map<String, String>? environment,
 }) => Process.start(
   shell,
-  ['-c', inGroupScript, 'sh', ...program],
+  ['-c', inGroupScript, 'sh', stdinFile ?? '', ...program],
   workingDirectory: workingDirectory,
   environment: environment,
 );
@@ -382,11 +443,16 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 /// through fd 3. The `while` loop waits again if `wait` returned while the
 /// program is only stopped.
 ///
+/// The first argument is the file that is the program's stdin, or an empty
+/// string for none; the program comes after it. The shell opens the file and
+/// removes it at once, so that nothing is left if the app is killed later. It
+/// is an argument, not an environment variable, which a program would inherit.
+///
 /// The shell's stdin is a pipe from the process that started it, which
 /// writes nothing to it and keeps it open while the program runs. A watcher
 /// reads it: a subshell started before job control is on, so in the shell's
 /// own group, which gets the pipe through fd 4 and gives the program none of
-/// it — the program's stdin is /dev/null. When the pipe closes — when that
+/// it — the program's stdin is the file, or /dev/null without one. When the pipe closes — when that
 /// process closes it, or ends, however it ends — the watcher tells the shell
 /// to stop with SIGTERM. The shell kills the watcher when it exits itself.
 /// In `stop`, the watcher is `$!` until `watcher` is set, and before the
@@ -406,6 +472,7 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 const inGroupScript =
     _endGroup +
     r'''
+stdin_file=$1; shift
 stop() {
   trap '' TERM INT HUP
   set +m
@@ -420,7 +487,8 @@ stop() {
   print STDERR "$ARGV[0]: $!\n";
   exit($!{ENOENT} ? 127 : 126);
 ' -- "$@"
-exec 3>&2 2>/dev/null 4<&0 </dev/null
+exec 3>&2 2>/dev/null 4<&0 <"${stdin_file:-/dev/null}"
+[ -n "$stdin_file" ] && rm -f "$stdin_file"
 trap stop TERM INT HUP
 { while read -r line; do :; done; kill -TERM $$; } <&4 >/dev/null 3>&- 4<&- &
 watcher=$!

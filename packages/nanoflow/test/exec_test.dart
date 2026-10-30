@@ -75,6 +75,7 @@ Future<({String out, String err})> runInGroup(
     '-c',
     inGroupScript,
     'sh',
+    '',
     ...program,
   ], environment: environment);
   final out = utf8.decodeStream(shell.stdout);
@@ -83,6 +84,27 @@ Future<({String out, String err})> runInGroup(
   await shell.stdin.close();
   return (out: await out, err: await err);
 }
+
+/// The `nanoflow-exec-*` entries in the system temp dir.
+List<String> execTempEntries() => [
+  for (final entry in Directory.systemTemp.listSync())
+    if (p.basename(entry.path).startsWith('nanoflow-exec-')) entry.path,
+];
+
+/// An effect that runs a program given 3 MB on stdin that, after it has
+/// opened its stdin, writes its pid to [pidFile] and sleeps.
+Future<String> sleepsWithStdin(Flow f, String x) => f.effect('sleep', () async {
+  try {
+    return await exec('/bin/sh', [
+      '-c',
+      r'echo $$ >> "$0"; sleep 100 & wait',
+      pidFile,
+    ], stdin: 'x' * 3000000);
+  } on Exception catch (e) {
+    execErrors.add(e);
+    rethrow;
+  }
+});
 
 /// Whether the process [pid] runs: it is there, and not a zombie.
 bool isRunning(int pid) {
@@ -284,6 +306,66 @@ void main() {
     expect(await exec('cat', []), isEmpty);
   });
 
+  group('with stdin', () {
+    setUp(() => expect(execTempEntries(), isEmpty));
+
+    test('gives the program the text, then EOF', () async {
+      expect(
+        (await exec('wc', ['-c'], stdin: 'x' * 1000000)).trim(),
+        '1000000',
+      );
+    });
+
+    test('encodes the text as UTF-8', () async {
+      const text = 'привет, мир — 你好 😀\n';
+      expect(await exec('cat', [], stdin: text), text);
+    });
+
+    test('leaves the program no file of the text while it runs', () async {
+      final left = await exec('/bin/sh', [
+        '-c',
+        r'cat >/dev/null; sleep 0.2; '
+            r'for d in "$0"/nanoflow-exec-*; do ls -A "$d"; done 2>/dev/null',
+        Directory.systemTemp.path,
+      ], stdin: 'text');
+      expect(left, isEmpty);
+    });
+
+    test('leaves no temp dir after a normal exit', () async {
+      await exec('cat', [], stdin: 'x');
+      expect(execTempEntries(), isEmpty);
+    });
+
+    test('leaves no temp dir after a non-zero exit', () async {
+      await expectLater(
+        exec('/bin/sh', ['-c', 'exit 3'], stdin: 'x'),
+        throwsA(isA<ExecException>()),
+      );
+      expect(execTempEntries(), isEmpty);
+    });
+
+    test('leaves no temp dir when the program is not there', () async {
+      final stderr = Captured();
+      await expectLater(
+        withStderr(
+          stderr,
+          () => exec('nanoflow-no-such-program', [], stdin: 'x'),
+        ),
+        throwsA(isA<ExecException>()),
+      );
+      expect(execTempEntries(), isEmpty);
+    });
+
+    test(
+      'reaches a program that a job started under job control runs',
+      () async {
+        // The program is a background job of the shell, which has `set -m`.
+        expect(await exec('/bin/sh', ['-c', 'cat; cat'], stdin: 'hi'), 'hi');
+      },
+      skip: noBash,
+    );
+  });
+
   test('adds environment to the environment of the process', () async {
     expect(
       await exec(
@@ -446,6 +528,7 @@ void main() {
         '-c',
         inGroupScript,
         'sh',
+        '',
         '/bin/sh',
         '-c',
         r'sleep 100 & echo $! >> "$0"; wait',
@@ -552,6 +635,20 @@ void main() {
         isA<FlowStoppedException>(),
       ]);
       expect(isRunning(sleep), isFalse);
+    });
+
+    test('flow.stop() ends the group of a program given a large stdin, and '
+        'leaves no temp dir', () async {
+      final flow = Flow(directory: dir);
+      final session = await flow.startWorkflow(sleepsWithStdin, 'x');
+      final [sleep] = await pidsIn(pidFile, 1);
+
+      flow.stop();
+
+      await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
+      expect(execErrors, [isA<FlowStoppedException>()]);
+      expect(isRunning(sleep), isFalse);
+      expect(execTempEntries(), isEmpty);
     });
 
     test('moves no effect key: the first program through a shell, which '

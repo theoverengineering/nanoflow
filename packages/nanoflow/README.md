@@ -159,12 +159,12 @@
 
 ```dart
 final inspect = node('inspect', (Change change) async {
-  final out = await exec('claude', ['-p', prompt(change)]);
+  final out = await exec('claude', ['-p'], stdin: prompt(change));
   return Report.fromJson(jsonDecode(out) as Map<String, Object?>);
 });
 ```
 
-- **`exec(executable, arguments, {workingDirectory, environment, color})`
+- **`exec(executable, arguments, {workingDirectory, environment, color, stdin})`
   отдаёт stdout программы.** Код не 0 — `ExecException`, stdout не UTF-8 —
   `FormatException`. Выход программы проверяет сам код, как сочтёт нужным:
   здесь — `Report.fromJson`.
@@ -186,7 +186,13 @@ final inspect = node('inspect', (Change change) async {
   await exec('npm', ['test'], color: true);
   ```
 
-- **stdin программы пуст.** `environment` добавляется к окружению процесса.
+- **`stdin:` — текст на stdin программы.** Он пишется в stdin программы в
+  UTF-8, после чего stdin закрывается; без `stdin:` он пуст. Длинный промпт
+  или diff не надо передавать аргументом: аргументы ограничены `ARG_MAX` и
+  видны в `ps`. Текст идёт через файл во временном каталоге, доступном только
+  владельцу; shell открывает его и сразу удаляет, а каталог убирается, когда
+  `exec` завершился.
+- `environment` добавляется к окружению процесса.
   `executable` — программа, а не встроенная команда shell: ищется в `PATH`,
   если в нём нет `/`; относительный путь — от `workingDirectory`.
 - **Программа идёт в своей группе процессов** и останавливается вместе со
