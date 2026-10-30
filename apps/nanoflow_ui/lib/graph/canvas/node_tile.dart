@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:nanoflow_model/nanoflow_model.dart' show EffectNode;
 
 import '../../layout/layout.dart' as layout;
 import '../../layout/layout.dart' show NodeKind;
@@ -25,7 +26,8 @@ import 'tile_marks.dart';
 /// state's badge on its bottom right corner; an effect node entered more than
 /// once says so over its top right corner (`2×`). A fork the code went
 /// through looks as a visited effect, `2×` over it as over one; one it did
-/// not is plain. The looks and the badges are in tile_marks.dart. The ring
+/// not is plain. An effect of a node with a concurrency says it over its top
+/// left corner (`≤4`), session or not. The looks and the badges are in tile_marks.dart. The ring
 /// round the selected effect's node is not the tile's: the canvas draws it
 /// under the arrows ([ringOf]).
 ///
@@ -176,6 +178,13 @@ class NodeTile extends StatelessWidget {
             top: tile.top - (node.kind == NodeKind.call ? 14 : 9),
             child: count,
           ),
+        if (node.kind == NodeKind.effect)
+          if (node.node case EffectNode(:final concurrency?))
+            Positioned(
+              left: tile.left - _overhang,
+              top: tile.top - 9,
+              child: LimitBadge(concurrency),
+            ),
         if (onExpand case final expand?)
           Positioned(
             left: tile.right - FrameToggle.size - _toggleInset,

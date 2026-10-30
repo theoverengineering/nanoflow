@@ -215,8 +215,28 @@ class CountBadge extends StatelessWidget {
       measureText(text, CanvasText.badge) + 14;
 
   @override
+  Widget build(BuildContext context) => _Pill(text);
+}
+
+/// `≤4` over the effect of a node that runs at most four at a time.
+class LimitBadge extends StatelessWidget {
+  const LimitBadge(this.limit);
+
+  final int limit;
+
+  @override
+  Widget build(BuildContext context) => _Pill('≤$limit');
+}
+
+/// What [CountBadge] and [LimitBadge] look like: a pill with [text] on it.
+class _Pill extends StatelessWidget {
+  const _Pill(this.text);
+
+  final String text;
+
+  @override
   Widget build(BuildContext context) => Container(
-    width: widthOf(text),
+    width: CountBadge.widthOf(text),
     padding: const EdgeInsets.symmetric(vertical: 1),
     alignment: Alignment.center,
     decoration: BoxDecoration(

@@ -8,7 +8,13 @@ import 'package:nanoflow_ui/graph/canvas/node_tile.dart';
 import 'package:nanoflow_ui/graph/canvas/open_as_graph_button.dart';
 import 'package:nanoflow_ui/graph/canvas/tile_marks.dart';
 import 'package:nanoflow_ui/layout/layout.dart'
-    show LayoutOptions, NodeBox, endMarker, layoutBody, startMarker;
+    show
+        GraphLayout,
+        LayoutOptions,
+        NodeBox,
+        endMarker,
+        layoutBody,
+        startMarker;
 import 'package:nanoflow_ui/state/graph_marks.dart';
 import 'package:nanoflow_ui/theme.dart';
 import 'package:nanoflow_ui/widgets/dashed_border.dart';
@@ -58,9 +64,30 @@ void main() {
     options: const LayoutOptions(measure: measureLabel),
   );
 
+  // An effect of a node that runs at most four at a time.
+  final limitedLayout = layoutBody(
+    const GraphBody(
+      nodes: [
+        EffectNode(
+          id: 'limited',
+          place: 'lib/a.dart:3',
+          name: 'compress',
+          concurrency: 4,
+        ),
+      ],
+      edges: [
+        GraphEdge(from: null, to: 'limited', label: null),
+        GraphEdge(from: 'limited', to: null, label: null),
+      ],
+    ),
+    functions: const {},
+    options: const LayoutOptions(measure: measureLabel),
+  );
+
   Future<void> pumpTile(
     WidgetTester tester,
     String id, {
+    GraphLayout? of,
     VoidCallback? onTap,
     ValueChanged<Offset>? onDoubleTap,
     InlineSpan? doc,
@@ -68,7 +95,7 @@ void main() {
     ValueChanged<Offset>? onExpand,
     ValueChanged<Offset>? onOpenAsGraph,
   }) {
-    final node = layout.nodes[id]!;
+    final node = (of ?? layout).nodes[id]!;
     return pumpScreen(
       tester,
       Stack(
@@ -230,6 +257,25 @@ void main() {
     final open = tester.getRect(find.byKey(OpenAsGraphButton.keyOf('call')));
     expect(open.right, moreOrLessEquals(tile.right - 4));
     expect(open.top, moreOrLessEquals(tile.top + 4));
+  });
+
+  testWidgets('an effect of a node with a concurrency says it over its top '
+      'left corner, clear of its count and its state', (tester) async {
+    await pumpTile(
+      tester,
+      'limited',
+      of: limitedLayout,
+      marks: const NodeMarks(state: NodeState.visited, effects: 2),
+    );
+    final tile = tileOf(tester, 'limited');
+    final limit = tester.getRect(find.byType(LimitBadge));
+    expect(find.text('≤4'), findsOneWidget);
+    expect(limit.left, lessThan(tile.left));
+    expect(limit.top, lessThan(tile.top));
+    expect(limit.overlaps(tester.getRect(find.byType(CountBadge))), isFalse);
+
+    await pumpTile(tester, 'effect');
+    expect(find.byType(LimitBadge), findsNothing);
   });
 
   group('with a session', () {
