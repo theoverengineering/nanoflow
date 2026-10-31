@@ -2,6 +2,8 @@
 // shape it is built into, what a call of a node or a graph gives, and what is
 // not a graph.
 
+import 'dart:async' show unawaited;
+
 import 'package:nanoflow/src/graph.dart';
 import 'package:test/test.dart';
 
@@ -104,7 +106,7 @@ void main() {
       await slots.take();
       await slots.take();
       for (var i = 0; i < 4; i++) {
-        slots.take().then((_) => granted.add(i));
+        unawaited(slots.take().then((_) => granted.add(i)));
       }
       await Future<void>.delayed(Duration.zero);
       expect(granted, isEmpty);
@@ -119,7 +121,7 @@ void main() {
       await slots.take();
       await slots.take();
       var third = false;
-      slots.take().then((_) => third = true);
+      unawaited(slots.take().then((_) => third = true));
       await Future<void>.delayed(Duration.zero);
       expect(third, isFalse);
     },
