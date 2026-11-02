@@ -290,6 +290,44 @@ void main() {
       expect(free.toString(), isNot(contains('limit')));
     });
 
+    test('reads whether an edge is of a failure route, writes it only when it '
+        'is, and none from an edge written before edges could be', () {
+      const failed = GraphEdge(
+        from: '2',
+        to: '3',
+        label: 'failed',
+        limit: '2',
+        failed: true,
+      );
+      expect(failed.toJson(), {
+        'from': '2',
+        'to': '3',
+        'label': 'failed',
+        'limit': '2',
+        'failed': true,
+      });
+      expect(GraphEdge.fromJson(failed.toJson()), failed);
+      // A case of a switch with the same text is another edge.
+      const labelled = GraphEdge(
+        from: '2',
+        to: '3',
+        label: 'failed',
+        limit: '2',
+      );
+      expect(labelled.toJson(), isNot(contains('failed')));
+      expect(labelled.failed, isFalse);
+      expect(GraphEdge.fromJson(labelled.toJson()), labelled);
+      expect(failed, isNot(labelled));
+      expect(failed.hashCode, isNot(labelled.hashCode));
+      expect(failed.toString(), contains('failed: true'));
+      expect(labelled.toString(), isNot(contains('failed: ')));
+      expect(
+        GraphEdge.fromJson(const {'from': '2', 'to': '3', 'label': null})
+            .failed,
+        isFalse,
+      );
+    });
+
     test('reads the function of a warning, and none from a warning written '
         'before warnings had one', () {
       final file = GraphFile.fromJson(_fileJson());

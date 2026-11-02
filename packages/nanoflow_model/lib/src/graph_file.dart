@@ -458,18 +458,22 @@ final class GraphEdge {
     required this.label,
     this.each,
     this.limit,
+    this.failed = false,
   });
 
   /// Reads an edge from its JSON form. An edge written before edges could
-  /// run their node once per item has no `each`, and one written before
-  /// calls could have a limit no `limit`: they read as `null`, so the format
-  /// stays the same.
+  /// run their node once per item has no `each`, one written before calls
+  /// could have a limit no `limit`, and one written before failure routes no
+  /// `failed`: they read as `null` and `false`, so the format stays the
+  /// same.
   factory GraphEdge.fromJson(Map<String, Object?> json) => GraphEdge(
     from: readStringOrNull(json, 'from'),
     to: readStringOrNull(json, 'to'),
     label: readStringOrNull(json, 'label'),
     each: json.containsKey('each') ? readStringOrNull(json, 'each') : null,
     limit: json.containsKey('limit') ? readStringOrNull(json, 'limit') : null,
+    failed:
+        json.containsKey('failed') && (readBoolOrNull(json, 'failed') ?? false),
   );
 
   /// The id of the node the edge leaves; `null` for the entry of the body.
@@ -480,7 +484,8 @@ final class GraphEdge {
 
   /// What makes the flow take the edge out of a condition (`true`, `false`,
   /// the source of a `switch` case, `default`; `each` and `done` of a loop's
-  /// fork in a file written before [each]); `null` for any other edge.
+  /// fork in a file written before [each]; `failed` out of a node whose
+  /// call failed, with [failed]); `null` for any other edge.
   final String? label;
 
   /// The header of the `for` element of a route's set that runs [to] once
@@ -494,12 +499,19 @@ final class GraphEdge {
   /// without a limit. Written only when set.
   final String? limit;
 
+  /// Whether the edge leaves [from] when the call of it failed: an edge of
+  /// the node's failure route (failure route design), labelled `failed`.
+  /// Tells it from a case of a `switch` with that text. Written only when
+  /// `true`.
+  final bool failed;
+
   Map<String, Object?> toJson() => {
     'from': from,
     'to': to,
     'label': label,
     if (each != null) 'each': each,
     if (limit != null) 'limit': limit,
+    if (failed) 'failed': true,
   };
 
   @override
@@ -509,16 +521,18 @@ final class GraphEdge {
       other.to == to &&
       other.label == label &&
       other.each == each &&
-      other.limit == limit;
+      other.limit == limit &&
+      other.failed == failed;
 
   @override
-  int get hashCode => Object.hash(from, to, label, each, limit);
+  int get hashCode => Object.hash(from, to, label, each, limit, failed);
 
   @override
   String toString() =>
       'GraphEdge(from: $from, to: $to, label: $label'
       '${each == null ? '' : ', each: $each'}'
-      '${limit == null ? '' : ', limit: $limit'})';
+      '${limit == null ? '' : ', limit: $limit'}'
+      '${failed ? ', failed: true' : ''})';
 }
 
 /// Something in the code the describe tool could not draw.
