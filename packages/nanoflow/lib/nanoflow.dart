@@ -19,5 +19,6 @@ export 'src/errors.dart'
         StorageException,
         WorkflowMismatchException;
 export 'src/exec.dart' show ExecException, exec;
+export 'src/failure.dart' show CallFailure;
 export 'src/flow.dart' show Flow, FlowSession;
 export 'src/graph.dart' show Graph, Next, Node, Part, node;

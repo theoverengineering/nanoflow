@@ -5,6 +5,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:nanoflow/src/call_limit.dart';
+import 'package:nanoflow/src/failure.dart';
 import 'package:nanoflow/src/graph.dart';
 import 'package:test/test.dart';
 
@@ -53,6 +54,54 @@ void main() {
     expect([for (final n in join.sources) n.name], ['a', 'c']);
     expect(join.route!((1, 'x')), isNull);
     expect(second.route, isNull);
+  });
+
+  test('a failure route takes the input of the node and the failure, typed, '
+      'and is the node\'s own, apart from its arrows', () {
+    final g = Graph<String, Object?>('g', [
+      Graph.start(a)
+          .failed((String s, CallFailure f) => c('$s ${f.error} ${f.type}'))
+          .next((n) => b(n)),
+      Graph.part(b).next((x) => null),
+      Graph.part(c).failed((s, f) => null),
+    ]);
+    final [first, second, third] = shapeOf(g).nodes;
+    expect(
+      first.failed!('in', const CallFailure('boom', type: 'StateError')),
+      isA<Next>()
+          .having((n) => n.target, 'target', same(c))
+          .having((n) => n.input, 'input', 'in boom StateError'),
+    );
+    expect(first.route!(3), isA<Next>().having((n) => n.input, 'input', 3));
+    expect(second.failed, isNull);
+    expect(third.route, isNull);
+    expect(third.failed!('x', const CallFailure('no')), isNull);
+  });
+
+  test('a failure route of a start is declared as of any part', () {
+    final g = Graph<String, Object?>('g', [
+      Graph.start(a).failed((s, f) => c(s)),
+    ]);
+    expect(shapeOf(g).starts.single.failed, isNotNull);
+    expect(shapeOf(g).starts.single.route, isNull);
+  });
+
+  test('a failure tells its error and the name of its type, and compares by '
+      'them', () {
+    const failure = CallFailure('StateError: no', type: 'StateError');
+    expect(failure.error, 'StateError: no');
+    expect(failure.type, 'StateError');
+    expect(const CallFailure('x'), const CallFailure('x'));
+    expect(
+      const CallFailure('x', type: 'A'),
+      isNot(const CallFailure('x', type: 'B')),
+    );
+    expect(
+      const CallFailure('x', type: 'A').hashCode,
+      const CallFailure('x', type: 'A').hashCode,
+    );
+    expect('$failure', 'CallFailure(StateError: StateError: no)');
+    expect('${const CallFailure('x')}', 'CallFailure(x)');
   });
 
   test('a node only a route reaches is not declared up front', () {
@@ -350,6 +399,41 @@ void main() {
           Graph.join([a, c]).next((Object? x) => null).next((x) => null),
         ]),
         rejects('the arrows of the join of a, c are declared twice'),
+      );
+    });
+
+    test('a failure route of a node declared twice', () {
+      expect(
+        () => Graph<Object?, Object?>('g', [
+          Graph.start(a).failed((s, f) => null),
+          Graph.part(a).failed((s, f) => null),
+        ]),
+        rejects('the failure route of a is declared twice'),
+      );
+      expect(
+        () => Graph<Object?, Object?>('g', [
+          Graph.start(a).failed((s, f) => null).failed((s, f) => null),
+        ]),
+        rejects('the failure route of a is declared twice'),
+      );
+      // Its arrows and its failure route on two parts are each declared
+      // once.
+      expect(
+        Graph<Object?, Object?>('g', [
+          Graph.start(a).next((x) => null),
+          Graph.part(a).failed((s, f) => null),
+        ]),
+        isA<Graph<Object?, Object?>>(),
+      );
+    });
+
+    test('a failure route of a join, which calls nothing', () {
+      expect(
+        () => Graph<Object?, Object?>('g', [
+          Graph.start(c).next((x) => {a(x), c(x)}),
+          Graph.join([a, c]).failed((Object? x, f) => null),
+        ]),
+        rejects('the join of a, c has a failure route: a join calls nothing'),
       );
     });
 

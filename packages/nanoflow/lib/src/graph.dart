@@ -6,7 +6,8 @@
 // and a graph may be a node of another graph.
 //
 // The graph is declared as a list of parts, each from a node or from a join
-// with the route that follows it, checked as a whole when the graph is made,
+// with the route that follows it — and for a node, the route that follows its
+// failure (failure.dart) —, checked as a whole when the graph is made,
 // and built into a shape that `graph_run.dart` runs. The nodes a route leads
 // to are found as the graph runs: no route is run before its node's output
 // is there.
@@ -16,6 +17,7 @@ import 'dart:collection';
 
 import 'call_limit.dart';
 import 'codecs.dart';
+import 'failure.dart';
 import 'flow.dart';
 import 'graph_run.dart';
 
@@ -168,6 +170,14 @@ final class Next {
 /// ]);
 /// ```
 ///
+/// A part of a node may say what follows when the node fails:
+///
+/// ```dart
+/// Graph.part(developIdea)
+///     .next((developed) => settle(developed))
+///     .failed((request, failure) => giveBack((request, failure.error))),
+/// ```
+///
 /// [I] is what the graph's starts take, [O] what it gives: the output that
 /// went nowhere last.
 final class Graph<I, O> extends Nodelike<I, O> {
@@ -175,9 +185,11 @@ final class Graph<I, O> extends Nodelike<I, O> {
   /// another graph, usually the name of its variable — of [parts].
   ///
   /// Throws an [ArgumentError] listing what makes [parts] no graph: no
-  /// start; arrows of a node or a join declared twice; two nodes of one name;
-  /// a join of fewer than 2, more than 6 or repeated nodes.
-  Graph(this.name, List<Part<Object?>> parts) : _shape = _build(name, parts);
+  /// start; arrows of a node or a join, or the failure route of a node,
+  /// declared twice; a failure route of a join; two nodes of one name; a
+  /// join of fewer than 2, more than 6 or repeated nodes.
+  Graph(this.name, List<Part<Object?, Object?>> parts)
+    : _shape = _build(name, parts);
 
   @override
   final String name;
@@ -186,17 +198,18 @@ final class Graph<I, O> extends Nodelike<I, O> {
 
   /// A part from [node], a node the graph starts at: it takes the graph's
   /// input. A graph may have several starts, which start side by side.
-  static Part<O> start<O>(Nodelike<Object?, O> node) =>
+  static Part<I, O> start<I, O>(Nodelike<I, O> node) =>
       Part._(_Head.start, [node]);
 
   /// A part from [node], any node.
-  static Part<O> part<O>(Nodelike<Object?, O> node) =>
+  static Part<I, O> part<I, O>(Nodelike<I, O> node) =>
       Part._(_Head.part, [node]);
 
   /// A part from the join of [nodes], 2 to 6 different nodes: its route gets
   /// the record of their outputs, in this order, once each has given one,
-  /// and declares its type, `((String, int) sent) => report(sent)`.
-  static Part<Never> join(List<Nodelike<Object?, Object?>> nodes) =>
+  /// and declares its type, `((String, int) sent) => report(sent)`. A join
+  /// calls nothing, and has no failure route.
+  static Part<Never, Never> join(List<Nodelike<Object?, Object?>> nodes) =>
       Part._(_Head.join, nodes);
 
   @override
@@ -207,12 +220,21 @@ final class Graph<I, O> extends Nodelike<I, O> {
   /// nowhere last, `null` when none did.
   ///
   /// Throws what a node or a route threw, once the other branches have
-  /// ended; a [TypeError] when that output is not an [O].
+  /// ended; a [TypeError] when that output is not an [O]. With [failures]
+  /// [Failures.caught], gives such a failure as a [Caught] instead.
   Future<Object?> _runWith(
     Flow f,
     Object? input,
     List<CallCopy> copies,
-  ) async => await runGraph(_shape, f, input as I, copies: copies) as O;
+    Failures failures,
+  ) async => await runGraph(
+    _shape,
+    f,
+    input as I,
+    copies: copies,
+    failures: failures,
+    output: (output) => output as O,
+  );
 
   @override
   String toString() => 'Graph($name)';
@@ -239,20 +261,28 @@ extension GraphRun on Graph<Object?, Object?> {
   ///
   /// [copies] are the copies of calls with a limit the run is a part of,
   /// the outermost first: each of its effects takes their slots before it
-  /// is written.
+  /// is written. [failures] says what its failure comes to: whether a
+  /// failure route catches it, round the call or at it.
   Future<Object?> runWith(
     Flow f,
     Object? input, {
     List<CallCopy> copies = const [],
-  }) => _runWith(f, input, copies);
+    Failures failures = Failures.thrown,
+  }) => _runWith(f, input, copies, failures);
 }
 
-/// A part of a graph: a node or a join, and the route that follows it.
+/// A part of a graph: a node or a join, the route that follows it, and for
+/// a node the route that follows its failure.
 ///
-/// [O] is the output of the node; a join's is [Never], as its route
-/// declares the type of the record it takes.
-final class Part<O> {
-  Part._(this._head, this._nodes, [this._routes = const []]);
+/// [I] is the input of the node, [O] its output; a join's are [Never], as
+/// its route declares the type of the record it takes.
+final class Part<I, O> {
+  Part._(
+    this._head,
+    this._nodes, [
+    this._routes = const [],
+    this._failed = const [],
+  ]);
 
   final _Head _head;
 
@@ -261,6 +291,9 @@ final class Part<O> {
 
   /// The routes declared on it: one, unless it is declared twice.
   final List<Object? Function(Object? output)> _routes;
+
+  /// The failure routes declared on it: one, unless it is declared twice.
+  final List<FailureRoute> _failed;
 
   /// The route from the part's node or join: once it has given an [output],
   /// [route] says what runs next, with what:
@@ -275,13 +308,37 @@ final class Part<O> {
   /// the same for the same output and change nothing in the world.
   ///
   /// A node's arrows are declared once: a part takes one route.
-  Part<O> next(Object? Function(O output) route) => Part._(_head, _nodes, [
+  Part<I, O> next(Object? Function(O output) route) => Part._(_head, _nodes, [
     ..._routes,
-    // The route checks the type of what it takes as it is called: a join's
-    // part, a Part<Never>, has nothing to cast to.
+    // The route checks the type of what it takes as it is called: a
+    // join's part, a Part<Never, Never>, has nothing to cast to.
     (output) => (route as dynamic)(output),
-  ]);
+  ], _failed);
+
+  /// The route from the failure of the part's node: once a call of the
+  /// node has failed — the node threw; for a graph, a node or a route of it
+  /// threw that nothing in it caught, once its other branches have ended —,
+  /// [route] gets the [input] of that call and the [CallFailure] and says
+  /// what runs next, as [next]'s route does; `null` ends the branch, and
+  /// as the call gave no output, nothing goes to the graph's result.
+  ///
+  /// The failure fails neither the branch nor the session, and is final:
+  /// on resume, the node that failed — of the graph, any node that failed in
+  /// it — does not run again, and [route] gets the same failure from the
+  /// journal. A stop of the flow, or the end of the session by a failure of
+  /// its store or a codec, is no failure: no route catches it.
+  ///
+  /// A node's failure route is declared once; a join has none.
+  Part<I, O> failed(Object? Function(I input, CallFailure failure) route) =>
+      Part._(_head, _nodes, _routes, [
+        ..._failed,
+        (input, failure) => route(input as I, failure),
+      ]);
 }
+
+/// A route from the failure of a call: its input and the failure give what
+/// runs next.
+typedef FailureRoute = Object? Function(Object? input, CallFailure failure);
 
 /// How a part starts.
 enum _Head { start, part, join }
@@ -331,6 +388,10 @@ final class ShapeNode {
   /// What follows its output; `null` when it has no arrows.
   Object? Function(Object? output)? route;
 
+  /// What follows the failure of a call of it; `null` when it has no
+  /// failure route: its failure fails the branch.
+  FailureRoute? failed;
+
   /// The joins it is one of the nodes of.
   final joins = <ShapeJoin>[];
 }
@@ -353,7 +414,7 @@ final class ShapeJoin {
 GraphShape shapeOf(Graph<Object?, Object?> graph) => graph._shape;
 
 /// The shape of the graph [name] of [parts].
-GraphShape _build(String name, List<Part<Object?>> parts) {
+GraphShape _build(String name, List<Part<Object?, Object?>> parts) {
   final shape = GraphShape._(name);
   // A set: a problem met twice is listed once.
   final problems = <String>{};
@@ -365,7 +426,7 @@ GraphShape _build(String name, List<Part<Object?>> parts) {
   }
 
   var startsDeclared = false;
-  for (final Part(:_head, :_nodes, :_routes) in parts) {
+  for (final Part(:_head, :_nodes, :_routes, :_failed) in parts) {
     switch (_head) {
       case _Head.start || _Head.part:
         final at = node(_nodes.single);
@@ -373,11 +434,20 @@ GraphShape _build(String name, List<Part<Object?>> parts) {
           startsDeclared = true;
           if (at != null) shape.starts.add(at);
         }
-        if (at == null || _routes.isEmpty) continue;
-        if (_routes.length > 1 || at.route != null) {
-          problems.add('the arrows of ${at.name} are declared twice');
-        } else {
-          at.route = _routes.single;
+        if (at == null) continue;
+        if (_routes.isNotEmpty) {
+          if (_routes.length > 1 || at.route != null) {
+            problems.add('the arrows of ${at.name} are declared twice');
+          } else {
+            at.route = _routes.single;
+          }
+        }
+        if (_failed.isNotEmpty) {
+          if (_failed.length > 1 || at.failed != null) {
+            problems.add('the failure route of ${at.name} is declared twice');
+          } else {
+            at.failed = _failed.single;
+          }
         }
       case _Head.join:
         final sources = [for (final source in _nodes) node(source)];
@@ -389,6 +459,11 @@ GraphShape _build(String name, List<Part<Object?>> parts) {
         }
         if (sources.contains(null)) continue;
         final join = ShapeJoin._(sources.cast());
+        if (_failed.isNotEmpty) {
+          problems.add(
+            '${join.name} has a failure route: a join calls nothing',
+          );
+        }
         for (final source in join.sources) {
           source.joins.add(join);
         }

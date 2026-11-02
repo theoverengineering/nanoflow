@@ -9,6 +9,7 @@ import 'codecs.dart';
 import 'context.dart';
 import 'errors.dart';
 import 'exec.dart';
+import 'failure.dart';
 import 'graph.dart';
 import 'owner.dart';
 import 'project.dart';
@@ -145,8 +146,11 @@ final class Flow {
   /// An effect is taken from the journal when its key has an `effect-finished`
   /// there, the effect it followed then (`after`) is the one it follows now,
   /// and its saved result comes back from JSON as the type the code
-  /// declares now (see [addCodec]); any other effect runs live, in the record
-  /// of its key when the session has one. A saved result whose type has no
+  /// declares now (see [addCodec]); so is one whose last outcome is an
+  /// `effect-failed` when a failure route catches its failure: it fails
+  /// again, and the route goes on from the journal (see [Part.failed]). Any
+  /// other effect runs live, in the record of its key when the session has
+  /// one. A saved result whose type has no
   /// codec now is not run again: the session ends there as on a failure of
   /// its store, with a [CodecException], and can be resumed once the codec
   /// is registered.
@@ -276,7 +280,18 @@ final class Flow {
     };
     final records = <String, Effect>{};
     final saved = <String, _Saved>{};
+    final failed = <String, _Failed>{};
     for (var record in await _stored(handle.effects)) {
+      if (outcomes[record.id] case EffectState(
+        status: EffectStatus.failed,
+        :final error?,
+        :final errorType,
+      )) {
+        failed[record.key] = (
+          after: record.after,
+          failure: CallFailure(error, type: errorType),
+        );
+      }
       // Only an effect that finished has one.
       if (outcomes[record.id]?.outputId case final outputId?) {
         if (record.outputId != outputId) {
@@ -292,7 +307,7 @@ final class Flow {
       }
       records[record.key] = record;
     }
-    return _Journal(saved: saved, records: records);
+    return _Journal(saved: saved, failed: failed, records: records);
   }
 
   /// The ids of the sessions of [graph] that have not ended, newest first,
@@ -428,7 +443,10 @@ extension WorkflowFunctions on Flow {
 ///
 /// [copies] are the copies of calls with a limit the effect is a part of, the
 /// outermost first: it takes their slots, then one of the node's own, before
-/// it is written.
+/// it is written. [failures] says whether a failure route catches its
+/// failure: then the failure is final — the effect does not run again on
+/// resume, and fails again — and with [Failures.caught] it gives it as a
+/// [Caught] instead of its result, while the session goes on.
 ///
 /// Throws as [WorkflowFunctions.effect] does.
 Future<Object?> nodeEffect(
@@ -437,6 +455,7 @@ Future<Object?> nodeEffect(
   Node<Object?, Object?> node,
   Object? input, {
   List<CallCopy> copies = const [],
+  Failures failures = Failures.thrown,
 }) {
   final session = flow._sessionHere(node.name);
   return session.effect<Object?>(
@@ -446,8 +465,19 @@ Future<Object?> nodeEffect(
     place: () => session.placeOfNode(graph, node.name),
     slots: node.slots,
     copies: copies,
+    failures: failures,
   );
 }
+
+/// Throws, when the session of [flow] this is called in no longer goes on,
+/// what ended it: a [FlowStoppedException] once the flow is stopped, the
+/// session's failure — of its store, or of a codec — once it has one. Then
+/// no failure route catches a failure: the session ends as it is.
+///
+/// [what] names the code that asks, in the [StateError] thrown outside a
+/// session of [flow].
+void checkGoesOn(Flow flow, String what) =>
+    flow._sessionHere(what)._checkWritable();
 
 /// Starts a session of the workflow function [workflow] as [Flow.start] does,
 /// as one whose effects of the keys in [saved] have finished before,
@@ -491,12 +521,23 @@ final class FlowSession<R> {
 /// its result.
 typedef _Saved = ({String? after, Object? value});
 
+/// An effect that failed: the key of the effect it followed, and the failure
+/// as its `effect-failed` keeps it.
+typedef _Failed = ({String? after, CallFailure failure});
+
 /// What a session's journal has of its effects, by key.
 final class _Journal {
-  const _Journal({this.saved = const {}, this.records = const {}});
+  const _Journal({
+    this.saved = const {},
+    this.failed = const {},
+    this.records = const {},
+  });
 
   /// The effects that finished.
   final Map<String, _Saved> saved;
+
+  /// The effects whose last outcome is a failure.
+  final Map<String, _Failed> failed;
 
   /// The records of the effects.
   final Map<String, Effect> records;
@@ -615,7 +656,7 @@ final class _Session {
         () => _handle.appendEvent(
           SessionFailed(
             time: systemClock(),
-            error: _oneLine(error!),
+            error: errorText(error!),
             stack: '$stack',
           ),
         ),
@@ -642,8 +683,10 @@ final class _Session {
   ///
   /// An effect that finished before following the same effect gives its result
   /// and writes nothing, when its result still comes back from JSON as a
-  /// [T]; any other runs live, once it has the slots of [copies] and one of
-  /// [slots].
+  /// [T]. So, when a failure route catches its failure ([failures]), does one
+  /// that failed before following the same effect: it fails again with the
+  /// saved failure, or gives it as a [Caught]. Any other runs live, once it
+  /// has the slots of [copies] and one of [slots].
   Future<T> effect<T>(
     String name,
     FutureOr<T> Function() body, {
@@ -651,6 +694,7 @@ final class _Session {
     required String? Function() place,
     Slots? slots,
     List<CallCopy> copies = const [],
+    Failures failures = Failures.thrown,
   }) {
     _checkWritable();
     if (_ended) {
@@ -680,14 +724,29 @@ final class _Session {
             // not. It runs again (spec §4.4).
           }
         }
-        return _live(effect, body, codec, place, slots, copies);
+        if (failures != Failures.thrown) {
+          final failed = _journal.failed[effect.key];
+          if (failed != null && failed.after == effect.after) {
+            // A caught failure is final: the effect fails again as it did,
+            // writing nothing.
+            for (final copy in copies) {
+              copy.replayed();
+            }
+            return failures == Failures.caught
+                ? Future.value(Caught(failed.failure) as T)
+                : Future<T>.error(ReplayedFailure(failed.failure));
+          }
+        }
+        return _live(effect, body, codec, place, slots, copies, failures);
       }),
     );
   }
 
   /// Runs [body] as [effect] and writes it: `effect-started`, then its result
   /// and `effect-finished`, or `effect-failed`. What the body prints goes to
-  /// the effect's log, which is written before the effect's outcome.
+  /// the effect's log, which is written before the effect's outcome. With
+  /// [failures] [Failures.caught], a failure written is given as a [Caught],
+  /// while the session goes on.
   ///
   /// Waits first, writing nothing, for the slot of each of [copies], the
   /// outermost first, then for a slot of [slots] when there are some. A copy
@@ -704,6 +763,7 @@ final class _Session {
     String? Function() place,
     Slots? slots,
     List<CallCopy> copies,
+    Failures failures,
   ) async {
     final ended = Completer<void>();
     _running.add(ended.future);
@@ -733,11 +793,18 @@ final class _Session {
             EffectFailed(
               time: systemClock(),
               effectId: record.id,
-              error: _oneLine(e),
+              error: errorText(e),
               stack: '$s',
+              errorType: '${e.runtimeType}',
             ),
           ),
         );
+        if (failures == Failures.caught) {
+          // Once the flow is stopped or the session failed meanwhile, the
+          // failure is caught on resume, from the journal.
+          _checkWritable();
+          return Caught(failureOf(e)) as T;
+        }
         rethrow;
       }
       final outputId = await _write(() => _handle.writeDocument(json));
@@ -836,9 +903,6 @@ Future<T> _stored<T>(Future<T> Function() io) async {
     throw StorageException(e);
   }
 }
-
-/// The text of [error] on one line: every run of line breaks is a space.
-String _oneLine(Object error) => '$error'.replaceAll(RegExp(r'[\r\n]+'), ' ');
 
 /// What the body of an effect outputs — the lines it prints and the stderr of
 /// the programs `exec` runs in it — written to the effect's log, which is

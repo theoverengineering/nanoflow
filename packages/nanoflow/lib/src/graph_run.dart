@@ -21,33 +21,56 @@
 // what it called has ended; the effects of what it called take its slot
 // before they are written, outside the session's zone, so the branch awaits
 // the node as it does without a limit, and its effects get the same keys.
+//
+// A call of a node with a failure route (failure.dart) gives its failure as
+// a [Caught] instead of an output, and the branch goes on along the failure
+// route from where it would have gone on from the output. In a run whose
+// failure a failure route catches, a branch that fails does not throw: the
+// run keeps its failure, with the place of the branch in the graph's order,
+// and once every branch has ended fails with the first in that order — or,
+// at the call with the route, gives it as a [Caught]. The futures awaited are
+// the same either way, so the effects get the same keys as without a route.
 
 import 'dart:async';
 
 import 'call_limit.dart';
+import 'failure.dart';
 import 'flow.dart';
 import 'graph.dart';
 
 /// Runs [shape] with [input] in the session of [flow] this is called in, as
 /// a part of [copies], the copies of calls with a limit it is in, the
-/// outermost first; gives the output that went nowhere last, `null` when
-/// none did.
+/// outermost first; gives the output that went nowhere last — `null` when
+/// none did — through [output], which checks its type.
 ///
-/// Throws what a node or a route threw, once every branch has ended.
+/// Throws what a node, a route or [output] threw, once every branch has
+/// ended: as it comes when no failure route catches it ([failures]
+/// [Failures.thrown]), of the branches that failed the first in the graph's
+/// order when one does. With [Failures.caught], gives that failure as a
+/// [Caught] instead, while the session goes on.
 Future<Object?> runGraph(
   GraphShape shape,
   Flow flow,
   Object? input, {
   List<CallCopy> copies = const [],
-}) => _Run(shape, flow, copies).run(input);
+  Failures failures = Failures.thrown,
+  Object? Function(Object? output) output = _same,
+}) => _Run(shape, flow, copies, failures).run(input, output);
+
+Object? _same(Object? output) => output;
 
 /// A node a route leads to, with its input and, for a call with a limit,
 /// the copy of it.
 typedef _Called = (ShapeNode node, Object? input, CallCopy? copy);
 
+/// Where a branch is in the graph's order: the index of its start, then of
+/// each branch it was started as among those a route gave — the nodes of a
+/// set in order, then the joins it leads.
+typedef _Place = List<int>;
+
 /// One run of a graph.
 final class _Run {
-  _Run(this._shape, this._flow, this._copies);
+  _Run(this._shape, this._flow, this._copies, this._failures);
 
   final GraphShape _shape;
   final Flow _flow;
@@ -56,9 +79,22 @@ final class _Run {
   /// first.
   final List<CallCopy> _copies;
 
+  /// What a failure of the run comes to: whether a failure route catches
+  /// it, round the call of the graph or at it.
+  final Failures _failures;
+
+  /// Whether a failure route catches the run's failure: its branches keep
+  /// theirs in [_failed], and its effects' failures are final.
+  bool get _kept => _failures != Failures.thrown;
+
+  /// The failures of the branches of a run whose failure is [_kept], with
+  /// the place of each branch.
+  final _failed = <(_Place, Object, StackTrace)>[];
+
   /// The call sites of the run whose calls gave a limit, by the node or the
-  /// join whose route calls and the node called.
-  final _sites = <(Object, ShapeNode), CallSite>{};
+  /// join whose route calls, whether that route is a failure route, and the
+  /// node called.
+  final _sites = <(Object, bool, ShapeNode), CallSite>{};
 
   /// How many branches run now: neither ended nor waiting for the branches
   /// they started.
@@ -69,16 +105,43 @@ final class _Run {
   /// The output that went nowhere last.
   ({Object? value})? _result;
 
-  Future<Object?> run(Object? input) async {
+  Future<Object?> run(
+    Object? input,
+    Object? Function(Object? output) output,
+  ) async {
     await Future.wait([
-      for (final start in _shape.starts) _branch((start, input, null)),
+      for (final (i, start) in _shape.starts.indexed)
+        _branch((start, input, null), [i]),
     ]);
-    return _result?.value;
+    if (!_kept) return output(_result?.value);
+    try {
+      if (_firstFailed() case (_, final error, final stack)?) {
+        Error.throwWithStackTrace(error, stack);
+      }
+      return output(_result?.value);
+    } catch (error) {
+      if (_failures != Failures.caught) rethrow;
+      // A stop, or the end of the session by a failure of its store or a
+      // codec, is no failure: it goes on as it is.
+      checkGoesOn(_flow, _shape.name);
+      return Caught(failureOf(error));
+    }
+  }
+
+  /// Of the failures of the branches, the one of the branch first in the
+  /// graph's order; `null` when none failed.
+  (_Place, Object, StackTrace)? _firstFailed() {
+    (_Place, Object, StackTrace)? first;
+    for (final failed in _failed) {
+      if (first == null || _before(failed.$1, first.$1)) first = failed;
+    }
+    return first;
   }
 
   /// Runs [first] and what follows it: in place while one node follows, in
-  /// branches side by side when several do.
-  Future<void> _branch(_Called first) async {
+  /// branches side by side when several do. [place] is where the branch is
+  /// in the graph's order.
+  Future<void> _branch(_Called first, _Place place) async {
     _running++;
     var waiting = false;
     try {
@@ -87,25 +150,41 @@ final class _Run {
         final Object? output;
         try {
           // Awaited right here, as without a limit: the branch goes on in the
-          // context of the node's effect.
+          // context of the node's effect. A call with a failure route gives
+          // its failure as a value, so the branch goes on from it there too.
           output = await _call(node, value, copy);
         } finally {
           copy?.end();
         }
-        final targets = _next(node.name, node.route, output);
+        final failed = output is Caught;
+        final List<(ShapeNode, Object?, int?)> targets;
         final leads = <_JoinState>[];
-        for (final join in node.joins) {
-          final state = _joins[join] ??= _JoinState(this, join);
-          if (identical(join.sources.first, node)) {
-            leads.add(state);
-          } else {
-            state.deposit(node, output);
+        if (output is Caught) {
+          // A call that failed gave no output: no join takes one from it,
+          // and it is no end of the graph.
+          final input = value;
+          targets = _next(
+            'the failure route of ${node.name}',
+            (failure) => node.failed!(input, failure! as CallFailure),
+            output.failure,
+          );
+        } else {
+          targets = _next('the route of ${node.name}', node.route, output);
+          for (final join in node.joins) {
+            final state = _joins[join] ??= _JoinState(this, join);
+            if (identical(join.sources.first, node)) {
+              leads.add(state);
+            } else {
+              state.deposit(node, output);
+            }
           }
         }
-        final next = _called(node, targets);
+        final next = _called(node, targets, failed: failed);
         // A node of a join without arrows of its own gave its output to the
         // join: it is no end of the graph.
-        if (next.isEmpty && (node.route != null || node.joins.isEmpty)) {
+        if (!failed &&
+            next.isEmpty &&
+            (node.route != null || node.joins.isEmpty)) {
           _result = (value: output);
         }
         if (leads.isEmpty && next.length == 1) {
@@ -114,23 +193,34 @@ final class _Run {
         }
         if (leads.isEmpty && next.isEmpty) return;
         final started = [
-          for (final called in next) _branch(called),
-          for (final state in leads) _lead(state, output),
+          for (final (i, called) in next.indexed)
+            _branch(called, [...place, i]),
+          for (final (i, state) in leads.indexed)
+            _lead(state, output, [...place, next.length + i]),
         ];
         waiting = true;
         _ran();
         await Future.wait(started);
         return;
       }
+    } catch (error, stack) {
+      if (!_kept) rethrow;
+      _failed.add((place, error, stack));
     } finally {
       if (!waiting) _ran();
     }
   }
 
   /// Runs the node of [at] on [value], as [copy] when it is a call with a
-  /// limit: an effect for a node, the graph's own nodes for a graph.
+  /// limit: an effect for a node, the graph's own nodes for a graph. When
+  /// [at] has a failure route, the call gives its failure as a [Caught].
   Future<Object?> _call(ShapeNode at, Object? value, CallCopy? copy) {
     final copies = copy == null ? _copies : [..._copies, copy];
+    final failures = at.failed != null
+        ? Failures.caught
+        : _kept
+        ? Failures.kept
+        : Failures.thrown;
     return switch (at.node) {
       final Node<Object?, Object?> node => nodeEffect(
         _flow,
@@ -138,39 +228,45 @@ final class _Run {
         node,
         value,
         copies: copies,
+        failures: failures,
       ),
       final Graph<Object?, Object?> graph => graph.runWith(
         _flow,
         value,
         copies: copies,
+        failures: failures,
       ),
     };
   }
 
-  /// [next], the nodes the route of [from] — a node or a join — leads to,
-  /// each with its input and, when it gives a limit, a copy of its call
-  /// site, made now: in the order the route gives them, once it has given
-  /// them all.
-  List<_Called> _called(Object from, List<(ShapeNode, Object?, int?)> next) => [
+  /// [next], the nodes the route of [from] — a node or a join, its failure
+  /// route when [failed] — leads to, each with its input and, when it gives
+  /// a limit, a copy of its call site, made now: in the order the route
+  /// gives them, once it has given them all.
+  List<_Called> _called(
+    Object from,
+    List<(ShapeNode, Object?, int?)> next, {
+    bool failed = false,
+  }) => [
     for (final (node, input, limit) in next)
       (
         node,
         input,
         limit == null
             ? null
-            : (_sites[(from, node)] ??= CallSite()).copy(limit),
+            : (_sites[(from, failed, node)] ??= CallSite()).copy(limit),
       ),
   ];
 
-  /// The nodes that follow [output] of [from], each with its input and the
-  /// limit of its call, as [route] gives them: none when there is no route,
-  /// or it gives `null` or an empty set.
+  /// The nodes that follow [output], each with its input and the limit of
+  /// its call, as [route], named [name] in errors, gives them: none when
+  /// there is no route, or it gives `null` or an empty set.
   ///
   /// Throws a [StateError] naming the graph when the route gives anything
   /// else than a [Next], a set of them or `null`, or a node whose name another
   /// node of the graph has; and what the route throws.
   List<(ShapeNode, Object?, int?)> _next(
-    String from,
+    String name,
     Object? Function(Object? output)? route,
     Object? output,
   ) {
@@ -186,23 +282,28 @@ final class _Run {
           (_shape.nodeFor(next.target), next.input, next.limit),
       ],
       _ => throw StateError(
-        'graph "${_shape.name}": the route of $from gave $given: a route '
-        'gives a Next, a set of them or null',
+        'graph "${_shape.name}": $name gave $given: a route gives a Next, a '
+        'set of them or null',
       ),
     };
   }
 
   /// Goes on from [state] after its first node gave [output]: once every other
   /// node of the join has given an output, its route leads on from the record
-  /// of them; ends when the join can no longer fill up.
-  Future<void> _lead(_JoinState state, Object? output) async {
+  /// of them; ends when the join can no longer fill up. [place] is where it
+  /// is in the graph's order.
+  Future<void> _lead(_JoinState state, Object? output, _Place place) async {
     final outputs = await state.arrive(output);
     if (outputs == null) return;
     final List<Future<void>> started;
     try {
       final List<(ShapeNode, Object?, int?)> next;
       try {
-        next = _next(state.join.name, state.join.route, outputs);
+        next = _next(
+          'the route of ${state.join.name}',
+          state.join.route,
+          outputs,
+        );
       } on TypeError catch (error) {
         // A join's route declares the type of the record it takes, which the
         // compiler cannot check against its nodes: the dynamic call in
@@ -215,8 +316,13 @@ final class _Run {
       }
       if (next.isEmpty) _result = (value: outputs);
       started = [
-        for (final called in _called(state.join, next)) _branch(called),
+        for (final (i, called) in _called(state.join, next).indexed)
+          _branch(called, [...place, i]),
       ];
+    } catch (error, stack) {
+      if (!_kept) rethrow;
+      _failed.add((place, error, stack));
+      return;
     } finally {
       // Counted as running from when it filled up, so that no other branch
       // ending in between gives up the joins this one may fill.
@@ -290,6 +396,16 @@ final class _JoinState {
     }
     _waiting.clear();
   }
+}
+
+/// Whether the branch at [a] comes before the one at [b] in the graph's
+/// order: at the first index where they differ, or as the one [b] was
+/// started from.
+bool _before(_Place a, _Place b) {
+  for (var i = 0; i < a.length && i < b.length; i++) {
+    if (a[i] != b[i]) return a[i] < b[i];
+  }
+  return a.length < b.length;
 }
 
 /// The record of [values], 2 to 6 of them.
