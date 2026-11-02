@@ -109,7 +109,7 @@ final class CallCopy {
   Completer<void>? _slot;
 
   /// An effect of the copy came from the journal: the copy ran before.
-  void replayed() => _resumed = true;
+  void replayed() => _ranBefore();
 
   /// Completes once the copy holds a slot of its site: asks for one the
   /// first time, and gives every effect of the copy the same wait after.
@@ -117,12 +117,14 @@ final class CallCopy {
   /// [started] says that the effect asking has a record in the journal: the
   /// copy ran before. In a session [resuming], a copy not known to have run
   /// before asks one turn of the event loop late, once the replay has made
-  /// and started the copies that did.
+  /// and started the copies that did; found to have run before in the
+  /// meantime, it asks at once.
   ///
-  /// Throws a [StateError] once the copy has ended.
+  /// Throws a [StateError] once the copy has ended; the wait fails with one
+  /// when the copy ends before it got a slot.
   Future<void> take({bool started = false, bool resuming = false}) {
     _checkNotEnded('take a slot');
-    if (started) _resumed = true;
+    if (started) _ranBefore();
     if (_slot case final slot?) return slot.future;
     final slot = _slot = Completer<void>();
     if (resuming && !_resumed) {
@@ -133,10 +135,17 @@ final class CallCopy {
     return slot.future;
   }
 
-  /// Asks for a slot: waits in the line of the site.
+  /// The copy ran before the process ended: it goes before the new copies,
+  /// and asks now when it was to ask late.
+  void _ranBefore() {
+    _resumed = true;
+    if (_slot != null && _state == _CopyState.called) _ask();
+  }
+
+  /// Asks for a slot: waits in the line of the site. Once only: a late ask
+  /// after the copy has asked, got its slot or ended does nothing.
   void _ask() {
-    // Ended before a late ask: nothing of it waits any more.
-    if (_state == _CopyState.ended) return;
+    if (_state != _CopyState.called) return;
     _state = _CopyState.waiting;
     _site._fire();
   }
@@ -148,6 +157,13 @@ final class CallCopy {
   void end() {
     _checkNotEnded('end');
     if (_state == _CopyState.running) _site._running--;
+    // What still waits for a slot would wait for ever: the copy has none to
+    // get. (A graph's run ends a copy only once its effects have ended.)
+    if (_slot case final slot? when !slot.isCompleted) {
+      slot.completeError(
+        StateError('a copy of a call ended before it got a slot'),
+      );
+    }
     _state = _CopyState.ended;
     _site._copies.remove(this);
     _site._fire();

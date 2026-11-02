@@ -234,6 +234,42 @@ void main() {
       expect(granted, ['started', 'fresh']);
     });
 
+    for (final how in ['started', 'replayed']) {
+      test('a copy found to have run before once it has asked late, by an '
+          'effect $how, asks at once and goes first', () async {
+        final site = CallSite();
+        final fresh = site.copy(1);
+        final ranBefore = site.copy(1);
+        final granted = <String>[];
+        unawaited(fresh.take(resuming: true).then((_) => granted.add('fresh')));
+        unawaited(
+          ranBefore.take(resuming: true).then((_) => granted.add('ranBefore')),
+        );
+        if (how == 'started') {
+          unawaited(ranBefore.take(started: true, resuming: true));
+        } else {
+          ranBefore.replayed();
+        }
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        expect(granted, ['ranBefore']);
+        ranBefore.end();
+        await Future<void>.delayed(Duration.zero);
+        expect(granted, ['ranBefore', 'fresh']);
+      });
+    }
+
+    test('a copy that ends while it waits to ask fails its wait', () async {
+      final site = CallSite();
+      final copy = site.copy(1);
+      final wait = copy.take(resuming: true);
+      copy.end();
+      await expectLater(wait, throwsStateError);
+      // Nor does its late ask take a slot from the next.
+      final next = site.copy(1);
+      await next.take().timeout(const Duration(seconds: 1));
+    });
+
     test('a copy that has ended takes no slot and does not end again', () {
       final site = CallSite();
       final copy = site.copy(1)..end();

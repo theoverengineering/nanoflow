@@ -270,6 +270,38 @@ final forkedOfOne = Graph<List<int>, Object?>('forkedOfOne', [
   Graph.start(ids).next((ids) => {for (final i in ids) forked(i, limit: 1)}),
 ]);
 
+/// Opened to let [slotted] on 99 end, which holds the node's one slot.
+var slottedGate = Completer<void>();
+
+final slotted = node('slotted', (int i) async {
+  entered.add('slotted $i');
+  if (i == 99) await slottedGate.future;
+  await pause();
+  return i;
+}, concurrency: 1);
+
+final unslotted = node('unslotted', (int i) async {
+  entered.add('unslotted $i');
+  await pause();
+  return i;
+});
+
+/// A copy of two starts, the first of a node of one effect at a time.
+final twoStarts = Graph<int, Object?>('twoStarts', [
+  Graph.start(slotted),
+  Graph.start(unslotted),
+]);
+
+/// Holds the one slot of [slotted] until [slottedGate] opens.
+final holdsSlotted = Graph<int, Object?>('holdsSlotted', [
+  Graph.start(slotted),
+]);
+
+final fanInTwoStarts = Graph<List<int>, Object?>('fanInTwoStarts', [
+  Graph.start(ids).next((ids) => {for (final i in ids) prep(i)}),
+  Graph.part(prep).next((i) => twoStarts(i, limit: 1)),
+]);
+
 /// How many [capped] run now in each session, by the hundreds of their
 /// input, and the most that ran at once in each.
 final cappedRunning = <int, int>{};
@@ -362,6 +394,7 @@ void main() {
     innerOverlap = false;
     innerRunning.clear();
     prepGates.clear();
+    slottedGate = Completer();
     heavyRunning = 0;
     mostHeavy = 0;
     heavyDone.clear();
@@ -763,6 +796,50 @@ void main() {
       final handle = await onlySession(dir);
       expect(await startsOf(handle, 'subA'), {0: 1, 1: 1, 2: 1});
       expect(await startsOf(handle, 'subB'), {0: 1, 1: 1, 2: 2});
+    });
+
+    test('a copy found to have run before only once its first effect has '
+        'asked goes first still', () async {
+      // Another session holds the one slot of slotted.
+      final holder = await flowIn(await tempDir()).start(holdsSlotted, 99);
+      await until(() => entered.contains('slotted 99'), 'the holder');
+      for (final i in [0, 1, 2]) {
+        prepGates[i] = Completer();
+      }
+      final dir = await tempDir();
+      final first = flowIn(dir);
+      final session = await first.start(fanInTwoStarts, [0, 1, 2]);
+      // Copy 2 runs: unslotted ends, slotted waits for the node's slot and
+      // writes nothing. Copies 0 and 1 wait for copy 2.
+      prepGates[2]!.complete();
+      await until(() => entered.contains('unslotted 2'), 'copy 2 at work');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      prepGates[0]!.complete();
+      prepGates[1]!.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(entered, ['slotted 99', 'unslotted 2']);
+      final stopped = expectLater(
+        session.result,
+        throwsA(isA<FlowStoppedException>()),
+      );
+      first.stop();
+      slottedGate.complete();
+      await holder.result;
+      await stopped;
+
+      // On resume copy 2 is made last, and its slotted, first, has no record:
+      // only its unslotted, replayed after, tells it ran before.
+      entered.clear();
+      final resumed = await flowIn(dir).resume(fanInTwoStarts, session.id);
+      await resumed.result.timeout(const Duration(seconds: 10));
+      expect(entered.first, 'slotted 2');
+      expect(
+        entered,
+        unorderedEquals([
+          'slotted 2',
+          for (final i in [0, 1]) ...['slotted $i', 'unslotted $i'],
+        ]),
+      );
     });
 
     test('a copy whose every effect is saved takes no slot: it ends while '
