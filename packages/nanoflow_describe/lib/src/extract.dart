@@ -306,6 +306,11 @@ final class _Call extends _Drawn {
 /// it is taken on when the point is a fork.
 typedef _Out = (_V, String?);
 
+/// What an edge says of the call it makes: the header of the `for` element
+/// that runs its node once per item (each-edge design), and the limit of
+/// copies at once the call gives, as written (call limit design).
+typedef _Mark = ({String? each, String? limit});
+
 /// The points of one graph's body and the ways between them; [_emit] gives
 /// the body as the graph file has it.
 final class _Points {
@@ -318,10 +323,9 @@ final class _Points {
   final _vertices = <_V>[];
   final _edges = <_V, List<(String?, _V)>>{};
 
-  /// The header of the `for` element each edge that runs its node once per
-  /// item has, by the edge: its point, its outcome and where it leads
-  /// (each-edge design).
-  final _eaches = <(_V, String?, _V), String>{};
+  /// The mark of each edge that runs its node once per item or whose call
+  /// gives a limit, by the edge: its point, its outcome and where it leads.
+  final _marks = <(_V, String?, _V), _Mark>{};
 
   /// The fork of the switch [s], the labels of its members in order, and
   /// whether they match every value (an exhaustive switch or a `default`,
@@ -367,11 +371,13 @@ final class _Points {
   }
 
   /// Leads [from] to [to]; once per item of the `for` element [each] is the
-  /// header of, when given.
-  void _connect(List<_Out> from, _V to, {String? each}) {
+  /// header of, and with the limit [limit], when given.
+  void _connect(List<_Out> from, _V to, {String? each, String? limit}) {
     for (final (v, outcome) in from) {
       (_edges[v] ??= []).add((outcome, to));
-      if (each != null) _eaches[(v, outcome, to)] = each;
+      if (each != null || limit != null) {
+        _marks[(v, outcome, to)] = (each: each, limit: limit);
+      }
     }
   }
 
@@ -402,14 +408,14 @@ final class _Points {
       changed = false;
       for (final fork in _vertices.whereType<_Fork>()) {
         if (hidden.contains(fork)) continue;
-        final outcomes = <String?, Set<(_V, String?)>>{
+        final outcomes = <String?, Set<(_V, _Mark?)>>{
           for (final outcome in fork.outcomes) outcome: {},
         };
         for (final (outcome, to) in _edges[fork] ?? const <(String?, _V)>[]) {
-          final each = _eaches[(fork, outcome, to)];
+          final mark = _marks[(fork, outcome, to)];
           (outcomes[outcome] ??= {}).addAll({
             for (final (target, inner) in _resolve({to}, hidden))
-              (target, each ?? inner),
+              (target, mark ?? inner),
           });
         }
         final sets = outcomes.values.toList();
@@ -430,7 +436,7 @@ final class _Points {
       }
     }
     final edges = <GraphEdge>[];
-    final seen = <(String?, String?, String?, String?)>{};
+    final seen = <(String?, String?, String?, _Mark?)>{};
     void edgesOf(_V from, String? fromId) {
       for (final (label, to) in _edges[from] ?? const <(String?, _V)>[]) {
         if (to is _Fork &&
@@ -439,13 +445,19 @@ final class _Points {
           edgesOf(to, fromId);
           continue;
         }
-        final each = _eaches[(from, label, to)];
+        final mark = _marks[(from, label, to)];
         for (final (target, inner) in _resolve({to}, hidden)) {
           final toId = ids[target];
-          final copies = each ?? inner;
+          final copies = mark ?? inner;
           if (seen.add((fromId, toId, label, copies))) {
             edges.add(
-              GraphEdge(from: fromId, to: toId, label: label, each: copies),
+              GraphEdge(
+                from: fromId,
+                to: toId,
+                label: label,
+                each: copies?.each,
+                limit: copies?.limit,
+              ),
             );
           }
         }
@@ -465,23 +477,24 @@ final class _Points {
   }
 
   /// The points [vs] lead to that are drawn, or the exit, through hidden
-  /// ones; each with the header of the `for` element of the first edge on
-  /// the way that runs it once per item, if any. [seen] are the hidden
-  /// points on the way: a way round through hidden ones leads nowhere new.
-  Set<(_V, String?)> _resolve(
+  /// ones; each with the mark of the first edge on the way that has one —
+  /// that runs it once per item, or whose call gives a limit —, if any.
+  /// [seen] are the hidden points on the way: a way round through hidden
+  /// ones leads nowhere new.
+  Set<(_V, _Mark?)> _resolve(
     Set<_V> vs,
     Set<_V> hidden, [
     Set<_V> seen = const {},
   ]) {
-    final result = <(_V, String?)>{};
+    final result = <(_V, _Mark?)>{};
     for (final v in vs) {
       if (!hidden.contains(v)) {
         result.add((v, null));
       } else if (!seen.contains(v)) {
         for (final (outcome, to) in _edges[v] ?? const <(String?, _V)>[]) {
-          final each = _eaches[(v, outcome, to)];
+          final mark = _marks[(v, outcome, to)];
           for (final (target, inner) in _resolve({to}, hidden, {...seen, v})) {
-            result.add((target, each ?? inner));
+            result.add((target, mark ?? inner));
           }
         }
       }

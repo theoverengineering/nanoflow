@@ -427,8 +427,8 @@ final class _GraphBody {
     return reached;
   }
 
-  void _connect(List<_Out> from, _V to, {String? each}) =>
-      _points._connect(from, to, each: each);
+  void _connect(List<_Out> from, _V to, {String? each, String? limit}) =>
+      _points._connect(from, to, each: each, limit: limit);
 
   String _source(AstNode node) => _package._source(node);
 }

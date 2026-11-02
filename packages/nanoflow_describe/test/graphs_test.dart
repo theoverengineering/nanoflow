@@ -482,6 +482,68 @@ void main() {
     );
   });
 
+  test('gives the edge of a call with a limit the limit as written, a '
+      'literal or not, in a for element or not, of a graph or a node (call '
+      'limit design)', () async {
+    const file = 'lib/graph_limits.dart';
+    final graph = await describeFixture('graph_limits');
+    Map<String, Object?> at(Map<String, Object?> node, int line) => {
+      ...node,
+      'place': '$file:$line',
+    };
+
+    expect(_functionOf(graph, '$file#night')['body'], {
+      'nodes': [
+        at(_effect('1', 'plan', 0), 21),
+        {
+          'id': '2',
+          'kind': 'call',
+          'functions': ['$file#idea'],
+          'place': '$file:23',
+        },
+        at(_effect('3', 'report', 0), 24),
+        at(_effect('4', 'sum', 0), 27),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        {
+          ..._edge('1', '2', null, 'for i in night.ideas'),
+          'limit': 'night.parallel',
+        },
+        {..._edge('1', '3', null, 'for i in night.ideas'), 'limit': '2'},
+        {..._edge('2', '4'), 'limit': '1'},
+        _edge('3', '4'),
+        _edge('4', null),
+      ],
+    });
+    // A fork whose ways lead to the same call with the same limit decides
+    // nothing: one arrow, which keeps the limit.
+    expect(_functionOf(graph, '$file#either')['body'], {
+      'nodes': [
+        at(_effect('1', 'develop', 0), 33),
+        at(_effect('2', 'sum', 0), 33),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        {..._edge('1', '2'), 'limit': '2'},
+        _edge('2', null),
+      ],
+    });
+    expect(_functionOf(graph, '$file#eitherOr')['body'], {
+      'nodes': [
+        at(_effect('1', 'develop', 0), 38),
+        at(_effect('2', 'sum', 0), 38),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        {..._edge('1', '2', 'i > 0'), 'limit': '2'},
+        _edge('1', '2', 'else'),
+        _edge('2', null),
+      ],
+    });
+    expect(graph['warnings'], isEmpty);
+  });
+
   test('gives an effect the concurrency of its node when it is an integer '
       'literal, and warns of one that is not', () async {
     const file = 'lib/graph_concurrency.dart';

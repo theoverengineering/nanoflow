@@ -10,8 +10,9 @@
 // nothing is not drawn. Each node or graph called in what it returns is an
 // edge to that node, a set an edge to each of its nodes — a `for` element in
 // it an edge marked with the loop's header, `each` (each-edge design) —, and
-// `null`
-// or the end of its body an edge to the end of the graph. A `throw` ends its
+// `null` or the end of its body an edge to the end of the graph. A call that
+// gives a limit, `idea(i, limit: night.parallel)`, marks its edge with it as
+// written (call limit design). A `throw` ends its
 // way: the branch fails. A route that is async or a generator is not read:
 // it gives a Future or an Iterable, no Next.
 
@@ -150,7 +151,7 @@ extension on _GraphBody {
   void _value(Expression e, List<_Out> from) {
     final value = e.unParenthesized;
     if (_package._nodelikeCalled(value) case final node?) {
-      _connect(from, _point(node, value));
+      _connect(from, _point(node, value), limit: _limitIn(value));
       return;
     }
     // The branch fails: no edge leaves.
@@ -171,9 +172,10 @@ extension on _GraphBody {
             _notRead(element, 'route value not drawn: ${_source(element)}');
             continue;
           }
+          final limit = _limitIn(called);
           if (loop == null) {
             final point = _point(node, called);
-            _connect(from, point);
+            _connect(from, point, limit: limit);
             points.add(point);
             continue;
           }
@@ -181,7 +183,12 @@ extension on _GraphBody {
           // one way only. Its copies may end at once, as two nodes of a set
           // may.
           final point = _point(node, called);
-          _connect(from, point, each: _loopLabel(loop.forLoopParts));
+          _connect(
+            from,
+            point,
+            each: _loopLabel(loop.forLoopParts),
+            limit: limit,
+          );
           points.addAll([point, point]);
         }
         _parallels.add(points);
@@ -214,6 +221,21 @@ extension on _GraphBody {
       default:
         _notRead(value, 'route value not drawn: ${_source(value)}');
     }
+  }
+
+  /// The limit of copies at once [call], a call of a node or a graph, gives,
+  /// as written: `2`, `night.parallel`; `null` when it gives none.
+  String? _limitIn(AstNode call) {
+    final invocation = call is Expression ? call.unParenthesized : call;
+    if (invocation case InvocationExpression(:final argumentList)) {
+      for (final argument in argumentList.arguments) {
+        if (argument case NamedArgument(:final name, :final argumentExpression)
+            when name.lexeme == 'limit') {
+          return _source(argumentExpression);
+        }
+      }
+    }
+    return null;
   }
 
   /// The header of a `for` element, an edge's `each`: `for x in xs` as a
