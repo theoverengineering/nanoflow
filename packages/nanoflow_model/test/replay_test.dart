@@ -36,11 +36,13 @@ EffectFailed _effectFailed(
   int second,
   String effectId, {
   String error = 'boom',
+  String? errorType,
 }) => EffectFailed(
   time: _at(second),
   effectId: effectId,
   error: error,
   stack: '#0\n',
+  errorType: errorType,
 );
 
 SessionFinished _sessionFinished(int second, {String? outputId = _result}) =>
@@ -193,6 +195,38 @@ void main() {
       expect(effect.finishedAt, _at(4));
       expect(effect.outputId, isNull);
       expect(effect.error, 'Exception: boom');
+      expect(effect.errorType, isNull);
+    });
+
+    test('take the type of the error from effect-failed, and drop it when the '
+        'effect starts again', () {
+      final failed = replaySession([
+        _sessionStarted(1),
+        _effectStarted(2, _effectA),
+        _effectFailed(
+          4,
+          _effectA,
+          error: 'StateError: no',
+          errorType: 'StateError',
+        ),
+      ]).effects.single;
+      expect(failed.errorType, 'StateError');
+
+      final again = replaySession([
+        _sessionStarted(1),
+        _effectStarted(2, _effectA),
+        _effectFailed(
+          4,
+          _effectA,
+          error: 'StateError: no',
+          errorType: 'StateError',
+        ),
+        _sessionResumed(5),
+        _effectStarted(6, _effectA),
+      ]).effects.single;
+      expect(again.status, EffectStatus.running);
+      expect(again.error, isNull);
+      expect(again.errorType, isNull);
     });
 
     test('count each effect-started, and keep the first startedAt', () {

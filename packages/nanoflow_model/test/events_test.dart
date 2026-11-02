@@ -82,6 +82,18 @@ void main() {
           '"error":"Exception: boom","stack":${jsonEncode(_stack)}}',
     ),
     (
+      EffectFailed(
+        time: _time,
+        effectId: _effectId,
+        error: 'StateError: no',
+        stack: _stack,
+        errorType: 'StateError',
+      ),
+      '{"time":"$_timeText","event":"effect-failed","effectId":"$_effectId",'
+          '"error":"StateError: no","stack":${jsonEncode(_stack)},'
+          '"errorType":"StateError"}',
+    ),
+    (
       SessionFinished(time: _time, outputId: _outputId),
       '{"time":"$_timeText","event":"session-finished",'
           '"outputId":"$_outputId"}',
@@ -139,7 +151,10 @@ void main() {
       expect(failed.effectId, _effectId);
       expect(failed.error, 'Exception: boom');
       expect(failed.stack, _stack);
-      final ended = Event.fromJson(_decode(cases[10].$2)) as SessionFailed;
+      expect(failed.errorType, isNull);
+      final typed = Event.fromJson(_decode(cases[8].$2)) as EffectFailed;
+      expect(typed.errorType, 'StateError');
+      final ended = Event.fromJson(_decode(cases[11].$2)) as SessionFailed;
       expect(ended.error, 'StateError: no');
       expect(ended.stack, _stack);
     });
@@ -176,6 +191,18 @@ void main() {
             effectId: _effectId,
             error: 'a',
             stack: 's',
+          ),
+        ),
+      );
+      expect(
+        EffectFailed(time: _time, effectId: _effectId, error: 'a', stack: ''),
+        isNot(
+          EffectFailed(
+            time: _time,
+            effectId: _effectId,
+            error: 'a',
+            stack: '',
+            errorType: 'StateError',
           ),
         ),
       );

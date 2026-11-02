@@ -34,6 +34,7 @@ final class EffectState {
     required this.finishedAt,
     required this.outputId,
     required this.error,
+    this.errorType,
   });
 
   final String effectId;
@@ -54,6 +55,10 @@ final class EffectState {
 
   /// The `error` of `effect-failed`; `null` unless the effect failed.
   final String? error;
+
+  /// The `errorType` of `effect-failed`; `null` unless the effect failed
+  /// and its journal keeps the type.
+  final String? errorType;
 }
 
 /// What replaying a session's journal says about the session.
@@ -126,8 +131,18 @@ SessionState replaySession(List<Event> events) {
         (effects[effectId] ??= _Effect(effectId, time)).start();
       case EffectFinished(:final effectId, :final time, :final outputId):
         effects[effectId]?.end(EffectStatus.finished, time, outputId: outputId);
-      case EffectFailed(:final effectId, :final time, :final error):
-        effects[effectId]?.end(EffectStatus.failed, time, error: error);
+      case EffectFailed(
+        :final effectId,
+        :final time,
+        :final error,
+        :final errorType,
+      ):
+        effects[effectId]?.end(
+          EffectStatus.failed,
+          time,
+          error: error,
+          errorType: errorType,
+        );
       case SessionFinished() || SessionFailed():
         break;
     }
@@ -173,6 +188,7 @@ class _Effect {
   DateTime? finishedAt;
   String? outputId;
   String? error;
+  String? errorType;
 
   /// A new start: the outcome of the start before no longer holds.
   void start() {
@@ -181,6 +197,7 @@ class _Effect {
     finishedAt = null;
     outputId = null;
     error = null;
+    errorType = null;
   }
 
   void end(
@@ -188,11 +205,13 @@ class _Effect {
     DateTime time, {
     String? outputId,
     String? error,
+    String? errorType,
   }) {
     this.status = status;
     finishedAt = time;
     this.outputId = outputId;
     this.error = error;
+    this.errorType = errorType;
   }
 
   EffectState freeze() => EffectState(
@@ -203,5 +222,6 @@ class _Effect {
     finishedAt: finishedAt,
     outputId: outputId,
     error: error,
+    errorType: errorType,
   );
 }

@@ -149,13 +149,15 @@ final class EffectFinished extends KnownEvent {
   Map<String, Object?> get _own => {'effectId': effectId, 'outputId': outputId};
 }
 
-/// An effect threw. The exception goes on into the workflow's code.
+/// An effect threw. The exception goes on into the workflow's code, or to
+/// the failure route that catches it.
 final class EffectFailed extends KnownEvent {
   EffectFailed({
     required super.time,
     required this.effectId,
     required this.error,
     required this.stack,
+    this.errorType,
   });
 
   final String effectId;
@@ -166,6 +168,11 @@ final class EffectFailed extends KnownEvent {
   /// The stack trace's text.
   final String stack;
 
+  /// The name of the exception's type, `StateError`, which a failure route
+  /// gets with [error] on resume too; `null` in a journal written before
+  /// it was kept. Written only when set.
+  final String? errorType;
+
   @override
   String get name => 'effect-failed';
 
@@ -174,6 +181,7 @@ final class EffectFailed extends KnownEvent {
     'effectId': effectId,
     'error': error,
     'stack': stack,
+    if (errorType != null) 'errorType': errorType,
   };
 }
 
@@ -275,6 +283,10 @@ Event? _parse(Map<String, Object?> json) {
       effectId: readString(json, 'effectId'),
       error: readString(json, 'error'),
       stack: readString(json, 'stack'),
+      // Kept since failure routes; an older journal has none.
+      errorType: json.containsKey('errorType')
+          ? readStringOrNull(json, 'errorType')
+          : null,
     ),
     'session-finished' => SessionFinished(
       time: readTime(json, 'time'),
