@@ -69,6 +69,16 @@
 /// effects side by side there that end in the millisecond they start join
 /// each other so.
 ///
+/// **Failure routes.** A node with a failure route (edges `failed`,
+/// failure route design) chooses its way out as a fork does: a transition
+/// from an effect on an effect node that has such edges leaves by them when
+/// the effect failed, by the others when it finished. A call's outcome is
+/// not in the journal — a failure in it may have been caught inside —, so
+/// a transition from a call leaves by any of its edges. Once a transition
+/// went out of a node with a failure route, the node is passed as a fork is
+/// for what is darker: its exits on none of the ways the code may have gone
+/// are darker.
+///
 /// **Runs.** The transitions of one run of the code are one pass of the
 /// forks on them: those from one predecessor; those from the body's start
 /// again after one predecessor; those to the effects after one wait, from all
@@ -271,8 +281,15 @@ typedef _Run = ({String by, _Leg leg, bool end});
 /// A way of the code over the level, from a node of [from] to a node of
 /// [to] — `null` standing for the body's start among [from] and its end
 /// among [to]: a transition, part of [run], when the code went that way; one
-/// it may have gone, which marks nothing, when [run] is `null`.
-typedef _Way = ({List<String?> from, List<String?> to, _Run? run});
+/// it may have gone, which marks nothing, when [run] is `null`. [failed] is
+/// the outcome of the effect it leaves from, when it leaves from one: `true`
+/// when that failed, `false` when it finished (see [_Level.between]).
+typedef _Way = ({
+  List<String?> from,
+  List<String?> to,
+  _Run? run,
+  bool? failed,
+});
 
 Passes _passesOf(
   _Level level,
@@ -291,6 +308,13 @@ Passes _passesOf(
   };
 
   final tree = _Tree(session, places);
+  // How [effect] ended, as the way out of a node with a failure route
+  // tells it: `true` failed, `false` finished, `null` neither yet.
+  bool? failedOf(Effect effect) => switch (session.stateOf(effect.id)?.status) {
+    EffectStatus.failed => true,
+    EffectStatus.finished => false,
+    EffectStatus.running || null => null,
+  };
   final shown = [
     for (final id in ids)
       if (session.effects[id] case final effect? when places.onGraph(effect))
@@ -309,8 +333,9 @@ Passes _passesOf(
   );
   final ways = <_Way>[];
   // Each effect and its predecessor, both on the level and not in one call
-  // node: the code may have left the body between them.
-  final pairs = <(List<String>, List<String>)>[];
+  // node, and how the predecessor ended: the code may have left the body
+  // between them.
+  final pairs = <(List<String>, List<String>, bool?)>[];
   // The run that came to each effect, when not the one on from its
   // predecessor: its way to the body's end is one with those of the others
   // that run came to.
@@ -319,6 +344,7 @@ Passes _passesOf(
     final at = nodesOf(effect);
     final (:before, :passedOver) = tree.before(effect);
     final previous = before == null ? const <String>[] : nodesOf(before);
+    final failed = before == null ? null : failedOf(before);
     final join = joins[effect.id];
     // Where the code came from is not drawn, or not told: from the
     // predecessor, or from the start, the code may have come. So too when
@@ -332,12 +358,17 @@ Passes _passesOf(
     if (join case (:final key, :final from) when from.isNotEmpty) {
       final run = reached[effect.id] = (by: key, leg: _Leg.join, end: false);
       for (final (:nodes, :drawn) in from) {
-        ways.add((from: nodes, to: at, run: drawn ? sure(run) : null));
+        ways.add((
+          from: nodes,
+          to: at,
+          run: drawn ? sure(run) : null,
+          failed: null,
+        ));
       }
       // The effect before the wait may have ended a call all the same, and
       // this one begun the next.
       if (previous.isNotEmpty && !level.inOne(previous, at)) {
-        pairs.add((previous, at));
+        pairs.add((previous, at, failed));
       }
     } else if (previous.isEmpty) {
       final into = reached[effect.id] = (
@@ -346,33 +377,43 @@ Passes _passesOf(
         end: false,
       );
       if (at.isNotEmpty) {
-        ways.add((from: const [null], to: at, run: sure(into)));
+        ways.add((from: const [null], to: at, run: sure(into), failed: null));
       }
     } else if (at.isEmpty) {
       final on = (by: before!.key, leg: _Leg.on, end: false);
-      ways.add((from: previous, to: const [null], run: sure(on)));
+      ways.add((
+        from: previous,
+        to: const [null],
+        run: sure(on),
+        failed: failed,
+      ));
     } else if (!level.inOne(previous, at)) {
       final on = (by: before!.key, leg: _Leg.on, end: false);
-      if (level.leads(previous, at)) {
-        ways.add((from: previous, to: at, run: sure(on)));
+      if (level.leads(previous, at, failed: failed)) {
+        ways.add((from: previous, to: at, run: sure(on), failed: failed));
       } else if (called &&
-          level.leads(previous, const [null]) &&
+          level.leads(previous, const [null], failed: failed) &&
           level.leads(const [null], at)) {
         // Out of the body and into it again: the next call of its function.
-        ways.add((from: previous, to: const [null], run: sure(on)));
+        ways.add((
+          from: previous,
+          to: const [null],
+          run: sure(on),
+          failed: failed,
+        ));
         final again = reached[effect.id] = (
           by: before.key,
           leg: _Leg.again,
           end: false,
         );
-        ways.add((from: const [null], to: at, run: sure(again)));
+        ways.add((from: const [null], to: at, run: sure(again), failed: null));
       }
-      pairs.add((previous, at));
+      pairs.add((previous, at, failed));
     }
   }
   // The effects the code ended up at: no effect on the graph follows them,
   // and none was joined before one.
-  final open = <List<String>>[];
+  final open = <(List<String>, bool?)>[];
   for (final effect in shown) {
     if (!tree.isLast(effect) || joined.contains(effect.id)) continue;
     final at = nodesOf(effect);
@@ -382,7 +423,9 @@ Passes _passesOf(
     final beside = joinedBeside.contains(effect.id);
     if (!finished) {
       // From one that runs, the code has gone nowhere yet.
-      if (session.stateOf(effect.id)?.finishedAt != null) open.add(at);
+      if (session.stateOf(effect.id)?.finishedAt != null) {
+        open.add((at, failedOf(effect)));
+      }
       continue;
     }
     final (:by, :leg, end: _) =
@@ -396,15 +439,20 @@ Passes _passesOf(
       from: at,
       to: const [null],
       run: sure ? (by: by, leg: leg, end: true) : null,
+      failed: failedOf(effect),
     ));
   }
 
   final runs = <String, Set<_Run>>{};
   final taken = <int>{};
-  for (final (:from, :to, :run) in ways) {
+  // The nodes with a failure route a transition went out of: passed, as
+  // forks are, for what is darker.
+  final exited = <String>{};
+  for (final (:from, :to, :run, :failed) in ways) {
     if (run == null) continue;
-    final (:way, corridor: _) = level.between(from, to);
+    final (:way, corridor: _) = level.between(from, to, failed: failed);
     if (way == null) continue;
+    exited.addAll(from.whereType<String>().where(level.hasFailureRoute));
     var (:forks, :edges) = way;
     // On the body of a function the workflow calls, the code may have left
     // the body after one effect and come into it again before the other:
@@ -412,9 +460,9 @@ Passes _passesOf(
     if (called &&
         !from.contains(null) &&
         !to.contains(null) &&
-        level.leads(from, const [null]) &&
+        level.leads(from, const [null], failed: failed) &&
         level.leads(const [null], to)) {
-      final out = level.between(from, const [null]).way;
+      final out = level.between(from, const [null], failed: failed).way;
       final back = level.between(const [null], to).way;
       bool either(bool Function(_Through way) on) =>
           (out != null && on(out)) || (back != null && on(back));
@@ -432,7 +480,7 @@ Passes _passesOf(
       (runs[fork] ??= {}).add(run);
     }
   }
-  if (runs.isEmpty && taken.isEmpty) return Passes.none;
+  if (runs.isEmpty && taken.isEmpty && exited.isEmpty) return Passes.none;
   final forks = {
     for (final MapEntry(key: fork, value: by) in runs.entries) fork: by.length,
   };
@@ -449,7 +497,9 @@ Passes _passesOf(
   );
   return Passes._(forks, taken, {
     for (final (i, edge) in level.body.edges.indexed)
-      if (forks.containsKey(edge.from) && !possible.contains(i)) i,
+      if ((forks.containsKey(edge.from) || exited.contains(edge.from)) &&
+          !possible.contains(i))
+        i,
   });
 }
 
@@ -470,37 +520,41 @@ Passes _passesOf(
 ///   body of a function the workflow calls from the body's start to any
 ///   node: where the code went from there before it stopped, or after a
 ///   call began, the journal does not tell;
-/// - and the edges of a fork by the outcome of one of those: the other
-///   branches of a `Future.wait` there, which ran with it.
+/// - and the edges of a fork by the outcome of one of those, or of a node
+///   with a failure route by the label of one: the other branches of a
+///   `Future.wait` there, which ran with it.
+///
+/// A way from an effect that failed or finished on a node with a failure
+/// route leaves it as the effect ended ([_Way.failed]).
 Set<int> _mayHaveGone(
   _Level level,
   List<_Way> ways,
-  List<(List<String>, List<String>)> pairs,
-  List<List<String>> open, {
+  List<(List<String>, List<String>, bool?)> pairs,
+  List<(List<String>, bool?)> open, {
   required bool called,
   required bool finished,
 }) {
   final edges = <int>{};
-  void outAndIn(List<String?> from, List<String?> to) {
+  void outAndIn(List<String?> from, List<String?> to, bool? failed) {
     if (called &&
-        level.leads(from, const [null]) &&
+        level.leads(from, const [null], failed: failed) &&
         level.leads(const [null], to)) {
       edges
-        ..addAll(level.between(from, const [null]).corridor)
+        ..addAll(level.between(from, const [null], failed: failed).corridor)
         ..addAll(level.between(const [null], to).corridor);
     }
   }
 
-  for (final (:from, :to, run: _) in ways) {
-    edges.addAll(level.between(from, to).corridor);
-    outAndIn(from, to);
+  for (final (:from, :to, run: _, :failed) in ways) {
+    edges.addAll(level.between(from, to, failed: failed).corridor);
+    outAndIn(from, to, failed);
   }
-  for (final (from, to) in pairs) {
-    outAndIn(from, to);
+  for (final (from, to, failed) in pairs) {
+    outAndIn(from, to, failed);
   }
   if (!finished) {
-    for (final from in open) {
-      edges.addAll(level.onwards(from));
+    for (final (from, failed) in open) {
+      edges.addAll(level.onwards(from, failed: failed));
     }
     if (called) edges.addAll(level.onwards(const [null]));
   }
@@ -945,6 +999,7 @@ final class _Level {
     for (final (i, edge) in body.edges.indexed) {
       (_out[edge.from] ??= []).add(i);
       (_in[edge.to] ??= []).add(i);
+      if (edge.failed) _failing.add(edge.from);
     }
   }
 
@@ -963,7 +1018,24 @@ final class _Level {
 
   final Map<String, _Between> _between = {};
 
+  /// The nodes with a failure route: edges `failed` leave them.
+  final Set<String?> _failing = {};
+
   bool isEffect(String id) => _nodes[id] is EffectNode;
+
+  /// Whether the node [id] has a failure route.
+  bool hasFailureRoute(String id) => _failing.contains(id);
+
+  /// Whether a way from [node] may leave it by the edge [i], when the effect
+  /// it leaves from [failed], or finished when `false`: by the edges of the
+  /// failure route only when the effect failed, by the others only when it
+  /// finished. A way from a call, from an effect that neither failed nor
+  /// finished, or from a node without a failure route leaves by any.
+  bool _leaves(String? node, int i, bool? failed) =>
+      failed == null ||
+      !_failing.contains(node) ||
+      _nodes[node] is! EffectNode ||
+      body.edges[i].failed == failed;
 
   /// Whether [from] and [to] share a call node: a transition between them
   /// may be inside it.
@@ -979,32 +1051,37 @@ final class _Level {
   };
 
   /// Whether some way leads from a node of [from] to a node of [to] through
-  /// forks and calls: the corridor of the transition is not empty.
-  bool leads(List<String?> from, List<String?> to) =>
-      between(from, to).corridor.isNotEmpty;
+  /// forks and calls: the corridor of the transition is not empty. [failed]
+  /// as for [between].
+  bool leads(List<String?> from, List<String?> to, {bool? failed}) =>
+      between(from, to, failed: failed).corridor.isNotEmpty;
 
   /// The transition from a node of [from] to a node of [to] — `null`
   /// standing for the body's start among [from] and its end among [to]:
   /// what every simple path of it goes through, `null` when there is no
   /// path, more than [_maxPaths], or nothing is on every one; and its
-  /// corridor.
-  _Between between(List<String?> from, List<String?> to) {
+  /// corridor. When it leaves from an effect that [failed] — or finished,
+  /// when `false` —, it leaves an effect node with a failure route as the
+  /// effect ended ([_leaves]).
+  _Between between(List<String?> from, List<String?> to, {bool? failed}) {
     final targets = to.toSet();
-    return _between[jsonEncode([from, to])] ??= (
-      way: _search(from, targets),
-      corridor: _corridor(from, targets),
+    return _between[jsonEncode([from, to, failed])] ??= (
+      way: _search(from, targets, failed),
+      corridor: _corridor(from, targets, failed),
     );
   }
 
   /// The edges on some walk from a node of [from] through forks and calls
   /// to any node, or the body's end: those leaving [from] and the nodes such
-  /// a walk reaches.
-  Set<int> onwards(List<String?> from) {
+  /// a walk reaches. [failed] as for [between].
+  Set<int> onwards(List<String?> from, {bool? failed}) {
     final reached = <String?>{...from};
     final ahead = [...from];
     final edges = <int>{};
     while (ahead.isNotEmpty) {
-      for (final i in _out[ahead.removeLast()] ?? const <int>[]) {
+      final node = ahead.removeLast();
+      for (final i in _out[node] ?? const <int>[]) {
+        if (!_leaves(node, i, failed)) continue;
         edges.add(i);
         final next = body.edges[i].to;
         if (next != null && _passable(next) && reached.add(next)) {
@@ -1015,16 +1092,21 @@ final class _Level {
     return edges;
   }
 
-  /// The edges of a fork by the outcome of one of [edges] but for those:
-  /// the edges of one outcome to more than one node are the branches of a
-  /// `Future.wait`, which the code goes along together. An outcome without
-  /// a label tells nothing.
+  /// The edges of a fork by the outcome of one of [edges] but for those, or
+  /// of a node with a failure route by the label of one: the edges of one
+  /// outcome to more than one node are the branches of a `Future.wait`,
+  /// which the code goes along together. An outcome of a fork without a
+  /// label tells nothing.
   Iterable<int> besides(Set<int> edges) sync* {
     for (final i in edges) {
-      final GraphEdge(:from, :label) = body.edges[i];
-      if (label == null || _nodes[from] is! ConditionNode) continue;
+      final GraphEdge(:from, :label, :failed) = body.edges[i];
+      final ways = _nodes[from] is ConditionNode
+          ? label != null
+          : _failing.contains(from);
+      if (!ways) continue;
       for (final j in _out[from] ?? const <int>[]) {
-        if (j != i && body.edges[j].label == label) yield j;
+        final other = body.edges[j];
+        if (j != i && other.label == label && other.failed == failed) yield j;
       }
     }
   }
@@ -1033,12 +1115,17 @@ final class _Level {
   /// forks and calls: nodes may come again on a walk, so the rounds
   /// of a loop that run no effect are on one. Each edge leaves a node a
   /// source reaches and enters a target, or a node that reaches one.
-  Set<int> _corridor(List<String?> from, Set<String?> to) {
+  Set<int> _corridor(List<String?> from, Set<String?> to, bool? failed) {
     final edges = body.edges;
     final reached = <String?>{...from};
     final ahead = [...from];
+    // The edges a walk leaves its sources by.
+    final out = <int>{};
     while (ahead.isNotEmpty) {
-      for (final i in _out[ahead.removeLast()] ?? const <int>[]) {
+      final node = ahead.removeLast();
+      for (final i in _out[node] ?? const <int>[]) {
+        if (!_leaves(node, i, failed)) continue;
+        out.add(i);
         final next = edges[i].to;
         if (next != null && _passable(next) && reached.add(next)) {
           ahead.add(next);
@@ -1058,12 +1145,13 @@ final class _Level {
     return {
       for (final (i, edge) in edges.indexed)
         if (reached.contains(edge.from) &&
+            out.contains(i) &&
             (to.contains(edge.to) || leading.contains(edge.to)))
           i,
     };
   }
 
-  _Through? _search(List<String?> from, Set<String?> to) {
+  _Through? _search(List<String?> from, Set<String?> to, bool? failed) {
     final edges = body.edges;
     final path = <int>[];
     final on = <String>{};
@@ -1101,6 +1189,7 @@ final class _Level {
     // is on every one.
     bool walk(String? node, String? source) {
       for (final i in _out[node] ?? const <int>[]) {
+        if (!_leaves(node, i, failed)) continue;
         final next = edges[i].to;
         path.add(i);
         if (ends(next, source)) {

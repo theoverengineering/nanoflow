@@ -3,7 +3,8 @@
 // graph, and over the session the real library wrote for it.
 //
 // A body is written as its nodes and its edges `from>to`, an empty side being
-// the body's start or end, and `from>to:label` for an edge with a label. Each
+// the body's start or end, `from>to:label` for an edge with a label, and
+// `from>to!` for an edge of a failure route, labelled `failed`. Each
 // effect node is named by its id and is at a place of its name,
 // `lib/flow.dart:<name>`. A journal's effects follow one another, each after
 // the one before it, unless the test says otherwise — which is how the
@@ -39,12 +40,15 @@ CallNode callAt(String id, GraphFunction function) =>
     CallNode(id: id, place: null, functions: [function.id]);
 
 GraphEdge _edge(String text) {
-  final [from, rest] = text.split('>');
+  final failed = text.endsWith('!');
+  final [from, rest] = (failed ? text.substring(0, text.length - 1) : text)
+      .split('>');
   final [to, ...label] = rest.split(':');
   return GraphEdge(
     from: from.isEmpty ? null : from,
     to: to.isEmpty ? null : to,
-    label: label.firstOrNull,
+    label: failed ? 'failed' : label.firstOrNull,
+    failed: failed,
   );
 }
 
@@ -81,7 +85,8 @@ final class Shape {
   /// [body], the effects found by [places].
   Shape.of(this.body, {required this.places})
     : edges = [
-        for (final edge in body.edges) '${edge.from ?? ''}>${edge.to ?? ''}',
+        for (final edge in body.edges)
+          '${edge.from ?? ''}>${edge.to ?? ''}${edge.failed ? '!' : ''}',
       ];
 
   final GraphBody body;
@@ -1224,6 +1229,167 @@ void main() {
       final finished = s.passes(rounds(finished: true).data);
       expect(s.forksOf(finished), {'c': 4});
       expect(s.untakenBy(finished), isEmpty);
+    });
+  });
+
+  group('a failure route', () {
+    // a → n → (s, or g when n fails)
+    final s = Shape(
+      [effectAt('a'), effectAt('n'), effectAt('s'), effectAt('g')],
+      ['>a', 'a>n', 'n>s', 'n>g!', 's>', 'g>'],
+    );
+
+    /// a, n failing, then [after] after n.
+    Journal failedThen(String after, {bool finished = false}) {
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('a', 1, end: 1.5, place: flowAt('a'))
+        ..effect('n', 2, end: 2.5, failed: true, place: flowAt('n'))
+        ..effect(after, 3, end: 3.5, place: flowAt(after));
+      if (finished) j.finish(4);
+      return j;
+    }
+
+    test('a node that failed goes on by its failure route: its other exits '
+        'are darker', () {
+      final p = s.passes(failedThen('g').data);
+      expect(s.forksOf(p), isEmpty);
+      expect(s.takenBy(p), {'>a', 'a>n', 'n>g!'});
+      expect(s.untakenBy(p), {'n>s'});
+    });
+
+    test('a node that finished goes on by its route: its failure route is '
+        'darker', () {
+      final p = s.passes(ran(['a', 'n', 's']).data);
+      expect(s.takenBy(p), {'>a', 'a>n', 'n>s'});
+      expect(s.untakenBy(p), {'n>g!'});
+    });
+
+    test('nothing is darker before the code went out of the node, nor when '
+        'it went both ways', () {
+      expect(s.untakenBy(s.passes(ran(['a', 'n']).data)), isEmpty);
+      final both = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('n', 1, end: 1.5, place: flowAt('n'))
+        ..effect('s', 2, end: 2.5, place: flowAt('s'))
+        ..effect(
+          'n',
+          3,
+          end: 3.5,
+          failed: true,
+          place: flowAt('n'),
+          after: null,
+        )
+        ..effect('g', 4, end: 4.5, place: flowAt('g'));
+      expect(s.untakenBy(s.passes(both.data)), isEmpty);
+    });
+
+    test('a failure route that ends the branch goes to the end once the '
+        'session has finished', () {
+      // a → n → (s, or the end when n fails)
+      final t = Shape(
+        [effectAt('a'), effectAt('n'), effectAt('s')],
+        ['>a', 'a>n', 'n>s', 'n>!', 's>'],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('a', 1, end: 1.5, place: flowAt('a'))
+        ..effect('n', 2, end: 2.5, failed: true, place: flowAt('n'))
+        ..finish(3);
+      final p = t.passes(j.data);
+      expect(t.takenBy(p), {'>a', 'a>n', 'n>!'});
+      expect(t.untakenBy(p), {'n>s'});
+    });
+
+    test('a route and a failure route to the same node: the way is the '
+        'one the node ended by', () {
+      // pick → work → (pick, or pick when work fails)
+      final t = Shape(
+        [effectAt('pick'), effectAt('work')],
+        ['>pick', 'pick>work', 'work>pick', 'work>pick!', 'pick>'],
+      );
+      final failed = Journal('a1b2-session', workflow: 'flow', snapshot: false)
+        ..effect('pick', 1, end: 1.5, place: flowAt('pick'))
+        ..effect('work', 2, end: 2.5, failed: true, place: flowAt('work'))
+        ..effect('pick', 3, end: 3.5, place: flowAt('pick'));
+      final p = t.passes(failed.data);
+      expect(t.takenBy(p), {'>pick', 'pick>work', 'work>pick!'});
+      expect(t.untakenBy(p), {'work>pick'});
+
+      final q = t.passes(ran(['pick', 'work', 'pick']).data);
+      expect(t.takenBy(q), {'>pick', 'pick>work', 'work>pick'});
+      expect(t.untakenBy(q), {'work>pick!'});
+    });
+
+    test('the way out of a call by its failure route is the one the effect '
+        'after it comes by', () {
+      // claim → develop() → (settle, or giveBack when develop fails);
+      // develop: d. settle and giveBack come after claim, as after a call.
+      final develop = graphFunction('develop', [effectAt('d')], ['>d', 'd>']);
+      final t = Shape(
+        [
+          effectAt('claim'),
+          callAt('c', develop),
+          effectAt('settle'),
+          effectAt('giveBack'),
+        ],
+        [
+          '>claim',
+          'claim>c',
+          'c>settle',
+          'c>giveBack!',
+          'settle>',
+          'giveBack>',
+        ],
+        called: [develop],
+      );
+      String claimKey = '';
+      Journal ended(String after, {required bool failed}) {
+        final j = Journal('a1b2-session', workflow: 'flow', snapshot: false);
+        j.effect('claim', 1, end: 1.5, place: flowAt('claim'));
+        claimKey = j.effects.last.key;
+        j
+          ..effect('d', 2, end: 2.5, failed: failed, place: flowAt('d'))
+          ..effect(after, 3, end: 3.5, place: flowAt(after), after: claimKey);
+        return j;
+      }
+
+      final p = t.passes(ended('giveBack', failed: true).data);
+      expect(t.takenBy(p), containsAll(['c>giveBack!']));
+      expect(t.untakenBy(p), {'c>settle'});
+
+      final q = t.passes(ended('settle', failed: false).data);
+      expect(t.takenBy(q), containsAll(['c>settle']));
+      expect(t.untakenBy(q), {'c>giveBack!'});
+    });
+
+    test('a call whose route and failure route lead to the same node: no way '
+        'out of it is darker, as the journal does not tell which it took', () {
+      final work = graphFunction('work', [effectAt('w')], ['>w', 'w>']);
+      final t = Shape(
+        [effectAt('pick'), callAt('c', work)],
+        ['>pick', 'pick>c', 'c>pick', 'c>pick!', 'pick>'],
+        called: [work],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false);
+      j.effect('pick', 1, end: 1.5, place: flowAt('pick'));
+      final pick = j.effects.last.key;
+      j
+        ..effect('w', 2, end: 2.5, failed: true, place: flowAt('w'))
+        ..effect('pick', 3, end: 3.5, place: flowAt('pick'), after: pick);
+      expect(t.untakenBy(t.passes(j.data)), isEmpty);
+    });
+
+    test('the branches of a set in a failure route ran together: none is '
+        'darker', () {
+      // n → (s, or both g and h when n fails)
+      final t = Shape(
+        [effectAt('n'), effectAt('s'), effectAt('g'), effectAt('h')],
+        ['>n', 'n>s', 'n>g!', 'n>h!', 's>', 'g>', 'h>'],
+      );
+      final j = Journal('a1b2-session', workflow: 'flow', snapshot: false);
+      j.effect('n', 1, end: 1.5, failed: true, place: flowAt('n'));
+      final n = j.effects.last.key;
+      j.effect('g', 2, end: 2.5, place: flowAt('g'), after: n);
+      final p = t.passes(j.data);
+      expect(t.untakenBy(p), {'n>s'});
     });
   });
 
