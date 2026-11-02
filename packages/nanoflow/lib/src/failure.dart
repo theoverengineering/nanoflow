@@ -28,8 +28,14 @@ final class CallFailure {
   /// `toString()`, each run of line breaks a space.
   final String error;
 
-  /// The name of the exception's type, `StateError`; `null` when the journal
-  /// has none: the failure was written before nanoflow kept it.
+  /// The name of the exception's runtime type, `StateError`; `null` when the
+  /// journal has none: the failure was written before nanoflow kept it.
+  ///
+  /// It is the runtime type's own name, so an error of the SDK may give a
+  /// private one, `_Exception` for `Exception('…')`, `_TypeError`, and an
+  /// obfuscated build mangles them all: a route should match it only
+  /// against the names of its own exception classes, and only in builds
+  /// that are not obfuscated.
   final String? type;
 
   @override

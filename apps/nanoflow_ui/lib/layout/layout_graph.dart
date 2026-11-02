@@ -476,7 +476,8 @@ final class LayoutGraph {
   /// nodes; an end marker for each edge `to: null`, in the edges' order, so
   /// that each way out of the body ends next to where it leaves. A node's
   /// edges with one label make one exit, in the order of their first
-  /// edges — those of its failure route one of their own. Calls are named after their functions in [functions].
+  /// edges — those of its failure route one of their own. Calls are named
+  /// after their functions in [functions].
   ///
   /// Edges between nodes the body does not have are left out.
   ///
