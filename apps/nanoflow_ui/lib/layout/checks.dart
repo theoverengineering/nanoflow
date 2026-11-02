@@ -15,8 +15,8 @@ import 'nested.dart';
 ///   through an exit's dot, capsule or label.
 /// - An arrow leaves its exit going right, straight for at least its label,
 ///   and enters its input going right, straight for at least the least input
-///   straight — for room for its label `each`, when it has one.
-/// - No arrow passes through a label `each`.
+///   straight — for room for its tag (`each`, `≤N`), when it has one.
+/// - No arrow passes through a tag.
 /// - The arrowhead's tip points at the bar, an arrow gap before it.
 /// - A bar is in the middle of its tile's side, off the rounded corners;
 ///   inputs on it are at least a port gap apart.
@@ -83,7 +83,10 @@ List<String> _check(GraphLayout layout, {required bool deep}) {
     final straight = segments.length > 1
         ? last.length - lastTurn
         : last.length - exit.reach;
-    final least = edge.each == null ? o.minInputStraight : eachStraight(o);
+    final least = switch (edge.tag) {
+      final tag? => tagStraight(tag, o),
+      null => o.minInputStraight,
+    };
     if (!last.isHorizontal || last.b.x <= last.a.x) {
       problems.add('${_name(edge)}: does not enter its input going right');
     } else if (straight < least - 1e-6) {
@@ -92,14 +95,14 @@ List<String> _check(GraphLayout layout, {required bool deep}) {
         'shorter than ${_n(least)}',
       );
     }
-    // Through the label `each` of an arrow, its own too.
+    // Through the tag of an arrow, its own too.
     for (final other in edges) {
-      final label = other.eachRect;
-      if (label == null) continue;
+      final tag = other.tagRect;
+      if (tag == null) continue;
       for (final s in segments) {
-        if (s.entersInterior(label)) {
+        if (s.entersInterior(tag)) {
           problems.add(
-            '${_name(edge)}: piece $s passes through the label each of '
+            '${_name(edge)}: piece $s passes through the tag of '
             '${_name(other)}',
           );
         }
@@ -223,7 +226,7 @@ List<String> _check(GraphLayout layout, {required bool deep}) {
     for (final exit in layout.exits)
       if (exit.labelRect case final rect?) ('${exit.node}#${exit.index}', rect),
     for (final edge in edges)
-      if (edge.eachRect case final rect?) ('${_name(edge)} each', rect),
+      if (edge.tagRect case final rect?) ('${_name(edge)} tag', rect),
   ];
   for (final (owner, chip) in chips) {
     for (final node in layout.nodes.values) {

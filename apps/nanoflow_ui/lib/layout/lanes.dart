@@ -140,7 +140,7 @@ Lanes assignLanes(
   final r = options.cornerRadius;
   final r45 = r * math.tan(math.pi / 8);
   // The straight piece before an input, the arrowhead and its gap: room
-  // for the label `each` on an arrow that has it.
+  // for the tag on an arrow that has one.
   double entry(GEdge edge) =>
       inputStraight(edge, options) +
       options.arrowLength +

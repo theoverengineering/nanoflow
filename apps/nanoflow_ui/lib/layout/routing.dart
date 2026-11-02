@@ -163,7 +163,7 @@ GraphLayout route(
   final edges = <EdgePath>[];
   for (final edge in graph.edges) {
     final points = [for (final p in paths[edge]!) at(p)];
-    final each = frames[edge.to]!.eachLabels[edge];
+    final tag = frames[edge.to]!.tags[edge];
     edges.add(
       EdgePath(
         from: edge.from.id,
@@ -176,7 +176,8 @@ GraphLayout route(
         tip: points.last + Point(o.arrowLength, 0),
         pieces: roundCorners(points, o.cornerRadius),
         each: edge.each,
-        eachRect: each?.shift(Point(leftOf(edge.to), 0) + origin),
+        limit: edge.limit,
+        tagRect: tag?.shift(Point(leftOf(edge.to), 0) + origin),
       ),
     );
   }

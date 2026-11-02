@@ -43,7 +43,7 @@ final class LayoutOptions {
     this.cornerRadius = 10,
     this.laneGap = 10,
     this.portGap = 10,
-    this.eachGap = 20,
+    this.tagGap = 20,
     this.capsuleGap = 14,
     this.exitGap = 25,
     this.minInputStraight = 20,
@@ -80,10 +80,9 @@ final class LayoutOptions {
   /// The distance between inputs on a bar.
   final double portGap;
 
-  /// The distance between an input whose arrow runs its node once per item
-  /// ([GEdge.each]) and the input over it: room for its label `each` over
-  /// the arrow.
-  final double eachGap;
+  /// The distance between an input whose arrow has a tag ([GEdge.tag]) and
+  /// the input over it: room for the tag over the arrow.
+  final double tagGap;
 
   /// The distance between the arrows leaving one capsule.
   final double capsuleGap;
@@ -258,23 +257,40 @@ String? shortPlace(String? place) =>
 /// (each-edge design).
 const String eachLabel = 'each';
 
-/// How far the label `each` ends before its arrowhead.
-const double eachSpacing = 4;
+/// The tag an arrow has before its head: `each` when it runs its node once
+/// per item ([each], the loop's header), `≤N` when its call gives a limit of
+/// N copies at once ([limit], as written) — `≤…` when the limit is not a
+/// number —, both when both, `each ≤2` (call limit design); `null` for
+/// neither.
+String? arrowTag({String? each, String? limit}) {
+  final most = limit == null ? null : '≤${int.tryParse(limit) ?? '…'}';
+  return switch ((each, most)) {
+    (null, null) => null,
+    (_?, null) => eachLabel,
+    (null, final most?) => most,
+    (_?, final most?) => '$eachLabel $most',
+  };
+}
 
-/// The width of the chip of the label `each`.
-double eachChipWidth(LayoutOptions options) =>
-    options.measure(eachLabel, LabelKind.exitLabel) + 2 * options.chipPadding;
+/// How far the tag of an arrow ends before its arrowhead.
+const double tagSpacing = 4;
+
+/// The width of the chip of the tag [tag].
+double tagChipWidth(String tag, LayoutOptions options) =>
+    options.measure(tag, LabelKind.exitLabel) + 2 * options.chipPadding;
 
 /// The least straight piece before the arrowhead of [edge]: the least input
-/// straight, or room for the label `each` and its spacing on either side.
-double inputStraight(GEdge edge, LayoutOptions options) =>
-    edge.each == null ? options.minInputStraight : eachStraight(options);
+/// straight, or room for its tag and its spacing on either side.
+double inputStraight(GEdge edge, LayoutOptions options) => switch (edge.tag) {
+  final tag? => tagStraight(tag, options),
+  null => options.minInputStraight,
+};
 
-/// The least straight piece before the arrowhead of an arrow with the
-/// label `each`.
-double eachStraight(LayoutOptions options) => math.max(
+/// The least straight piece before the arrowhead of an arrow with the tag
+/// [tag].
+double tagStraight(String tag, LayoutOptions options) => math.max(
   options.minInputStraight,
-  eachChipWidth(options) + 2 * eachSpacing,
+  tagChipWidth(tag, options) + 2 * tagSpacing,
 );
 
 /// A node of the graph being laid out.
@@ -401,6 +417,7 @@ final class GEdge {
     this.index,
     this.edgeIndex,
     this.each,
+    this.limit,
   );
 
   final GExit exit;
@@ -418,9 +435,16 @@ final class GEdge {
   final int edgeIndex;
 
   /// The header of the `for` element the arrow runs its node in once per
-  /// item (`GraphEdge.each`): the arrow has the label `each` before its
-  /// head. `null` for an arrow taken once.
+  /// item (`GraphEdge.each`): the arrow's [tag] says `each`. `null` for an
+  /// arrow taken once.
   final String? each;
+
+  /// The limit of copies at once the arrow's call gives, as written
+  /// (`GraphEdge.limit`); `null` for a call without one.
+  final String? limit;
+
+  /// What the arrow says before its head ([arrowTag]); `null` for nothing.
+  late final String? tag = arrowTag(each: each, limit: limit);
 
   GNode get from => exit.node;
 
@@ -520,6 +544,7 @@ final class LayoutGraph {
         edges.length,
         i,
         edge.each,
+        edge.limit,
       );
       exit.edges.add(arrow);
       to.inEdges.add(arrow);

@@ -209,7 +209,8 @@ final class EdgePath {
     required this.tip,
     required this.pieces,
     this.each,
-    this.eachRect,
+    this.limit,
+    this.tagRect,
   });
 
   /// The id of the node the arrow leaves.
@@ -241,13 +242,22 @@ final class EdgePath {
   final List<PathPiece> pieces;
 
   /// The header of the `for` element the arrow runs its node in once per
-  /// item, for the tooltip of its label `each`; `null` for an arrow taken
-  /// once (each-edge design).
+  /// item, for the tooltip of its tag; `null` for an arrow taken once
+  /// (each-edge design).
   final String? each;
 
-  /// The chip of the label `each` over the arrow's last straight piece,
-  /// before its head; `null` without [each].
-  final Rect? eachRect;
+  /// The limit of copies at once the arrow's call gives, as written, for
+  /// the tooltip of its tag; `null` for a call without one (call limit
+  /// design).
+  final String? limit;
+
+  /// What the arrow says before its head ([arrowTag]): `each`, `≤2`,
+  /// `each ≤…`; `null` for nothing.
+  String? get tag => arrowTag(each: each, limit: limit);
+
+  /// The chip of the [tag] over the arrow's last straight piece, before its
+  /// head; `null` without one.
+  final Rect? tagRect;
 
   /// A back arrow is drawn dashed.
   bool get isDashed => kind == EdgeKind.back;

@@ -123,23 +123,22 @@ double barLength(double span, LayoutOptions options) =>
     math.max(options.minBar, span + options.portGap);
 
 /// How far [inputs] span in their order: a port gap from one to the next,
-/// an each gap to one with the label `each` ([GEdge.each]).
+/// a tag gap to one with a tag ([GEdge.tag]).
 double inputsSpan(List<GEdge> inputs, LayoutOptions options) {
   var span = 0.0;
   for (var i = 1; i < inputs.length; i++) {
-    span += inputs[i].each == null ? options.portGap : options.eachGap;
+    span += inputs[i].tag == null ? options.portGap : options.tagGap;
   }
   return span;
 }
 
-/// The most [inputs] may span in any order ([inputsSpan]): an each gap to
-/// every one with the label `each`, but the first.
+/// The most [inputs] may span in any order ([inputsSpan]): a tag gap to
+/// every one with a tag, but the first.
 double mostInputsSpan(List<GEdge> inputs, LayoutOptions options) {
   if (inputs.isEmpty) return 0;
-  final labelled = inputs.where((edge) => edge.each != null).length;
+  final tagged = inputs.where((edge) => edge.tag != null).length;
   return (inputs.length - 1) * options.portGap +
-      math.min(labelled, inputs.length - 1) *
-          (options.eachGap - options.portGap);
+      math.min(tagged, inputs.length - 1) * (options.tagGap - options.portGap);
 }
 
 /// Half the length of the input bar of [node], which arrows come in to, in
@@ -352,12 +351,12 @@ void _orderInputs(
     ...back,
     ...port.loopsBelow.reversed,
   ]);
-  // Symmetric round the middle, a port gap apart — an each gap over an
-  // input with the label `each`.
+  // Symmetric round the middle, a port gap apart — a tag gap over an input
+  // with a tag.
   final span = inputsSpan(port.inputs, options);
   var at = port.inputCentre - span / 2;
   for (final (i, edge) in port.inputs.indexed) {
-    if (i > 0) at += edge.each == null ? options.portGap : options.eachGap;
+    if (i > 0) at += edge.tag == null ? options.portGap : options.tagGap;
     port.inputAt[edge] = at;
   }
   port.barHalf = port.inputs.isEmpty

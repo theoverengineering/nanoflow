@@ -157,13 +157,21 @@ final class BodyDrawer {
         ),
       )
       ..add(Positioned.fill(child: CustomPaint(painter: ExitsPainter(graph))));
-    // The header of the loop of an arrow's `each`, under the pointer.
+    // What an arrow's tag stands for, under the pointer: the header of the
+    // loop of its `each`, the limit of its call as written.
     for (final edge in graph.edges) {
-      if ((edge.each, edge.eachRect) case (final each?, final rect?)) {
+      if (edge.tagRect case final rect?) {
+        final said = [
+          ?edge.each,
+          if (edge.limit case final limit?) 'limit: $limit',
+        ];
         layers.tiles.add(
           Positioned.fromRect(
             rect: rect.toRect(),
-            child: Tooltip(message: each, child: const SizedBox.expand()),
+            child: Tooltip(
+              message: said.join('\n'),
+              child: const SizedBox.expand(),
+            ),
           ),
         );
       }

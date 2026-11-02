@@ -154,6 +154,56 @@ void main() {
       expect(find.text(header), findsOneWidget);
     });
 
+    testWidgets('an arrow whose call has a limit says ≤N before its head, '
+        'next to each, ≤… for a limit computed, the limit under the pointer '
+        '(call limit design)', (tester) async {
+      const header = 'for (final idea in night.ideas)';
+      const id = 'lib/night.dart#night';
+      final limited = GraphFile.fromJson({
+        ...graphFileJson(),
+        'workflows': [id],
+        'functions': {
+          id: {
+            'name': 'night',
+            'place': 'lib/night.dart:1',
+            'body': {
+              'nodes': [
+                for (final (i, name) in ['plan', 'develop', 'sum'].indexed)
+                  {
+                    'id': '${i + 1}',
+                    'kind': 'effect',
+                    'name': name,
+                    'place': 'lib/night.dart:${i + 2}',
+                  },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {
+                  'from': '1',
+                  'to': '2',
+                  'label': null,
+                  'each': header,
+                  'limit': 'night.parallel',
+                },
+                {'from': '2', 'to': '3', 'label': null, 'limit': '1'},
+                {'from': '3', 'to': null, 'label': null},
+              ],
+            },
+          },
+        },
+      });
+      await pumpCanvas(tester, modelOf(graph: limited));
+      expect(_chips(tester), ['each ≤…', '≤1']);
+      const both = '$header\nlimit: night.parallel';
+      expect(find.text(both), findsNothing);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: tester.getCenter(find.byTooltip(both)));
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text(both), findsOneWidget);
+      expect(find.byTooltip('limit: 1'), findsOneWidget);
+    });
+
     testWidgets('a double click on a call opens it, on another node does '
         'nothing', (tester) async {
       final opened = <(String, Offset)>[];

@@ -242,7 +242,8 @@ EdgePath _runOn(EdgePath edge, double by, LayoutOptions options) {
     tip: edge.tip + shift,
     pieces: roundCorners(points, options.cornerRadius),
     each: edge.each,
-    eachRect: edge.eachRect?.shift(shift),
+    limit: edge.limit,
+    tagRect: edge.tagRect?.shift(shift),
   );
 }
 
@@ -325,7 +326,8 @@ GraphLayout shiftLayout(GraphLayout layout, Point by) {
               },
           ],
           each: e.each,
-          eachRect: e.eachRect?.shift(by),
+          limit: e.limit,
+          tagRect: e.tagRect?.shift(by),
         ),
     ],
     bounds: rect(layout.bounds),

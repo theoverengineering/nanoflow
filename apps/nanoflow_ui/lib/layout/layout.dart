@@ -32,6 +32,7 @@ export 'layout_graph.dart'
         LayoutOptions,
         MeasureText,
         NodeKind,
+        arrowTag,
         eachLabel,
         endMarker,
         endMarkerAt,
