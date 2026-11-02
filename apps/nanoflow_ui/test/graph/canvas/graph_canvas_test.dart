@@ -204,6 +204,45 @@ void main() {
       expect(find.byTooltip('limit: 1'), findsOneWidget);
     });
 
+    testWidgets('a failure route leaves its node by an exit that says failed '
+        '(failure route design)', (tester) async {
+      const id = 'lib/night.dart#nightIdea';
+      final routed = GraphFile.fromJson({
+        ...graphFileJson(),
+        'workflows': [id],
+        'functions': {
+          id: {
+            'name': 'nightIdea',
+            'place': 'lib/night.dart:1',
+            'body': {
+              'nodes': [
+                for (final (i, name) in [
+                  'develop',
+                  'settle',
+                  'giveBack',
+                ].indexed)
+                  {
+                    'id': '${i + 1}',
+                    'kind': 'effect',
+                    'name': name,
+                    'place': 'lib/night.dart:${i + 2}',
+                  },
+              ],
+              'edges': [
+                {'from': null, 'to': '1', 'label': null},
+                {'from': '1', 'to': '2', 'label': null},
+                {'from': '1', 'to': '3', 'label': 'failed', 'failed': true},
+                {'from': '2', 'to': null, 'label': null},
+                {'from': '3', 'to': null, 'label': null},
+              ],
+            },
+          },
+        },
+      });
+      await pumpCanvas(tester, modelOf(graph: routed));
+      expect(_chips(tester), ['failed']);
+    });
+
     testWidgets('a double click on a call opens it, on another node does '
         'nothing', (tester) async {
       final opened = <(String, Offset)>[];

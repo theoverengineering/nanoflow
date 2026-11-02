@@ -388,7 +388,7 @@ final class GNode {
 
 /// One exit of a node: a dot, or a capsule for edges side by side.
 final class GExit {
-  GExit._(this.node, this.index, this.label);
+  GExit._(this.node, this.index, this.label, this.failed);
 
   final GNode node;
 
@@ -397,6 +397,10 @@ final class GExit {
 
   /// The label of its edges; `null` for unlabelled edges.
   final String? label;
+
+  /// Whether its edges are of the node's failure route (`GraphEdge.failed`):
+  /// labelled `failed`, apart from a case of the same text.
+  final bool failed;
 
   /// One arrow per edge with this label, in the body's order.
   final List<GEdge> edges = [];
@@ -472,7 +476,7 @@ final class LayoutGraph {
   /// nodes; an end marker for each edge `to: null`, in the edges' order, so
   /// that each way out of the body ends next to where it leaves. A node's
   /// edges with one label make one exit, in the order of their first
-  /// edges. Calls are named after their functions in [functions].
+  /// edges — those of its failure route one of their own. Calls are named after their functions in [functions].
   ///
   /// Edges between nodes the body does not have are left out.
   ///
@@ -532,9 +536,11 @@ final class LayoutGraph {
           ? (end ??= add(endMarker, NodeKind.end))
           : add(endMarkerAt(++ends), NodeKind.end);
       if (to == null) continue;
-      var exit = from.exits.where((x) => x.label == edge.label).firstOrNull;
+      var exit = from.exits
+          .where((x) => x.label == edge.label && x.failed == edge.failed)
+          .firstOrNull;
       if (exit == null) {
-        exit = GExit._(from, from.exits.length, edge.label);
+        exit = GExit._(from, from.exits.length, edge.label, edge.failed);
         from.exits.add(exit);
       }
       final arrow = GEdge._(
