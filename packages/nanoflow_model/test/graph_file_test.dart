@@ -257,6 +257,39 @@ void main() {
       expect(copies.toString(), contains('each: for item in items'));
     });
 
+    test("reads an edge's limit, writes it only when set, and none from an "
+        'edge written before edges had one', () {
+      const limited = GraphEdge(
+        from: '2',
+        to: '3',
+        label: null,
+        each: 'for idea in night.ideas',
+        limit: 'night.parallel',
+      );
+      expect(limited.toJson(), {
+        'from': '2',
+        'to': '3',
+        'label': null,
+        'each': 'for idea in night.ideas',
+        'limit': 'night.parallel',
+      });
+      expect(GraphEdge.fromJson(limited.toJson()), limited);
+      const once = GraphEdge(from: '2', to: '3', label: null, limit: '2');
+      expect(once.toJson(), {
+        'from': '2',
+        'to': '3',
+        'label': null,
+        'limit': '2',
+      });
+      expect(GraphEdge.fromJson(once.toJson()), once);
+      const free = GraphEdge(from: '2', to: '3', label: null);
+      expect(GraphEdge.fromJson(free.toJson()).limit, isNull);
+      expect(once, isNot(free));
+      expect(once.hashCode, isNot(free.hashCode));
+      expect(limited.toString(), contains('limit: night.parallel'));
+      expect(free.toString(), isNot(contains('limit')));
+    });
+
     test('reads the function of a warning, and none from a warning written '
         'before warnings had one', () {
       final file = GraphFile.fromJson(_fileJson());

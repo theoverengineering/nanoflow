@@ -457,16 +457,19 @@ final class GraphEdge {
     required this.to,
     required this.label,
     this.each,
+    this.limit,
   });
 
   /// Reads an edge from its JSON form. An edge written before edges could
-  /// run their node once per item has no `each`: it reads as `null`, so the
-  /// format stays the same.
+  /// run their node once per item has no `each`, and one written before
+  /// calls could have a limit no `limit`: they read as `null`, so the format
+  /// stays the same.
   factory GraphEdge.fromJson(Map<String, Object?> json) => GraphEdge(
     from: readStringOrNull(json, 'from'),
     to: readStringOrNull(json, 'to'),
     label: readStringOrNull(json, 'label'),
     each: json.containsKey('each') ? readStringOrNull(json, 'each') : null,
+    limit: json.containsKey('limit') ? readStringOrNull(json, 'limit') : null,
   );
 
   /// The id of the node the edge leaves; `null` for the entry of the body.
@@ -486,11 +489,17 @@ final class GraphEdge {
   /// taken once. Written only when set.
   final String? each;
 
+  /// How many copies of the call of [to] run at once, at most, as the route
+  /// writes it: `2`, `night.parallel` (call limit design); `null` for a call
+  /// without a limit. Written only when set.
+  final String? limit;
+
   Map<String, Object?> toJson() => {
     'from': from,
     'to': to,
     'label': label,
     if (each != null) 'each': each,
+    if (limit != null) 'limit': limit,
   };
 
   @override
@@ -499,15 +508,17 @@ final class GraphEdge {
       other.from == from &&
       other.to == to &&
       other.label == label &&
-      other.each == each;
+      other.each == each &&
+      other.limit == limit;
 
   @override
-  int get hashCode => Object.hash(from, to, label, each);
+  int get hashCode => Object.hash(from, to, label, each, limit);
 
   @override
   String toString() =>
       'GraphEdge(from: $from, to: $to, label: $label'
-      '${each == null ? '' : ', each: $each'})';
+      '${each == null ? '' : ', each: $each'}'
+      '${limit == null ? '' : ', limit: $limit'})';
 }
 
 /// Something in the code the describe tool could not draw.
