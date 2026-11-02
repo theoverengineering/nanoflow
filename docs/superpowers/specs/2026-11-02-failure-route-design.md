@@ -203,7 +203,8 @@ ideaforge переводит ночные циклы в графы (дизайн
 - `Part<I, O>`, `Part.failed(route)`; `Graph.start<I, O>`,
   `Graph.part<I, O>`; `Graph.join` даёт `Part<Never, Never>`.
 - `ShapeNode.failed` — переход по падению; проверки при создании: «the
-  failure route of x is declared twice», «a join has no failure route».
+  failure route of x is declared twice», «the join of a, b has a failure
+  route: a join calls nothing».
 - `GraphRun.runWith(…, failures:)`.
 
 ### `packages/nanoflow/lib/src/graph_run.dart`
@@ -230,7 +231,7 @@ ideaforge переводит ночные циклы в графы (дизайн
   проигранными.
 - `_live`: `effect-failed` пишет и `errorType`; при `caught`, если сессия
   идёт, отдаёт `Caught`.
-- `checkGoesOn(flow)` — бросает остановку или падение сессии.
+- `checkGoesOn(flow, what)` — бросает остановку или падение сессии.
 
 ### Модель
 
