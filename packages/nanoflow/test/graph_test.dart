@@ -4,6 +4,7 @@
 
 import 'dart:async' show unawaited;
 
+import 'package:nanoflow/src/call_limit.dart';
 import 'package:nanoflow/src/graph.dart';
 import 'package:test/test.dart';
 
@@ -89,6 +90,95 @@ void main() {
     expect(ran, 0);
     expect(counted.body('x'), 'x');
     expect(ran, 1);
+  });
+
+  test('a call of a node or a graph takes a limit of 1 or more, none by '
+      'default', () {
+    final graph = Graph<String, int>('graph', [Graph.start(a)]);
+    expect(a('x').limit, isNull);
+    expect(a('x', limit: 2).limit, 2);
+    expect(a.call('x', limit: 1).limit, 1);
+    expect(graph('x').limit, isNull);
+    expect(graph('x', limit: 3).limit, 3);
+    expect(() => a('x', limit: 0), throwsArgumentError);
+    expect(() => graph('x', limit: -1), throwsArgumentError);
+  });
+
+  group('the copies of a call site', () {
+    /// The copies of [copies] that hold a slot, by their index, once the
+    /// slots given have been taken up.
+    Future<List<int>> running(List<CallCopy> copies, List<int> asked) async {
+      final granted = <int>[];
+      for (final i in asked) {
+        unawaited(copies[i].take().then((_) => granted.add(i)));
+      }
+      await Future<void>.delayed(Duration.zero);
+      return granted;
+    }
+
+    test('go in the order they were called, no more at once than the '
+        'limit', () async {
+      final site = CallSite();
+      final copies = [for (var i = 0; i < 5; i++) site.copy(2)];
+      final granted = <int>[];
+      for (final i in [4, 3, 2, 1, 0]) {
+        unawaited(copies[i].take().then((_) => granted.add(i)));
+      }
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, [0, 1]);
+      copies[1].end();
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, [0, 1, 2]);
+      copies[0].end();
+      copies[2].end();
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, [0, 1, 2, 3, 4]);
+    });
+
+    test('a copy called but not asking yet holds back those called after '
+        'it, until it asks or ends', () async {
+      final site = CallSite();
+      final copies = [for (var i = 0; i < 4; i++) site.copy(2)];
+      expect(await running(copies, [1, 2, 3]), isEmpty);
+      // 0 ends without asking, as a copy whose effects are all journaled.
+      copies[0].end();
+      await Future<void>.delayed(Duration.zero);
+      final late = <int>[];
+      unawaited(copies[3].take().then((_) => late.add(3)));
+      await Future<void>.delayed(Duration.zero);
+      expect(late, isEmpty);
+      copies[1].end();
+      await Future<void>.delayed(Duration.zero);
+      expect(late, [3]);
+    });
+
+    test('the effects of one copy share its slot', () async {
+      final site = CallSite();
+      final copy = site.copy(1);
+      final other = site.copy(1);
+      await copy.take();
+      await copy.take();
+      var started = false;
+      unawaited(other.take().then((_) => started = true));
+      await Future<void>.delayed(Duration.zero);
+      expect(started, isFalse);
+      copy.end();
+      await Future<void>.delayed(Duration.zero);
+      expect(started, isTrue);
+    });
+
+    test('a copy waits until fewer than its own limit run', () async {
+      final site = CallSite();
+      final wide = site.copy(3);
+      final narrow = site.copy(1);
+      final last = site.copy(3);
+      await wide.take();
+      expect(await running([narrow, last], [0, 1]), isEmpty);
+      wide.end();
+      await Future<void>.delayed(Duration.zero);
+      await narrow.take();
+      await last.take();
+    });
   });
 
   test('a node takes a concurrency of 1 or more, none by default', () {

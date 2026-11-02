@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_store/nanoflow_store.dart';
 
+import 'call_limit.dart';
 import 'codecs.dart';
 import 'context.dart';
 import 'errors.dart';
@@ -425,13 +426,18 @@ extension WorkflowFunctions on Flow {
 /// after the node, at the place the graph's file gives the node in that graph,
 /// its result journaled with the codec of the node's output type.
 ///
+/// [copies] are the copies of calls with a limit the effect is a part of, the
+/// outermost first: it takes their slots, then one of the node's own, before
+/// it is written.
+///
 /// Throws as [WorkflowFunctions.effect] does.
 Future<Object?> nodeEffect(
   Flow flow,
   String graph,
   Node<Object?, Object?> node,
-  Object? input,
-) {
+  Object? input, {
+  List<CallCopy> copies = const [],
+}) {
   final session = flow._sessionHere(node.name);
   return session.effect<Object?>(
     node.name,
@@ -439,6 +445,7 @@ Future<Object?> nodeEffect(
     codec: node.outputCodec(flow._codecs),
     place: () => session.placeOfNode(graph, node.name),
     slots: node.slots,
+    copies: copies,
   );
 }
 
@@ -629,13 +636,15 @@ final class _Session {
   ///
   /// An effect that finished before following the same effect gives its result
   /// and writes nothing, when its result still comes back from JSON as a
-  /// [T]; any other runs live.
+  /// [T]; any other runs live, once it has the slots of [copies] and one of
+  /// [slots].
   Future<T> effect<T>(
     String name,
     FutureOr<T> Function() body, {
     required TypeCodec codec,
     required String? Function() place,
     Slots? slots,
+    List<CallCopy> copies = const [],
   }) {
     _checkWritable();
     if (_ended) {
@@ -661,27 +670,35 @@ final class _Session {
             // not. It runs again (spec §4.4).
           }
         }
-        return _live(effect, body, codec, place, slots);
+        return _live(effect, body, codec, place, slots, copies);
       }),
     );
   }
 
   /// Runs [body] as [effect] and writes it: `effect-started`, then its result
   /// and `effect-finished`, or `effect-failed`. What the body prints goes to
-  /// the effect's log, which is written before the effect's outcome. Waits for
-  /// a slot of [slots] first when there are some, writing nothing; the slot is
-  /// given back once the outcome is written.
+  /// the effect's log, which is written before the effect's outcome.
+  ///
+  /// Waits first, writing nothing, for the slot of each of [copies], the
+  /// outermost first, then for a slot of [slots] when there are some. A copy
+  /// keeps its slot until it ends; the slot of [slots] is given back once the
+  /// outcome is written. The copies first: one holding a slot of [slots]
+  /// then waits for nothing but its body.
   Future<T> _live<T>(
     KeyedEffect effect,
     FutureOr<T> Function() body,
     TypeCodec codec,
     String? Function() place,
     Slots? slots,
+    List<CallCopy> copies,
   ) async {
     final ended = Completer<void>();
     _running.add(ended.future);
     var taken = false;
     try {
+      for (final copy in copies) {
+        await copy.take();
+      }
       await slots?.take();
       taken = true;
       final record = await _started(effect, place);

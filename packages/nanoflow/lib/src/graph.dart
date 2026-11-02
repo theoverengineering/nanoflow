@@ -14,6 +14,7 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'call_limit.dart';
 import 'codecs.dart';
 import 'flow.dart';
 import 'graph_run.dart';
@@ -26,7 +27,14 @@ sealed class Nodelike<I, O> {
   String get name;
 
   /// A [Next] that runs it with [input]: what a route gives. Runs nothing.
-  Next call(I input);
+  ///
+  /// With a [limit], no more copies of this call run at once — those the
+  /// route of the same node or join gives it in the same run of the graph,
+  /// on every round of a loop —; the others wait, in the order they were
+  /// called, and write nothing until they run. A copy is the run of what is
+  /// called: a node's effect, or all of a graph's nodes. Throws an
+  /// [ArgumentError] when [limit] is less than 1.
+  Next call(I input, {int? limit});
 }
 
 /// A node of a graph: [body] runs as one effect named [name], whose result,
@@ -52,7 +60,7 @@ final class Node<I, O> extends Nodelike<I, O> {
   final Slots? _slots;
 
   @override
-  Next call(I input) => Next._(this, input);
+  Next call(I input, {int? limit}) => Next._(this, input, limit);
 
   /// [body] on [input], which is an [I]: cast here, where [I] is the node's
   /// own, as [body] read through a wider view of the node would throw.
@@ -123,12 +131,20 @@ final class Slots {
 }
 
 /// What a route gives: [target] runs next, with [input]. Made by calling a
-/// node or a graph, `inspect(change)`.
+/// node or a graph, `inspect(change)`, `developIdea(idea, limit: 2)`.
 final class Next {
-  Next._(this.target, this.input);
+  Next._(this.target, this.input, this.limit) {
+    if (limit case final limit? when limit < 1) {
+      throw ArgumentError.value(limit, 'limit', 'must be 1 or more');
+    }
+  }
 
   final Nodelike<Object?, Object?> target;
   final Object? input;
+
+  /// How many copies of this call run at once, at most (see
+  /// [Nodelike.call]); `null` for no limit.
+  final int? limit;
 
   @override
   String toString() => 'Next(${target.name})';
@@ -184,16 +200,19 @@ final class Graph<I, O> extends Nodelike<I, O> {
       Part._(_Head.join, nodes);
 
   @override
-  Next call(I input) => Next._(this, input);
+  Next call(I input, {int? limit}) => Next._(this, input, limit);
 
   /// Runs the graph with [input], which is an [I], in the session of [f]
-  /// this is called in; gives the output that went nowhere last, `null`
-  /// when none did.
+  /// this is called in, as a part of [copies]; gives the output that went
+  /// nowhere last, `null` when none did.
   ///
   /// Throws what a node or a route threw, once the other branches have
   /// ended; a [TypeError] when that output is not an [O].
-  Future<Object?> _runWith(Flow f, Object? input) async =>
-      await runGraph(_shape, f, input as I) as O;
+  Future<Object?> _runWith(
+    Flow f,
+    Object? input,
+    List<CallCopy> copies,
+  ) async => await runGraph(_shape, f, input as I, copies: copies) as O;
 
   @override
   String toString() => 'Graph($name)';
@@ -217,7 +236,15 @@ extension NodeRun on Node<Object?, Object?> {
 extension GraphRun on Graph<Object?, Object?> {
   /// Runs the graph with [input], an input of the graph, in the session of
   /// [f] this is called in; gives the output that went nowhere last.
-  Future<Object?> runWith(Flow f, Object? input) => _runWith(f, input);
+  ///
+  /// [copies] are the copies of calls with a limit the run is a part of,
+  /// the outermost first: each of its effects takes their slots before it
+  /// is written.
+  Future<Object?> runWith(
+    Flow f,
+    Object? input, {
+    List<CallCopy> copies = const [],
+  }) => _runWith(f, input, copies);
 }
 
 /// A part of a graph: a node or a join, and the route that follows it.

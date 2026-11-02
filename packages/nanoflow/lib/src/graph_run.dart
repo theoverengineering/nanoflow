@@ -15,25 +15,50 @@
 // node's effect, whichever node gave its output last. A join that never
 // fills up would hold its branch for ever; once no branch runs, nothing can
 // fill it any more, and the branches waiting at joins end.
+//
+// A call a route gives with a limit is a copy of its call site in the run
+// (call_limit.dart), made as the route gives it, in order, and ended once
+// what it called has ended; the effects of what it called take its slot
+// before they are written, outside the session's zone, so the branch awaits
+// the node as it does without a limit, and its effects get the same keys.
 
 import 'dart:async';
 
+import 'call_limit.dart';
 import 'flow.dart';
 import 'graph.dart';
 
-/// Runs [shape] with [input] in the session of [flow] this is called in;
-/// gives the output that went nowhere last, `null` when none did.
+/// Runs [shape] with [input] in the session of [flow] this is called in, as
+/// a part of [copies], the copies of calls with a limit it is in, the
+/// outermost first; gives the output that went nowhere last, `null` when
+/// none did.
 ///
 /// Throws what a node or a route threw, once every branch has ended.
-Future<Object?> runGraph(GraphShape shape, Flow flow, Object? input) =>
-    _Run(shape, flow).run(input);
+Future<Object?> runGraph(
+  GraphShape shape,
+  Flow flow,
+  Object? input, {
+  List<CallCopy> copies = const [],
+}) => _Run(shape, flow, copies).run(input);
+
+/// A node a route leads to, with its input and, for a call with a limit,
+/// the copy of it.
+typedef _Called = (ShapeNode node, Object? input, CallCopy? copy);
 
 /// One run of a graph.
 final class _Run {
-  _Run(this._shape, this._flow);
+  _Run(this._shape, this._flow, this._copies);
 
   final GraphShape _shape;
   final Flow _flow;
+
+  /// The copies of calls with a limit the run is a part of, the outermost
+  /// first.
+  final List<CallCopy> _copies;
+
+  /// The call sites of the run whose calls gave a limit, by the node or the
+  /// join whose route calls and the node called.
+  final _sites = <(Object, ShapeNode), CallSite>{};
 
   /// How many branches run now: neither ended nor waiting for the branches
   /// they started.
@@ -46,22 +71,28 @@ final class _Run {
 
   Future<Object?> run(Object? input) async {
     await Future.wait([
-      for (final start in _shape.starts) _branch(start, input),
+      for (final start in _shape.starts) _branch((start, input, null)),
     ]);
     return _result?.value;
   }
 
-  /// Runs [first] on [input] and what follows it: in place while one node
-  /// follows, in branches side by side when several do.
-  Future<void> _branch(ShapeNode first, Object? input) async {
+  /// Runs [first] and what follows it: in place while one node follows, in
+  /// branches side by side when several do.
+  Future<void> _branch(_Called first) async {
     _running++;
     var waiting = false;
     try {
-      var node = first;
-      var value = input;
+      var (node, value, copy) = first;
       while (true) {
-        final output = await _call(node, value);
-        final next = _next(node.name, node.route, output);
+        final Object? output;
+        try {
+          // Awaited right here, as without a limit: the branch goes on in the
+          // context of the node's effect.
+          output = await _call(node, value, copy);
+        } finally {
+          copy?.end();
+        }
+        final targets = _next(node.name, node.route, output);
         final leads = <_JoinState>[];
         for (final join in node.joins) {
           final state = _joins[join] ??= _JoinState(this, join);
@@ -71,18 +102,19 @@ final class _Run {
             state.deposit(node, output);
           }
         }
+        final next = _called(node, targets);
         // A node of a join without arrows of its own gave its output to the
         // join: it is no end of the graph.
         if (next.isEmpty && (node.route != null || node.joins.isEmpty)) {
           _result = (value: output);
         }
         if (leads.isEmpty && next.length == 1) {
-          (node, value) = next.single;
+          (node, value, copy) = next.single;
           continue;
         }
         if (leads.isEmpty && next.isEmpty) return;
         final started = [
-          for (final (target, payload) in next) _branch(target, payload),
+          for (final called in next) _branch(called),
           for (final state in leads) _lead(state, output),
         ];
         waiting = true;
@@ -95,26 +127,49 @@ final class _Run {
     }
   }
 
-  /// Runs the node of [at] on [value]: an effect for a node, the graph's own
-  /// nodes for a graph.
-  Future<Object?> _call(ShapeNode at, Object? value) => switch (at.node) {
-    final Node<Object?, Object?> node => nodeEffect(
-      _flow,
-      _shape.name,
-      node,
-      value,
-    ),
-    final Graph<Object?, Object?> graph => graph.runWith(_flow, value),
-  };
+  /// Runs the node of [at] on [value], as [copy] when it is a call with a
+  /// limit: an effect for a node, the graph's own nodes for a graph.
+  Future<Object?> _call(ShapeNode at, Object? value, CallCopy? copy) {
+    final copies = copy == null ? _copies : [..._copies, copy];
+    return switch (at.node) {
+      final Node<Object?, Object?> node => nodeEffect(
+        _flow,
+        _shape.name,
+        node,
+        value,
+        copies: copies,
+      ),
+      final Graph<Object?, Object?> graph => graph.runWith(
+        _flow,
+        value,
+        copies: copies,
+      ),
+    };
+  }
 
-  /// The nodes that follow [output] of [from], each with its input, as
-  /// [route] gives them: none when there is no route, or it gives `null` or
-  /// an empty set.
+  /// [next], the nodes the route of [from] — a node or a join — leads to,
+  /// each with its input and, when it gives a limit, a copy of its call
+  /// site, made now: in the order the route gives them, once it has given
+  /// them all.
+  List<_Called> _called(Object from, List<(ShapeNode, Object?, int?)> next) => [
+    for (final (node, input, limit) in next)
+      (
+        node,
+        input,
+        limit == null
+            ? null
+            : (_sites[(from, node)] ??= CallSite()).copy(limit),
+      ),
+  ];
+
+  /// The nodes that follow [output] of [from], each with its input and the
+  /// limit of its call, as [route] gives them: none when there is no route,
+  /// or it gives `null` or an empty set.
   ///
   /// Throws a [StateError] naming the graph when the route gives anything
   /// else than a [Next], a set of them or `null`, or a node whose name another
   /// node of the graph has; and what the route throws.
-  List<(ShapeNode, Object?)> _next(
+  List<(ShapeNode, Object?, int?)> _next(
     String from,
     Object? Function(Object? output)? route,
     Object? output,
@@ -123,10 +178,12 @@ final class _Run {
     final given = route(output);
     return switch (given) {
       null => const [],
-      final Next next => [(_shape.nodeFor(next.target), next.input)],
+      final Next next => [
+        (_shape.nodeFor(next.target), next.input, next.limit),
+      ],
       final Set<Object?> set when set.every((next) => next is Next) => [
         for (final next in set.whereType<Next>())
-          (_shape.nodeFor(next.target), next.input),
+          (_shape.nodeFor(next.target), next.input, next.limit),
       ],
       _ => throw StateError(
         'graph "${_shape.name}": the route of $from gave $given: a route '
@@ -143,7 +200,7 @@ final class _Run {
     if (outputs == null) return;
     final List<Future<void>> started;
     try {
-      final List<(ShapeNode, Object?)> next;
+      final List<(ShapeNode, Object?, int?)> next;
       try {
         next = _next(state.join.name, state.join.route, outputs);
       } on TypeError catch (error) {
@@ -157,7 +214,9 @@ final class _Run {
         );
       }
       if (next.isEmpty) _result = (value: outputs);
-      started = [for (final (node, input) in next) _branch(node, input)];
+      started = [
+        for (final called in _called(state.join, next)) _branch(called),
+      ];
     } finally {
       // Counted as running from when it filled up, so that no other branch
       // ending in between gives up the joins this one may fill.
