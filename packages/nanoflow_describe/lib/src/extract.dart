@@ -303,8 +303,13 @@ final class _Call extends _Drawn {
 }
 
 /// A way out of a point that does not lead anywhere yet, with the outcome
-/// it is taken on when the point is a fork.
+/// it is taken on when the point is a fork, or [_failedLabel] when the
+/// point's call failed.
 typedef _Out = (_V, String?);
+
+/// The label of the edges a node's failure route leaves it by (failure route
+/// design), which `failed: true` tells from a case of a switch.
+const _failedLabel = 'failed';
 
 /// What an edge says of the call it makes: the header of the `for` element
 /// that runs its node once per item (each-edge design), and the limit of
@@ -326,6 +331,11 @@ final class _Points {
   /// The mark of each edge that runs its node once per item or whose call
   /// gives a limit, by the edge: its point, its outcome and where it leads.
   final _marks = <(_V, String?, _V), _Mark>{};
+
+  /// The ways out of nodes when their call failed: the node and
+  /// [_failedLabel]. An edge of one is marked `failed`, through the hidden
+  /// points after it too.
+  final _failedWays = <_Out>{};
 
   /// The fork of the switch [s], the labels of its members in order, and
   /// whether they match every value (an exhaustive switch or a `default`,
@@ -436,7 +446,7 @@ final class _Points {
       }
     }
     final edges = <GraphEdge>[];
-    final seen = <(String?, String?, String?, _Mark?)>{};
+    final seen = <(String?, String?, String?, _Mark?, bool)>{};
     void edgesOf(_V from, String? fromId) {
       for (final (label, to) in _edges[from] ?? const <(String?, _V)>[]) {
         if (to is _Fork &&
@@ -446,10 +456,11 @@ final class _Points {
           continue;
         }
         final mark = _marks[(from, label, to)];
+        final failed = _failedWays.contains((from, label));
         for (final (target, inner) in _resolve({to}, hidden)) {
           final toId = ids[target];
           final copies = mark ?? inner;
-          if (seen.add((fromId, toId, label, copies))) {
+          if (seen.add((fromId, toId, label, copies, failed))) {
             edges.add(
               GraphEdge(
                 from: fromId,
@@ -457,6 +468,7 @@ final class _Points {
                 label: label,
                 each: copies?.each,
                 limit: copies?.limit,
+                failed: failed,
               ),
             );
           }

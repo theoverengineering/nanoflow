@@ -283,15 +283,30 @@ final class _GraphBody {
   }
 
   /// Reads the part [e] — `Graph.start(…)`, `Graph.part(…)` or
-  /// `Graph.join([…])`, and the `.next(…)` after it —; `false` when it is
-  /// none of them, or its nodes are not nodes declared in the sources.
+  /// `Graph.join([…])`, and the `.next(…)` and the `.failed(…)` after it,
+  /// in either order, each once —; `false` when it is none of them, its
+  /// nodes are not nodes declared in the sources, or it is a join with a
+  /// failure route.
   bool _part(Expression e) {
     var head = e;
     Expression? route;
-    if (e case MethodInvocation(:final target?)
-        when _isNanoflowMethod(e, 'Part', 'next')) {
-      head = target;
-      route = _firstPositional(e.argumentList);
+    Expression? failed;
+    // The routes from the last called to the first.
+    final routes = <(Expression, bool)>[];
+    while (true) {
+      final call = head;
+      if (call is! MethodInvocation || call.target == null) break;
+      final isNext = _isNanoflowMethod(call, 'Part', 'next');
+      if (!isNext && !_isNanoflowMethod(call, 'Part', 'failed')) break;
+      final given = _firstPositional(call.argumentList);
+      if (given == null || (isNext ? route : failed) != null) return false;
+      if (isNext) {
+        route = given;
+      } else {
+        failed = given;
+      }
+      routes.add((given, isNext));
+      head = call.target!;
     }
     if (head is! MethodInvocation) return false;
     final argument = _firstPositional(head.argumentList);
@@ -304,12 +319,21 @@ final class _GraphBody {
         _starts.add(point);
         _connect([(_points._entry, null)], point);
       }
-      if (route != null) {
-        _going.add(node);
-        _route(route, [(point, null)]);
+      // In the order they are written.
+      for (final (given, isNext) in routes.reversed) {
+        if (isNext) {
+          _going.add(node);
+          _route(given, [(point, null)]);
+        } else {
+          // Out of the node by the way of its failure: its first switch or
+          // if is a fork, as the node's own exits are its route's.
+          _points._failedWays.add((point, _failedLabel));
+          _route(given, [(point, _failedLabel)]);
+        }
       }
       return true;
     }
+    if (failed != null) return false;
     if (_isNanoflowMethod(head, 'Graph', 'join') && argument is ListLiteral) {
       final members = <(_Nodelike, Expression)>[];
       for (final element in argument.elements) {

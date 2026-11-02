@@ -544,6 +544,97 @@ void main() {
     expect(graph['warnings'], isEmpty);
   });
 
+  test('draws a failure route from its node as edges labelled failed and '
+      'marked failed, its first switch a fork of its own, after the route or '
+      'before it', () async {
+    const file = 'lib/graph_failures.dart';
+    final graph = await describeFixture('graph_failures');
+    Map<String, Object?> at(Map<String, Object?> node, int line) => {
+      ...node,
+      'place': '$file:$line',
+    };
+    Map<String, Object?> failed(String from, String? to) => {
+      ..._edge(from, to, 'failed'),
+      'failed': true,
+    };
+
+    expect(_functionOf(graph, '$file#nightIdea')['body'], {
+      'nodes': [
+        at(_effect('1', 'claim', 0), 19),
+        {
+          'id': '2',
+          'kind': 'call',
+          'functions': ['$file#developIdea'],
+          'place': '$file:19',
+        },
+        at(_effect('3', 'settle', 0), 21),
+        at(_effect('4', 'giveBack', 0), 22),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2'),
+        _edge('2', '3'),
+        failed('2', '4'),
+        _edge('3', null),
+        _edge('4', null),
+      ],
+    });
+    // The failure route's switch is a fork; the route's ?: the exits of the
+    // node.
+    expect(_functionOf(graph, '$file#picky')['body'], {
+      'nodes': [
+        at(_effect('1', 'claim', 0), 27),
+        {
+          'id': '2',
+          'kind': 'fork',
+          'label': 'switch (failure.type)',
+          'place': '$file:29',
+        },
+        at(_effect('3', 'retry', 0), 30),
+        at(_effect('4', 'settle', 0), 34),
+        at(_effect('5', 'giveBack', 0), 34),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        failed('1', '2'),
+        _edge('1', '4', 'i > 0'),
+        _edge('1', '5', 'else'),
+        _edge('2', '3', "'StateError'"),
+        _edge('2', null, '_'),
+        _edge('3', null),
+        _edge('4', null),
+        _edge('5', null),
+      ],
+    });
+    expect(_functionOf(graph, '$file#batch')['body'], {
+      'nodes': [
+        at(_effect('1', 'ids', 0), 40),
+        at(_effect('2', 'develop', 0), 40),
+        at(_effect('3', 'retry', 0), 43),
+      ],
+      'edges': [
+        _edge(null, '1'),
+        _edge('1', '2', null, 'for i in ids'),
+        {
+          ..._edge('2', '3', 'failed', 'for r in [i, -i]'),
+          'limit': '2',
+          'failed': true,
+        },
+        _edge('2', null),
+        _edge('3', null),
+      ],
+    });
+    expect(graph['warnings'], [
+      {
+        'place': '$file:51',
+        'message':
+            'graph part not drawn: Graph.join([settle, retry]).failed((Object? '
+            'both, failure) => null)',
+        'function': '$file#joined',
+      },
+    ]);
+  });
+
   test('gives an effect the concurrency of its node when it is an integer '
       'literal, and warns of one that is not', () async {
     const file = 'lib/graph_concurrency.dart';

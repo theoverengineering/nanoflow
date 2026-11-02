@@ -14,7 +14,10 @@
 // gives a limit, `idea(i, limit: night.parallel)`, marks its edge with it as
 // written (call limit design). A `throw` ends its
 // way: the branch fails. A route that is async or a generator is not read:
-// it gives a Future or an Iterable, no Next.
+// it gives a Future or an Iterable, no Next. A failure route, what
+// `.failed` takes, is read so too, from its node by the way `failed`
+// (failure route design): its switch or if is a fork, never the node's own
+// exits, which are its route's.
 
 part of 'extract.dart';
 
