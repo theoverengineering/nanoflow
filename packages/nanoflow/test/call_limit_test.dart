@@ -186,6 +186,90 @@ final subsThenDone = Graph<List<int>, Object?>('subsThenDone', [
 Future<Object?> subsThenDoneWorkflow(Flow f, List<int> ids) =>
     subsThenDone.runWith(f, ids);
 
+/// The gates [prep] of each copy waits at; one not there is open.
+final prepGates = <int, Completer<void>>{};
+
+final prep = node('prep', (int i) async {
+  await (prepGates[i]?.future ?? Future<void>.value());
+  return i;
+});
+
+/// Copies of one call site made by different branches, one by the route of
+/// each [prep], in the order the preps end, which a resume does not keep.
+final fanIn = Graph<List<int>, Object?>('fanIn', [
+  Graph.start(ids).next((ids) => {for (final i in ids) prep(i)}),
+  Graph.part(prep).next((i) => sub(i, limit: 1)),
+]);
+
+final left = node('left', (int i) async {
+  await pause();
+  return i;
+});
+
+final right = node('right', (int i) async {
+  await pause();
+  return i;
+});
+
+/// A call with a limit from a join's route: a copy of [sub] for each pair
+/// of [left] and [right].
+final joined = Graph<List<int>, Object?>('joined', [
+  Graph.start(ids).next(
+    (ids) => {for (final i in ids) left(i), for (final i in ids) right(i)},
+  ),
+  Graph.join([left, right]).next(((int, int) pair) => sub(pair.$1, limit: 1)),
+]);
+
+/// How many [heavy] run now, the most that ran at once, and those that
+/// ended.
+var heavyRunning = 0;
+var mostHeavy = 0;
+final heavyDone = <int>[];
+
+final heavy = node('heavy', (int i) async {
+  mostHeavy = max(mostHeavy, ++heavyRunning);
+  await pause();
+  heavyRunning--;
+  heavyDone.add(i);
+  return i;
+}, concurrency: 1);
+
+final heavyInner = Graph<int, Object?>('heavyInner', [
+  Graph.start(fan)
+      .next((i) => {for (var j = 0; j < 3; j++) heavy(i * 10 + j, limit: 1)}),
+]);
+
+/// Limits nested in limits, over a node of one effect at a time.
+final heavyOuter = Graph<List<int>, Object?>('heavyOuter', [
+  Graph.start(ids).next(
+    (ids) => {
+      for (final i in ids) heavyInner(i, limit: 2),
+      for (final i in ids) heavy(100 + i, limit: 1),
+    },
+  ),
+]);
+
+final failsIfOdd = node('failsIfOdd', (int i) async {
+  await pause();
+  if (i.isOdd) throw StateError('odd $i');
+  return i;
+});
+
+final alongside = node('alongside', (int i) async {
+  await pause();
+  entered.add('alongside $i');
+  return i;
+});
+
+/// A copy of two branches, one of which fails on an odd input.
+final forked = Graph<int, Object?>('forked', [
+  Graph.start(fan).next((i) => {failsIfOdd(i), alongside(i)}),
+]);
+
+final forkedOfOne = Graph<List<int>, Object?>('forkedOfOne', [
+  Graph.start(ids).next((ids) => {for (final i in ids) forked(i, limit: 1)}),
+]);
+
 /// How many [capped] run now in each session, by the hundreds of their
 /// input, and the most that ran at once in each.
 final cappedRunning = <int, int>{};
@@ -277,6 +361,10 @@ void main() {
     mostCapped.clear();
     innerOverlap = false;
     innerRunning.clear();
+    prepGates.clear();
+    heavyRunning = 0;
+    mostHeavy = 0;
+    heavyDone.clear();
   });
 
   group('a node', () {
@@ -538,6 +626,56 @@ void main() {
     });
   });
 
+  group('a call with a limit', () {
+    test('from the route of each of several branches shares one line, a '
+        'single call too', () async {
+      final dir = await tempDir();
+      await flowIn(dir).run(fanIn, [0, 1, 2, 3]);
+      expect(mostLive, 1);
+      expect(
+        entered.where((e) => e.startsWith('a ')),
+        unorderedEquals(['a 0', 'a 1', 'a 2', 'a 3']),
+      );
+    });
+
+    test("from a join's route runs at most limit copies at once", () async {
+      final dir = await tempDir();
+      await flowIn(dir).run(joined, [0, 1, 2, 3]);
+      expect(mostLive, 1);
+      expect(
+        entered.where((e) => e.startsWith('b ')),
+        unorderedEquals(['b 0', 'b 1', 'b 2', 'b 3']),
+      );
+    });
+
+    test('nested in another, over a node of one effect at a time, in two '
+        'sessions, ends', () async {
+      final dir = await tempDir();
+      final flow = flowIn(dir);
+      final one = await flow.start(heavyOuter, [0, 1, 2, 3]);
+      final two = await flow.start(heavyOuter, [4, 5, 6]);
+      await Future.wait([one.result, two.result])
+          .timeout(const Duration(seconds: 20));
+      expect(mostHeavy, 1);
+      expect(heavyDone, hasLength(4 * 3 + 4 + 3 * 3 + 3));
+    });
+
+    test('whose copy has a branch that failed gives the slot back once the '
+        'copy has ended', () async {
+      final dir = await tempDir();
+      await expectLater(
+        flowIn(dir)
+            .run(forkedOfOne, [0, 1, 2, 3])
+            .timeout(const Duration(seconds: 10)),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        entered,
+        unorderedEquals([for (var i = 0; i < 4; i++) 'alongside $i']),
+      );
+    });
+  });
+
   group('on resume', () {
     test('the copies started before take the slots before new ones, and no '
         'more run than the limit', () async {
@@ -583,6 +721,48 @@ void main() {
       expect(await startsOf(handle, 'subB'), {
         for (final i in copies) i: i == 0 || i == 2 ? 2 : 1,
       });
+    });
+
+    test('the copies started before go first even when other branches make '
+        'the copies in another order than before', () async {
+      close([0, 1, 2]);
+      for (final i in [0, 1, 2]) {
+        prepGates[i] = Completer();
+      }
+      final dir = await tempDir();
+      final first = flowIn(dir);
+      final session = await first.start(fanIn, [0, 1, 2]);
+      // Copy 2 is called first and runs; 0 and 1 wait for it.
+      prepGates[2]!.complete();
+      await until(() => entered.contains('b 2'), 'copy 2 at subB');
+      prepGates[0]!.complete();
+      prepGates[1]!.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(entered, ['a 2', 'b 2']);
+      first.stop();
+      openAll();
+      await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
+
+      // On resume the preps replay in their order, making copy 2 last.
+      entered.clear();
+      live.clear();
+      mostLive = 0;
+      close([0, 1, 2]);
+      final resumed = await flowIn(dir).resume(fanIn, session.id);
+      await until(() => entered.contains('b 2'), 'copy 2 at subB again');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(entered, ['b 2']);
+      open(2);
+      await until(
+        () => entered.contains('b 0') || entered.contains('b 1'),
+        'a new copy at subB',
+      );
+      openAll();
+      await resumed.result;
+      expect(mostLive, 1);
+      final handle = await onlySession(dir);
+      expect(await startsOf(handle, 'subA'), {0: 1, 1: 1, 2: 1});
+      expect(await startsOf(handle, 'subB'), {0: 1, 1: 1, 2: 2});
     });
 
     test('a copy whose every effect is saved takes no slot: it ends while '

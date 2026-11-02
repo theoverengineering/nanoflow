@@ -179,6 +179,71 @@ void main() {
       await narrow.take();
       await last.take();
     });
+
+    test('those that ran before the process ended go before the new ones, '
+        'wherever they were called, a copy not asking yet holding back none '
+        'of them', () async {
+      final site = CallSite();
+      final holder = site.copy(1);
+      await holder.take();
+      final notAsking = site.copy(1);
+      final fresh = site.copy(1);
+      final started = site.copy(1);
+      final replayed = site.copy(1);
+      final granted = <String>[];
+      unawaited(fresh.take().then((_) => granted.add('fresh')));
+      unawaited(
+        started.take(started: true).then((_) => granted.add('started')),
+      );
+      unawaited(replayed.take().then((_) => granted.add('replayed')));
+      replayed.replayed();
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, isEmpty);
+      holder.end();
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, ['started']);
+      started.end();
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, ['started', 'replayed']);
+      replayed.end();
+      await Future<void>.delayed(Duration.zero);
+      // The new one waits behind the copy called before it, not asking yet.
+      expect(granted, ['started', 'replayed']);
+      notAsking.end();
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, ['started', 'replayed', 'fresh']);
+    });
+
+    test('resuming, a new copy asks a turn of the event loop late: one that '
+        'ran before and asks in the meantime goes first', () async {
+      final site = CallSite();
+      final fresh = site.copy(1);
+      final started = site.copy(1);
+      final granted = <String>[];
+      unawaited(fresh.take(resuming: true).then((_) => granted.add('fresh')));
+      await Future<void>.value();
+      unawaited(
+        started
+            .take(started: true, resuming: true)
+            .then((_) => granted.add('started')),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, ['started']);
+      started.end();
+      await Future<void>.delayed(Duration.zero);
+      expect(granted, ['started', 'fresh']);
+    });
+
+    test('a copy that has ended takes no slot and does not end again', () {
+      final site = CallSite();
+      final copy = site.copy(1)..end();
+      expect(copy.take, throwsStateError);
+      expect(copy.end, throwsStateError);
+      final running = site.copy(1);
+      unawaited(running.take());
+      running.end();
+      expect(running.end, throwsStateError);
+    });
   });
 
   test('a node takes a concurrency of 1 or more, none by default', () {

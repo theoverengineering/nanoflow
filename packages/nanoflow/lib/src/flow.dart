@@ -521,6 +521,12 @@ final class _Session {
   /// What the session's journal had of its effects when it started.
   final _Journal _journal;
 
+  /// Whether the session runs on effects that ran before: it is resumed, or
+  /// started with saved results. A new copy of a call with a limit then asks
+  /// for its slot once the replay has made the copies that ran before.
+  late final bool _resuming =
+      _journal.saved.isNotEmpty || _journal.records.isNotEmpty;
+
   /// The snapshot of the graph's files as they were when the session
   /// started or resumed (`graphSnapshotOf`); `null` when there was none.
   final Map<String, Object?>? _graph;
@@ -656,7 +662,11 @@ final class _Session {
         final saved = _journal.saved[effect.key];
         if (saved != null && saved.after == effect.after) {
           try {
-            return Future.value(codec.decode(saved.value) as T);
+            final value = codec.decode(saved.value) as T;
+            for (final copy in copies) {
+              copy.replayed();
+            }
+            return Future.value(value);
           } on CodecException catch (e) {
             if (!codec.canDecode) {
               // [T] has no codec: the code that resumes the session has not
@@ -683,7 +693,10 @@ final class _Session {
   /// outermost first, then for a slot of [slots] when there are some. A copy
   /// keeps its slot until it ends; the slot of [slots] is given back once the
   /// outcome is written. The copies first: one holding a slot of [slots]
-  /// then waits for nothing but its body.
+  /// then waits for nothing but its body. Each copy's wait is a microtask at
+  /// least, and in a resumed session a new copy's a turn of the event loop:
+  /// a later effect of the same node in no copy may so take the slot of
+  /// [slots] first.
   Future<T> _live<T>(
     KeyedEffect effect,
     FutureOr<T> Function() body,
@@ -696,8 +709,10 @@ final class _Session {
     _running.add(ended.future);
     var taken = false;
     try {
+      // Its record in the journal: the effect, and so its copies, ran before.
+      final started = _journal.records.containsKey(effect.key);
       for (final copy in copies) {
-        await copy.take();
+        await copy.take(started: started, resuming: _resuming);
       }
       await slots?.take();
       taken = true;
