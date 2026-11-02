@@ -323,6 +323,62 @@ final pacedEachUnguarded = Graph<List<String>, Object?>('pacedEachUnguarded', [
   Graph.part(paced).next((s) => pacedAfter(s)),
 ]);
 
+/// [paced] and [pacedAfter] side by side, the one after [paced] too: a
+/// graph whose failure a route round its call catches.
+final pacedSub = Graph<String, String>('pacedSub', [
+  Graph.start(paced).next((s) => pacedAfter(s)),
+  Graph.start(pacedAfter),
+]);
+
+final pacedSubs = Graph<List<String>, Object?>('pacedSubs', [
+  Graph.start(names).next((names) => {for (final n in names) pacedSub(n)}),
+  Graph.part(pacedSub)
+      .next((s) => pacedAfter('$s next'))
+      .failed((s, f) => null),
+]);
+
+/// [pacedSubs] without its failure route.
+final pacedSubsUnguarded = Graph<List<String>, Object?>('pacedSubsUnguarded', [
+  Graph.start(names).next((names) => {for (final n in names) pacedSub(n)}),
+  Graph.part(pacedSub).next((s) => pacedAfter('$s next')),
+]);
+
+/// Fails for an even idea, after its gate.
+final developGated = node('developGated', (int i) async {
+  ran.add('develop $i');
+  await gate('develop $i');
+  if (i.isEven) throw StateError('develop $i failed');
+  return i;
+});
+
+final developIdea = Graph<int, int>('developIdea', [Graph.start(developGated)]);
+
+/// One idea of a night whose development is a graph.
+final nightIdeaOfGraph = Graph<int, int>('nightIdeaOfGraph', [
+  Graph.start(claim).next((i) => developIdea(i)),
+  Graph.part(developIdea).next((i) => settleIdea(i)).failed((i, f) {
+    routed.add('$i: $f');
+    return giveBackIdea(i);
+  }),
+]);
+
+final nightOfGraphs = Graph<List<int>, Object?>('nightOfGraphs', [
+  Graph.start(ids)
+      .next((ids) => {for (final i in ids) nightIdeaOfGraph(i, limit: 1)}),
+]);
+
+/// [risky] beside [hold], without a failure route, then with one: the same
+/// graph before and after its code changed.
+final changedBefore = Graph<String, Object?>('changed', [
+  Graph.start(risky),
+  Graph.start(hold),
+]);
+
+final changedAfter = Graph<String, Object?>('changed', [
+  Graph.start(risky).failed(back),
+  Graph.start(hold),
+]);
+
 Flow flowIn(String dir) => Flow(directory: dir)..addCodec(Produced.fromJson);
 
 /// The effects of the only session of [dir], in the order they started.
@@ -614,6 +670,96 @@ void main() {
       expect(ran.where((r) => r.endsWith('Fail')), hasLength(2));
     });
 
+    test('of a limited copy of a graph, stopped in its failure route: on '
+        'resume the copy goes on from the journal first, its graph does not '
+        'run again, and the new copies follow', () async {
+      final dir = await tempDir();
+      close('giveBack 0');
+      final flow = flowIn(dir);
+      final first = await flow.start(nightOfGraphs, [0, 1, 2]);
+      await stopAt(flow, first, 'giveBack 0');
+      // Its body ended after the stop, and nothing of it was written.
+      expect(ran, ['claim 0', 'develop 0', 'giveBack 0', 'gave back 0']);
+      ran.clear();
+      final resumed = await flowIn(dir).resume(nightOfGraphs, first.id);
+      await resumed.result.timeout(const Duration(seconds: 10));
+      expect(ran, [
+        'giveBack 0',
+        'gave back 0',
+        'claim 1',
+        'develop 1',
+        'settle 1',
+        'claim 2',
+        'develop 2',
+        'giveBack 2',
+        'gave back 2',
+      ]);
+      expect(routed, [
+        '0: CallFailure(StateError: Bad state: develop 0 failed)',
+        '0: CallFailure(StateError: Bad state: develop 0 failed)',
+        '2: CallFailure(StateError: Bad state: develop 2 failed)',
+      ]);
+    });
+
+    test('of a limited copy, stopped in the next copy: on resume neither the '
+        'graph that failed nor its failure route runs again', () async {
+      final dir = await tempDir();
+      close('develop 1');
+      final flow = flowIn(dir);
+      final first = await flow.start(nightOfGraphs, [0, 1, 2]);
+      await stopAt(flow, first, 'develop 1');
+      ran.clear();
+      final resumed = await flowIn(dir).resume(nightOfGraphs, first.id);
+      await resumed.result.timeout(const Duration(seconds: 10));
+      expect(ran, [
+        'develop 1',
+        'settle 1',
+        'claim 2',
+        'develop 2',
+        'giveBack 2',
+        'gave back 2',
+      ]);
+    });
+
+    test('though the failure route was added after the failure was '
+        'journaled: the node does not run again on resume', () async {
+      final dir = await tempDir();
+      close('hold');
+      final flow = flowIn(dir);
+      final first = await flow.start(changedBefore, 'bad');
+      await until(
+        () => eventNamesOf(dir, first.id).contains('effect-failed'),
+        'the failure in the journal',
+      );
+      await stopAt(flow, first, 'hold');
+      expect(routed, isEmpty);
+      ran.clear();
+      final resumed = await flowIn(dir).resume(changedAfter, first.id);
+      await resumed.result;
+      expect(ran.where((r) => r.startsWith('risky')), isEmpty);
+      expect(routed, ['bad: CallFailure(StateError: Bad state: boom bad)']);
+      expect(ran, contains('giveBack bad: Bad state: boom bad'));
+    });
+
+    test('only while the code that resumes has the failure route: removed, '
+        'the node runs again over what the route did', () async {
+      final dir = await tempDir();
+      close('hold');
+      final flow = flowIn(dir);
+      final first = await flow.start(changedAfter, 'bad');
+      await until(
+        () => ran.contains('giveBack bad: Bad state: boom bad'),
+        'the failure route',
+      );
+      await stopAt(flow, first, 'hold');
+      ran.clear();
+      await expectLater(
+        flowIn(dir).resume(changedBefore, first.id).then((s) => s.result),
+        throwsA(isA<StateError>()),
+      );
+      expect(ran, contains('risky bad'));
+    });
+
     test('but a node without a failure route round it runs again on resume, '
         'as before', () async {
       final dir = await tempDir();
@@ -774,6 +920,45 @@ void main() {
         }
       },
     );
+
+    test('of the effects round a call of a graph are the same as without its '
+        'failure route, whatever the timing, and so are those both runs have '
+        'when the graph fails', () async {
+      Future<Map<String, String?>> keysOf(
+        Graph<List<String>, Object?> g,
+        int seed,
+        List<String> input,
+      ) async {
+        random = Random(seed);
+        final dir = await tempDir();
+        try {
+          await flowIn(dir).run(g, input);
+        } on StateError {
+          // Without its failure route, the graph that failed fails it.
+        }
+        return {for (final e in await effectsIn(dir)) e.key: e.after};
+      }
+
+      for (var seed = 1; seed < 4; seed++) {
+        final passing = await keysOf(pacedSubs, seed, ['a', 'b', 'c']);
+        expect(
+          passing,
+          await keysOf(pacedSubsUnguarded, seed, ['a', 'b', 'c']),
+          reason: 'seed $seed',
+        );
+        expect(
+          passing,
+          await keysOf(pacedSubs, seed + 10, ['a', 'b', 'c']),
+          reason: 'timing $seed',
+        );
+        final failing = await keysOf(pacedSubs, seed, ['a', 'bad', 'c']);
+        expect(
+          failing,
+          await keysOf(pacedSubsUnguarded, seed, ['a', 'bad', 'c']),
+          reason: 'seed $seed',
+        );
+      }
+    });
 
     test('of the effects round a call are the same as without its failure '
         'route', () async {
