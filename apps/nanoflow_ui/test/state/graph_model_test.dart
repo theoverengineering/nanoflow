@@ -289,6 +289,56 @@ void main() {
         expect(model.canvas.workflow!.name, 'carry');
       });
     });
+
+    test("a parent's session the app was started on, resumed with a "
+        'snapshot, stays selected through the reading of the snapshot', () {
+      run(session: 'c1c1-session', (async) {
+        graphFile.graph = carryFile();
+        documents['snapshot'] = chain.toJson();
+        give(
+          async,
+          changesOf([
+            Journal('c1c1-session', workflow: 'chain', graph: chain.toJson())
+              ..resume(1, graphId: 'snapshot')
+              ..effect('status', 3, end: 4, place: 'lib/task_graph.dart:66'),
+            Journal(
+              'k1k1-session',
+              workflow: 'carry',
+              graph: carryFile().toJson(),
+              startedAt: 30,
+            )..effect('status', 31, end: 32, place: 'lib/task_graph.dart:66'),
+          ]),
+        );
+        expect(read, contains('snapshot'));
+        expect(model.selection.sessionId, 'c1c1-session');
+        expect(model.canvas.calledGraph, carry);
+      });
+    });
+
+    test("a parent's session selected stays as it is resumed with another "
+        'snapshot, through the reading of the snapshot', () {
+      run((async) {
+        graphFile.graph = carryFile();
+        give(async, sessions());
+        model.showSession('c1c1-session');
+
+        documents['snapshot'] = chain.toJson();
+        give(async, [
+          EventAdded(
+            sessionId: 'c1c1-session',
+            event: SessionResumed(
+              time: at(40),
+              code: reviewCode,
+              graphId: 'snapshot',
+            ),
+          ),
+        ]);
+
+        expect(read, contains('snapshot'));
+        expect(model.selection.sessionId, 'c1c1-session');
+        expect(model.canvas.calledGraph, carry);
+      });
+    });
   });
 
   group('the levels of the graph', () {

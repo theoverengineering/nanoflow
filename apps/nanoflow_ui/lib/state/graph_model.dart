@@ -608,7 +608,7 @@ class GraphModel extends ChangeNotifier {
     _openWanted();
     // Until the session wanted comes, none is selected.
     final sessions = _wantedSession == null
-        ? workflowSessions
+        ? _sessionsToSelect()
         : const <SessionData>[];
     final selected = selection.sessionId;
     if (selected != null && sessions.every((s) => s.id != selected)) {
@@ -616,6 +616,25 @@ class GraphModel extends ChangeNotifier {
     }
     selection.update(sessions);
     _feeding = false;
+  }
+
+  /// The sessions of the main graph, and the selected session while its
+  /// snapshot is being read: whether the main graph ran in a parent's
+  /// session resumed with a snapshot is not known until then, and meanwhile
+  /// it would give way to the newest of the others — the session the app was
+  /// started on too.
+  List<SessionData> _sessionsToSelect() {
+    final sessions = workflowSessions;
+    final selected = selectedSession;
+    if (selected == null || sessions.any((s) => s.id == selected.id)) {
+      return sessions;
+    }
+    final document = snapshotDocumentOf(selected);
+    final reading =
+        document != null &&
+        outcomes[document] == null &&
+        outcomes.problemOf(document) == null;
+    return reading ? [...sessions, selected] : sessions;
   }
 
   void _selected() {
