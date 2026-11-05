@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:path/path.dart' as p;
-
 /// A program that [exec] ran exited with a code other than 0.
 final class ExecException implements Exception {
   ExecException(this.executable, this.exitCode);
@@ -23,9 +21,9 @@ final class ExecException implements Exception {
 /// The program runs in [workingDirectory], the current directory by
 /// default, with [environment] added to the environment of this process,
 /// and with [stdin], if given, on its stdin, UTF-8 encoded and followed by
-/// EOF, else with an empty stdin. Its stderr goes, as it arrives, to the log of
-/// the effect `exec` is called in — from the body of `f.effect` or from code
-/// the body calls — and anywhere else to the stderr of this process. A
+/// EOF, else with an empty stdin. Its stderr goes, as it arrives, to the log
+/// of the effect `exec` is called in — from the body of `f.effect` or from
+/// code the body calls — and anywhere else to the stderr of this process. A
 /// program that writes to an effect's log faster than the log is written
 /// waits on its pipe.
 ///
@@ -53,9 +51,11 @@ final class ExecException implements Exception {
 ///   the system closes then.
 ///
 /// [stdin] does not go through the arguments, which the system limits in size
-/// and any user can read with `ps`. It is written to a file in a private
-/// directory of the system's temp dir, which the shell opens as the program's
-/// stdin and removes at once; the directory is removed when `exec` ends.
+/// and any user can read with `ps`, and is written to no file: it goes on the
+/// pipe that the shell watches, and the program starts only once all of it
+/// has come, so that a text cut off by the end of this process never reaches
+/// it. An empty [stdin] is an empty stdin. One with a NUL, which a shell
+/// cannot hold, is an [ArgumentError].
 ///
 /// A program started in another isolate, as `Isolate.run` runs code,
 /// belongs to no session: only the end of the process stops it. Start
@@ -90,8 +90,9 @@ final class ExecException implements Exception {
 /// '0'}` for git, `ssh -o BatchMode=yes`, `sudo -n`.
 ///
 /// Throws an [ExecException] when the program exits with a code other than
-/// 0, a [FormatException] when its stdout is not UTF-8, and a [StateError]
-/// when the shell cannot run the program in a group of its own.
+/// 0, a [FormatException] when its stdout is not UTF-8, a [StateError]
+/// when the shell cannot run the program in a group of its own, and an
+/// [ArgumentError] for a [stdin] with a NUL.
 Future<String> exec(
   String executable,
   List<String> arguments, {
@@ -226,6 +227,9 @@ Future<String> _exec(
   required ProgramLog? log,
   required IOSink stderr,
 }) async {
+  if (stdin != null && stdin.contains('\u0000')) {
+    throw ArgumentError.value(stdin, 'stdin', 'has a NUL');
+  }
   scope?._refuseWhenStopped();
   if (!await (_groups[shell] ??= _givesGroups(shell))) {
     throw StateError(
@@ -234,59 +238,19 @@ Future<String> _exec(
       'off without a terminal; install bash',
     );
   }
-  // Private to the owner: mkdtemp makes the directory 0700.
-  final stdinDir = stdin == null
-      ? null
-      : await Directory.systemTemp.createTemp('nanoflow-exec-');
-  try {
-    String? stdinFile;
-    if (stdinDir != null) {
-      stdinFile = p.join(stdinDir.path, 'stdin');
-      await File(stdinFile).writeAsBytes(utf8.encode(stdin!));
-    }
-    scope?._refuseWhenStopped();
-    return await _execIn(
-      shell,
-      executable,
-      arguments,
-      workingDirectory: workingDirectory,
-      environment: environment,
-      color: color,
-      stdinFile: stdinFile,
-      scope: scope,
-      log: log,
-      stderr: stderr,
-    );
-  } finally {
-    try {
-      await stdinDir?.delete(recursive: true);
-    } on FileSystemException {
-      // Nothing more to be done about it.
-    }
-  }
-}
-
-/// [_exec] once the shell is known to give groups and the file of the stdin,
-/// if any, is written.
-Future<String> _execIn(
-  String shell,
-  String executable,
-  List<String> arguments, {
-  required String? workingDirectory,
-  required Map<String, String>? environment,
-  required bool color,
-  required String? stdinFile,
-  required ExecScope? scope,
-  required ProgramLog? log,
-  required IOSink stderr,
-}) async {
+  final text = stdin == null || stdin.isEmpty ? null : utf8.encode(stdin);
   final process = await _startInGroup(
     shell,
     [executable, ...arguments],
-    stdinFile: stdinFile,
+    stdinBytes: text?.length,
     workingDirectory: workingDirectory,
     environment: color ? {..._colorEnvironment, ...?environment} : environment,
   );
+  if (text != null) {
+    // A shell that ends before it has read all of it fails the write.
+    process.stdin.done.ignore();
+    process.stdin.add(text);
+  }
   final group = Completer<int?>();
   final program = _Program(process, group.future);
   try {
@@ -316,18 +280,19 @@ Future<String> _execIn(
   }
 }
 
-/// Starts [shell] running [program] with [inGroupScript], with the file
-/// [stdinFile] as its stdin if given. The shell's stdin
-/// is the pipe it watches: it must stay open until the shell has exited.
+/// Starts [shell] running [program] with [inGroupScript], told that
+/// [stdinBytes] bytes of text for the program come first on the shell's
+/// stdin, if given. The shell's stdin is the pipe it watches: it must stay
+/// open until the shell has exited.
 Future<Process> _startInGroup(
   String shell,
   List<String> program, {
-  String? stdinFile,
+  int? stdinBytes,
   String? workingDirectory,
   Map<String, String>? environment,
 }) => Process.start(
   shell,
-  ['-c', inGroupScript, 'sh', stdinFile ?? '', ...program],
+  ['-c', inGroupScript, 'sh', '${stdinBytes ?? ''}', ...program],
   workingDirectory: workingDirectory,
   environment: environment,
 );
@@ -437,30 +402,41 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 /// control on without a terminal, as bash does; dash turns it off. The job
 /// is a `/bin/sh` that first tells the group's id — its own pid — on stderr
 /// in a line [_groupLine] matches, so that a stop can end the group after
-/// this shell has exited; then its `exec` makes the job the program itself,
-/// found on `PATH`, rather than a builtin. The shell's own stderr — job
+/// this shell has exited; then, without a text, its `exec` makes the job the
+/// program itself, found on `PATH`, rather than a builtin, and with one it
+/// runs the program, so found, in its group. The shell's own stderr — job
 /// notices such as `Done` — goes to /dev/null; the job gets the real one
 /// through fd 3. The `while` loop waits again if `wait` returned while the
 /// program is only stopped.
 ///
-/// The first argument is the file that is the program's stdin, or an empty
-/// string for none; the program comes after it. The shell opens the file and
-/// removes it at once, so that nothing is left if the app is killed later. It
-/// is an argument, not an environment variable, which a program would inherit.
+/// The first argument is how many bytes of text for the program come first
+/// on the shell's stdin, or an empty string for none; the program comes
+/// after it.
 ///
 /// The shell's stdin is a pipe from the process that started it, which
-/// writes nothing to it and keeps it open while the program runs. A watcher
-/// reads it: a subshell started before job control is on, so in the shell's
-/// own group, which gets the pipe through fd 4 and gives the program none of
-/// it — the program's stdin is the file, or /dev/null without one. When the pipe closes — when that
-/// process closes it, or ends, however it ends — the watcher tells the shell
-/// to stop with SIGTERM. The shell kills the watcher when it exits itself.
-/// In `stop`, the watcher is `$!` until `watcher` is set, and before the
-/// program starts `end_group $!` finds no group of that id.
+/// writes nothing to it but that text and keeps it open while the program
+/// runs. Without a text, a watcher reads it: a subshell started before job
+/// control is on, so in the shell's own group, which gets the pipe through
+/// fd 4 and gives the program none of it — the program's stdin is
+/// /dev/null. When the pipe closes — when that process closes it, or ends,
+/// however it ends — the watcher tells the shell to stop with SIGTERM. The
+/// shell kills the watcher when it exits itself. In `stop`, the watcher is
+/// `$!` until `watcher` is set, and before the program starts `end_group $!`
+/// finds no group of that id.
+///
+/// With a text, the job reads it from the pipe first — `head -c`, which
+/// reads ahead of the count, but nothing comes after the text — and starts
+/// the program only once all of it has come: when the pipe closes before,
+/// the job exits without it, so that the program never takes a part of the
+/// text for the whole. The `.` after it keeps the newlines at its end, which
+/// `$(…)` drops. Only then does the job's own watcher, in the program's
+/// group, read the pipe, so that it takes none of the text; the job hands
+/// the text to the program on a pipe of its own, and ends its watcher once
+/// the program has exited.
 ///
 /// The Dart VM ignores SIGPIPE, and an ignored signal stays ignored through
 /// `exec`; a shell cannot undo that. So, when there is `/usr/bin/perl`, the
-/// job becomes perl first, which gives SIGPIPE back its default and then
+/// program starts as perl, which gives SIGPIPE back its default and then
 /// becomes the program, found on `PATH` as well: a writer whose reader has
 /// exited is killed then, as from a shell. Without perl the program starts
 /// with SIGPIPE ignored. perl would warn on stderr — into the effect's log —
@@ -472,12 +448,12 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 const inGroupScript =
     _endGroup +
     r'''
-stdin_file=$1; shift
+stdin_bytes=$1; shift
 stop() {
   trap '' TERM INT HUP
   set +m
   end_group $!
-  kill "${watcher:-$!}"
+  [ -n "$stdin_bytes" ] || kill "${watcher:-$!}"
   exit 143
 }
 [ -x /usr/bin/perl ] && export PERL_BADLANG=0 && set -- /usr/bin/perl -e '
@@ -487,20 +463,32 @@ stop() {
   print STDERR "$ARGV[0]: $!\n";
   exit($!{ENOENT} ? 127 : 126);
 ' -- "$@"
-exec 3>&2 2>/dev/null 4<&0 <"${stdin_file:-/dev/null}"
-[ -n "$stdin_file" ] && rm -f "$stdin_file"
+exec 3>&2 2>/dev/null 4<&0 </dev/null
 trap stop TERM INT HUP
-{ while read -r line; do :; done; kill -TERM $$; } <&4 >/dev/null 3>&- 4<&- &
-watcher=$!
+if [ -z "$stdin_bytes" ]; then
+  { while read -r line; do :; done; kill -TERM $$; } <&4 >/dev/null 3>&- 4<&- &
+  watcher=$!
+fi
 set -m
-/bin/sh -c 'echo "nanoflow-exec-group $$" >&2; exec "$@"' sh "$@" \
-  2>&3 3>&- 4<&- &
+/bin/sh -c '
+echo "nanoflow-exec-group $$" >&2
+shell=$1 bytes=$2; shift 2
+[ -n "$bytes" ] || exec "$@" 4<&-
+text=$(head -c "$bytes" <&4; echo .)
+[ $(printf %s "$text" | wc -c) -eq $((bytes + 1)) ] || exit
+{ while read -r line; do :; done; kill -TERM "$shell"; } <&4 >/dev/null 2>&1 &
+watcher=$!
+{ printf %s "${text%.}"; } 2>/dev/null | "$@" 4<&-
+code=$?
+{ kill $watcher; wait $watcher; } 2>/dev/null
+exit $code
+' sh $$ "$stdin_bytes" "$@" 2>&3 3>&- &
 while :; do
   wait $!
   code=$?
   kill -0 $! || break
 done
-kill $watcher
+[ -n "$stdin_bytes" ] || kill $watcher
 exit $code
 ''';
 

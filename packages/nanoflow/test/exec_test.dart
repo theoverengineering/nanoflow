@@ -85,27 +85,35 @@ Future<({String out, String err})> runInGroup(
   return (out: await out, err: await err);
 }
 
-/// The `nanoflow-exec-*` entries in the system temp dir.
-Set<String> execTempEntries() => {
-  for (final entry in Directory.systemTemp.listSync())
-    if (p.basename(entry.path).startsWith('nanoflow-exec-')) entry.path,
-};
+/// Starts bash running [program] with [inGroupScript] as [exec] does, told
+/// that [stdinBytes] bytes of text come on the pipe of its stdin; with
+/// [deafToTerm] bash and all it starts ignore SIGTERM, so that a stop does
+/// not end the program.
+Future<Process> startInGroup(
+  String stdinBytes,
+  List<String> program, {
+  bool deafToTerm = false,
+}) async {
+  final shell = await Process.start('/bin/sh', [
+    '-c',
+    '${deafToTerm ? 'trap "" TERM; ' : ''}exec "\$@"',
+    'sh',
+    '/bin/bash',
+    '-c',
+    inGroupScript,
+    'sh',
+    stdinBytes,
+    ...program,
+  ]);
+  shell.stderr.drain<void>().ignore();
+  return shell;
+}
 
-/// The `nanoflow-exec-*` entries that [before] did not have: the system temp
-/// dir is shared with every process of the user, so a test looks only at what
-/// appeared during it.
-Set<String> newExecTempEntries(Set<String> before) =>
-    execTempEntries().difference(before);
-
-/// An effect that runs a program given 3 MB on stdin that, after it has
-/// opened its stdin, writes its pid to [pidFile] and sleeps.
+/// An effect that runs a program given 3 MB on stdin, which it does not read:
+/// it writes its pid to [pidFile] and sleeps.
 Future<String> sleepsWithStdin(Flow f, String x) => f.effect('sleep', () async {
   try {
-    return await exec('/bin/sh', [
-      '-c',
-      r'echo $$ >> "$0"; sleep 100 & wait',
-      pidFile,
-    ], stdin: 'x' * 3000000);
+    return await exec('/bin/sh', sleeper(pidFile), stdin: 'x' * 3000000);
   } on Exception catch (e) {
     execErrors.add(e);
     rethrow;
@@ -229,11 +237,7 @@ final String? noPerl = File('/usr/bin/perl').existsSync()
 void main() {
   late Directory temp;
 
-  late Set<String> execTempBefore;
-  setUp(() {
-    temp = Directory.systemTemp.createTempSync('nanoflow_exec_');
-    execTempBefore = execTempEntries();
-  });
+  setUp(() => temp = Directory.systemTemp.createTempSync('nanoflow_exec_'));
   tearDown(() => temp.deleteSync(recursive: true));
 
   test('returns what the program printed on stdout', () async {
@@ -329,53 +333,88 @@ void main() {
       expect(await exec('cat', [], stdin: text), text);
     });
 
-    test('leaves the program no file of the text while it runs', () async {
-      final left = await exec('/bin/sh', [
-        '-c',
-        r'cat >/dev/null; sleep 0.2; '
-            // The dirs that were there before the test are other processes'.
-            r'for d in "$0"/nanoflow-exec-*; do '
-            r'case " $* " in *" $d "*) ;; *) ls -A "$d";; esac; '
-            r'done 2>/dev/null',
-        Directory.systemTemp.path,
-        ...execTempBefore,
-      ], stdin: 'text');
-      expect(left, isEmpty);
-    });
-
-    test('leaves no temp dir after a normal exit', () async {
-      await exec('cat', [], stdin: 'x');
-      expect(newExecTempEntries(execTempBefore), isEmpty);
-    });
-
-    test('leaves no temp dir after a non-zero exit', () async {
-      await expectLater(
-        exec('/bin/sh', ['-c', 'exit 3'], stdin: 'x'),
-        throwsA(isA<ExecException>()),
+    test('gives the text through a pipe, so that it is in no file', () async {
+      expect(
+        await exec('/bin/sh', [
+          '-c',
+          'test -p /dev/stdin && cat',
+        ], stdin: 'text'),
+        'text',
       );
-      expect(newExecTempEntries(execTempBefore), isEmpty);
     });
 
-    test('leaves no temp dir when the program is not there', () async {
+    test('takes an empty text for an empty stdin, and says nothing about '
+        'it', () async {
       final stderr = Captured();
-      await expectLater(
-        withStderr(
-          stderr,
-          () => exec('nanoflow-no-such-program', [], stdin: 'x'),
-        ),
-        throwsA(isA<ExecException>()),
-      );
-      expect(newExecTempEntries(execTempBefore), isEmpty);
+      expect(await withStderr(stderr, () => exec('cat', [], stdin: '')), '');
+      expect(stderr.text, isEmpty);
     });
 
-    test(
-      'reaches a program that a job started under job control runs',
-      () async {
-        // The program is a background job of the shell, which has `set -m`.
-        expect(await exec('/bin/sh', ['-c', 'cat; cat'], stdin: 'hi'), 'hi');
-      },
-      skip: noBash,
-    );
+    test('refuses a text with a NUL, which a shell cannot hold', () async {
+      await expectLater(
+        exec('cat', [], stdin: 'a\u0000b'),
+        throwsArgumentError,
+      );
+    });
+
+    test('lets a program that reads none of a large text end, and says '
+        'nothing about it', () async {
+      final stderr = Captured();
+      expect(
+        await withStderr(stderr, () => exec('true', [], stdin: 'x' * 3000000)),
+        '',
+      );
+      expect(stderr.text, isEmpty);
+    });
+
+    test('leaves no process behind in the group of a program that has '
+        'exited, while the pipe is still open', () async {
+      // The pipe comes from a process that holds it open for 2 s: one from
+      // this process would close once the shell has exited.
+      final shell = await Process.start('/bin/bash', [
+        '-c',
+        r'exec "$@" < <(printf text; exec sleep 2)',
+        'bash',
+        '/bin/bash',
+        '-c',
+        inGroupScript,
+        'sh',
+        '4',
+        '/bin/sh',
+        '-c',
+        r'cat >/dev/null; ps -o pgid= -p $$',
+      ]);
+      shell.stderr.drain<void>().ignore();
+      final out = utf8.decodeStream(shell.stdout);
+      expect(await shell.exitCode.timeout(const Duration(seconds: 5)), 0);
+      final group = (await out).trim();
+
+      expect(Process.runSync('kill', ['-0', '-$group']).exitCode, isNot(0));
+    }, skip: noBash);
+
+    test('fails no write when the shell ends before it has read the '
+        'text', () async {
+      // A shell that runs the probe of exec, which gives no text, but exits
+      // at once when given one, leaving behind a process that keeps exec
+      // waiting on stdout until well after the write has failed.
+      final shell = p.join(temp.path, 'shell');
+      File(shell).writeAsStringSync(
+        '#!/bin/sh\n'
+        '[ -z "\$4" ] && exec /bin/bash "\$@"\n'
+        'sleep 0.5 <&- &\n'
+        'exit 0\n',
+      );
+      Process.runSync('chmod', ['+x', shell]);
+
+      expect(await execIn(shell, 'cat', [], stdin: 'x' * 3000000), '');
+    }, skip: noBash);
+
+    test('gives a program that fails its exit code', () async {
+      await expectLater(
+        exec('/bin/sh', ['-c', 'cat >/dev/null; exit 3'], stdin: 'x'),
+        throwsA(isA<ExecException>().having((e) => e.exitCode, 'exitCode', 3)),
+      );
+    });
   });
 
   test('adds environment to the environment of the process', () async {
@@ -581,6 +620,50 @@ void main() {
         within: const Duration(seconds: 5),
       );
     });
+
+    test('and is never started when the pipe closes before all of its text '
+        'came, so that it does not take the part for the whole', () async {
+      final started = p.join(temp.path, 'started');
+      // Deaf to the stop that the end of the pipe brings, a program that was
+      // started would get to write the file.
+      final shell = await startInGroup('10', [
+        '/bin/sh',
+        '-c',
+        r'echo started > "$0"; cat',
+        started,
+      ], deafToTerm: true);
+      shell.stdout.drain<void>().ignore();
+      shell.stdin.add(utf8.encode('abc'));
+      await shell.stdin.flush();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      await shell.stdin.close();
+
+      await shell.exitCode.timeout(const Duration(seconds: 5));
+      expect(File(started).existsSync(), isFalse);
+    }, skip: noBash);
+
+    test('and ends, with what it started, when the pipe closes after all of '
+        'its text came', () async {
+      final pids = p.join(temp.path, 'pids');
+      final shell = await startInGroup('3', [
+        '/bin/sh',
+        '-c',
+        r'cat >/dev/null; sleep 100 & echo $! >> "$0"; wait',
+        pids,
+      ]);
+      shell.stdout.drain<void>().ignore();
+      shell.stdin.add(utf8.encode('abc'));
+      final [sleep] = await pidsIn(pids, 1);
+      // The watcher leaves the program alone while the pipe is open.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(isRunning(sleep), isTrue);
+
+      await shell.stdin.close();
+
+      expect(await shell.exitCode.timeout(const Duration(seconds: 5)), 143);
+      expect(isRunning(sleep), isFalse);
+    }, skip: noBash);
   });
 
   group('in a session', () {
@@ -650,7 +733,7 @@ void main() {
     });
 
     test('flow.stop() ends the group of a program given a large stdin, and '
-        'leaves no temp dir', () async {
+        'exec throws a FlowStoppedException', () async {
       final flow = Flow(directory: dir);
       final session = await flow.startWorkflow(sleepsWithStdin, 'x');
       final [sleep] = await pidsIn(pidFile, 1);
@@ -660,7 +743,6 @@ void main() {
       await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
       expect(execErrors, [isA<FlowStoppedException>()]);
       expect(isRunning(sleep), isFalse);
-      expect(newExecTempEntries(execTempBefore), isEmpty);
     });
 
     test('moves no effect key: the first program through a shell, which '
