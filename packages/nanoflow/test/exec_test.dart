@@ -216,6 +216,22 @@ Future<String> execsThenEffects(Flow f, String x) async {
   return f.effect('after', () => 'x');
 }
 
+/// An effect that runs `true` through [shellPath], in a directory that is not
+/// there, so that starting the shell for it fails at once.
+Future<String> execsInEffect(Flow f, String x) => f.effect('exec', () async {
+  try {
+    return await execIn(
+      shellPath,
+      'true',
+      [],
+      workingDirectory: '$shellPath.none',
+    );
+  } on Exception catch (e) {
+    execErrors.add(e);
+    rethrow;
+  }
+});
+
 /// The keys of the effects of the session [sessionId] in [dir].
 Future<List<String>> keysOf(String dir, String sessionId) async => [
   for (final effect in await (await openSession(dir, sessionId)).effects())
@@ -350,11 +366,57 @@ void main() {
       expect(stderr.text, isEmpty);
     });
 
-    test('refuses a text with a NUL, which a shell cannot hold', () async {
+    test('refuses a text with a NUL, which a shell cannot hold, without '
+        'telling the text', () async {
       await expectLater(
-        exec('cat', [], stdin: 'a\u0000b'),
-        throwsArgumentError,
+        exec('cat', [], stdin: 'secret\u0000'),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => '$e',
+            'toString',
+            allOf(contains('NUL'), isNot(contains('secret'))),
+          ),
+        ),
       );
+    });
+
+    test('runs the program as the leader of a group that holds nothing of '
+        'exec\'s, so that it may signal its group', () async {
+      final out = await exec('/bin/sh', [
+        '-c',
+        r'trap "" TERM; kill 0; echo $$ $(ps -o pgid= -p $$); cat',
+      ], stdin: 'text');
+      final [shell, group, text] = out.trim().split(RegExp(r'\s+'));
+      expect(group, shell);
+      expect(text, 'text');
+    });
+
+    test('writes nothing of its own to the log when the program is killed '
+        'by a signal', () async {
+      final stderr = Captured();
+      await expectLater(
+        withStderr(
+          stderr,
+          () => exec('/bin/sh', [
+            '-c',
+            r'cat >/dev/null; kill -KILL $$',
+          ], stdin: 'x'),
+        ),
+        throwsA(
+          isA<ExecException>().having((e) => e.exitCode, 'exitCode', 137),
+        ),
+      );
+      expect(stderr.text, isEmpty);
+    });
+
+    test('does not wait for a process the program left behind that holds '
+        'its stdin', () async {
+      final out = await exec('/bin/sh', [
+        '-c',
+        r'sleep 3 <&0 >/dev/null 2>&1 & echo $!',
+      ], stdin: 'x' * 1000000).timeout(const Duration(seconds: 2));
+      final sleep = int.parse(out.trim());
+      addTearDown(() => Process.killPid(sleep, ProcessSignal.sigkill));
     });
 
     test('lets a program that reads none of a large text end, and says '
@@ -366,31 +428,6 @@ void main() {
       );
       expect(stderr.text, isEmpty);
     });
-
-    test('leaves no process behind in the group of a program that has '
-        'exited, while the pipe is still open', () async {
-      // The pipe comes from a process that holds it open for 2 s: one from
-      // this process would close once the shell has exited.
-      final shell = await Process.start('/bin/bash', [
-        '-c',
-        r'exec "$@" < <(printf text; exec sleep 2)',
-        'bash',
-        '/bin/bash',
-        '-c',
-        inGroupScript,
-        'sh',
-        '4',
-        '/bin/sh',
-        '-c',
-        r'cat >/dev/null; ps -o pgid= -p $$',
-      ]);
-      shell.stderr.drain<void>().ignore();
-      final out = utf8.decodeStream(shell.stdout);
-      expect(await shell.exitCode.timeout(const Duration(seconds: 5)), 0);
-      final group = (await out).trim();
-
-      expect(Process.runSync('kill', ['-0', '-$group']).exitCode, isNot(0));
-    }, skip: noBash);
 
     test('fails no write when the shell ends before it has read the '
         'text', () async {
@@ -664,6 +701,49 @@ void main() {
       expect(await shell.exitCode.timeout(const Duration(seconds: 5)), 143);
       expect(isRunning(sleep), isFalse);
     }, skip: noBash);
+
+    test('and still gets all of its text when it is stopped before it has '
+        'read it, so that one that finishes up on SIGTERM does not take a '
+        'part for the whole', () async {
+      final pids = p.join(temp.path, 'pids');
+      final count = p.join(temp.path, 'count');
+      final shell = await startInGroup('1000000', [
+        '/bin/sh',
+        '-c',
+        r'trap "" TERM; echo $$ >> "$0"; sleep 0.5; wc -c > "$1"',
+        pids,
+        count,
+      ]);
+      shell.stdout.drain<void>().ignore();
+      shell.stdin.add(utf8.encode('x' * 1000000));
+      await pidsIn(pids, 1);
+
+      await shell.stdin.close();
+
+      expect(await shell.exitCode.timeout(const Duration(seconds: 10)), 143);
+      expect(File(count).readAsStringSync().trim(), '1000000');
+    }, skip: noBash);
+
+    test('and is not started when the shell is stopped while the text '
+        'comes', () async {
+      final started = p.join(temp.path, 'started');
+      final shell = await startInGroup('10', [
+        '/bin/sh',
+        '-c',
+        r'echo started > "$0"; cat',
+        started,
+      ]);
+      shell.stdout.drain<void>().ignore();
+      shell.stdin.add(utf8.encode('abc'));
+      await shell.stdin.flush();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      shell.kill();
+
+      expect(await shell.exitCode.timeout(const Duration(seconds: 5)), 143);
+      expect(File(started).existsSync(), isFalse);
+      await shell.stdin.close();
+    }, skip: noBash);
   });
 
   group('in a session', () {
@@ -744,6 +824,29 @@ void main() {
       expect(execErrors, [isA<FlowStoppedException>()]);
       expect(isRunning(sleep), isFalse);
     });
+
+    test('flow.stop() while exec probes its shell starts no program, and exec '
+        'throws a FlowStoppedException', () async {
+      final probing = p.join(temp.path, 'probing');
+      // A shell that takes 1 s over the probe, and tells when it starts it.
+      shellPath = p.join(temp.path, 'shell');
+      File(shellPath).writeAsStringSync(
+        '#!/bin/sh\n'
+        ': > \'$probing\'\n'
+        'sleep 1\n'
+        'exec /bin/bash "\$@"\n',
+      );
+      Process.runSync('chmod', ['+x', shellPath]);
+      final flow = Flow(directory: dir);
+      final session = await flow.startWorkflow(execsInEffect, 'x');
+      await until(() => File(probing).existsSync(), 'the probe');
+
+      flow.stop();
+
+      await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
+      // A start of the shell would have thrown a ProcessException.
+      expect(execErrors, [isA<FlowStoppedException>()]);
+    }, skip: noBash);
 
     test('moves no effect key: the first program through a shell, which '
         'probes the shell, and a later one give the same keys', () async {

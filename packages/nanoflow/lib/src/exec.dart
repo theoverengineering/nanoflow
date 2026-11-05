@@ -54,8 +54,10 @@ final class ExecException implements Exception {
 /// and any user can read with `ps`, and is written to no file: it goes on the
 /// pipe that the shell watches, and the program starts only once all of it
 /// has come, so that a text cut off by the end of this process never reaches
-/// it. An empty [stdin] is an empty stdin. One with a NUL, which a shell
-/// cannot hold, is an [ArgumentError].
+/// it. The program then reads it from a process outside its group, which a
+/// stop does not end: one that finishes up on SIGTERM still gets all of it.
+/// It needs a shell with `<(…)`, as bash is. An empty [stdin] is an empty
+/// stdin. One with a NUL, which a shell cannot hold, is an [ArgumentError].
 ///
 /// A program started in another isolate, as `Isolate.run` runs code,
 /// belongs to no session: only the end of the process stops it. Start
@@ -227,8 +229,9 @@ Future<String> _exec(
   required ProgramLog? log,
   required IOSink stderr,
 }) async {
-  if (stdin != null && stdin.contains('\u0000')) {
-    throw ArgumentError.value(stdin, 'stdin', 'has a NUL');
+  // Not the text itself, which may be a secret and would go to the log.
+  if (stdin?.indexOf('\u0000') case final at? when at >= 0) {
+    throw ArgumentError('has a NUL at $at', 'stdin');
   }
   scope?._refuseWhenStopped();
   if (!await (_groups[shell] ??= _givesGroups(shell))) {
@@ -238,6 +241,7 @@ Future<String> _exec(
       'off without a terminal; install bash',
     );
   }
+  scope?._refuseWhenStopped();
   final text = stdin == null || stdin.isEmpty ? null : utf8.encode(stdin);
   final process = await _startInGroup(
     shell,
@@ -402,9 +406,8 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 /// control on without a terminal, as bash does; dash turns it off. The job
 /// is a `/bin/sh` that first tells the group's id — its own pid — on stderr
 /// in a line [_groupLine] matches, so that a stop can end the group after
-/// this shell has exited; then, without a text, its `exec` makes the job the
-/// program itself, found on `PATH`, rather than a builtin, and with one it
-/// runs the program, so found, in its group. The shell's own stderr — job
+/// this shell has exited; then its `exec` makes the job the program itself,
+/// found on `PATH`, rather than a builtin. The shell's own stderr — job
 /// notices such as `Done` — goes to /dev/null; the job gets the real one
 /// through fd 3. The `while` loop waits again if `wait` returned while the
 /// program is only stopped.
@@ -415,28 +418,34 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 ///
 /// The shell's stdin is a pipe from the process that started it, which
 /// writes nothing to it but that text and keeps it open while the program
-/// runs. Without a text, a watcher reads it: a subshell started before job
-/// control is on, so in the shell's own group, which gets the pipe through
-/// fd 4 and gives the program none of it — the program's stdin is
-/// /dev/null. When the pipe closes — when that process closes it, or ends,
+/// runs. A watcher reads it: a subshell started before job control is on,
+/// so in the shell's own group, which gets the pipe through fd 4 and gives
+/// the program none of it — the program's stdin is /dev/null without a
+/// text. When the pipe closes — when that process closes it, or ends,
 /// however it ends — the watcher tells the shell to stop with SIGTERM. The
 /// shell kills the watcher when it exits itself. In `stop`, the watcher is
 /// `$!` until `watcher` is set, and before the program starts `end_group $!`
 /// finds no group of that id.
 ///
-/// With a text, the job reads it from the pipe first — `head -c`, which
-/// reads ahead of the count, but nothing comes after the text — and starts
-/// the program only once all of it has come: when the pipe closes before,
-/// the job exits without it, so that the program never takes a part of the
-/// text for the whole. The `.` after it keeps the newlines at its end, which
-/// `$(…)` drops. Only then does the job's own watcher, in the program's
-/// group, read the pipe, so that it takes none of the text; the job hands
-/// the text to the program on a pipe of its own, and ends its watcher once
-/// the program has exited.
+/// A text is read first, by a feeder: a process substitution, in the
+/// shell's own group as well, so that ending the program's group leaves it
+/// to give a program that finishes up on SIGTERM all of the text; it ignores
+/// those signals, and ends when the text is written or no one reads it any
+/// more. It reads the text with `head -c` — which reads ahead of the count,
+/// but nothing comes after the text — and the `.` after it keeps the
+/// newlines at its end, which `$(…)` drops. When all of it has come it closes
+/// the pipe and writes an empty line before the text; the shell waits for
+/// that line, which a stop can break, unlike the wait for `$(…)`. When the
+/// pipe closes before, the feeder exits and the shell after it, so that the
+/// program never starts with a part of the text. Only then does the watcher
+/// start, so that it takes none of the text. The shell gives up its own end
+/// of the feeder's pipe once the program has it. The feeder's stderr goes to
+/// /dev/null, so that it does not keep the stderr of the shell open. `eval`
+/// keeps a shell without `<(…)` from failing on the script without a text.
 ///
 /// The Dart VM ignores SIGPIPE, and an ignored signal stays ignored through
 /// `exec`; a shell cannot undo that. So, when there is `/usr/bin/perl`, the
-/// program starts as perl, which gives SIGPIPE back its default and then
+/// job becomes perl first, which gives SIGPIPE back its default and then
 /// becomes the program, found on `PATH` as well: a writer whose reader has
 /// exited is killed then, as from a shell. Without perl the program starts
 /// with SIGPIPE ignored. perl would warn on stderr — into the effect's log —
@@ -453,7 +462,7 @@ stop() {
   trap '' TERM INT HUP
   set +m
   end_group $!
-  [ -n "$stdin_bytes" ] || kill "${watcher:-$!}"
+  kill "${watcher:-$!}"
   exit 143
 }
 [ -x /usr/bin/perl ] && export PERL_BADLANG=0 && set -- /usr/bin/perl -e '
@@ -465,30 +474,30 @@ stop() {
 ' -- "$@"
 exec 3>&2 2>/dev/null 4<&0 </dev/null
 trap stop TERM INT HUP
-if [ -z "$stdin_bytes" ]; then
-  { while read -r line; do :; done; kill -TERM $$; } <&4 >/dev/null 3>&- 4<&- &
-  watcher=$!
+if [ -n "$stdin_bytes" ]; then
+  eval 'exec < <(
+    exec 2>/dev/null 3>&-
+    trap "" TERM INT HUP
+    text=$(head -c "$stdin_bytes" <&4; echo .)
+    [ $(printf %s "$text" | wc -c) -eq $((stdin_bytes + 1)) ] || exit
+    exec 4<&-
+    echo
+    printf %s "${text%.}"
+  )' 2>&3 || exit 126
+  read -r line || exit
 fi
-set -m
-/bin/sh -c '
-echo "nanoflow-exec-group $$" >&2
-shell=$1 bytes=$2; shift 2
-[ -n "$bytes" ] || exec "$@" 4<&-
-text=$(head -c "$bytes" <&4; echo .)
-[ $(printf %s "$text" | wc -c) -eq $((bytes + 1)) ] || exit
-{ while read -r line; do :; done; kill -TERM "$shell"; } <&4 >/dev/null 2>&1 &
+{ while read -r line; do :; done; kill -TERM $$; } <&4 >/dev/null 3>&- 4<&- &
 watcher=$!
-{ printf %s "${text%.}"; } 2>/dev/null | "$@" 4<&-
-code=$?
-{ kill $watcher; wait $watcher; } 2>/dev/null
-exit $code
-' sh $$ "$stdin_bytes" "$@" 2>&3 3>&- &
+set -m
+/bin/sh -c 'echo "nanoflow-exec-group $$" >&2; exec "$@"' sh "$@" \
+  2>&3 3>&- 4<&- &
+exec </dev/null
 while :; do
   wait $!
   code=$?
   kill -0 $! || break
 done
-[ -n "$stdin_bytes" ] || kill $watcher
+kill $watcher
 exit $code
 ''';
 
