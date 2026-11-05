@@ -216,6 +216,25 @@ Future<String> execsThenEffects(Flow f, String x) async {
   return f.effect('after', () => 'x');
 }
 
+/// Where [readsSlowly] has its program write how much of its stdin it read.
+late String countFile;
+
+/// An effect that runs a program given 1 MB on stdin that ignores SIGTERM,
+/// writes its pid to [pidFile], and reads its stdin half a second later.
+Future<String> readsSlowly(Flow f, String x) => f.effect('read', () async {
+  try {
+    return await exec('/bin/sh', [
+      '-c',
+      r'trap "" TERM; echo $$ >> "$0"; sleep 0.5; wc -c > "$1"',
+      pidFile,
+      countFile,
+    ], stdin: 'x' * 1000000);
+  } on Exception catch (e) {
+    execErrors.add(e);
+    rethrow;
+  }
+});
+
 /// An effect that runs `true` through [shellPath], in a directory that is not
 /// there, so that starting the shell for it fails at once.
 Future<String> execsInEffect(Flow f, String x) => f.effect('exec', () async {
@@ -446,6 +465,48 @@ void main() {
       expect(await execIn(shell, 'cat', [], stdin: 'x' * 3000000), '');
     }, skip: noBash);
 
+    test('needs nothing from the PATH it gives the program', () async {
+      expect(
+        await exec(
+          '/bin/cat',
+          [],
+          environment: {'PATH': '/nonexistent'},
+          stdin: 'hello',
+        ),
+        'hello',
+      );
+    });
+
+    test('works when the environment puts bash in POSIX mode, and leaves '
+        'the program that environment', () async {
+      const posix = {'POSIXLY_CORRECT': 'yes'};
+      expect(await exec('cat', [], environment: posix, stdin: 'hi'), 'hi');
+      // As without a text: the job, a /bin/sh that may be bash, can set it
+      // to y.
+      expect(
+        await exec(
+          'printenv',
+          ['POSIXLY_CORRECT'],
+          environment: posix,
+          stdin: 'hi',
+        ),
+        await exec('printenv', ['POSIXLY_CORRECT'], environment: posix),
+      );
+    }, skip: noBash);
+
+    test('lets a program run longer than a TMOUT in the environment, and '
+        'leaves it the TMOUT', () async {
+      expect(
+        await exec(
+          '/bin/sh',
+          ['-c', r'sleep 1.5; echo "$TMOUT"; cat'],
+          environment: {'TMOUT': '1'},
+          stdin: 'hi',
+        ),
+        '1\nhi',
+      );
+    }, skip: noBash);
+
     test('gives a program that fails its exit code', () async {
       await expectLater(
         exec('/bin/sh', ['-c', 'cat >/dev/null; exit 3'], stdin: 'x'),
@@ -453,6 +514,18 @@ void main() {
       );
     });
   });
+
+  test('lets a program run longer than a TMOUT in the environment, which '
+      'bash takes for a timeout of read, and leaves it the TMOUT', () async {
+    expect(
+      await exec(
+        '/bin/sh',
+        ['-c', r'sleep 1.5; echo "$TMOUT"'],
+        environment: {'TMOUT': '1'},
+      ),
+      '1\n',
+    );
+  }, skip: noBash);
 
   test('adds environment to the environment of the process', () async {
     expect(
@@ -823,6 +896,20 @@ void main() {
       await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
       expect(execErrors, [isA<FlowStoppedException>()]);
       expect(isRunning(sleep), isFalse);
+    });
+
+    test('flow.stop() leaves a program that finishes up on SIGTERM all of '
+        'its text', () async {
+      countFile = p.join(temp.path, 'count');
+      final flow = Flow(directory: dir);
+      final session = await flow.startWorkflow(readsSlowly, 'x');
+      await pidsIn(pidFile, 1);
+
+      flow.stop();
+
+      await expectLater(session.result, throwsA(isA<FlowStoppedException>()));
+      expect(execErrors, [isA<FlowStoppedException>()]);
+      expect(File(countFile).readAsStringSync().trim(), '1000000');
     });
 
     test('flow.stop() while exec probes its shell starts no program, and exec '

@@ -56,8 +56,11 @@ final class ExecException implements Exception {
 /// has come, so that a text cut off by the end of this process never reaches
 /// it. The program then reads it from a process outside its group, which a
 /// stop does not end: one that finishes up on SIGTERM still gets all of it.
-/// It needs a shell with `<(…)`, as bash is. An empty [stdin] is an empty
-/// stdin. One with a NUL, which a shell cannot hold, is an [ArgumentError].
+/// That process stays while anything holds the program's stdin and has not
+/// read all of it — a process the program left behind too — as a writer in a
+/// shell pipeline does. It needs a shell with `<(…)`, as bash is. An empty
+/// [stdin] is an empty stdin. One with a NUL, which a shell cannot hold, is
+/// an [ArgumentError].
 ///
 /// A program started in another isolate, as `Isolate.run` runs code,
 /// belongs to no session: only the end of the process stops it. Start
@@ -425,7 +428,11 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 /// however it ends — the watcher tells the shell to stop with SIGTERM. The
 /// shell kills the watcher when it exits itself. In `stop`, the watcher is
 /// `$!` until `watcher` is set, and before the program starts `end_group $!`
-/// finds no group of that id.
+/// finds no group of that id. Before the watcher starts, `$!` is empty, or
+/// in bash 4.4 and later the feeder below, which may have exited: `stop`
+/// then signals nothing. A `TMOUT` in the environment, which bash takes for
+/// a timeout of `read`, is unset in the watcher and empty for the shell's
+/// own `read`, so that the program keeps it.
 ///
 /// A text is read first, by a feeder: a process substitution, in the
 /// shell's own group as well, so that ending the program's group leaves it
@@ -439,9 +446,15 @@ const _endGroupScript = '${_endGroup}end_group "\$1"\n';
 /// pipe closes before, the feeder exits and the shell after it, so that the
 /// program never starts with a part of the text. Only then does the watcher
 /// start, so that it takes none of the text. The shell gives up its own end
-/// of the feeder's pipe once the program has it. The feeder's stderr goes to
-/// /dev/null, so that it does not keep the stderr of the shell open. `eval`
-/// keeps a shell without `<(…)` from failing on the script without a text.
+/// of the feeder's pipe once the program has it. A process the program
+/// leaves behind with its stdin keeps the feeder until it has read the text
+/// or ended, as it would keep a writer in a shell pipeline. The feeder's
+/// stderr goes to /dev/null, so that it does not keep the stderr of the
+/// shell open; `command -p` finds `head` and `wc` whatever `PATH` the
+/// program is given. `eval` keeps a shell without `<(…)` from failing on the
+/// script without a text, and bash, which has none in POSIX mode — as
+/// `POSIXLY_CORRECT` in the environment puts it — leaves POSIX mode for it
+/// and goes back after, with `POSIXLY_CORRECT` as it was.
 ///
 /// The Dart VM ignores SIGPIPE, and an ignored signal stays ignored through
 /// `exec`; a shell cannot undo that. So, when there is `/usr/bin/perl`, the
@@ -461,8 +474,10 @@ stdin_bytes=$1; shift
 stop() {
   trap '' TERM INT HUP
   set +m
-  end_group $!
-  kill "${watcher:-$!}"
+  if [ "$!" != "$feeder" ]; then
+    end_group $!
+    kill "${watcher:-$!}"
+  fi
   exit 143
 }
 [ -x /usr/bin/perl ] && export PERL_BADLANG=0 && set -- /usr/bin/perl -e '
@@ -475,18 +490,27 @@ stop() {
 exec 3>&2 2>/dev/null 4<&0 </dev/null
 trap stop TERM INT HUP
 if [ -n "$stdin_bytes" ]; then
+  posixly_correct_set=${POSIXLY_CORRECT+y} posixly_correct=$POSIXLY_CORRECT
+  case :$SHELLOPTS: in *:posix:*) posix_mode=y; set +o posix;; esac
   eval 'exec < <(
     exec 2>/dev/null 3>&-
     trap "" TERM INT HUP
-    text=$(head -c "$stdin_bytes" <&4; echo .)
-    [ $(printf %s "$text" | wc -c) -eq $((stdin_bytes + 1)) ] || exit
+    text=$(command -p head -c "$stdin_bytes" <&4; echo .)
+    [ $(printf %s "$text" | command -p wc -c) -eq $((stdin_bytes + 1)) ] ||
+      exit
     exec 4<&-
     echo
     printf %s "${text%.}"
   )' 2>&3 || exit 126
-  read -r line || exit
+  feeder=$!
+  if [ -n "$posix_mode" ]; then
+    set -o posix
+    [ -z "$posixly_correct_set" ] || export POSIXLY_CORRECT="$posixly_correct"
+  fi
+  TMOUT= read -r line || exit
 fi
-{ while read -r line; do :; done; kill -TERM $$; } <&4 >/dev/null 3>&- 4<&- &
+{ unset TMOUT; while read -r line; do :; done; kill -TERM $$; } \
+  <&4 >/dev/null 3>&- 4<&- &
 watcher=$!
 set -m
 /bin/sh -c 'echo "nanoflow-exec-group $$" >&2; exec "$@"' sh "$@" \
