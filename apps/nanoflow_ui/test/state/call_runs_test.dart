@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nanoflow_model/nanoflow_model.dart';
 import 'package:nanoflow_ui/state/call_runs.dart';
 import 'package:nanoflow_ui/state/effect_places.dart';
 import 'package:nanoflow_ui/state/session_feed.dart';
@@ -10,15 +11,14 @@ void main() {
   final inPlace = file.functions['lib/packages.dart#inPlace']!;
   final places = EffectPlaces.of(inPlace, file.functions);
   // inPlace's call of ship(): upload, verify, tag.
-  final ship = places.within(inPlace.body.node('2')!);
+  final ship = inPlace.body.node('2')! as CallNode;
 
   /// The names of the effects of each run of ship() in [session], by the id
   /// of its first effect.
   Map<String, List<String>> runsOf(SessionData session) => {
     for (final MapEntry(key: first, value: run) in chainsIn(
       ship,
-      places: places,
-      session: session,
+      calls: places.callsIn(session),
     ).entries)
       first: [for (final effect in run) session.effects[effect.effectId]!.name],
   };

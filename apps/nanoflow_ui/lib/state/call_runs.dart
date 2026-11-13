@@ -1,29 +1,29 @@
 /// The runs of a call in a session (docs/ui-spec.md «Граф», «Logs»): the
-/// chains of the effects in it by `after`. A run's first effect is one whose
-/// predecessor — the effect whose key its record's `after` is — lies outside
-/// the call (an effect at no place the call holds, or none at all); every
-/// other effect of the call belongs to the run of its predecessor. A rerun
-/// rewrites a record's `after`: the chain follows the record as it is now.
-/// Pure.
+/// chains of the effects that ran in it ([EffectCalls]) by `after`. A run's
+/// first effect is one whose predecessor — the effect whose key its record's
+/// `after` is — lies outside the call (an effect that did not run in it, or
+/// none at all); every other effect of the call belongs to the run of its
+/// predecessor. A rerun rewrites a record's `after`: the chain follows the
+/// record as it is now. Pure.
 library;
 
 import 'package:nanoflow_model/nanoflow_model.dart';
 
 import 'effect_places.dart';
-import 'session_feed.dart';
 
-/// [effects] of [session] (by default, all of its effects) on the effect
-/// nodes [held], in chains by `after`, by the id of the first effect of each:
-/// one whose predecessor is on none of [held], or that has none; every other
-/// effect is in the chain of its predecessor. The runs of a call are its
-/// chains. An effect whose record has not been given is in none.
+/// [effects] of the session of [calls] (by default, all of its effects)
+/// that ran in [call], in chains by `after`, by the id of the first effect of
+/// each: one whose predecessor did not run in [call], or that has none;
+/// every other effect is in the chain of its predecessor. The runs of the
+/// call are its chains. An effect whose record has not been given is in
+/// none.
 Map<String, List<EffectState>> chainsIn(
-  Set<EffectNode> held, {
-  required EffectPlaces places,
-  required SessionData session,
+  CallNode call, {
+  required EffectCalls calls,
   Iterable<EffectState>? effects,
 }) {
-  bool inside(Effect? record) => places.of(record).any(held.contains);
+  final session = calls.session;
+  bool inside(Effect? record) => calls.isIn(record, call);
 
   // The first effect of the chain of each effect, by id: every effect walked
   // gets it, so that each chain is walked once.

@@ -297,11 +297,11 @@ final class _Rows {
     final runOf = <String, _Run>{};
     for (final call in calls) {
       if (path.contains(call)) continue;
-      // An effect in two calls of one function is in the first's runs.
+      // An effect the journal does not tell which of two calls it ran in is
+      // in the first's runs.
       final chains = chainsIn(
-        places.within(call),
-        places: places,
-        session: session,
+        call,
+        calls: places.callsIn(session),
         effects: [
           for (final effect in effects)
             if (!runOf.containsKey(effect.effectId)) effect,

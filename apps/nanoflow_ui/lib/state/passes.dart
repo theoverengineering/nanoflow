@@ -297,15 +297,13 @@ Passes _passesOf(
   SessionData session,
   List<String> ids,
 ) {
-  // The nodes of the level an effect is on or in, by its place and name.
-  final nodes = <(String, String), List<String>>{};
-  List<String> nodesOf(Effect effect) => switch (effect.place) {
-    final place? => nodes[(place, effect.name)] ??= [
-      for (final node in level.body.nodes)
-        if (node is! ConditionNode && places.isIn(effect, node)) node.id,
-    ],
-    null => const [],
-  };
+  // The nodes of the level an effect ran on or in, by its id.
+  final ran = places.callsIn(session);
+  final nodes = <String, List<String>>{};
+  List<String> nodesOf(Effect effect) => nodes[effect.id] ??= [
+    for (final node in level.body.nodes)
+      if (node is! ConditionNode && ran.isIn(effect, node)) node.id,
+  ];
 
   final tree = _Tree(session, places);
   // How [effect] ended, as the way out of a node with a failure route

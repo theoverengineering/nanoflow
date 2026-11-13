@@ -456,8 +456,9 @@ class GraphModel extends ChangeNotifier {
     final session = selectedSession;
     final node = _bodyAt(path)?.node(nodeId);
     if (session == null || node == null || !canvas.ofSession) return;
+    final ran = canvas.places.callsIn(session);
     final last = session.state.effects
-        .where((s) => canvas.places.isIn(session.effects[s.effectId], node))
+        .where((s) => ran.isIn(session.effects[s.effectId], node))
         .lastOrNull;
     if (last != null) selection.selectEffect(session, last.effectId);
   }

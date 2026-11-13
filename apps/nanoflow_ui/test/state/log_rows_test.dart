@@ -332,6 +332,39 @@ void main() {
       expect(opened.whereType<RunRow>().elementAt(1).open, isTrue);
     });
 
+    test('an effect of a graph several calls call is in the runs of the '
+        'call that called it', () {
+      final session = decidingSession(setupAsks: true).data;
+      final develop = decidingFunctions()['lib/packages.dart#develop']!;
+      List<LogRow> rows({Set<String> open = const {}}) => logRows(
+        session,
+        effects: session.state.effects,
+        places: decidingPlaces(),
+        now: at(20),
+        calls: callsIn(develop.body),
+        open: open,
+        end: false,
+      );
+      expect(
+        [for (final row in rows()) describe(row)],
+        ['0 setup() run 1 · 3 effects', '0 design() run 1 · 6 effects'],
+      );
+      final design = rows().whereType<RunRow>().last;
+      expect(
+        [
+          for (final row in rows(open: {design.key})) describe(row),
+        ],
+        [
+          '0 setup() run 1 · 3 effects',
+          '0 design() run 1 · 6 effects',
+          '1 brainstorm',
+          '1 decide() run 1 · 2 effects',
+          '1 brainstorm',
+          '1 decide() run 2 · 2 effects',
+        ],
+      );
+    });
+
     test('the calls are those of the body', () {
       final viaCall = file.functions['lib/packages.dart#viaCall']!;
       expect(

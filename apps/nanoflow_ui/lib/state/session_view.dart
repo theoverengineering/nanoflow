@@ -195,10 +195,9 @@ final class SessionView {
         ? effects
         : [
             for (final effect in effects)
-              if (places.isInFunction(
-                session.effects[effect.effectId],
-                calledGraph,
-              ))
+              if (places
+                  .callsIn(session)
+                  .isInFunction(session.effects[effect.effectId], calledGraph))
                 effect,
           ];
     return SessionView._(

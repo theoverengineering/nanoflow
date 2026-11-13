@@ -57,6 +57,26 @@ void main() {
       expect(ranIn(outside.data, places, carry.id), isFalse);
     });
 
+    test('ran the function when it called the graph an effect ran in, not '
+        'when another graph that calls that graph too did', () {
+      final session = decidingSession().data;
+      final places = decidingPlaces();
+      expect(ranIn(session, places, 'lib/packages.dart#ship'), isFalse);
+      expect(ranIn(session, places, 'lib/packages.dart#decide'), isTrue);
+      expect(
+        [
+          for (final effect in effectsIn(
+            session,
+            session.state.effects,
+            places,
+            'lib/packages.dart#setup',
+          ))
+            session.effects[effect.effectId]!.key,
+        ],
+        ['w'],
+      );
+    });
+
     test('of a graph that calls what the function calls, but not it, did '
         'not run it', () {
       final session = (Journal(

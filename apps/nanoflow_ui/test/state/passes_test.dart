@@ -450,6 +450,24 @@ void main() {
     });
   });
 
+  test('an effect of a graph several calls call is in the call that called '
+      'it: setup asked decide, then design did — the code went from setup to '
+      'design', () {
+    final develop = decidingFunctions()['lib/packages.dart#develop']!;
+    final shape = Shape.of(
+      graphFunction('develop', develop.body.nodes, [
+        '>1',
+        '1>2',
+        '2>3',
+        '2>',
+        '3>',
+      ]).body,
+      places: decidingPlaces(),
+    );
+    final session = decidingSession(setupAsks: true).data;
+    expect(shape.takenBy(shape.passes(session)), {'>1', '1>2'});
+  });
+
   group('calls one after the other with no effect between them', () {
     /// The places of [helper]'s effects, called from a loop of `flow`:
     /// `for (t in ts) helper(t)`.

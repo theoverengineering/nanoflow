@@ -215,6 +215,123 @@ Map<String, Object?> packagesGraphJson() => {
 /// [packagesGraphJson] read.
 GraphFile packagesGraphFile() => GraphFile.fromJson(packagesGraphJson());
 
+/// The graph file of a workflow `develop` whose graphs `setup`, `design` and
+/// `ship` each call `decide`, as developIdea's skills each call
+/// decideForOwner (the line of each node in the comments):
+///
+/// ```text
+/// develop (40): setup() (41) → design() (42) → ship() (43)
+/// setup (44):   workspace (45) → decide() (46)
+/// design (47):  brainstorm (48) → decide() (49)
+/// ship (50):    decide() (51)
+/// decide (52):  pose (53) → answer (54)
+/// ```
+GraphFile decidingGraphFile() {
+  Map<String, Object?> function(
+    String name,
+    int line,
+    List<Map<String, Object?>> nodes,
+  ) => {'name': name, 'place': packagesAt(line), 'body': chainBody(nodes)};
+  const decide = 'lib/packages.dart#decide';
+  return GraphFile.fromJson({
+    ...packagesGraphJson(),
+    'workflows': ['lib/packages.dart#develop'],
+    'functions': {
+      'lib/packages.dart#develop': function('develop', 40, [
+        callNode('1', 'lib/packages.dart#setup', 41),
+        callNode('2', 'lib/packages.dart#design', 42),
+        callNode('3', 'lib/packages.dart#ship', 43),
+      ]),
+      'lib/packages.dart#setup': function('setup', 44, [
+        effectNode('1', 'workspace', 45),
+        callNode('2', decide, 46),
+      ]),
+      'lib/packages.dart#design': function('design', 47, [
+        effectNode('1', 'brainstorm', 48),
+        callNode('2', decide, 49),
+      ]),
+      'lib/packages.dart#ship': function('ship', 50, [
+        callNode('1', decide, 51),
+      ]),
+      decide: function('decide', 52, [
+        effectNode('1', 'pose', 53),
+        effectNode('2', 'answer', 54),
+      ]),
+    },
+  });
+}
+
+/// The functions of [decidingGraphFile].
+Map<String, GraphFunction> decidingFunctions() => decidingGraphFile().functions;
+
+/// Where the effects of a `develop` session are on [decidingFunctions].
+EffectPlaces decidingPlaces() {
+  final functions = decidingFunctions();
+  return EffectPlaces.of(functions['lib/packages.dart#develop'], functions);
+}
+
+/// A session of `develop`: setup makes the workspace, asking decide first
+/// when [setupAsks]; design brainstorms twice, asking decide after each —
+/// the first effect of a call follows the effect before the call, if there
+/// is one, and the effect after a call follows that one too (spec §4.3).
+/// ship does not run.
+Journal decidingSession({bool setupAsks = false}) {
+  final j =
+      Journal(
+        'd1d1-session',
+        workflow: 'develop',
+        graph: decidingGraphFile().toJson(),
+      )..effect(
+        'workspace',
+        1,
+        end: 2,
+        place: packagesAt(45),
+        key: 'w',
+        after: null,
+      );
+  if (setupAsks) {
+    j
+      ..effect('pose', 2, end: 3, place: packagesAt(53), key: 'p0', after: 'w')
+      ..effect(
+        'answer',
+        3,
+        end: 4,
+        place: packagesAt(54),
+        key: 'a0',
+        after: 'p0',
+      );
+  }
+  j
+    ..effect(
+      'brainstorm',
+      5,
+      end: 6,
+      place: packagesAt(48),
+      key: 'b1',
+      after: null,
+    )
+    ..effect('pose', 6, end: 7, place: packagesAt(53), key: 'p1', after: 'b1')
+    ..effect('answer', 7, end: 8, place: packagesAt(54), key: 'a1', after: 'p1')
+    ..effect(
+      'brainstorm',
+      9,
+      end: 10,
+      place: packagesAt(48),
+      key: 'b2',
+      after: 'b1',
+    )
+    ..effect('pose', 10, end: 11, place: packagesAt(53), key: 'p2', after: 'b2')
+    ..effect(
+      'answer',
+      11,
+      end: 12,
+      place: packagesAt(54),
+      key: 'a2',
+      after: 'p2',
+    );
+  return j;
+}
+
 /// Writes the graph [name] of [graph], by default [reviewGraphFile] — `review`
 /// or `release` —, to its own file under `lib/` of the package in [dir], with
 /// the package's `pubspec.yaml`, as describe does; gives the file's path.

@@ -7,16 +7,32 @@
 /// node of a name given by an expression is named by its source. Several
 /// nodes share a place and a name when a `finally` is drawn once for each
 /// way out of its `try`; the effect is on them all. An effect without a place,
-/// or at no node, is not on the graph. Pure.
+/// or at no node, is not on the graph.
+///
+/// Which calls an effect ran in, the session tells ([EffectCalls]): a node of
+/// a function several calls reach — a graph several graphs call — is in each
+/// of them, the effect in the one that called it. Pure.
 library;
 
+import 'dart:math';
+
 import 'package:nanoflow_model/nanoflow_model.dart';
+
+import 'session_feed.dart';
 
 /// Whether an effect that ran at [effectPlace] is at the effect node at
 /// [nodePlace]: the same place, or one that ends with it after a `/` (a
 /// path the effect recorded from outside the project directory).
 bool isPlaceOf(String effectPlace, String nodePlace) =>
     effectPlace == nodePlace || effectPlace.endsWith('/$nodePlace');
+
+/// A call the code went through to come to an effect, and the function it
+/// went to.
+typedef CallStep = ({CallNode call, String function});
+
+/// The calls the code goes through from the workflow's body to an effect,
+/// outermost first: none for an effect of the workflow's own body.
+typedef CallPath = List<CallStep>;
 
 /// The effect nodes of a workflow's graph, and which of them an effect is on.
 final class EffectPlaces {
@@ -44,7 +60,7 @@ final class EffectPlaces {
 
   final Map<(String, String), Set<EffectNode>> _of = {};
   final Map<GraphNode, Set<EffectNode>> _within = Map.identity();
-  final Map<String, Set<EffectNode>> _withinFunction = {};
+  EffectCalls? _calls;
 
   /// The effect nodes [effect] is on: of those at its place, the ones of its
   /// name, or all of them when none is; none for no effect, an effect without a
@@ -111,41 +127,57 @@ final class EffectPlaces {
     return at.isNotEmpty && within(node).any(at.contains);
   }
 
-  /// The effect nodes of the body of the function [id] and of all it
-  /// reaches: what a call of it alone holds, where [within] a call holds
-  /// every function it may go to; none for a function the graph does not
-  /// have.
-  Set<EffectNode> withinFunction(String id) =>
-      _withinFunction[id] ??= switch (_functions[id]) {
-        final function? => _inBody(function.body, {id}),
-        null => const {},
-      };
+  /// The ways the code comes to [effect]: those into the body of the
+  /// function its nodes are in, in the graph's order; none for an effect on
+  /// no node.
+  List<CallPath> waysTo(Effect? effect) => [
+    for (final function in {for (final node in of(effect)) ?_functionOf[node]})
+      ...?_ways[function],
+  ];
 
-  /// Whether [effect] is in the body of the function [id] or in what it
-  /// calls: on a node [withinFunction] holds. A function the workflow does
-  /// not reach holds none, though what it calls may be the workflow's too.
-  bool isInFunction(Effect? effect, String id) {
-    final at = of(effect);
-    return at.isNotEmpty &&
-        _reached.contains(id) &&
-        withinFunction(id).any(at.contains);
+  /// The calls [session]'s effects ran in: the one answer as long as the
+  /// session does not change.
+  EffectCalls callsIn(SessionData session) {
+    final calls = _calls;
+    if (calls != null &&
+        identical(calls.session, session) &&
+        calls._changes == session.changes) {
+      return calls;
+    }
+    return _calls = EffectCalls._(this, session);
   }
 
-  /// The ids of the functions the workflow reaches: itself, those it calls,
-  /// and so on.
-  late final Set<String> _reached = () {
-    final reached = <String>{};
-    void enter(String id) {
+  /// The ways the code comes into the body of each function the workflow
+  /// reaches, by the function's id, in the graph's order: one with no calls
+  /// into the workflow's own. A function is not entered again from inside
+  /// itself: a recursive call holds nothing new.
+  late final Map<String, List<CallPath>> _ways = () {
+    final ways = <String, List<CallPath>>{};
+    void enter(String id, CallPath way) {
       final function = _functions[id];
-      if (function == null || !reached.add(id)) return;
-      for (final node in function.body.nodes) {
-        if (node is CallNode) node.functions.forEach(enter);
+      if (function == null) return;
+      (ways[id] ??= []).add(way);
+      for (final node in function.body.nodes.whereType<CallNode>()) {
+        for (final called in node.functions) {
+          if (called == _workflow ||
+              way.any((step) => step.function == called)) {
+            continue;
+          }
+          enter(called, [...way, (call: node, function: called)]);
+        }
       }
     }
 
-    if (_workflow case final workflow?) enter(workflow);
-    return reached;
+    if (_workflow case final workflow?) enter(workflow, const []);
+    return ways;
   }();
+
+  /// The function whose body each effect node is in, by the node.
+  late final Map<EffectNode, String> _functionOf = {
+    for (final id in _ways.keys)
+      for (final node in _functions[id]!.body.nodes.whereType<EffectNode>())
+        node: id,
+  };
 
   /// The effect nodes in [body] and all it reaches; a function in [entered]
   /// is not entered again: a recursive call holds nothing new.
@@ -172,3 +204,102 @@ List<Effect> effectsNotOnGraph(Iterable<Effect> effects, EffectPlaces places) =>
       for (final effect in effects)
         if (!places.onGraph(effect)) effect,
     ];
+
+/// Which calls of the graph a session's effects ran in. An effect whose
+/// node the code comes to by one way ran in the calls of that way. One whose
+/// node is in a function several calls reach — a graph several graphs call
+/// — ran in those of the ways with the most calls first in common with the
+/// ways of the effect it follows by `after`, the nearest on the graph: the
+/// first effect of a call follows the effect before the call (spec §4.3).
+/// When that tells no way from another — no effect to follow, or calls of one
+/// function one after the other — the effect may have run in each.
+final class EffectCalls {
+  EffectCalls._(this.places, this.session) : _changes = session.changes;
+
+  final EffectPlaces places;
+  final SessionData session;
+
+  /// [SessionData.changes] when the answers began: they hold until it moves.
+  final int _changes;
+
+  /// By the id of each effect looked at, its ways, or those of the nearest
+  /// effect on the graph it follows; none without one.
+  final Map<String, List<CallPath>> _carried = {};
+
+  /// The ways [effect] may have run in, in the graph's order: the calls on
+  /// each, outermost first; one when the journal tells which, none for an
+  /// effect on no node.
+  List<CallPath> waysOf(Effect? effect) =>
+      effect == null || !places.onGraph(effect) ? const [] : _carry(effect);
+
+  /// Whether [effect] ran on [node] or inside it: on an effect node of its
+  /// place; in a call on its ways.
+  bool isIn(Effect? effect, GraphNode node) => switch (node) {
+    CallNode() => waysOf(
+      effect,
+    ).any((way) => way.any((step) => step.call == node)),
+    _ => places.isIn(effect, node),
+  };
+
+  /// Whether [effect] ran in the body of the function [id] or in what it
+  /// calls: in the workflow's, any effect on the graph; in another's, one
+  /// with a way that goes to it.
+  bool isInFunction(Effect? effect, String id) {
+    final ways = waysOf(effect);
+    return ways.isNotEmpty &&
+        (id == places._workflow ||
+            ways.any((way) => way.any((step) => step.function == id)));
+  }
+
+  List<CallPath> _carry(Effect effect) {
+    // The effects whose ways wait for those of the effect before them, the
+    // latest first: back to one known, one with a single way, or the first.
+    final walked = <Effect>[];
+    final seen = <String>{};
+    List<CallPath> ways = const [];
+    Effect? next = effect;
+    while (next != null) {
+      if (_carried[next.id] case final known?) {
+        ways = known;
+        break;
+      }
+      // A ring of `after`s, as reruns may leave.
+      if (!seen.add(next.id)) break;
+      walked.add(next);
+      if (places.waysTo(next).length == 1) break;
+      next = switch (next.after) {
+        final key? => session.effectWithKey(key),
+        null => null,
+      };
+    }
+    for (final effect in walked.reversed) {
+      final own = places.waysTo(effect);
+      if (own.isNotEmpty) ways = _closest(own, ways);
+      _carried[effect.id] = ways;
+    }
+    return ways;
+  }
+
+  /// Those of [ways] with the most calls first in common with one of
+  /// [before]; all of them without [before].
+  static List<CallPath> _closest(List<CallPath> ways, List<CallPath> before) {
+    if (ways.length == 1 || before.isEmpty) return ways;
+    int common(CallPath a, CallPath b) {
+      var n = 0;
+      while (n < a.length && n < b.length && a[n] == b[n]) {
+        n++;
+      }
+      return n;
+    }
+
+    final scores = [
+      for (final way in ways)
+        before.map((other) => common(way, other)).reduce(max),
+    ];
+    final most = scores.reduce(max);
+    return [
+      for (final (i, way) in ways.indexed)
+        if (scores[i] == most) way,
+    ];
+  }
+}

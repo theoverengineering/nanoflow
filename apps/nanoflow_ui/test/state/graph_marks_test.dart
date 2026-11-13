@@ -49,6 +49,26 @@ void main() {
     return j;
   }
 
+  test('an effect of a graph several calls call marks the call that called '
+      'it alone', () {
+    final session = decidingSession().data;
+    final develop = decidingFunctions()['lib/packages.dart#develop']!;
+    final marks = GraphMarks.of(
+      develop.body,
+      places: decidingPlaces(),
+      session: session,
+      selectedEffectId: session.effectWithKey('p1')!.id,
+    );
+    expect(marks.of('1')!.effects, 1);
+    expect(marks.of('1')!.calls, 1);
+    expect(marks.of('2')!.state, NodeState.visited);
+    expect(marks.of('2')!.effects, 6);
+    expect(marks.of('2')!.calls, 1);
+    expect(marks.of('3')!.state, NodeState.notVisited);
+    expect(marks.of('3')!.calls, 0);
+    expect(marks.selected, {'2'});
+  });
+
   test('two effects called on one line mark each its own node; an effect whose '
       'name is an expression marks every node of its line', () {
     // `await Future.wait([f.effect('lint', …), f.effect('test', …)]);` as

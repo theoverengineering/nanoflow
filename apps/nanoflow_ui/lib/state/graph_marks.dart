@@ -80,6 +80,7 @@ final class GraphMarks {
     String? selectedEffectId,
   }) {
     final scope = [...(effects ?? session.state.effects)];
+    final ran = places.callsIn(session);
     final nodes = [
       for (final node in body.nodes)
         if (node is! ConditionNode) node,
@@ -88,7 +89,7 @@ final class GraphMarks {
       final record = session.effects[effectId];
       return [
         for (final node in nodes)
-          if (places.isIn(record, node)) node.id,
+          if (ran.isIn(record, node)) node.id,
       ];
     }
 
@@ -119,12 +120,7 @@ final class GraphMarks {
             session,
             on[node.id]!,
             calls: node is CallNode
-                ? chainsIn(
-                    places.within(node),
-                    places: places,
-                    session: session,
-                    effects: on[node.id],
-                  ).length
+                ? chainsIn(node, calls: ran, effects: on[node.id]).length
                 : null,
           ),
       },

@@ -58,10 +58,12 @@ EffectPlaces placesOfSession(SessionData session, GraphFile? graph) =>
 /// Whether the function [functionId] ran in [session]: an effect of it is in
 /// the function's body or in what it calls, found by [places], those of the
 /// session's workflow (`EffectPlaces.isInFunction`).
-bool ranIn(SessionData session, EffectPlaces places, String functionId) =>
-    session.effects.values.any(
-      (effect) => places.isInFunction(effect, functionId),
-    );
+bool ranIn(SessionData session, EffectPlaces places, String functionId) {
+  final ran = places.callsIn(session);
+  return session.effects.values.any(
+    (effect) => ran.isInFunction(effect, functionId),
+  );
+}
 
 /// Those of [effects] of [session] in the body of the function
 /// [functionId] or in what it calls, found by [places], in their order:
@@ -71,8 +73,11 @@ List<EffectState> effectsIn(
   Iterable<EffectState> effects,
   EffectPlaces places,
   String functionId,
-) => [
-  for (final effect in effects)
-    if (places.isInFunction(session.effects[effect.effectId], functionId))
-      effect,
-];
+) {
+  final ran = places.callsIn(session);
+  return [
+    for (final effect in effects)
+      if (ran.isInFunction(session.effects[effect.effectId], functionId))
+        effect,
+  ];
+}

@@ -231,31 +231,107 @@ void main() {
       expect(places.isIn(effectAt(null), nodeOf(body, '1')), isFalse);
       expect(places.isIn(null, nodeOf(body, '1')), isFalse);
     });
+  });
 
-    test('isInFunction: whether an effect is in the body of a function the '
+  group('the calls an effect ran in (callsIn)', () {
+    final functions = decidingFunctions();
+    final places = decidingPlaces();
+    final develop = functions['lib/packages.dart#develop']!.body;
+    final calls = {
+      for (final (id, name) in [('1', 'setup'), ('2', 'design'), ('3', 'ship')])
+        name: develop.node(id)!,
+    };
+
+    /// The calls of develop's body the effect [key] of [j] ran in.
+    List<String> callsOf(Journal j, String key) {
+      final session = j.data;
+      final effect = session.effectWithKey(key);
+      return [
+        for (final MapEntry(key: name, value: call) in calls.entries)
+          if (places.callsIn(session).isIn(effect, call)) name,
+      ];
+    }
+
+    test('an effect of a graph several graphs call ran in the call that '
+        'called it: the one the effects it follows by after lead into', () {
+      final j = decidingSession();
+      expect(callsOf(j, 'w'), ['setup']);
+      for (final key in ['b1', 'p1', 'a1', 'b2', 'p2', 'a2']) {
+        expect(callsOf(j, key), ['design'], reason: key);
+      }
+      final asked = decidingSession(setupAsks: true);
+      expect(callsOf(asked, 'p0'), ['setup']);
+      expect(callsOf(asked, 'a0'), ['setup']);
+      expect(callsOf(asked, 'p1'), ['design']);
+    });
+
+    test('and in that call alone inside the functions it calls', () {
+      final session = decidingSession().data;
+      final inDesign = functions['lib/packages.dart#design']!.body.node('2')!;
+      final inSetup = functions['lib/packages.dart#setup']!.body.node('2')!;
+      final answer = session.effectWithKey('a1');
+      expect(places.callsIn(session).isIn(answer, inDesign), isTrue);
+      expect(places.callsIn(session).isIn(answer, inSetup), isFalse);
+    });
+
+    test('with no effect before it on the graph to tell, in each of the '
+        'calls', () {
+      final j = Journal('d1d1-session', workflow: 'develop')
+        ..effect('pose', 1, place: packagesAt(53), key: 'p', after: null)
+        ..effect('pose', 2, place: packagesAt(53), key: 'q', after: 'gone')
+        ..effect('lint', 3, place: 'lib/ci.dart:9', key: 'l', after: 'b')
+        ..effect('pose', 4, place: packagesAt(53), key: 'r', after: 'l')
+        // A ring of afters, as reruns may leave.
+        ..effect('pose', 5, place: packagesAt(53), key: 's', after: 't')
+        ..effect('answer', 6, place: packagesAt(54), key: 't', after: 's');
+      for (final key in ['p', 'q', 'r', 's', 't']) {
+        expect(callsOf(j, key), ['setup', 'design', 'ship'], reason: key);
+      }
+      expect(callsOf(j, 'l'), isEmpty);
+    });
+
+    test('an effect off the effects it follows still ran in the call they '
+        'lead into', () {
+      // lint is on no node; the pose after it follows design's brainstorm.
+      final j = Journal('d1d1-session', workflow: 'develop')
+        ..effect('brainstorm', 1, place: packagesAt(48), key: 'b', after: null)
+        ..effect('lint', 2, place: 'lib/ci.dart:9', key: 'l', after: 'b')
+        ..effect('pose', 3, place: packagesAt(53), key: 'p', after: 'l');
+      expect(callsOf(j, 'p'), ['design']);
+    });
+
+    test('isInFunction: whether an effect ran in the body of a function the '
         'workflow reaches, or in what it calls', () {
+      final session = decidingSession().data;
+      final ran = places.callsIn(session);
+      bool isIn(String key, String function) => ran.isInFunction(
+        session.effectWithKey(key),
+        'lib/packages.dart#$function',
+      );
+      expect(isIn('p1', 'design'), isTrue);
+      expect(isIn('p1', 'decide'), isTrue);
+      expect(isIn('p1', 'setup'), isFalse);
+      expect(isIn('p1', 'ship'), isFalse);
+      expect(isIn('w', 'setup'), isTrue);
+      expect(isIn('w', 'develop'), isTrue);
+      expect(isIn('w', 'gone'), isFalse);
+      expect(ran.isInFunction(null, 'lib/packages.dart#setup'), isFalse);
+
       const publish = 'lib/packages.dart#publish';
-      final places = effectPlacesOf('viaCall');
-      expect(places.isInFunction(effectAt(packagesAt(20)), publish), isTrue);
+      final viaCall = effectPlacesOf('viaCall').callsIn(session);
+      expect(viaCall.isInFunction(effectAt(packagesAt(20)), publish), isTrue);
       expect(
-        places.isInFunction(effectAt(packagesAt(17), 'announce'), publish),
+        viaCall.isInFunction(effectAt(packagesAt(17), 'announce'), publish),
         isFalse,
       );
-      expect(places.isInFunction(effectAt(null), publish), isFalse);
-      expect(places.isInFunction(null, publish), isFalse);
-      expect(
-        places.isInFunction(effectAt(packagesAt(20)), 'lib/packages.dart#gone'),
-        isFalse,
-      );
+      expect(viaCall.isInFunction(effectAt(null), publish), isFalse);
       // inPlace calls ship, not publish: none of its effects are in it.
       expect(
         effectPlacesOf('inPlace')
+            .callsIn(session)
             .isInFunction(effectAt(packagesAt(20)), publish),
         isFalse,
       );
-      expect(places.withinFunction(publish), {
-        ...file.functions[publish]!.body.nodes.whereType<EffectNode>(),
-      });
     });
   });
 

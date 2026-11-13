@@ -1175,6 +1175,18 @@ void main() {
     });
   });
 
+  test('a click on a call selects the last effect that ran in it, not one '
+      'of a graph it calls that another call called', () {
+    run((async) {
+      graphFile.graph = decidingGraphFile();
+      give(async, changesOf([decidingSession(setupAsks: true)]));
+      model.clickNode('1');
+      expect(model.selection.effectId, 'd1d1-answer-2');
+      model.clickNode('3');
+      expect(model.selection.effectId, 'd1d1-answer-2');
+    });
+  });
+
   group('a session on the function of a call opened', () {
     /// inPlace over core and tool, each a call of ship(): core done, tool
     /// on verify.
